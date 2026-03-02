@@ -1,0 +1,25 @@
+{
+    email taha.dazine@gmail.com
+    servers {
+        protocols h1 h2 h3
+    }
+}
+
+{$DOMAIN} {
+    encode gzip zstd
+    tls {
+        protocols tls1.2 tls1.3
+        issuer acme {
+            dir https://acme.zerossl.com/v2/DV90
+        }
+    }
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        -Server
+    }
+    reverse_proxy quant_frontend:3000
+}

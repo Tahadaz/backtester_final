@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quant-api"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.27",
+  "pydantic>=2.6",
+  "sqlalchemy>=2.0",
+  "psycopg[binary]>=3.1",
+  "alembic>=1.13",
+  "rq>=1.16",
+  "redis>=5.0",
+  "boto3>=1.34",
+  "python-multipart>=0.0.9",
+  "pyarrow>=14",
+  "yfinance",
+  "openpyxl",
+  "numba",
+]
+
+# ✅ CRITICAL: tell setuptools what to package, exclude alembic folder from package discovery
+[tool.setuptools]
+packages = { find = { where = ["."], exclude = ["alembic*", "tests*", "scripts*"] } }
+
+[tool.uvicorn]
+factory = false

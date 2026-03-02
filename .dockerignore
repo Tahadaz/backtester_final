@@ -1,0 +1,22 @@
+.git
+.gitignore
+.vscode
+.idea
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.DS_Store
+
+node_modules
+quant-backtesting-frontend/node_modules
+quant-backtesting-frontend/.next
+quant-backtesting-frontend/.env.local
+
+docs
+original backtester
+*.zip
+*.pdf

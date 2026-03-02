@@ -1,0 +1,22 @@
+{
+  "data": {
+    "source": "bmce",
+    "symbols": ["IAM"],
+    "interval": "1d"
+  },
+  "strategy": {
+    "kind": "obv",
+    "params": {
+      "obv_span": 20,
+      "allow_short": false
+    }
+  },
+  "portfolio": {
+    "initial_cash": 100000,
+    "allow_short": false,
+    "buy_pct_cash": 1.0,
+    "sell_pct_shares": 1.0,
+    "use_volume_gate": false,
+    "use_participation_cap": false
+  }
+}
