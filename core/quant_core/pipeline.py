@@ -450,7 +450,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
     def _normalize_record_frame(df: pd.DataFrame) -> pd.DataFrame:
         out = df.copy()
         for c in out.columns:
-            if pd.api.types.is_datetime64_any_dtype(out[c]) or pd.api.types.is_datetime64tz_dtype(out[c]):
+            if pd.api.types.is_datetime64_any_dtype(out[c]) or isinstance(out[c].dtype, pd.DatetimeTZDtype):
                 out[c] = pd.to_datetime(out[c], utc=True, errors="coerce").dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
                 out[c] = out[c].str.replace(".000000Z", "Z", regex=False)
         # Cast to object first so None survives in numeric columns (instead of bouncing back to NaN).

@@ -11,6 +11,6 @@ from quant_core.research.horizon import get_horizon_config  # noqa: E402
 def test_get_horizon_config_short_defaults() -> None:
     cfg = get_horizon_config("short")
     assert cfg.name.value == "short"
-    assert cfg.train_window == 504
-    assert cfg.test_window == 21
+    assert cfg.train_window == 252
+    assert cfg.test_window == 63
     assert cfg.step_size == 21

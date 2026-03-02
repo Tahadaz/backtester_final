@@ -799,18 +799,18 @@ class ResultsAnalyzer:
 
         # 3) Build a “front” layout (human-friendly) using stable ASCII column names
         front = [
-            “timestamp”,
-            “symbol”,
-            “side”,
-            “prix_execution_open_jour”,
-            “quantite”,
-            “cmp”,
-            “pnl_realise”,
-            “pnl_latent”,
-            “close_du_jour”,
-            “available_quantity”,
-            “position_value_cost”,
-            “cost”,  # total fees
+            "timestamp",
+            "symbol",
+            "side²",
+            "prix_execution_open_jour",
+            "quantite",
+            "cmp",
+            "pnl_realise",
+            "pnl_latent",
+            "close_du_jour",
+            "available_quantity",
+            "position_value_cost",
+            "cost",  # total fees
         ]
         existing_front = [c for c in front if c in df.columns]
         audit_preferred = [
