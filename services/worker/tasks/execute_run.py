@@ -254,6 +254,19 @@ def _upload_json(object_key: str, payload: Any) -> tuple[int, str]:
     return len(content), _sha256_bytes(content)
 
 
+def _upload_text(object_key: str, text_content: str) -> tuple[int, str]:
+    ensure_bucket()
+    s3 = s3_client()
+    content = text_content.encode("utf-8")
+    s3.put_object(
+        Bucket=settings.S3_BUCKET,
+        Key=object_key,
+        Body=content,
+        ContentType="text/plain",
+    )
+    return len(content), _sha256_bytes(content)
+
+
 def _upload_csv(object_key: str, frame: pd.DataFrame) -> tuple[int, str]:
     ensure_bucket()
     s3 = s3_client()
@@ -1776,6 +1789,59 @@ def _persist_decisions(
             },
         )
 
+def _persist_optimization_timing(
+    *,
+    db: Session,
+    rid: UUID,
+    out: dict[str, Any],
+) -> None:
+    """Persist optimization timing metrics as RunMetric rows and optional profile artifact."""
+    timing = dict(out.get("optimization_timing") or {})
+    if not timing:
+        return
+
+    _OPT_METRICS = ("load_ms", "bank_ms", "trial_total_ms", "n_trials_run", "avg_trial_ms", "cache_hits", "cache_misses")
+    for metric_name in _OPT_METRICS:
+        value = _as_float(timing.get(metric_name))
+        if value is None:
+            continue
+        db.execute(
+            text(
+                """
+                insert into run_metric(run_id, symbol, metric_name, metric_value)
+                values (:run_id, :symbol, :name, :value)
+                on conflict (run_id, symbol, metric_name)
+                do update set metric_value = excluded.metric_value
+                """
+            ),
+            {
+                "run_id": rid,
+                "symbol": "__opt__",
+                "name": f"opt.{metric_name}",
+                "value": value,
+            },
+        )
+
+    profile_text = timing.get("profile_text")
+    if profile_text and isinstance(profile_text, str):
+        try:
+            object_key = f"runs/{rid}/_debug/profile.txt"
+            size_bytes, sha256 = _upload_text(object_key, profile_text)
+            _insert_artifact_row(
+                db=db,
+                rid=rid,
+                symbol="__opt__",
+                artifact_type="profile_txt",
+                name="optimize_profile",
+                object_key=object_key,
+                content_type="text/plain",
+                size_bytes=size_bytes,
+                sha256=sha256,
+            )
+        except Exception:
+            pass
+
+
 def _persist_pipeline_output(
     *,
     db: Session,
@@ -2378,6 +2444,12 @@ def _persist_pipeline_output(
                 out=out,
                 spec_json=safe_spec,
             )
+    except Exception:
+        pass
+
+    try:
+        with db.begin_nested():
+            _persist_optimization_timing(db=db, rid=rid, out=out)
     except Exception:
         pass
 

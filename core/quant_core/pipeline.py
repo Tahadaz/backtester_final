@@ -11,6 +11,7 @@ from .engine import BacktestEngine, DataConfig, IndicatorsConfig, StrategyConfig
 from .research.horizon import get_horizon_config
 from .optimize import (
     OptimizeConfig,
+    OptimizeTiming,
     ParamDef,
     batch_optimize_by_period,
     build_spec_from_result_row,
@@ -450,7 +451,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
     def _normalize_record_frame(df: pd.DataFrame) -> pd.DataFrame:
         out = df.copy()
         for c in out.columns:
-            if pd.api.types.is_datetime64_any_dtype(out[c]) or isinstance(out[c].dtype, pd.DatetimeTZDtype):
+            if pd.api.types.is_datetime64_any_dtype(out[c]) or pd.api.types.is_datetime64tz_dtype(out[c]):
                 out[c] = pd.to_datetime(out[c], utc=True, errors="coerce").dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
                 out[c] = out[c].str.replace(".000000Z", "Z", regex=False)
         # Cast to object first so None survives in numeric columns (instead of bouncing back to NaN).
@@ -1031,6 +1032,10 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
     if not opt_kinds:
         opt_kinds = [engine_spec.strategy.kind]
 
+    _analysis_cfg = dict(spec_json.get("analysis") or {})
+    _profile_cfg = dict(_analysis_cfg.get("profile") or {})
+    _profiling_enabled = bool(_profile_cfg.get("enabled", False))
+
     opt_cfg = OptimizeConfig(
         method=opt_method,
         seed=int(optimization_json.get("seed", 42)),
@@ -1039,6 +1044,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
         feature_cache_dir=str(indicators_cfg.cache_dir or ".cache/features"),
         enable_disk_cache=bool(optimization_json.get("enable_disk_cache", True)),
         enable_memory_cache=bool(optimization_json.get("enable_memory_cache", True)),
+        profiling_enabled=_profiling_enabled,
     )
 
     symbol_label = symbols[0] if len(symbols) == 1 else "__ALL__"
@@ -1386,7 +1392,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                     if kind == "buy_hold" or not active_params:
                         train_candidates.append((1, train_spec, None))
                     else:
-                        _, top_df_train, _, best_train_spec, ranked_df_train = run_optimization(
+                        _, top_df_train, _, best_train_spec, ranked_df_train, _wfo_timing = run_optimization(
                             base_spec=train_spec,
                             active_params=active_params,
                             cfg=opt_cfg,
@@ -1758,26 +1764,27 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
     bundles_by_kind: Dict[str, Any] = {}
     best_specs_by_kind: Dict[str, EngineSpec] = {}
     lb_parts: list[pd.DataFrame] = []
+    _all_timings: list[OptimizeTiming] = []
 
-    def _run_kind(kind_raw: Any) -> tuple[str, pd.DataFrame, EngineSpec | None, Any | None]:
+    def _run_kind(kind_raw: Any) -> tuple[str, pd.DataFrame, EngineSpec | None, Any | None, OptimizeTiming | None]:
         k = str(kind_raw)
         if k == "buy_hold":
             bh_spec = replace(engine_spec, strategy=StrategyConfig(kind="buy_hold", params={}))
-            return k, pd.DataFrame(), bh_spec, BacktestEngine(bh_spec).run()
+            return k, pd.DataFrame(), bh_spec, BacktestEngine(bh_spec).run(), None
 
         active_params = _params_from_catalog(k)
         if not active_params:
-            return k, pd.DataFrame(), None, None
+            return k, pd.DataFrame(), None, None, None
 
         base_spec_k = replace(engine_spec, strategy=StrategyConfig(kind=k, params={}))
-        _, top_df, _, best_spec, _ = run_optimization(
+        _, top_df, _, best_spec, _, _opt_timing = run_optimization(
             base_spec=base_spec_k,
             active_params=active_params,
             cfg=opt_cfg,
         )
         top_df = top_df.copy() if isinstance(top_df, pd.DataFrame) else pd.DataFrame()
         bundle = BacktestEngine(best_spec).run()
-        return k, top_df, best_spec, bundle
+        return k, top_df, best_spec, bundle, _opt_timing
 
     raw_workers = optimization_json.get("strategy_parallel_workers")
     auto_workers = max(1, min(len(opt_kinds), max(1, (os.cpu_count() or 1) - 1)))
@@ -1792,7 +1799,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
             strategy_workers = auto_workers
         strategy_workers = min(strategy_workers, max(1, len(opt_kinds)))
 
-    outputs: list[tuple[str, pd.DataFrame, EngineSpec | None, Any | None]] = []
+    outputs: list[tuple[str, pd.DataFrame, EngineSpec | None, Any | None, Any]] = []
     if strategy_workers <= 1 or len(opt_kinds) <= 1:
         outputs = [_run_kind(kind) for kind in opt_kinds]
     else:
@@ -1801,9 +1808,12 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
             for fut in as_completed(fut_map):
                 outputs.append(fut.result())
 
-    for k, top_df, best_spec, bundle in outputs:
+    for k, top_df, best_spec, bundle, _kind_timing in outputs:
         if best_spec is None or bundle is None:
             continue
+
+        if _kind_timing is not None:
+            _all_timings.append(_kind_timing)
 
         if not top_df.empty:
             top_df["Strategy"] = k
@@ -1858,6 +1868,25 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
         for k, b in bundles_by_kind.items()
     }
 
+    # Aggregate timing from all optimization calls
+    _timing_summary: dict[str, Any] = {}
+    if _all_timings:
+        _timing_summary = {
+            "load_ms": sum(t.load_ms for t in _all_timings),
+            "bank_ms": sum(t.bank_ms for t in _all_timings),
+            "trial_total_ms": sum(t.trial_total_ms for t in _all_timings),
+            "n_trials_run": sum(t.n_trials_run for t in _all_timings),
+            "avg_trial_ms": (
+                sum(t.trial_total_ms for t in _all_timings) / sum(t.n_trials_run for t in _all_timings)
+                if sum(t.n_trials_run for t in _all_timings) > 0 else 0.0
+            ),
+            "cache_hits": sum(t.cache_hits for t in _all_timings),
+            "cache_misses": sum(t.cache_misses for t in _all_timings),
+            "profile_text": next(
+                (t.profile_text for t in _all_timings if t.profile_text), None
+            ),
+        }
+
     return {
         "leaderboard": _df_to_records(leaderboard, ensure_timestamp=False),
         "plot_artifacts": _build_plot_artifacts(
@@ -1874,4 +1903,5 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
             "optimized_kinds": sorted(best_specs_by_kind.keys()),
             "best_strategy_params_by_kind": {k: _best_params_from_spec(v) for k, v in best_specs_by_kind.items()},
         },
+        "optimization_timing": _timing_summary,
     }

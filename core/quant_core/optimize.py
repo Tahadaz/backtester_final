@@ -7,6 +7,7 @@ import json
 import math
 import random
 import hashlib
+import time
 
 import numpy as np
 import pandas as pd
@@ -36,6 +37,10 @@ class OptimizeConfig:
     feature_cache_dir: str = ".cache/features"
     enable_disk_cache: bool = False
     enable_memory_cache: bool = True
+
+    # profiling: when True, cProfile is captured over the trial loop and returned
+    # in OptimizeTiming.profile_text (can be written as _debug/profile.txt artifact)
+    profiling_enabled: bool = False
 
 
 @dataclass(frozen=True)
@@ -69,9 +74,23 @@ class TrialResult:
     traded_notional: float
     efficiency: float
     n_fills: int
-    cagr: float 
+    cagr: float
     error: Optional[str] = None
-    
+
+
+@dataclass
+class OptimizeTiming:
+    """Timing and cache statistics for a single run_optimization() call."""
+    load_ms: float = 0.0           # data load duration
+    bank_ms: float = 0.0           # indicator bank build duration
+    trial_total_ms: float = 0.0    # cumulative time inside _eval_one_trial (uncached)
+    n_trials_run: int = 0          # trials actually evaluated (not from cache)
+    avg_trial_ms: float = 0.0      # trial_total_ms / n_trials_run
+    cache_hits: int = 0            # trial results served from eval_cache
+    cache_misses: int = 0          # trial results actually computed
+    profile_text: Optional[str] = None  # cProfile output text when profiling_enabled
+
+
 @dataclass
 class BankRequest:
     # Existing
@@ -597,6 +616,38 @@ class MACrossAdapter(StrategyAdapter):
             meta={"adapter": "ma_cross", "fast_window": f, "slow_window": s, "allow_short": allow_short, "nan_policy": nan_policy},
         )
 
+    def make_signal_arrays_fast(
+        self,
+        symbols: List[str],
+        bank: Dict[str, Dict[str, np.ndarray]],
+        bars_close: Dict[str, np.ndarray],
+        bars_high: Dict[str, np.ndarray],
+        bars_low: Dict[str, np.ndarray],
+        bars_vol: Dict[str, np.ndarray],
+        params: Dict[str, Any],
+        base_spec: "EngineSpec",
+    ) -> Dict[str, np.ndarray]:
+        base_params = dict(base_spec.strategy.params or {})
+        f = int(params.get("strategy.sma_fast_window", base_params.get("sma_fast_window", base_params.get("fast_window", 15))))
+        s = int(params.get("strategy.sma_slow_window", base_params.get("sma_slow_window", base_params.get("slow_window", 50))))
+        nan_policy = str(params.get("strategy.nan_policy", base_params.get("nan_policy", "flat")))
+        col_fast = f"sma_{f}"
+        col_slow = f"sma_{s}"
+        out: Dict[str, np.ndarray] = {}
+        for sym in symbols:
+            fast = bank[sym][col_fast]
+            slow = bank[sym][col_slow]
+            v = (~np.isnan(fast)) & (~np.isnan(slow))
+            arr = np.zeros(len(fast), dtype=np.float64)
+            arr[fast > slow] = 1.0
+            arr[fast < slow] = -1.0
+            if nan_policy == "flat":
+                arr = np.where(v, arr, 0.0)
+            else:
+                arr = np.where(v, arr, np.nan)
+            out[sym] = arr
+        return out
+
 
 class PriceAboveSMAAdapter(StrategyAdapter):
     def __init__(self):
@@ -709,6 +760,52 @@ class PriceAboveSMAAdapter(StrategyAdapter):
             },
         )
 
+    def make_signal_arrays_fast(
+        self,
+        symbols: List[str],
+        bank: Dict[str, Dict[str, np.ndarray]],
+        bars_close: Dict[str, np.ndarray],
+        bars_high: Dict[str, np.ndarray],
+        bars_low: Dict[str, np.ndarray],
+        bars_vol: Dict[str, np.ndarray],
+        params: Dict[str, Any],
+        base_spec: "EngineSpec",
+    ) -> Dict[str, np.ndarray]:
+        base_params = dict(base_spec.strategy.params or {})
+        w = int(params.get("strategy.sma_window", base_params.get("sma_window", base_params.get("window", 50))))
+        allow_short = bool(params.get("strategy.allow_short", base_params.get("allow_short", False)))
+        nan_policy = str(params.get("strategy.nan_policy", base_params.get("nan_policy", "flat")))
+        signal_mode = str(params.get("strategy.signal_mode", params.get("strategy.sma_signal_mode", base_params.get("signal_mode", "level")))).strip().lower()
+        if signal_mode not in {"level", "cross"}:
+            signal_mode = "level"
+        col_sma = f"sma_{w}"
+        out: Dict[str, np.ndarray] = {}
+        for sym in symbols:
+            close = bars_close[sym]
+            sma = bank[sym][col_sma]
+            v = (~np.isnan(close)) & (~np.isnan(sma))
+            if signal_mode == "cross":
+                prev_close = np.roll(close, 1); prev_close[0] = np.nan
+                prev_sma = np.roll(sma, 1); prev_sma[0] = np.nan
+                arr = np.zeros(len(close), dtype=np.float64)
+                arr[(close > sma) & (prev_close <= prev_sma)] = 1.0
+                if allow_short:
+                    arr[(close < sma) & (prev_close >= prev_sma)] = -1.0
+            else:
+                if allow_short:
+                    arr = np.zeros(len(close), dtype=np.float64)
+                    arr[close > sma] = 1.0
+                    arr[close < sma] = -1.0
+                else:
+                    arr = (close > sma).astype(np.float64)
+            if nan_policy == "flat":
+                arr = np.where(v, arr, 0.0)
+            else:
+                arr = np.where(v, arr, np.nan)
+            out[sym] = arr
+        return out
+
+
 class RSIStrategyAdapter(StrategyAdapter):
     def __init__(self):
         super().__init__(kind="rsi")
@@ -809,6 +906,45 @@ class RSIStrategyAdapter(StrategyAdapter):
                 "nan_policy": nan_policy,
             },
         )
+
+    def make_signal_arrays_fast(
+        self,
+        symbols: List[str],
+        bank: Dict[str, Dict[str, np.ndarray]],
+        bars_close: Dict[str, np.ndarray],
+        bars_high: Dict[str, np.ndarray],
+        bars_low: Dict[str, np.ndarray],
+        bars_vol: Dict[str, np.ndarray],
+        params: Dict[str, Any],
+        base_spec: "EngineSpec",
+    ) -> Dict[str, np.ndarray]:
+        base_params = dict(base_spec.strategy.params or {})
+        w = int(params.get("strategy.rsi_window", base_params.get("rsi_window", base_params.get("period", 14))))
+        low = float(params.get("strategy.rsi_oversold", base_params.get("rsi_oversold", base_params.get("low", 30.0))))
+        high = float(params.get("strategy.rsi_overbought", base_params.get("rsi_overbought", base_params.get("high", 70.0))))
+        mode = str(params.get("strategy.mode", base_params.get("mode", "reversal"))).strip().lower()
+        if mode not in {"reversal", "momentum"}:
+            mode = "reversal"
+        nan_policy = str(params.get("strategy.nan_policy", base_params.get("nan_policy", "flat")))
+        col = f"rsi_{w}"
+        out: Dict[str, np.ndarray] = {}
+        for sym in symbols:
+            rsi = bank[sym][col]
+            v = ~np.isnan(rsi)
+            arr = np.zeros(len(rsi), dtype=np.float64)
+            if mode == "reversal":
+                arr[rsi < low] = 1.0
+                arr[rsi > high] = -1.0
+            else:
+                arr[rsi > high] = 1.0
+                arr[rsi < low] = -1.0
+            if nan_policy == "flat":
+                arr = np.where(v, arr, 0.0)
+            else:
+                arr = np.where(v, arr, np.nan)
+            out[sym] = arr
+        return out
+
 
 class MACDStrategyAdapter(StrategyAdapter):
     def __init__(self):
@@ -943,6 +1079,57 @@ class MACDStrategyAdapter(StrategyAdapter):
             },
         )
 
+    def make_signal_arrays_fast(
+        self,
+        symbols: List[str],
+        bank: Dict[str, Dict[str, np.ndarray]],
+        bars_close: Dict[str, np.ndarray],
+        bars_high: Dict[str, np.ndarray],
+        bars_low: Dict[str, np.ndarray],
+        bars_vol: Dict[str, np.ndarray],
+        params: Dict[str, Any],
+        base_spec: "EngineSpec",
+    ) -> Dict[str, np.ndarray]:
+        base_params = dict(base_spec.strategy.params or {})
+        f = int(params.get("strategy.macd_fast_window", base_params.get("macd_fast_window", base_params.get("fast", 12))))
+        s = int(params.get("strategy.macd_slow_window", base_params.get("macd_slow_window", base_params.get("slow", 26))))
+        g = int(params.get("strategy.macd_signal_window", base_params.get("macd_signal_window", base_params.get("signal", 9))))
+        use_hist = bool(params.get("strategy.macd_use_hist", base_params.get("macd_use_hist", False)))
+        nan_policy = str(params.get("strategy.nan_policy", base_params.get("nan_policy", "flat")))
+        trigger = str(params.get("strategy.trigger", params.get("strategy.macd_trigger", base_params.get("trigger", "cross")))).strip().lower()
+        if trigger not in {"cross", "zero"}:
+            trigger = "cross"
+        col_macd = f"macd_{f}_{s}_{g}"
+        col_sig  = f"macd_signal_{f}_{s}_{g}"
+        col_hist = f"macd_hist_{f}_{s}_{g}"
+        out: Dict[str, np.ndarray] = {}
+        for sym in symbols:
+            if use_hist:
+                line = bank[sym][col_hist]
+                sigl = np.zeros_like(line)
+                v = ~np.isnan(line)
+            else:
+                line = bank[sym][col_macd]
+                sigl = bank[sym][col_sig]
+                v = (~np.isnan(line)) & (~np.isnan(sigl))
+            arr = np.zeros(len(line), dtype=np.float64)
+            if trigger == "cross":
+                prev_line = np.roll(line, 1); prev_line[0] = np.nan
+                prev_sigl = np.roll(sigl, 1); prev_sigl[0] = np.nan
+                arr[(line > sigl) & (prev_line <= prev_sigl)] = 1.0
+                arr[(line < sigl) & (prev_line >= prev_sigl)] = -1.0
+            else:
+                prev_line = np.roll(line, 1); prev_line[0] = np.nan
+                arr[(line > 0.0) & (prev_line <= 0.0)] = 1.0
+                arr[(line < 0.0) & (prev_line >= 0.0)] = -1.0
+            if nan_policy == "flat":
+                arr = np.where(v, arr, 0.0)
+            else:
+                arr = np.where(v, arr, np.nan)
+            out[sym] = arr
+        return out
+
+
 class BollingerAdapter(StrategyAdapter):
     def __init__(self):
         super().__init__(kind="bollinger")
@@ -1028,6 +1215,41 @@ class BollingerAdapter(StrategyAdapter):
             meta={"adapter": "bollinger", "bb_window": w, "bb_k": k, "allow_short": allow_short, "nan_policy": nan_policy},
         )
 
+    def make_signal_arrays_fast(
+        self,
+        symbols: List[str],
+        bank: Dict[str, Dict[str, np.ndarray]],
+        bars_close: Dict[str, np.ndarray],
+        bars_high: Dict[str, np.ndarray],
+        bars_low: Dict[str, np.ndarray],
+        bars_vol: Dict[str, np.ndarray],
+        params: Dict[str, Any],
+        base_spec: "EngineSpec",
+    ) -> Dict[str, np.ndarray]:
+        w = int(params.get("strategy.bb_window", base_spec.strategy.params.get("bb_window", 20)))
+        k = float(params.get("strategy.bb_k", base_spec.strategy.params.get("bb_k", 2.0)))
+        nan_policy = str(params.get("strategy.nan_policy", base_spec.strategy.params.get("nan_policy", "flat")))
+        col_mid = f"sma_{w}"
+        col_std = f"std_{w}"
+        out: Dict[str, np.ndarray] = {}
+        for sym in symbols:
+            close = bars_close[sym]
+            mid = bank[sym][col_mid]
+            std = bank[sym][col_std]
+            v = np.isfinite(close) & np.isfinite(mid) & np.isfinite(std)
+            upper = mid + k * std
+            lower = mid - k * std
+            arr = np.zeros(len(close), dtype=np.float64)
+            arr[close < lower] = 1.0
+            arr[close > upper] = -1.0
+            if nan_policy == "flat":
+                arr = np.where(v, arr, 0.0)
+            else:
+                arr = np.where(v, arr, np.nan)
+            out[sym] = arr
+        return out
+
+
 class OBVAdapter(StrategyAdapter):
     def __init__(self):
         super().__init__(kind="obv")
@@ -1078,6 +1300,32 @@ class OBVAdapter(StrategyAdapter):
             validity=pd.DataFrame({sym: valid.astype(bool)}, index=index),
             meta={"adapter": "obv", "obv_span": span, "allow_short": allow_short, "nan_policy": nan_policy},
         )
+
+    def make_signal_arrays_fast(
+        self,
+        symbols: List[str],
+        bank: Dict[str, Dict[str, np.ndarray]],
+        bars_close: Dict[str, np.ndarray],
+        bars_high: Dict[str, np.ndarray],
+        bars_low: Dict[str, np.ndarray],
+        bars_vol: Dict[str, np.ndarray],
+        params: Dict[str, Any],
+        base_spec: "EngineSpec",
+    ) -> Dict[str, np.ndarray]:
+        sym = symbols[0]
+        span = int(params.get("strategy.obv_span", base_spec.strategy.params.get("obv_span", 20)))
+        nan_policy = str(params.get("strategy.nan_policy", base_spec.strategy.params.get("nan_policy", "flat")))
+        obv = bank[sym]["obv"]
+        obv_ema = bank[sym][f"obv_ema_{span}"]
+        valid = np.isfinite(obv) & np.isfinite(obv_ema)
+        arr = np.zeros_like(obv, dtype=np.float64)
+        arr[obv > obv_ema] = 1.0
+        arr[obv < obv_ema] = -1.0
+        if nan_policy == "flat":
+            arr = np.where(valid, arr, 0.0)
+        else:
+            arr = np.where(valid, arr, np.nan)
+        return {sym: arr}
 
 
 class StochVWAPAdapter(StrategyAdapter):
@@ -1192,6 +1440,46 @@ class StochVWAPAdapter(StrategyAdapter):
                 "allow_short": allow_short, "nan_policy": nan_policy,
             },
         )
+
+    def make_signal_arrays_fast(
+        self,
+        symbols: List[str],
+        bank: Dict[str, Dict[str, np.ndarray]],
+        bars_close: Dict[str, np.ndarray],
+        bars_high: Dict[str, np.ndarray],
+        bars_low: Dict[str, np.ndarray],
+        bars_vol: Dict[str, np.ndarray],
+        params: Dict[str, Any],
+        base_spec: "EngineSpec",
+    ) -> Dict[str, np.ndarray]:
+        sym = symbols[0]
+        k_w = int(params.get("strategy.k_window", base_spec.strategy.params.get("k_window", 14)))
+        d_w = int(params.get("strategy.d_window", base_spec.strategy.params.get("d_window", 3)))
+        s_k = int(params.get("strategy.smooth_k", base_spec.strategy.params.get("smooth_k", 1)))
+        v_w = int(params.get("strategy.vwap_window", base_spec.strategy.params.get("vwap_window", 20)))
+        nan_policy = str(params.get("strategy.nan_policy", base_spec.strategy.params.get("nan_policy", "flat")))
+        key = f"stoch_{k_w}_{d_w}_{s_k}"
+        k = bank[sym][f"{key}__k"]
+        d = bank[sym][f"{key}__d"]
+        vwap = bank[sym][f"vwap_{v_w}"]
+        close = bars_close[sym]
+        valid = np.isfinite(k) & np.isfinite(d) & np.isfinite(vwap) & np.isfinite(close)
+        n = close.size
+        kx_up = np.zeros(n, dtype=bool); kx_dn = np.zeros(n, dtype=bool)
+        cx_up = np.zeros(n, dtype=bool); cx_dn = np.zeros(n, dtype=bool)
+        kx_up[1:] = self._cross_up(k, d); kx_dn[1:] = self._cross_down(k, d)
+        cx_up[1:] = self._cross_up(close, vwap); cx_dn[1:] = self._cross_down(close, vwap)
+        buy = (kx_up & (k < 20) & (d < 20) & (close > vwap)) | ((k > 50) & (k < 80) & (d > 50) & (d < 80) & cx_up) | (kx_up & (k < 80) & (d < 80) & (close > vwap))
+        sell = (kx_dn & (k > 80) & (d > 80) & (close < vwap)) | ((k > 20) & (k < 50) & (d > 20) & (d < 50) & cx_dn) | (kx_dn & (k > 20) & (d > 20) & (close < vwap))
+        arr = np.zeros(n, dtype=np.float64)
+        arr[buy] = 1.0; arr[sell] = -1.0
+        if nan_policy == "flat":
+            arr = np.where(valid, arr, 0.0)
+        else:
+            arr = np.where(valid, arr, np.nan)
+        return {sym: arr}
+
+
 class IchimokuAdapter(StrategyAdapter):
     def __init__(self):
         super().__init__(kind="ichimoku")
@@ -1260,6 +1548,41 @@ class IchimokuAdapter(StrategyAdapter):
             meta={"adapter": "ichimoku", "tenkan": ten, "kijun": kij, "senkou_b": sb, "shift": sh,
                   "allow_short": allow_short, "nan_policy": nan_policy},
         )
+
+    def make_signal_arrays_fast(
+        self,
+        symbols: List[str],
+        bank: Dict[str, Dict[str, np.ndarray]],
+        bars_close: Dict[str, np.ndarray],
+        bars_high: Dict[str, np.ndarray],
+        bars_low: Dict[str, np.ndarray],
+        bars_vol: Dict[str, np.ndarray],
+        params: Dict[str, Any],
+        base_spec: "EngineSpec",
+    ) -> Dict[str, np.ndarray]:
+        sym = symbols[0]
+        ten = int(params.get("strategy.tenkan", base_spec.strategy.params.get("tenkan", 9)))
+        kij = int(params.get("strategy.kijun", base_spec.strategy.params.get("kijun", 26)))
+        sb  = int(params.get("strategy.senkou_b", base_spec.strategy.params.get("senkou_b", 52)))
+        sh  = int(params.get("strategy.shift", base_spec.strategy.params.get("shift", 26)))
+        nan_policy = str(params.get("strategy.nan_policy", base_spec.strategy.params.get("nan_policy", "flat")))
+        key = f"ichimoku_{ten}_{kij}_{sb}_{sh}"
+        tenkan = bank[sym][f"{key}__tenkan"]
+        kijun  = bank[sym][f"{key}__kijun"]
+        span_a = bank[sym][f"{key}__span_a"]
+        span_b = bank[sym][f"{key}__span_b"]
+        close  = bars_close[sym]
+        cloud_top = np.maximum(span_a, span_b)
+        cloud_bot = np.minimum(span_a, span_b)
+        valid = np.isfinite(close) & np.isfinite(tenkan) & np.isfinite(kijun) & np.isfinite(cloud_top) & np.isfinite(cloud_bot)
+        arr = np.zeros(close.size, dtype=np.float64)
+        arr[(close > cloud_top) & (tenkan > kijun)] = 1.0
+        arr[(close < cloud_bot) & (tenkan < kijun)] = -1.0
+        if nan_policy == "flat":
+            arr = np.where(valid, arr, 0.0)
+        else:
+            arr = np.where(valid, arr, np.nan)
+        return {sym: arr}
 
 
 STRATEGY_ADAPTERS: Dict[str, StrategyAdapter] = {
@@ -1362,7 +1685,7 @@ def run_optimization(
     base_spec: EngineSpec,
     active_params: List[ParamDef],
     cfg: OptimizeConfig,
-) -> Tuple[TrialResult, pd.DataFrame, Dict[str, Any], EngineSpec, pd.DataFrame]:
+) -> Tuple[TrialResult, pd.DataFrame, Dict[str, Any], EngineSpec, pd.DataFrame, "OptimizeTiming"]:
     """
     Fast optimizer:
       - load MarketData once
@@ -1370,7 +1693,7 @@ def run_optimization(
       - per trial: generate signals from precomputed arrays (adapter), apply cooldown via PortfolioConfig, run portfolio stats fast
 
     Returns:
-      best_result, top_df, best_params, best_spec
+      best_result, top_df, best_params, best_spec, ranked_df, timing
     """
     if not active_params:
         raise ValueError("active_params is empty; nothing to optimize.")
@@ -1380,6 +1703,8 @@ def run_optimization(
         raise ValueError(f"No StrategyAdapter registered for strategy kind '{strategy_kind}'")
 
     adapter = STRATEGY_ADAPTERS[strategy_kind]
+
+    _t0_total = time.perf_counter()
 
     # 1) Load data once with warmup padding so fast-optimizer signals match runtime indicator history.
     data_cfg = base_spec.data
@@ -1392,7 +1717,9 @@ def run_optimization(
     if data_cfg.end:
         load_cfg = replace(load_cfg, end=data_cfg.end)
 
+    _t_load_start = time.perf_counter()
     md_full = _load_market_data_from_spec(load_cfg)
+    _load_ms = (time.perf_counter() - _t_load_start) * 1000.0
 
     symbols = list(base_spec.data.symbols)
     if not symbols:
@@ -1432,8 +1759,10 @@ def run_optimization(
             bars_vol[s] = b[vcol].to_numpy(dtype=np.float64, copy=False)
             
     # 3) Precompute arrays once (ALWAYS) + SMA bank (IF NEEDED)
+    _t_bank_start = time.perf_counter()
     req = adapter.required_bank(base_spec, active_params)
     bank = build_bank(bars_close, bars_high, bars_low, bars_vol, req)
+    _bank_ms = (time.perf_counter() - _t_bank_start) * 1000.0
         
     if need_volume:
         adv_windows: List[int] = []
@@ -1495,10 +1824,22 @@ def run_optimization(
     # 5) Evaluate
     results: List[TrialResult] = []
     eval_cache: Dict[str, TrialResult] = {}
+    _trial_total_ms = 0.0
+    _n_trials_run = 0
+    _cache_hits = 0
+    _cache_misses = 0
+
+    # Optional cProfile capture
+    import cProfile, pstats, io as _io
+    _prof = cProfile.Profile() if cfg.profiling_enabled else None
+    if _prof is not None:
+        _prof.enable()
+
     for params in candidates:
         params_key = _trial_params_key(params)
         cached_result = eval_cache.get(params_key)
         if cached_result is not None:
+            _cache_hits += 1
             results.append(cached_result)
             continue
 
@@ -1515,14 +1856,16 @@ def run_optimization(
             )
             eval_cache[params_key] = invalid_result
             results.append(invalid_result)
+            _cache_misses += 1
             continue
 
+        _t_trial = time.perf_counter()
         r = _eval_one_trial(
             base_spec=base_spec,
             md=md,
             common_index=common_index,
             bank=bank,
-            bars_open=bars_open,      # NEW
+            bars_open=bars_open,
             bars_close=bars_close,
             bars_high=bars_high,
             bars_low=bars_low,
@@ -1531,9 +1874,32 @@ def run_optimization(
             adapter=adapter,
             params=params,
         )
+        _trial_total_ms += (time.perf_counter() - _t_trial) * 1000.0
+        _n_trials_run += 1
+        _cache_misses += 1
 
         eval_cache[params_key] = r
         results.append(r)
+
+    if _prof is not None:
+        _prof.disable()
+        _sb = _io.StringIO()
+        _ps = pstats.Stats(_prof, stream=_sb).sort_stats("cumulative")
+        _ps.print_stats(30)
+        _profile_text: Optional[str] = _sb.getvalue()
+    else:
+        _profile_text = None
+
+    _timing = OptimizeTiming(
+        load_ms=_load_ms,
+        bank_ms=_bank_ms,
+        trial_total_ms=_trial_total_ms,
+        n_trials_run=_n_trials_run,
+        avg_trial_ms=(_trial_total_ms / _n_trials_run) if _n_trials_run > 0 else 0.0,
+        cache_hits=_cache_hits,
+        cache_misses=_cache_misses,
+        profile_text=_profile_text,
+    )
 
     df = pd.DataFrame([{
         **r.params,
@@ -1591,7 +1957,7 @@ def run_optimization(
             error=str(best_row.get("error")) if best_row.get("error") is not None else None,
         )
         best_spec = _apply_params_to_spec(base_spec, best.params)
-        return best, top_df, best_params, best_spec, ranked_df
+        return best, top_df, best_params, best_spec, ranked_df, _timing
 
     ranked_df = df_valid.sort_values(["pnl", "cagr"], ascending=[False, False]).reset_index(drop=True)
     df_valid = df_valid.sort_values(["pnl", "cagr"], ascending=[False, False])
@@ -1637,7 +2003,7 @@ def run_optimization(
         error=None,
     )
     best_spec = _apply_params_to_spec(base_spec, best.params)
-    return best, top_df, best_params, best_spec, ranked_df
+    return best, top_df, best_params, best_spec, ranked_df, _timing
 
 from typing import Dict, List, Tuple, Optional, Any
 import pandas as pd
@@ -1825,7 +2191,7 @@ def batch_optimize_by_period(
             data=replace(base_spec.data, start=str(p_start), end=str(p_end)),
         )
 
-        best, top_df, best_params, best_spec, ranked_df = run_optimization(
+        best, top_df, best_params, best_spec, ranked_df, _bt_timing = run_optimization(
             base_spec=per_spec,
             active_params=active_params,
             cfg=cfg,
@@ -2063,17 +2429,45 @@ def _eval_one_trial(
             adv_cap_by_symbol[sym] = adv_cap_px
             adv_gate_by_symbol[sym] = adv_gate_px
 
-        sf = adapter.make_signals_from_bank(
-            symbols=symbols,
-            index=trial_index,
-            bank=bank_trial,
-            bars_close=bars_close_trial,
-            bars_high=bars_high_trial,
-            bars_low=bars_low_trial,
-            bars_vol=bars_vol_trial if need_volume else {},
-            params=params,
-            base_spec=base_spec,
-        )
+        # Fast path: bypass DataFrame allocation in make_signals_from_bank.
+        # make_signal_arrays_fast() returns Dict[str, np.ndarray] with {-1,0,1} arrays directly.
+        _fast_fn = getattr(adapter, "make_signal_arrays_fast", None)
+        if _fast_fn is not None:
+            _sig_arrays = _fast_fn(
+                symbols=symbols,
+                bank=bank_trial,
+                bars_close=bars_close_trial,
+                bars_high=bars_high_trial,
+                bars_low=bars_low_trial,
+                bars_vol=bars_vol_trial if need_volume else {},
+                params=params,
+                base_spec=base_spec,
+            )
+            # Normalize: NaN → 0, then clamp to {-1, 0, 1}
+            _sig_norm: Dict[str, np.ndarray] = {}
+            for _s, _a in _sig_arrays.items():
+                _a = np.nan_to_num(np.asarray(_a, dtype=np.float64), nan=0.0, posinf=1.0, neginf=-1.0)
+                _sig_norm[_s] = np.where(_a > 0.0, 1.0, np.where(_a < 0.0, -1.0, 0.0))
+        else:
+            sf = adapter.make_signals_from_bank(
+                symbols=symbols,
+                index=trial_index,
+                bank=bank_trial,
+                bars_close=bars_close_trial,
+                bars_high=bars_high_trial,
+                bars_low=bars_low_trial,
+                bars_vol=bars_vol_trial if need_volume else {},
+                params=params,
+                base_spec=base_spec,
+            )
+            _sig_norm = {}
+            for _s in symbols:
+                _c = sf.signals[_s].to_numpy(dtype=np.float64, copy=False)
+                if sf.validity is not None and _s in sf.validity.columns:
+                    _v = sf.validity[_s].to_numpy(dtype=bool, copy=False)
+                    _c = np.where(_v, _c, 0.0)
+                _c = np.nan_to_num(_c, nan=0.0, posinf=1.0, neginf=-1.0)
+                _sig_norm[_s] = np.where(_c > 0.0, 1.0, np.where(_c < 0.0, -1.0, 0.0))
 
         pnl_total = 0.0
         traded_total = 0.0
@@ -2082,13 +2476,7 @@ def _eval_one_trial(
         volume_inv_total = 0.0
 
         for sym in symbols:
-            sig_col = sf.signals[sym].to_numpy(dtype=np.float64, copy=False)
-            if sf.validity is not None and sym in sf.validity.columns:
-                valid_col = sf.validity[sym].to_numpy(dtype=bool, copy=False)
-                sig_col = np.where(valid_col, sig_col, 0.0)
-
-            sig_col = np.nan_to_num(sig_col, nan=0.0, posinf=1.0, neginf=-1.0)
-            sig_col = np.where(sig_col > 0.0, 1.0, np.where(sig_col < 0.0, -1.0, 0.0))
+            sig_col = _sig_norm[sym]
 
             stats = port.run_stats_only_arrays(
                 open_px=bars_open_trial[sym],
