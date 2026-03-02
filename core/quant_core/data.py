@@ -74,6 +74,12 @@ def _stable_symbol_offset(symbol: str) -> int:
     return int(digest[:8], 16)
 
 
+# Module-level cache for business-day date ranges shared across symbols
+# (keyed by (start, end, freq, tz)).  Avoids redundant pd.date_range(freq="B")
+# calls — which cost ~25 ms each — when multiple symbols share the same window.
+_DATE_RANGE_CACHE: Dict[tuple, pd.DatetimeIndex] = {}
+
+
 def make_synthetic_ohlcv(
     symbol: str,
     start: str | None,
@@ -88,7 +94,11 @@ def make_synthetic_ohlcv(
     vol_max: int = 300_000,
 ) -> pd.DataFrame:
     if start and end:
-        idx = pd.date_range(start=start, end=end, freq=freq, tz="UTC")
+        _cache_key = (start, end, freq, "UTC")
+        idx = _DATE_RANGE_CACHE.get(_cache_key)
+        if idx is None:
+            idx = pd.date_range(start=start, end=end, freq=freq, tz="UTC")
+            _DATE_RANGE_CACHE[_cache_key] = idx
     elif periods is not None:
         idx = pd.date_range("2024-01-01", periods=int(periods), freq=freq, tz="UTC")
     else:

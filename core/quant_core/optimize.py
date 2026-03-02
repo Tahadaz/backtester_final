@@ -226,9 +226,37 @@ def _latest_signal_for_params(
     """
     Compute last-bar signal using the SAME adapter logic used during optimization.
     Returns: (signal_date, numeric_signal, label)
+
+    Uses the fast array path (make_signal_arrays_fast) when available to avoid
+    DataFrame construction for just one bar lookup.
     """
     signal_date = pd.Timestamp(index[-1])
+    sym0 = symbols[0]
 
+    _fast_fn = getattr(adapter, "make_signal_arrays_fast", None)
+    if _fast_fn is not None:
+        # Fast path: get full signal array, take last element — no DataFrame allocation.
+        need_vol = base_spec.strategy.kind.lower() in ("obv", "stoch_vwap")
+        _sig_arrays = _fast_fn(
+            symbols=symbols,
+            bank=bank,
+            bars_close=bars_close,
+            bars_high=bars_high,
+            bars_low=bars_low,
+            bars_vol=bars_vol if need_vol else {},
+            params=params,
+            base_spec=base_spec,
+        )
+        arr = _sig_arrays.get(sym0)
+        if arr is None or len(arr) == 0:
+            return signal_date, float("nan"), "NA"
+        raw = float(arr[-1])
+        if np.isnan(raw):
+            return signal_date, raw, "NA"
+        sig_val = 1.0 if raw > 0.0 else (-1.0 if raw < 0.0 else 0.0)
+        return signal_date, sig_val, _signal_to_label(sig_val)
+
+    # Legacy fallback: DataFrame-based signal generation.
     sf = adapter.make_signals_from_bank(
         symbols=symbols,
         index=index,
@@ -241,7 +269,6 @@ def _latest_signal_for_params(
         base_spec=base_spec,
     )
 
-    sym0 = symbols[0]
     sig_val = np.nan
     is_valid = True
 
@@ -1821,6 +1848,14 @@ def run_optimization(
     else:
         raise ValueError(f"Unknown optimization method: {cfg.method}")
 
+    # 4b) Pre-hoist PortfolioEngine when no portfolio params are being varied.
+    #     Avoids creating N identical PortfolioEngine/NBConfig objects in the loop.
+    _PORT_PARAM_KEYS = frozenset(("portfolio.cooldown_bars", "portfolio.buy_pct_cash", "portfolio.sell_pct_shares"))
+    _active_keys = frozenset(p.key for p in active_params if p.enabled)
+    _precomputed_port: Optional[PortfolioEngine] = None
+    if not (_active_keys & _PORT_PARAM_KEYS):
+        _precomputed_port = PortfolioEngine(base_spec.portfolio)
+
     # 5) Evaluate
     results: List[TrialResult] = []
     eval_cache: Dict[str, TrialResult] = {}
@@ -1873,6 +1908,7 @@ def run_optimization(
             adv_by_window_np=adv_by_window_np,
             adapter=adapter,
             params=params,
+            precomputed_port=_precomputed_port,
         )
         _trial_total_ms += (time.perf_counter() - _t_trial) * 1000.0
         _n_trials_run += 1
@@ -2313,6 +2349,7 @@ def _eval_one_trial(
     adv_by_window_np: Dict[int, Dict[str, np.ndarray]],
     adapter: StrategyAdapter,
     params: Dict[str, Any],
+    precomputed_port: Optional[PortfolioEngine] = None,
 ) -> TrialResult:
     try:
         symbols = list(base_spec.data.symbols)
@@ -2363,8 +2400,14 @@ def _eval_one_trial(
         need_volume_for_strategy = base_spec.strategy.kind.lower() in ("obv", "stoch_vwap")
         need_volume = bool(need_volume or need_volume_for_strategy)
 
-        port_cfg = _apply_portfolio_params(base_spec.portfolio, params)
-        port = PortfolioEngine(port_cfg)
+        # Use pre-hoisted engine when no portfolio params are being varied;
+        # otherwise apply per-trial portfolio overrides.
+        if precomputed_port is not None:
+            port = precomputed_port
+            port_cfg = port.cfg
+        else:
+            port_cfg = _apply_portfolio_params(base_spec.portfolio, params)
+            port = PortfolioEngine(port_cfg)
 
         bars_open_trial: Dict[str, np.ndarray] = {}
         bars_close_trial: Dict[str, np.ndarray] = {}

@@ -1366,3 +1366,38 @@ def _run_stats_fast_single_nb(
     final_eq = cash + pos * close_px[-1]
     pnl = final_eq - initial_cash
     return pnl, traded, n_fills, final_eq
+
+
+# ---------------------------------------------------------------------------
+# Numba JIT warmup — triggers JIT compilation / disk-cache load at import
+# time so the first optimization request pays no startup tax.
+# ---------------------------------------------------------------------------
+
+def _warmup_nb_jit() -> None:
+    """Force Numba JIT compilation/cache-load at module import time.
+
+    Without this, the first call to _run_stats_fast_single_nb inside an
+    optimization trial loop triggers 200-1500 ms of JIT overhead.  Moving
+    that cost to import (worker startup) keeps per-request latency flat.
+    """
+    if not _HAVE_NUMBA:
+        return
+    try:
+        _z2 = np.zeros(2, dtype=np.float64)
+        _s2 = np.zeros(2, dtype=np.int8)
+        _run_stats_fast_single_nb(
+            _z2, _z2, _s2, _z2, _z2, _z2,
+            # initial_cash, k_cost, cooldown, allow_short
+            1.0, 0.0, 0, 1,
+            # buy_pct_cash, sell_pct_shares, allow_frac, on_change
+            1.0, 1.0, 0, 1,
+            # use_gate, gate_kind, min_abs, min_ratio
+            0, 1, 0.0, 0.0,
+            # use_cap, cap_basis, prate
+            0, 1, 0.05,
+        )
+    except Exception:
+        pass  # best-effort; never block import
+
+
+_warmup_nb_jit()

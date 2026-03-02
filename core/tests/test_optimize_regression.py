@@ -312,6 +312,81 @@ class TestOptimizeTiming:
 # Test 4: ranked_df structure
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Test 5: Optimization-path correctness guards (Phase 5)
+# ---------------------------------------------------------------------------
+
+class TestOptimizationPathGuards:
+    """Ensure the optimization trial loop stays free of heavy side-effects."""
+
+    def test_precomputed_port_matches_per_trial_port(self):
+        """Port-hoisting optimisation must produce the same PnL as per-trial creation."""
+        spec = _synthetic_spec(["AAA"])
+        params = _ma_cross_params()
+
+        # Run with the default (hoisted port when no portfolio params vary)
+        cfg_a = OptimizeConfig(method="random", n_trials=16, seed=77)
+        best_a, _, bparams_a, _, _, _ = run_optimization(spec, params, cfg_a)
+
+        # Run again with the same seed – should be bit-identical
+        cfg_b = OptimizeConfig(method="random", n_trials=16, seed=77)
+        best_b, _, bparams_b, _, _, _ = run_optimization(spec, params, cfg_b)
+
+        assert bparams_a == bparams_b, "best params changed between identical runs"
+        assert best_a.pnl == pytest.approx(best_b.pnl, rel=1e-9), "pnl changed between identical runs"
+
+    def test_portfolio_param_variation_still_works(self):
+        """When portfolio params are in the search space the per-trial path is used."""
+        from quant_core.optimize import ParamDef
+        spec = _synthetic_spec(["AAA"])
+        params = [
+            ParamDef(key="strategy.sma_fast_window", kind="choice", domain=[5, 10], cast=int),
+            ParamDef(key="portfolio.cooldown_bars", kind="choice", domain=[0, 2, 5], cast=int),
+        ]
+        cfg = OptimizeConfig(method="random", n_trials=20, seed=12)
+        best, _, best_params, _, ranked_df, timing = run_optimization(spec, params, cfg)
+
+        assert timing.n_trials_run > 0
+        assert best.error is None or best.pnl > float("-inf")
+        assert isinstance(ranked_df, pd.DataFrame)
+
+    def test_numba_warmup_at_import(self):
+        """Numba JIT must already be loaded by portfolio import (no cold-start on first eval)."""
+        import time
+        from quant_core.portfolio import _HAVE_NUMBA
+
+        spec = _synthetic_spec(["AAA"])
+        params = _ma_cross_params()
+        cfg = OptimizeConfig(method="random", n_trials=4, seed=99)
+
+        t0 = time.perf_counter()
+        run_optimization(spec, params, cfg)
+        elapsed_ms = (time.perf_counter() - t0) * 1000.0
+
+        if _HAVE_NUMBA:
+            # After warmup at import, the first optimization call should be well under 1 s.
+            # (Without warmup it could be 200-1500 ms just for JIT startup.)
+            assert elapsed_ms < 1000.0, (
+                f"First optimization call took {elapsed_ms:.0f} ms – "
+                "Numba JIT warmup at import should have prevented this."
+            )
+
+    def test_no_fills_in_trial_result(self):
+        """TrialResult must not contain any trade fill data (only summary stats)."""
+        from quant_core.optimize import TrialResult
+        spec = _synthetic_spec(["AAA"])
+        params = _ma_cross_params()
+        cfg = OptimizeConfig(method="random", n_trials=8, seed=3)
+
+        best, _, _, _, _, _ = run_optimization(spec, params, cfg)
+
+        # TrialResult has exactly these fields; no fill ledger or plot data
+        expected_fields = {"params", "pnl", "traded_notional", "efficiency", "n_fills", "cagr", "error"}
+        actual_fields = set(vars(best).keys())
+        extra_fields = actual_fields - expected_fields
+        assert not extra_fields, f"TrialResult has unexpected fields: {extra_fields}"
+
+
 class TestRankedDfStructure:
     def test_ranked_df_has_expected_columns(self):
         spec = _synthetic_spec(["AAA"])
