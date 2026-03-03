@@ -10,9 +10,9 @@
 		},
 		"local": {
 			"url": "http://localhost:9000",
-			"accessKey": "",
-			"secretKey": "",
-			"api": "S3v4",
+			"accessKey": "minio",
+			"secretKey": "minio12345",
+			"api": "s3v4",
 			"path": "auto"
 		},
 		"play": {

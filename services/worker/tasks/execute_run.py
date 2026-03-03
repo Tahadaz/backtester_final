@@ -3,18 +3,23 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from tempfile import NamedTemporaryFile
+from tempfile import gettempdir
 from uuid import UUID, uuid4
 from typing import Any
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, ThreadPoolExecutor, wait
 import copy
+import logging
 import traceback
 import json
 import hashlib
 import math
 import os
 import subprocess
+import time
 import pandas as pd
+
+logger = logging.getLogger(__name__)
+from threading import Lock
 from redis import Redis
 from rq import get_current_job
 from plotly.utils import PlotlyJSONEncoder
@@ -27,6 +32,7 @@ from services.worker.config import settings
 from services.worker.storage import s3_client, ensure_bucket
 
 from core.quant_core.pipeline import run_pipeline
+from core.quant_core.s3_keys import build_dataset_object_key
 from core.quant_core.integrity import build_integrity_report
 from core.quant_core.mean_reversion import adf_test, cadf_cointegration, estimate_half_life
 from core.quant_core.research.horizon import get_horizon_config
@@ -67,6 +73,82 @@ def _has_column(db: Session, table_name: str, column_name: str) -> bool:
 
 def _sha256_bytes(b: bytes) -> str:
     return hashlib.sha256(b).hexdigest()
+
+
+_ARTIFACT_SHA_CACHE_LOCK = Lock()
+_ARTIFACT_SHA_CACHE: dict[tuple[str, str], str] = {}
+
+
+def _preferred_dataset_cache_root() -> Path:
+    configured = str(os.getenv("WORKER_DATASET_CACHE_DIR", "/tmp/datasets")).strip()
+    if configured:
+        return Path(configured)
+    return Path("/tmp/datasets")
+
+
+def _dataset_cache_root() -> Path:
+    preferred = _preferred_dataset_cache_root()
+    try:
+        preferred.mkdir(parents=True, exist_ok=True)
+        return preferred
+    except Exception:
+        fallback = Path(gettempdir()) / "datasets"
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
+
+
+def _safe_path_token(value: str, *, fallback: str) -> str:
+    cleaned = "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "_" for ch in str(value or ""))
+    cleaned = cleaned.strip("._-")
+    return cleaned or fallback
+
+
+def _atomic_write_bytes(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_name = f".{path.name}.{uuid4().hex}.tmp"
+    tmp_path = path.parent / tmp_name
+    try:
+        tmp_path.write_bytes(payload)
+        os.replace(tmp_path, path)
+    finally:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
+def _materialize_object_to_cache(
+    *,
+    bucket: str,
+    object_key: str,
+    cache_key: str,
+    filename: str,
+    require_non_empty: bool = False,
+) -> Path:
+    cache_dir = _dataset_cache_root() / _safe_path_token(cache_key, fallback="cache")
+    cache_path = cache_dir / _safe_path_token(filename, fallback="dataset.bin")
+    try:
+        if cache_path.exists() and cache_path.stat().st_size > 0:
+            return cache_path
+    except Exception:
+        pass
+
+    payload = s3_client().get_object(Bucket=bucket, Key=object_key)["Body"].read()
+    if require_non_empty and not payload:
+        raise RuntimeError(f"Empty parquet object: {object_key}")
+    _atomic_write_bytes(cache_path, payload)
+    return cache_path
+
+
+def _is_dataset_cache_path(path: Path | None) -> bool:
+    if path is None:
+        return False
+    try:
+        resolved_path = Path(path).resolve()
+        cache_root = _dataset_cache_root().resolve()
+        return resolved_path == cache_root or cache_root in resolved_path.parents
+    except Exception:
+        return False
 def _rq_job_id() -> str | None:
     try:
         job = get_current_job()
@@ -233,11 +315,82 @@ def _json_dumps_pg(payload: Any) -> str:
     )
 
 
-def _upload_json(object_key: str, payload: Any) -> tuple[int, str]:
+def _artifact_candidate_key(db: Session, *, sha256: str, content_type: str) -> str | None:
+    row = db.execute(
+        text(
+            """
+            select object_key
+            from artifact
+            where sha256=:sha and content_type=:ctype and bucket=:bucket
+            order by created_at desc
+            limit 1
+            """
+        ),
+        {"sha": sha256, "ctype": content_type, "bucket": settings.S3_BUCKET},
+    ).mappings().first()
+    if not row:
+        return None
+    key = str(row.get("object_key") or "").strip()
+    return key or None
+
+
+def _s3_object_matches_sha(s3: Any, *, object_key: str, expected_sha256: str) -> bool:
+    try:
+        head = s3.head_object(Bucket=settings.S3_BUCKET, Key=object_key)
+    except Exception:
+        return False
+    metadata = dict(head.get("Metadata") or {})
+    stored_sha = str(metadata.get("sha256") or metadata.get("sha") or "").strip().lower()
+    return bool(stored_sha and stored_sha == expected_sha256.lower())
+
+
+def _upload_content(
+    *,
+    object_key: str,
+    content_type: str,
+    content: bytes,
+    db: Session | None = None,
+) -> tuple[int, str, str]:
     ensure_bucket()
     s3 = s3_client()
-    # Use Plotly encoder so datetime-like arrays are emitted as ISO strings,
-    # preserving chart coordinates in the browser.
+    sha256 = _sha256_bytes(content)
+    size_bytes = len(content)
+    cache_key = (sha256, content_type)
+
+    with _ARTIFACT_SHA_CACHE_LOCK:
+        cached_key = _ARTIFACT_SHA_CACHE.get(cache_key)
+    if cached_key and _s3_object_matches_sha(s3, object_key=cached_key, expected_sha256=sha256):
+        return size_bytes, sha256, cached_key
+
+    # Fast-path for reruns where the same run-scoped key already exists.
+    if _s3_object_matches_sha(s3, object_key=object_key, expected_sha256=sha256):
+        with _ARTIFACT_SHA_CACHE_LOCK:
+            _ARTIFACT_SHA_CACHE[cache_key] = object_key
+        return size_bytes, sha256, object_key
+
+    if db is not None:
+        try:
+            prior_key = _artifact_candidate_key(db, sha256=sha256, content_type=content_type)
+        except Exception:
+            prior_key = None
+        if prior_key and _s3_object_matches_sha(s3, object_key=prior_key, expected_sha256=sha256):
+            with _ARTIFACT_SHA_CACHE_LOCK:
+                _ARTIFACT_SHA_CACHE[cache_key] = prior_key
+            return size_bytes, sha256, prior_key
+
+    s3.put_object(
+        Bucket=settings.S3_BUCKET,
+        Key=object_key,
+        Body=content,
+        ContentType=content_type,
+        Metadata={"sha256": sha256},
+    )
+    with _ARTIFACT_SHA_CACHE_LOCK:
+        _ARTIFACT_SHA_CACHE[cache_key] = object_key
+    return size_bytes, sha256, object_key
+
+
+def _upload_json(object_key: str, payload: Any, *, db: Session | None = None) -> tuple[int, str, str]:
     content = json.dumps(
         _sanitize_for_json(payload),
         ensure_ascii=False,
@@ -245,39 +398,32 @@ def _upload_json(object_key: str, payload: Any) -> tuple[int, str]:
         cls=PlotlyJSONEncoder,
         default=_json_default,
     ).encode("utf-8")
-    s3.put_object(
-        Bucket=settings.S3_BUCKET,
-        Key=object_key,
-        Body=content,
-        ContentType="application/json",
+    return _upload_content(
+        object_key=object_key,
+        content_type="application/json",
+        content=content,
+        db=db,
     )
-    return len(content), _sha256_bytes(content)
 
 
-def _upload_text(object_key: str, text_content: str) -> tuple[int, str]:
-    ensure_bucket()
-    s3 = s3_client()
+def _upload_text(object_key: str, text_content: str, *, db: Session | None = None) -> tuple[int, str, str]:
     content = text_content.encode("utf-8")
-    s3.put_object(
-        Bucket=settings.S3_BUCKET,
-        Key=object_key,
-        Body=content,
-        ContentType="text/plain",
+    return _upload_content(
+        object_key=object_key,
+        content_type="text/plain",
+        content=content,
+        db=db,
     )
-    return len(content), _sha256_bytes(content)
 
 
-def _upload_csv(object_key: str, frame: pd.DataFrame) -> tuple[int, str]:
-    ensure_bucket()
-    s3 = s3_client()
+def _upload_csv(object_key: str, frame: pd.DataFrame, *, db: Session | None = None) -> tuple[int, str, str]:
     content = frame.to_csv(index=False).encode("utf-8")
-    s3.put_object(
-        Bucket=settings.S3_BUCKET,
-        Key=object_key,
-        Body=content,
-        ContentType="text/csv",
+    return _upload_content(
+        object_key=object_key,
+        content_type="text/csv",
+        content=content,
+        db=db,
     )
-    return len(content), _sha256_bytes(content)
 
 
 def _as_float(v, default: float | None = None) -> float | None:
@@ -485,23 +631,17 @@ def _coerce_datetime_value(value: Any, *, utc: bool) -> pd.Timestamp | None:
     return pd.Timestamp(parsed)
 
 
-def _build_dataset_object_key(filename: str, data_hash: str) -> str:
-    return f"datasets/{data_hash}/{filename}"
-
-
-def _materialize_dataset_file(*, filename: str, data_hash: str) -> Path:
-    s3 = s3_client()
-    object_key = _build_dataset_object_key(filename=filename, data_hash=data_hash)
-    payload = s3.get_object(Bucket=settings.S3_BUCKET, Key=object_key)["Body"].read()
-
-    suffix = Path(filename).suffix or ".bin"
-    tmp = NamedTemporaryFile(delete=False, suffix=suffix)
-    try:
-        tmp.write(payload)
-    finally:
-        tmp.close()
-
-    return Path(tmp.name)
+def _materialize_dataset_file(*, filename: str, data_hash: str, object_key: str | None = None) -> Path:
+    # Prefer the stored object_key (guaranteed to match what was uploaded).
+    # Fall back to canonical reconstruction for legacy rows where it is NULL.
+    key = object_key or build_dataset_object_key(data_hash=data_hash, filename=filename)
+    effective_filename = str(filename or Path(key).name or "dataset.bin")
+    return _materialize_object_to_cache(
+        bucket=settings.S3_BUCKET,
+        object_key=key,
+        cache_key=f"uploaded/{data_hash}",
+        filename=effective_filename,
+    )
 
 
 def _store_key_for_symbol(*, db: Session, symbol: str, timeframe: str = "1D") -> str:
@@ -516,17 +656,17 @@ def _store_key_for_symbol(*, db: Session, symbol: str, timeframe: str = "1D") ->
 
 
 def _materialize_store_parquet(*, object_key: str) -> Path:
-    s3 = s3_client()
-    payload = s3.get_object(Bucket=settings.S3_BUCKET, Key=object_key)["Body"].read()
-    if not payload:
-        raise RuntimeError(f"Empty parquet object: {object_key}")
-
-    tmp = NamedTemporaryFile(delete=False, suffix=".parquet")
-    try:
-        tmp.write(payload)
-    finally:
-        tmp.close()
-    return Path(tmp.name)
+    store_hash = _sha256_bytes(object_key.encode("utf-8"))
+    filename = Path(object_key).name or "ohlcv.parquet"
+    if not str(filename).lower().endswith(".parquet"):
+        filename = f"{filename}.parquet"
+    return _materialize_object_to_cache(
+        bucket=settings.S3_BUCKET,
+        object_key=object_key,
+        cache_key=f"store/{store_hash}",
+        filename=filename,
+        require_non_empty=True,
+    )
 
 
 def _normalize_symbols(raw_symbols) -> list[str]:
@@ -1145,6 +1285,138 @@ def _insert_artifact_row(
     )
 
 
+def _warmup_artifact_options(spec_json: dict[str, Any] | None) -> tuple[bool, int]:
+    env_enabled = _as_bool(os.getenv("WORKER_WARMUP_ARTIFACT_ENABLED"), False)
+    env_max_rows = _as_int(os.getenv("WORKER_WARMUP_ARTIFACT_MAX_ROWS"), 320) or 320
+
+    cfg = dict((spec_json or {}).get("cache") or {})
+    warm_cfg_raw = cfg.get("warmup_artifact")
+    if isinstance(warm_cfg_raw, dict):
+        enabled = _as_bool(warm_cfg_raw.get("enabled"), env_enabled)
+        max_rows = _as_int(warm_cfg_raw.get("max_rows"), env_max_rows) or env_max_rows
+        return enabled, max(1, max_rows)
+    if warm_cfg_raw is not None:
+        enabled = _as_bool(warm_cfg_raw, env_enabled)
+        return enabled, max(1, env_max_rows)
+    return env_enabled, max(1, env_max_rows)
+
+
+def _resolve_dataset_cache_identity(
+    *,
+    dataset_hash: str | None,
+    spec_json: dict[str, Any] | None,
+) -> str:
+    if dataset_hash:
+        return str(dataset_hash)
+
+    spec = dict(spec_json or {})
+    data_cfg = dict(spec.get("data") or {})
+    payload = {
+        "source": str(spec.get("source_key") or data_cfg.get("source") or ""),
+        "symbols": [str(s) for s in list(spec.get("symbols") or data_cfg.get("symbols") or []) if str(s).strip()],
+        "interval": str(data_cfg.get("interval") or data_cfg.get("timeframe") or ""),
+        "start": data_cfg.get("start"),
+        "end": data_cfg.get("end"),
+        "dataset_symbol_map": data_cfg.get("dataset_symbol_map"),
+        "parquet_paths": data_cfg.get("parquet_paths"),
+    }
+    raw = json.dumps(payload, sort_keys=True, ensure_ascii=True, default=str)
+    return f"spec:{hashlib.sha256(raw.encode('utf-8')).hexdigest()}"
+
+
+def _build_warmup_snapshot_payload(
+    *,
+    strategy_kind: str,
+    strategy_payload: dict[str, Any],
+    max_rows: int,
+) -> dict[str, Any] | None:
+    decision_inputs = strategy_payload.get("decision_inputs")
+    if not isinstance(decision_inputs, dict):
+        return None
+
+    symbols_in = decision_inputs.get("symbols")
+    symbols_snapshot: dict[str, Any] = {}
+    if isinstance(symbols_in, dict):
+        for sym_raw, sym_payload_any in symbols_in.items():
+            sym_payload = sym_payload_any if isinstance(sym_payload_any, dict) else {}
+            features = [r for r in list(sym_payload.get("features") or []) if isinstance(r, dict)][-max_rows:]
+            signals = [r for r in list(sym_payload.get("signals") or []) if isinstance(r, dict)][-max_rows:]
+            if not features and not signals:
+                continue
+            symbols_snapshot[str(sym_raw)] = {
+                "features": features,
+                "signals": signals,
+            }
+
+    returns_rows = [r for r in list(decision_inputs.get("returns") or []) if isinstance(r, dict)][-max_rows:]
+    if not symbols_snapshot and not returns_rows:
+        return None
+
+    best_params = _as_dict(strategy_payload.get("best_params"))
+    return {
+        "schema_version": 1,
+        "generated_at": _utcnow().isoformat(),
+        "strategy_kind": strategy_kind,
+        "symbols": symbols_snapshot,
+        "returns": returns_rows,
+        "best_params": best_params,
+    }
+
+
+def _persist_warmup_artifacts(
+    *,
+    db: Session,
+    rid: UUID,
+    out: dict[str, Any],
+    spec_json: dict[str, Any] | None,
+    dataset_hash: str | None,
+) -> None:
+    enabled, max_rows = _warmup_artifact_options(spec_json)
+    if not enabled:
+        return
+
+    strategy_results = out.get("strategy_results") or {}
+    if not isinstance(strategy_results, dict) or not strategy_results:
+        return
+
+    spec = dict(spec_json or {})
+    data_cfg = dict(spec.get("data") or {})
+    dataset_identity = _resolve_dataset_cache_identity(dataset_hash=dataset_hash, spec_json=spec_json)
+    dataset_token = _safe_path_token(dataset_identity, fallback="dataset")
+    timeframe = str(data_cfg.get("interval") or data_cfg.get("timeframe") or "1d")
+    timeframe_token = _safe_path_token(timeframe, fallback="1d")
+
+    for strategy_kind_raw, payload_any in strategy_results.items():
+        strategy_kind = str(strategy_kind_raw).strip().lower()
+        if not strategy_kind:
+            continue
+        payload = payload_any if isinstance(payload_any, dict) else {}
+        snapshot_payload = _build_warmup_snapshot_payload(
+            strategy_kind=strategy_kind,
+            strategy_payload=payload,
+            max_rows=max_rows,
+        )
+        if not snapshot_payload:
+            continue
+
+        strategy_token = _safe_path_token(strategy_kind, fallback="strategy")
+        object_key = (
+            f"cache/warmup/{dataset_token}/{timeframe_token}/{strategy_token}/snapshot.json"
+        )
+        size_bytes, sha256, effective_key = _upload_json(object_key, snapshot_payload, db=db)
+        _insert_artifact_row(
+            db=db,
+            rid=rid,
+            symbol="__ALL__",
+            artifact_type="cache_warmup_json",
+            name=f"warmup.{strategy_kind}",
+            object_key=effective_key,
+            content_type="application/json",
+            size_bytes=size_bytes,
+            sha256=sha256,
+        )
+
+
 def _persist_integrity(
     *,
     db: Session,
@@ -1199,14 +1471,14 @@ def _persist_integrity(
     )
 
     object_key = f"runs/{rid}/integrity/report.json"
-    size_bytes, sha256 = _upload_json(object_key, report)
+    size_bytes, sha256, effective_key = _upload_json(object_key, report, db=db)
     _insert_artifact_row(
         db=db,
         rid=rid,
         symbol="__ALL__",
         artifact_type="run_integrity_json",
         name="integrity.report",
-        object_key=object_key,
+        object_key=effective_key,
         content_type="application/json",
         size_bytes=size_bytes,
         sha256=sha256,
@@ -1301,14 +1573,14 @@ def _persist_walk_forward_folds(
         )
 
     object_key = f"runs/{rid}/wfo/{default_symbol}/{horizon}/folds.json"
-    size_bytes, sha256 = _upload_json(object_key, rows)
+    size_bytes, sha256, effective_key = _upload_json(object_key, rows, db=db)
     _insert_artifact_row(
         db=db,
         rid=rid,
         symbol=str(default_symbol or "__ALL__"),
         artifact_type="walk_forward_json",
         name="walk_forward.folds",
-        object_key=object_key,
+        object_key=effective_key,
         content_type="application/json",
         size_bytes=size_bytes,
         sha256=sha256,
@@ -1378,14 +1650,14 @@ def _persist_significance(
         persisted[kind] = payload
 
     object_key = f"runs/{rid}/significance/report.json"
-    size_bytes, sha256 = _upload_json(object_key, persisted)
+    size_bytes, sha256, effective_key = _upload_json(object_key, persisted, db=db)
     _insert_artifact_row(
         db=db,
         rid=rid,
         symbol="__ALL__",
         artifact_type="run_significance_json",
         name="significance.report",
-        object_key=object_key,
+        object_key=effective_key,
         content_type="application/json",
         size_bytes=size_bytes,
         sha256=sha256,
@@ -1480,14 +1752,18 @@ def _persist_risk(
     )
 
     object_key = f"runs/{rid}/risk/report.json"
-    size_bytes, sha256 = _upload_json(object_key, {**risk_report, "strategy_kind": primary_kind})
+    size_bytes, sha256, effective_key = _upload_json(
+        object_key,
+        {**risk_report, "strategy_kind": primary_kind},
+        db=db,
+    )
     _insert_artifact_row(
         db=db,
         rid=rid,
         symbol="__ALL__",
         artifact_type="run_risk_json",
         name="risk.report",
-        object_key=object_key,
+        object_key=effective_key,
         content_type="application/json",
         size_bytes=size_bytes,
         sha256=sha256,
@@ -1539,14 +1815,14 @@ def _persist_mean_reversion(
                 report["pairs"].append({"y": sym_a, "x": sym_b, "error": str(exc)})
 
     object_key = f"runs/{rid}/mean_reversion/report.json"
-    size_bytes, sha256 = _upload_json(object_key, report)
+    size_bytes, sha256, effective_key = _upload_json(object_key, report, db=db)
     _insert_artifact_row(
         db=db,
         rid=rid,
         symbol="__ALL__",
         artifact_type="mean_reversion_json",
         name="mean_reversion.report",
-        object_key=object_key,
+        object_key=effective_key,
         content_type="application/json",
         size_bytes=size_bytes,
         sha256=sha256,
@@ -1826,20 +2102,93 @@ def _persist_optimization_timing(
     if profile_text and isinstance(profile_text, str):
         try:
             object_key = f"runs/{rid}/_debug/profile.txt"
-            size_bytes, sha256 = _upload_text(object_key, profile_text)
+            size_bytes, sha256, effective_key = _upload_text(object_key, profile_text, db=db)
             _insert_artifact_row(
                 db=db,
                 rid=rid,
                 symbol="__opt__",
                 artifact_type="profile_txt",
                 name="optimize_profile",
-                object_key=object_key,
+                object_key=effective_key,
                 content_type="text/plain",
                 size_bytes=size_bytes,
                 sha256=sha256,
             )
         except Exception:
             pass
+
+
+def _upload_perf_profile(
+    *,
+    db: Session,
+    rid: UUID,
+    out: dict[str, Any],
+    perf_phases: dict[str, Any],
+    total_ms: float,
+) -> None:
+    """Build and upload runs/{run_id}/_perf/profile.json with nested timing data."""
+    pipeline_perf = dict(out.get("_perf") or {})
+    opt_timing = dict(out.get("optimization_timing") or {})
+
+    params_tested = int(opt_timing.get("n_trials_run", 0) or 0)
+
+    # Fold counts from nested _perf
+    folds_by_kind: dict[str, list] = dict(pipeline_perf.get("folds_by_kind") or {})
+    horizons_raw = dict(pipeline_perf.get("horizons") or {})
+
+    # For multi-horizon runs, aggregate fold counts from nested horizon perfs
+    if horizons_raw and not folds_by_kind:
+        for h_perf in horizons_raw.values():
+            if isinstance(h_perf, dict):
+                for k, v in dict(h_perf.get("folds_by_kind") or {}).items():
+                    folds_by_kind.setdefault(k, []).extend(v if isinstance(v, list) else [])
+        params_tested = params_tested or sum(
+            int(h.get("folds_count", 0)) * int(opt_timing.get("n_trials_run", 0) or 0)
+            for h in horizons_raw.values()
+            if isinstance(h, dict)
+        )
+
+    folds_total = sum(len(v) for v in folds_by_kind.values())
+    if not folds_total and horizons_raw:
+        folds_total = sum(
+            int(h.get("folds_count", 0))
+            for h in horizons_raw.values()
+            if isinstance(h, dict)
+        )
+
+    profile: dict[str, Any] = {
+        "generated_at": _utcnow().isoformat(),
+        "total_ms": round(total_ms, 2),
+        "cpu_threads": int(os.cpu_count() or 1),
+        "phases_ms": perf_phases,
+        "horizons": horizons_raw,
+        "folds_by_kind": folds_by_kind,
+        "folds_total": folds_total,
+        "params_tested": params_tested,
+        "opt_timing": {k: v for k, v in opt_timing.items() if k != "profile_text"},
+    }
+
+    object_key = f"runs/{rid}/_perf/profile.json"
+    size_bytes, sha256, effective_key = _upload_json(object_key, profile, db=db)
+    _insert_artifact_row(
+        db=db,
+        rid=rid,
+        symbol="__perf__",
+        artifact_type="perf_profile",
+        name="perf_profile",
+        object_key=effective_key,
+        content_type="application/json",
+        size_bytes=size_bytes,
+        sha256=sha256,
+    )
+    logger.info(
+        "[perf] run=%s total=%.0f ms pipeline=%.0f ms folds=%d params=%d",
+        rid,
+        total_ms,
+        float(perf_phases.get("pipeline_ms", 0)),
+        folds_total,
+        params_tested,
+    )
 
 
 def _persist_pipeline_output(
@@ -1850,6 +2199,7 @@ def _persist_pipeline_output(
     default_symbol: str,
     spec_json: dict[str, Any] | None = None,
     dataset_meta: dict[str, Any] | None = None,
+    dataset_hash: str | None = None,
 ) -> None:
     # --- 0) run-level metrics + fills + position ledger ---
     strategy_results_for_metrics = out.get("strategy_results") or {}
@@ -1973,30 +2323,17 @@ def _persist_pipeline_output(
         if not fig_json:
             continue
         object_key = f"runs/{rid}/symbols/{sym}/plots/price_indicators_trades.json"
-        size_bytes, sha256 = _upload_json(object_key, fig_json)
-
-        db.execute(
-            text(
-                """
-                insert into artifact(
-                    id, run_id, symbol, artifact_type, name, object_key, bucket, content_type, size_bytes, sha256
-                ) values (
-                    :id, :run_id, :symbol, :atype, :name, :key, :bucket, :ctype, :size, :sha
-                )
-                """
-            ),
-            {
-                "id": uuid4(),
-                "run_id": rid,
-                "symbol": sym,
-                "atype": "plotly_json",
-                "name": "price_indicators_trades",
-                "key": object_key,
-                "bucket": settings.S3_BUCKET,
-                "ctype": "application/json",
-                "size": size_bytes,
-                "sha": sha256,
-            },
+        size_bytes, sha256, effective_key = _upload_json(object_key, fig_json, db=db)
+        _insert_artifact_row(
+            db=db,
+            rid=rid,
+            symbol=str(sym),
+            artifact_type="plotly_json",
+            name="price_indicators_trades",
+            object_key=effective_key,
+            content_type="application/json",
+            size_bytes=size_bytes,
+            sha256=sha256,
         )
 
     # --- 1.5) batch period artifacts ---
@@ -2016,60 +2353,43 @@ def _persist_pipeline_output(
             results_df = pd.DataFrame(results_rows)
             if not results_df.empty:
                 object_key = f"{bp_prefix}/results.csv"
-                size_bytes, sha256 = _upload_csv(object_key, results_df)
-                db.execute(
-                    text(
-                        """
-                        insert into artifact(
-                            id, run_id, symbol, artifact_type, name, object_key, bucket, content_type, size_bytes, sha256
-                        ) values (
-                            :id, :run_id, :symbol, :atype, :name, :key, :bucket, :ctype, :size, :sha
-                        )
-                        """
-                    ),
-                    {
-                        "id": uuid4(),
-                        "run_id": rid,
-                        "symbol": bp_symbol,
-                        "atype": "batch_period_csv",
-                        "name": "batch_period.results",
-                        "key": object_key,
-                        "bucket": settings.S3_BUCKET,
-                        "ctype": "text/csv",
-                        "size": size_bytes,
-                        "sha": sha256,
-                    },
+                size_bytes, sha256, effective_key = _upload_csv(object_key, results_df, db=db)
+                _insert_artifact_row(
+                    db=db,
+                    rid=rid,
+                    symbol=bp_symbol,
+                    artifact_type="batch_period_csv",
+                    name="batch_period.results",
+                    object_key=effective_key,
+                    content_type="text/csv",
+                    size_bytes=size_bytes,
+                    sha256=sha256,
                 )
 
         heatmap_json = batch_period.get("heatmap")
         if isinstance(heatmap_json, dict) and heatmap_json:
             object_key = f"{bp_prefix}/heatmap.json"
-            size_bytes, sha256 = _upload_json(object_key, heatmap_json)
-            db.execute(
-                text(
-                    """
-                    insert into artifact(
-                        id, run_id, symbol, artifact_type, name, object_key, bucket, content_type, size_bytes, sha256
-                    ) values (
-                        :id, :run_id, :symbol, :atype, :name, :key, :bucket, :ctype, :size, :sha
-                    )
-                    """
-                ),
-                {
-                    "id": uuid4(),
-                    "run_id": rid,
-                    "symbol": bp_symbol,
-                    "atype": "batch_period_plotly_json",
-                    "name": "batch_period.heatmap",
-                    "key": object_key,
-                    "bucket": settings.S3_BUCKET,
-                    "ctype": "application/json",
-                    "size": size_bytes,
-                    "sha": sha256,
-                },
+            size_bytes, sha256, effective_key = _upload_json(object_key, heatmap_json, db=db)
+            _insert_artifact_row(
+                db=db,
+                rid=rid,
+                symbol=bp_symbol,
+                artifact_type="batch_period_plotly_json",
+                name="batch_period.heatmap",
+                object_key=effective_key,
+                content_type="application/json",
+                size_bytes=size_bytes,
+                sha256=sha256,
             )
 
     strategy_results = out.get("strategy_results") or {}
+    _persist_warmup_artifacts(
+        db=db,
+        rid=rid,
+        out=out,
+        spec_json=spec_json,
+        dataset_hash=dataset_hash,
+    )
     strategy_summary_map = _collect_strategy_summary_by_symbol(strategy_results, default_symbol)
 
     # --- 2) leaderboard ---
@@ -2190,29 +2510,17 @@ def _persist_pipeline_output(
             if not fig_json:
                 continue
             object_key = f"runs/{rid}/symbols/{sym}/strategies/{strategy_kind}/plots/price_indicators_trades.json"
-            size_bytes, sha256 = _upload_json(object_key, fig_json)
-            db.execute(
-                text(
-                    """
-                    insert into artifact(
-                        id, run_id, symbol, artifact_type, name, object_key, bucket, content_type, size_bytes, sha256
-                    ) values (
-                        :id, :run_id, :symbol, :atype, :name, :key, :bucket, :ctype, :size, :sha
-                    )
-                    """
-                ),
-                {
-                    "id": uuid4(),
-                    "run_id": rid,
-                    "symbol": sym,
-                    "atype": "strategy_plotly_json",
-                    "name": f"{strategy_kind}.price_indicators_trades",
-                    "key": object_key,
-                    "bucket": settings.S3_BUCKET,
-                    "ctype": "application/json",
-                    "size": size_bytes,
-                    "sha": sha256,
-                },
+            size_bytes, sha256, effective_key = _upload_json(object_key, fig_json, db=db)
+            _insert_artifact_row(
+                db=db,
+                rid=rid,
+                symbol=str(sym),
+                artifact_type="strategy_plotly_json",
+                name=f"{strategy_kind}.price_indicators_trades",
+                object_key=effective_key,
+                content_type="application/json",
+                size_bytes=size_bytes,
+                sha256=sha256,
             )
 
         summary_plots = dict(payload.get("summary_plot_artifacts") or {})
@@ -2224,29 +2532,17 @@ def _persist_pipeline_output(
                 continue
             for sym in target_symbols:
                 object_key = f"runs/{rid}/symbols/{sym}/strategies/{strategy_kind}/plots/{safe_name}.json"
-                size_bytes, sha256 = _upload_json(object_key, fig_json)
-                db.execute(
-                    text(
-                        """
-                        insert into artifact(
-                            id, run_id, symbol, artifact_type, name, object_key, bucket, content_type, size_bytes, sha256
-                        ) values (
-                            :id, :run_id, :symbol, :atype, :name, :key, :bucket, :ctype, :size, :sha
-                        )
-                        """
-                    ),
-                    {
-                        "id": uuid4(),
-                        "run_id": rid,
-                        "symbol": sym,
-                        "atype": "strategy_plotly_json",
-                        "name": f"{strategy_kind}.{safe_name}",
-                        "key": object_key,
-                        "bucket": settings.S3_BUCKET,
-                        "ctype": "application/json",
-                        "size": size_bytes,
-                        "sha": sha256,
-                    },
+                size_bytes, sha256, effective_key = _upload_json(object_key, fig_json, db=db)
+                _insert_artifact_row(
+                    db=db,
+                    rid=rid,
+                    symbol=str(sym),
+                    artifact_type="strategy_plotly_json",
+                    name=f"{strategy_kind}.{safe_name}",
+                    object_key=effective_key,
+                    content_type="application/json",
+                    size_bytes=size_bytes,
+                    sha256=sha256,
                 )
 
         perf_rows = payload.get("trade_performance") or []
@@ -2263,29 +2559,17 @@ def _persist_pipeline_output(
 
                 for sym in target_symbols:
                     object_key = f"runs/{rid}/symbols/{sym}/strategies/{strategy_kind}/tables/trade_performance.csv"
-                    size_bytes, sha256 = _upload_csv(object_key, perf_df)
-                    db.execute(
-                        text(
-                            """
-                            insert into artifact(
-                                id, run_id, symbol, artifact_type, name, object_key, bucket, content_type, size_bytes, sha256
-                            ) values (
-                                :id, :run_id, :symbol, :atype, :name, :key, :bucket, :ctype, :size, :sha
-                            )
-                            """
-                        ),
-                        {
-                            "id": uuid4(),
-                            "run_id": rid,
-                            "symbol": sym,
-                            "atype": "strategy_trade_performance_csv",
-                            "name": f"{strategy_kind}.trade_performance",
-                            "key": object_key,
-                            "bucket": settings.S3_BUCKET,
-                            "ctype": "text/csv",
-                            "size": size_bytes,
-                            "sha": sha256,
-                        },
+                    size_bytes, sha256, effective_key = _upload_csv(object_key, perf_df, db=db)
+                    _insert_artifact_row(
+                        db=db,
+                        rid=rid,
+                        symbol=str(sym),
+                        artifact_type="strategy_trade_performance_csv",
+                        name=f"{strategy_kind}.trade_performance",
+                        object_key=effective_key,
+                        content_type="text/csv",
+                        size_bytes=size_bytes,
+                        sha256=sha256,
                     )
 
                 # Single backtests rely on run_metric for the metrics tab.
@@ -2323,29 +2607,17 @@ def _persist_pipeline_output(
 
                 for sym, sub in grouped:
                     object_key = f"runs/{rid}/symbols/{sym}/strategies/{strategy_kind}/ledgers/trade_ledger.csv"
-                    size_bytes, sha256 = _upload_csv(object_key, sub)
-                    db.execute(
-                        text(
-                            """
-                            insert into artifact(
-                                id, run_id, symbol, artifact_type, name, object_key, bucket, content_type, size_bytes, sha256
-                            ) values (
-                                :id, :run_id, :symbol, :atype, :name, :key, :bucket, :ctype, :size, :sha
-                            )
-                            """
-                        ),
-                        {
-                            "id": uuid4(),
-                            "run_id": rid,
-                            "symbol": sym,
-                            "atype": "strategy_trade_ledger_csv",
-                            "name": f"{strategy_kind}.trade_ledger",
-                            "key": object_key,
-                            "bucket": settings.S3_BUCKET,
-                            "ctype": "text/csv",
-                            "size": size_bytes,
-                            "sha": sha256,
-                        },
+                    size_bytes, sha256, effective_key = _upload_csv(object_key, sub, db=db)
+                    _insert_artifact_row(
+                        db=db,
+                        rid=rid,
+                        symbol=str(sym),
+                        artifact_type="strategy_trade_ledger_csv",
+                        name=f"{strategy_kind}.trade_ledger",
+                        object_key=effective_key,
+                        content_type="text/csv",
+                        size_bytes=size_bytes,
+                        sha256=sha256,
                     )
 
         for cal_key in ("opportunity_calibration", "confidence_calibration"):
@@ -2358,29 +2630,17 @@ def _persist_pipeline_output(
 
             for sym in target_symbols:
                 object_key = f"runs/{rid}/symbols/{sym}/strategies/{strategy_kind}/tables/{cal_key}.csv"
-                size_bytes, sha256 = _upload_csv(object_key, cal_df)
-                db.execute(
-                    text(
-                        """
-                        insert into artifact(
-                            id, run_id, symbol, artifact_type, name, object_key, bucket, content_type, size_bytes, sha256
-                        ) values (
-                            :id, :run_id, :symbol, :atype, :name, :key, :bucket, :ctype, :size, :sha
-                        )
-                        """
-                    ),
-                    {
-                        "id": uuid4(),
-                        "run_id": rid,
-                        "symbol": sym,
-                        "atype": "strategy_decision_calibration_csv",
-                        "name": f"{strategy_kind}.{cal_key}",
-                        "key": object_key,
-                        "bucket": settings.S3_BUCKET,
-                        "ctype": "text/csv",
-                        "size": size_bytes,
-                        "sha": sha256,
-                    },
+                size_bytes, sha256, effective_key = _upload_csv(object_key, cal_df, db=db)
+                _insert_artifact_row(
+                    db=db,
+                    rid=rid,
+                    symbol=str(sym),
+                    artifact_type="strategy_decision_calibration_csv",
+                    name=f"{strategy_kind}.{cal_key}",
+                    object_key=effective_key,
+                    content_type="text/csv",
+                    size_bytes=size_bytes,
+                    sha256=sha256,
                 )
 
     safe_spec = dict(spec_json or {})
@@ -2482,6 +2742,9 @@ def execute_run(run_id: str) -> dict:
     code_version: str | None = None
     run_has_integrity_status = False
 
+    _t_exe_start = time.perf_counter()
+    _perf_phases: dict[str, Any] = {}
+
     try:
         rid = UUID(run_id)
         run_has_integrity_status = _has_column(db, "run", "integrity_status")
@@ -2511,7 +2774,7 @@ def execute_run(run_id: str) -> dict:
             dataset_row = db.execute(
                 text(
                     """
-                    select id, source, symbol, timeframe, data_hash, filename
+                    select id, source, symbol, timeframe, data_hash, filename, object_key
                     from dataset
                     where id = :id
                     """
@@ -2524,6 +2787,7 @@ def execute_run(run_id: str) -> dict:
             temp_dataset_file = _materialize_dataset_file(
                 filename=str(dataset_row.get("filename") or dataset_row.get("symbol") or "upload.xlsx"),
                 data_hash=str(dataset_row["data_hash"]),
+                object_key=str(dataset_row["object_key"]) if dataset_row.get("object_key") else None,
             )
             temp_uploaded_files.append(temp_dataset_file)
             spec_json = _apply_uploaded_dataset(spec_json, dataset_row, temp_dataset_file)
@@ -2566,7 +2830,7 @@ def execute_run(run_id: str) -> dict:
                     dataset_row = db.execute(
                         text(
                             """
-                            select id, source, symbol, timeframe, data_hash, filename
+                            select id, source, symbol, timeframe, data_hash, filename, object_key
                             from dataset
                             where id = :id
                             """
@@ -2579,6 +2843,7 @@ def execute_run(run_id: str) -> dict:
                     p = _materialize_dataset_file(
                         filename=str(dataset_row.get("filename") or dataset_row.get("symbol") or "upload.xlsx"),
                         data_hash=str(dataset_row["data_hash"]),
+                        object_key=str(dataset_row["object_key"]) if dataset_row.get("object_key") else None,
                     )
                     temp_uploaded_files.append(p)
                     dataset_file_cache[dsid_key] = p
@@ -2675,6 +2940,7 @@ def execute_run(run_id: str) -> dict:
                         default_symbol=symbol,
                         spec_json=spec_json,
                         dataset_meta=dataset_meta,
+                        dataset_hash=dataset_hash,
                     )
                     db.commit()
                     _set_progress(db, rid, job_id, stage="persisted", done=i + 1, total=total_syms, message=f"Saved results for {symbol}")
@@ -2722,6 +2988,7 @@ def execute_run(run_id: str) -> dict:
                                 default_symbol=out_symbol,
                                 spec_json=spec_json,
                                 dataset_meta=dataset_meta,
+                                dataset_hash=dataset_hash,
                             )
                             db.commit()
                             done_count += 1
@@ -2750,6 +3017,7 @@ def execute_run(run_id: str) -> dict:
                 default_symbol=default_symbol,
                 spec_json=spec_json,
                 dataset_meta=dataset_meta,
+                dataset_hash=dataset_hash,
             )
             db.commit()
 
@@ -2851,13 +3119,15 @@ def execute_run(run_id: str) -> dict:
 
     finally:
         # cleanup uploaded dataset temp file
-        if temp_dataset_file is not None:
+        if temp_dataset_file is not None and not _is_dataset_cache_path(temp_dataset_file):
             try:
                 temp_dataset_file.unlink(missing_ok=True)
             except Exception:
                 pass
 
         for p in temp_uploaded_files:
+            if _is_dataset_cache_path(p):
+                continue
             try:
                 p.unlink(missing_ok=True)
             except Exception:
@@ -2865,6 +3135,8 @@ def execute_run(run_id: str) -> dict:
 
         # cleanup canonical-store parquet temp files
         for p in temp_store_files:
+            if _is_dataset_cache_path(p):
+                continue
             try:
                 p.unlink(missing_ok=True)
             except Exception:

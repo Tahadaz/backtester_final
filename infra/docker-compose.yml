@@ -1,11 +1,16 @@
 services:
   quant_postgres:
     image: postgres:16
-    container_name: quant_postgres
     environment:
       POSTGRES_USER: app
       POSTGRES_PASSWORD: app
       POSTGRES_DB: quant
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
     ports:
       - "5555:5432"
     volumes:
@@ -13,13 +18,17 @@ services:
 
   quant_redis:
     image: redis:7
-    container_name: quant_redis
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
 
   quant_minio:
     image: minio/minio
-    container_name: quant_minio
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minio
@@ -33,6 +42,50 @@ services:
           - minio
     volumes:
       - miniodata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/ready >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  quant_minio_init:
+    image: minio/mc
+    depends_on:
+      quant_minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - >
+        i=0;
+        until mc alias set local http://minio:9000 minio minio12345 >/dev/null 2>&1; do
+          i=$$((i+1));
+          echo "Waiting for MinIO... ($$i)";
+          if [ "$$i" -ge 60 ]; then
+            echo "ERROR: cannot connect/auth to MinIO" >&2;
+            exit 1;
+          fi;
+          sleep 2;
+        done;
+        mc mb --ignore-existing local/quant-artifacts;
+        echo "MinIO bucket ready: quant-artifacts"
+    restart: "no"
+    
+  quant_db_migrate:
+    build:
+      context: ..
+      dockerfile: services/api/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg2://app:app@quant_postgres:5432/quant
+      PYTHONPATH: /repo
+    depends_on:
+      quant_postgres:
+        condition: service_healthy
+    command: alembic -c services/api/alembic.ini upgrade head
+    volumes:
+      - ../services/api:/repo/services/api
+      - ../core:/repo/core
+    restart: "no"
   
   quant_worker:
     build:
@@ -52,10 +105,21 @@ services:
       S3_SECRET_KEY: minio12345
       S3_BUCKET: quant-artifacts
       PYTHONPATH: /app
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
+      OMP_NUM_THREADS: ${OMP_NUM_THREADS:-1}
+      MKL_NUM_THREADS: ${MKL_NUM_THREADS:-1}
+      OPENBLAS_NUM_THREADS: ${OPENBLAS_NUM_THREADS:-1}
     depends_on:
-      - quant_postgres
-      - quant_redis
-      - quant_minio
+      quant_postgres:
+        condition: service_healthy
+      quant_redis:
+        condition: service_healthy
+      quant_minio:
+        condition: service_healthy
+      quant_minio_init:
+        condition: service_completed_successfully
+      quant_db_migrate:
+        condition: service_completed_successfully
     volumes:
       - featurecache:/app/.cache
       - ../services/worker:/repo/services/worker
@@ -87,10 +151,21 @@ services:
       S3_SECRET_KEY: minio12345
       S3_BUCKET: quant-artifacts
       PYTHONPATH: /app
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
+      OMP_NUM_THREADS: ${OMP_NUM_THREADS:-1}
+      MKL_NUM_THREADS: ${MKL_NUM_THREADS:-1}
+      OPENBLAS_NUM_THREADS: ${OPENBLAS_NUM_THREADS:-1}
     depends_on:
-      - quant_postgres
-      - quant_redis
-      - quant_minio
+      quant_postgres:
+        condition: service_healthy
+      quant_redis:
+        condition: service_healthy
+      quant_minio:
+        condition: service_healthy
+      quant_minio_init:
+        condition: service_completed_successfully
+      quant_db_migrate:
+        condition: service_completed_successfully
     volumes:
       - featurecache:/app/.cache
       - ../services/worker:/repo/services/worker
@@ -125,9 +200,16 @@ services:
       S3_SECURE: "false"
       PYTHONPATH: /repo
     depends_on:
-      - quant_postgres
-      - quant_redis
-      - quant_minio
+      quant_postgres:
+        condition: service_healthy
+      quant_redis:
+        condition: service_started
+      quant_minio:
+        condition: service_started
+      quant_minio_init:
+        condition: service_completed_successfully
+      quant_db_migrate:
+        condition: service_completed_successfully
     ports:
       - "8000:8000"
     volumes:

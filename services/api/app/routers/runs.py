@@ -6,6 +6,7 @@ import csv
 from datetime import date, datetime, timezone
 import io
 import hashlib
+import logging
 import math
 from pathlib import Path
 import subprocess
@@ -61,11 +62,14 @@ from ..schemas.runs import (
 )
 from ..storage import presign_get, s3_client
 from core.quant_core.data import BMCEDataSource, ParquetDataSource, YahooFinanceDataSource
+from core.quant_core.s3_keys import build_dataset_object_key as _build_dataset_object_key
 from core.quant_core.wfo import resolve_wfo_start_end_dates
 
 
 
 
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 
@@ -591,6 +595,22 @@ def _resolve_walk_forward_dates_in_spec(
     except HTTPException:
         raise
     except Exception as exc:
+        logger.exception(
+            "walk-forward date resolution failed",
+            extra={
+                "dataset_id": str(dataset_id) if dataset_id is not None else None,
+                "symbol": symbol,
+                "wfo_end_date_policy": policy,
+                "requested_start": str(requested_start) if requested_start is not None else None,
+                "requested_end": str(requested_end) if requested_end is not None else None,
+                "source": source_norm,
+                "s3_bucket": settings.S3_BUCKET,
+            },
+        )
+        # Surface a compact, non-secret hint to the client.  FileNotFoundError
+        # is raised by _safe_get_object_bytes when NoSuchKey is received.
+        if isinstance(exc, FileNotFoundError):
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         raise HTTPException(status_code=400, detail=f"walk-forward date resolution failed: {exc}") from exc
     finally:
         for p in temp_files:
@@ -648,15 +668,73 @@ def _as_json_dict(raw: Any) -> dict[str, Any]:
     return {}
 
 
-def _build_dataset_object_key(filename: str, data_hash: str) -> str:
-    return f"datasets/{data_hash}/{filename}"
+def _safe_get_object_bytes(key: str, *, context: dict | None = None) -> bytes:
+    """Fetch *key* from the configured S3 bucket and return raw bytes.
+
+    Wraps ``NoSuchKey`` (botocore ClientError) with a :class:`FileNotFoundError`
+    that carries a compact, non-secret message suitable for returning to clients.
+    All other errors propagate unchanged.
+
+    Args:
+        key:     S3 object key to fetch.
+        context: Optional caller-supplied dict merged into the structured log
+                 ``extra`` on NoSuchKey (e.g. filename, data_hash, key_source).
+                 Must not contain secrets; bucket and key are already included.
+
+    # Sanity-check (no test runner needed):
+    #   python -m compileall services/api/app/routers/runs.py
+    # Reproduce + read logs:
+    #   docker compose logs -f api | grep "S3 object not found"
+    """
+    bucket = settings.S3_BUCKET
+    try:
+        return s3_client().get_object(Bucket=bucket, Key=key)["Body"].read()
+    except Exception as exc:
+        # Detect NoSuchKey without importing botocore at module level.
+        # Works for both real boto3 ClientError and moto/minio stubs.
+        response = getattr(exc, "response", None) or {}
+        code = response.get("Error", {}).get("Code", "") if isinstance(response, dict) else ""
+        if not code and "NoSuchKey" in str(exc):
+            code = "NoSuchKey"
+
+        if code == "NoSuchKey":
+            log_extra: dict = {"s3_key": key, "s3_bucket": bucket}
+            if context:
+                log_extra.update(context)
+            logger.error(
+                "S3 object not found: key=%r bucket=%r",
+                key,
+                bucket,
+                extra=log_extra,
+            )
+            raise FileNotFoundError(
+                f"Dataset object missing in storage: key={key!r} bucket={bucket!r}"
+            ) from exc
+        raise
 
 
 def _materialize_dataset_file(*, filename: str, data_hash: str, object_key: str | None = None) -> Path:
     # Prefer the stored object_key (guaranteed to match what was uploaded).
     # Fall back to reconstructing the key if it's missing (legacy records).
-    key = object_key or _build_dataset_object_key(filename=filename, data_hash=data_hash)
-    payload = s3_client().get_object(Bucket=settings.S3_BUCKET, Key=key)["Body"].read()
+    key_source = "db" if object_key else "derived"
+    key = object_key or _build_dataset_object_key(data_hash=data_hash, filename=filename)
+    logger.debug(
+        "materializing dataset file: key=%r key_source=%s filename=%r data_hash=%r db_object_key=%r",
+        key,
+        key_source,
+        filename,
+        data_hash,
+        object_key,
+    )
+    payload = _safe_get_object_bytes(
+        key,
+        context={
+            "filename": filename,
+            "data_hash": data_hash,
+            "key_source": key_source,
+            "db_object_key": object_key,
+        },
+    )
 
     suffix = Path(filename).suffix or ".bin"
     tmp = NamedTemporaryFile(delete=False, suffix=suffix)
@@ -679,7 +757,8 @@ def _store_key_for_symbol(*, db: Session, symbol: str, timeframe: str = "1D") ->
 
 
 def _materialize_store_parquet(*, object_key: str) -> Path:
-    payload = s3_client().get_object(Bucket=settings.S3_BUCKET, Key=object_key)["Body"].read()
+    logger.debug("materializing store parquet: key=%r", object_key)
+    payload = _safe_get_object_bytes(object_key)
     if not payload:
         raise HTTPException(status_code=500, detail=f"empty parquet object: {object_key}")
 

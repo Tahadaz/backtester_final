@@ -14,6 +14,7 @@ from ..config import settings
 from .. import models
 from ..db import get_db
 from ..storage import delete_object, presign_get, put_bytes
+from core.quant_core.s3_keys import build_dataset_object_key
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
@@ -198,7 +199,7 @@ def upload_dataset(
     if existing is not None and existing.object_key:
         object_key = str(existing.object_key)
     else:
-        object_key = f"datasets/{digest}/{filename}"
+        object_key = build_dataset_object_key(data_hash=digest, filename=filename)
         put_bytes(object_key=object_key, data=data, content_type=content_type)
 
     if existing is None:

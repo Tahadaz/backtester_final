@@ -17,6 +17,7 @@ from services.worker.storage import s3_client, ensure_bucket
 
 # Reuse your core normalizer (keeps canonical OHLCV rules identical)
 from core.quant_core.data import _standardize_ohlcv
+from core.quant_core.s3_keys import build_dataset_object_key
 
 
 def _utcnow() -> datetime:
@@ -32,9 +33,10 @@ def _report_object_key(dataset_id: UUID) -> str:
     return f"market_data/uploads/{dataset_id}/ingest_report.json"
 
 
-def _download_dataset_bytes(*, filename: str, data_hash: str) -> bytes:
+def _download_dataset_bytes(*, filename: str, data_hash: str, object_key: str | None = None) -> bytes:
     s3 = s3_client()
-    key = f"datasets/{data_hash}/{filename}"
+    # Prefer the stored object_key; fall back to canonical reconstruction for legacy rows.
+    key = object_key or build_dataset_object_key(data_hash=data_hash, filename=filename)
     return s3.get_object(Bucket=settings.S3_BUCKET, Key=key)["Body"].read()
 
 
@@ -185,11 +187,12 @@ def ingest_excel_to_store(dataset_id: str) -> dict:
 
         filename = str(row["filename"] or "upload.xlsx")
         data_hash = str(row["data_hash"])
+        stored_key = str(row["object_key"]) if row.get("object_key") else None
         meta = dict(row.get("meta_json") or {})
         detected = meta.get("detected_symbols") or []
 
-        # Download excel
-        payload = _download_dataset_bytes(filename=filename, data_hash=data_hash)
+        # Download excel — prefer stored object_key; fall back to canonical reconstruction.
+        payload = _download_dataset_bytes(filename=filename, data_hash=data_hash, object_key=stored_key)
 
         # Parse workbook
         with pd.ExcelFile(BytesIO(payload)) as xls:

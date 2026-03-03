@@ -4,9 +4,13 @@ from dataclasses import replace
 from typing import Any, Dict, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import copy
+import logging
 import os
+import time
 import numpy as np
 import pandas as pd
+
+_pipeline_logger = logging.getLogger(__name__)
 from .engine import BacktestEngine, DataConfig, IndicatorsConfig, StrategyConfig, EngineSpec
 from .research.horizon import get_horizon_config
 from .optimize import (
@@ -1087,6 +1091,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
         )
 
         per_horizon_outputs: dict[str, dict[str, Any]] = {}
+        _mh_perf: dict[str, Any] = {}
         for horizon in requested_horizons:
             horizon_spec = copy.deepcopy(spec_json)
             horizon_opt = dict(horizon_spec.get("optimization") or {})
@@ -1105,7 +1110,16 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
             horizon_opt["walk_forward"] = horizon_wf
             horizon_spec["optimization"] = horizon_opt
 
+            _t_h = time.perf_counter()
             per_horizon_outputs[horizon] = run_pipeline(horizon_spec)
+            _h_ms = round((time.perf_counter() - _t_h) * 1000.0, 2)
+            _h_inner = dict(per_horizon_outputs[horizon].get("_perf") or {})
+            _h_inner["horizon_ms"] = _h_ms
+            _mh_perf[horizon] = _h_inner
+            _pipeline_logger.info(
+                "[perf] horizon=%s %.0f ms folds=%d",
+                horizon, _h_ms, _h_inner.get("folds_count", 0),
+            )
 
         primary_output = (
             per_horizon_outputs.get(primary_horizon)
@@ -1232,6 +1246,11 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
             "fills": [r for r in list(primary_output.get("fills") or []) if isinstance(r, dict)],
             "position_ledger": [r for r in list(primary_output.get("position_ledger") or []) if isinstance(r, dict)],
             "artifacts": primary_artifacts,
+            "_perf": {
+                "mode": "multi_horizon",
+                "horizons": _mh_perf,
+                "total_horizons": len(requested_horizons),
+            },
         }
 
     batch_cfg = dict(optimization_json.get("batch_periods") or {})
@@ -1356,6 +1375,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
         batch_frames: list[pd.DataFrame] = []
         base_spec_by_kind: dict[str, EngineSpec] = {}
         wf_returns_by_kind: dict[str, list[pd.Series]] = {}
+        _fold_perf_by_kind: dict[str, list[dict]] = {}
 
         for kind_raw in opt_kinds:
             kind = str(kind_raw).strip().lower()
@@ -1370,7 +1390,10 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                 active_params = _params_from_catalog(kind)
                 rows: list[dict[str, Any]] = []
                 top_variants_per_fold = max(1, int(opt_cfg.top_k or 1))
+                _fold_perf: list[dict] = []
                 for fold_idx, label in enumerate(selected_periods):
+                    _t_fold = time.perf_counter()
+                    _fp_opt_ms, _fp_n_trials = 0.0, 0
                     fold = period_rows_by_label[label]
                     test_start = str(fold.get("test_start") or fold["start"])
                     test_end = str(fold.get("test_end") or fold["end"])
@@ -1392,11 +1415,14 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                     if kind == "buy_hold" or not active_params:
                         train_candidates.append((1, train_spec, None))
                     else:
+                        _t_opt = time.perf_counter()
                         _, top_df_train, _, best_train_spec, ranked_df_train, _wfo_timing = run_optimization(
                             base_spec=train_spec,
                             active_params=active_params,
                             cfg=opt_cfg,
                         )
+                        _fp_opt_ms = round((time.perf_counter() - _t_opt) * 1000.0, 2)
+                        _fp_n_trials = _wfo_timing.n_trials_run
                         train_rank_source = ranked_df_train if isinstance(ranked_df_train, pd.DataFrame) else pd.DataFrame()
                         if train_rank_source.empty and isinstance(top_df_train, pd.DataFrame):
                             train_rank_source = top_df_train.copy()
@@ -1410,6 +1436,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                                 train_obj_val = None if pd.isna(train_metric) else float(train_metric)
                                 train_candidates.append((trial_rank, train_row_spec, train_obj_val))
 
+                    _t_bt = time.perf_counter()
                     for trial_rank, train_candidate_spec, train_objective_value in train_candidates:
                         test_spec = replace(
                             train_candidate_spec,
@@ -1464,6 +1491,21 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                             row[f"param.{k_param}"] = v_param
                         rows.append(row)
 
+                    _fp_bt_ms = round((time.perf_counter() - _t_bt) * 1000.0, 2)
+                    _fp_total_ms = round((time.perf_counter() - _t_fold) * 1000.0, 2)
+                    _fold_perf.append({
+                        "idx": fold_idx, "label": label,
+                        "train_start": train_start, "test_start": test_start,
+                        "opt_ms": _fp_opt_ms, "n_trials": _fp_n_trials,
+                        "backtest_ms": _fp_bt_ms, "fold_ms": _fp_total_ms,
+                    })
+                    _pipeline_logger.info(
+                        "[perf] kind=%s fold %d/%d '%s' opt=%.0f ms bt=%.0f ms total=%.0f ms",
+                        kind, fold_idx + 1, len(selected_periods), label,
+                        _fp_opt_ms, _fp_bt_ms, _fp_total_ms,
+                    )
+
+                _fold_perf_by_kind[kind] = _fold_perf
                 if rows:
                     batch_frames.append(pd.DataFrame(rows))
                 continue
@@ -1759,6 +1801,14 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                 "batch_period": batch_period_payload,
                 **_runtime_payload(primary_bundle),
                 "artifacts": artifacts_payload,
+                "_perf": {
+                    "mode": period_mode or "walk_forward",
+                    "folds_count": len(period_entries),
+                    "folds_by_kind": _fold_perf_by_kind,
+                    "folds_total_ms": round(
+                        sum(f.get("fold_ms", 0) for fl in _fold_perf_by_kind.values() for f in fl), 2
+                    ),
+                },
             }
 
     bundles_by_kind: Dict[str, Any] = {}
@@ -1904,4 +1954,8 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
             "best_strategy_params_by_kind": {k: _best_params_from_spec(v) for k, v in best_specs_by_kind.items()},
         },
         "optimization_timing": _timing_summary,
+        "_perf": {
+            "mode": "optimize",
+            "opt_timing": {k: v for k, v in _timing_summary.items() if k != "profile_text"},
+        },
     }

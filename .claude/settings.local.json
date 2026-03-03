@@ -3,7 +3,10 @@
     "allow": [
       "Bash(xargs ls -lh)",
       "Bash(wc -l /c/Users/taha/Downloads/backtester_final/core/quant_core/*.py)",
-      "Bash(ls -d /c/Users/taha/Downloads/backtester_final/*/)"
+      "Bash(ls -d /c/Users/taha/Downloads/backtester_final/*/)",
+      "Bash(grep:*)",
+      "Bash(python:*)",
+      "Bash(ls:*)"
     ]
   }
 }
