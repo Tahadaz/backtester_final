@@ -544,11 +544,44 @@ function withLedgerTradeMarkers(
 ): PlotlyFigure | null {
   if (!figure) return null
   if (!Array.isArray(figure.data) || !figure.data.length) return figure
-  if (!ledgerRows.length) return figure
 
   const hasBuy = hasNamedTrace(figure, "BUY")
   const hasSell = hasNamedTrace(figure, "SELL")
-  if (hasBuy && hasSell) return figure
+  let styledExistingMarkers = false
+  const nextData = figure.data.map((raw) => {
+    if (!isRecord(raw)) return raw
+    const target = traceName(raw).trim().toUpperCase()
+    if (target !== "BUY" && target !== "SELL") return raw
+
+    styledExistingMarkers = true
+    const side = target as "BUY" | "SELL"
+    const xValues = toArrayData(raw.x)
+    const marker = isRecord(raw.marker) ? { ...raw.marker } : {}
+
+    return {
+      ...raw,
+      mode: "markers+text",
+      marker: {
+        ...marker,
+        size: 14,
+        symbol: side === "BUY" ? "triangle-up" : "triangle-down",
+        color: side === "BUY" ? "#00B050" : "#C00000",
+        line: {
+          color: side === "BUY" ? "#004D1A" : "#4D0000",
+          width: 1.5,
+        },
+      },
+      text: xValues.map(() => side),
+      textposition: side === "BUY" ? "top center" : "bottom center",
+      textfont: {
+        size: 12,
+        color: side === "BUY" ? "#004D1A" : "#4D0000",
+      },
+    }
+  })
+  if (!ledgerRows.length) {
+    return styledExistingMarkers ? { ...figure, data: nextData } : figure
+  }
 
   const buyX: string[] = []
   const buyY: number[] = []
@@ -595,7 +628,6 @@ function withLedgerTradeMarkers(
     }
   }
 
-  const nextData = [...figure.data]
   if (!hasBuy && buyX.length) {
     nextData.push({
       type: "scatter",
@@ -633,7 +665,7 @@ function withLedgerTradeMarkers(
     })
   }
 
-  if (nextData.length === figure.data.length) return figure
+  if (!styledExistingMarkers && nextData.length === figure.data.length) return figure
   return { ...figure, data: nextData }
 }
 
@@ -2004,95 +2036,114 @@ export function SingleBacktestResults({
         </TabsContent>
 
         <TabsContent value="trades-ledger">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Trades Ledger</CardTitle>
-            </CardHeader>
-            <CardContent className="px-0 pb-0">
-              {tableLoading || materializeLoading ? (
-                <div className="space-y-2 px-4 pb-4">
-                  {Array.from({ length: 8 }).map((_, idx) => (
-                    <Skeleton key={idx} className="h-8 rounded-lg" />
-                  ))}
-                </div>
-              ) : !ledgerRows.length ? (
-                <div className="py-8 text-center text-sm text-muted-foreground">
-                  Trades ledger could not be computed.
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border">
-                        <th className="px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                          Timestamp
-                        </th>
-                        <th className="px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                          Side
-                        </th>
-                        <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                          Prix d&apos;execution (open du jour)
-                        </th>
-                        <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                          Quantite
-                        </th>
-                        <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                          CMP
-                        </th>
-                        <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                          PnL realise
-                        </th>
-                        <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                          PnL latent
-                        </th>
-                        <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                          Close du jour
-                        </th>
-                        <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                          Available Quantity
-                        </th>
-                        <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                          Position Value Cost
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {ledgerRows.map((row, idx) => (
-                        <tr key={`${row.timestamp}-${idx}`} className="border-b border-border/50">
-                          <td className="px-3 py-2.5 text-xs">{formatDateTime(row.timestamp)}</td>
-                          <td className="px-3 py-2.5 text-xs">{row.side || "--"}</td>
-                          <td className="px-3 py-2.5 text-right font-mono text-xs">
-                            {formatNumber(row.prix_execution_open_jour)}
-                          </td>
-                          <td className="px-3 py-2.5 text-right font-mono text-xs">
-                            {formatNumber(row.quantite)}
-                          </td>
-                          <td className="px-3 py-2.5 text-right font-mono text-xs">
-                            {formatNumber(row.cmp)}
-                          </td>
-                          <td className="px-3 py-2.5 text-right font-mono text-xs">
-                            {formatNumber(row.pnl_realise)}
-                          </td>
-                          <td className="px-3 py-2.5 text-right font-mono text-xs">
-                            {formatNumber(row.pnl_latent)}
-                          </td>
-                          <td className="px-3 py-2.5 text-right font-mono text-xs">
-                            {formatNumber(row.close_du_jour)}
-                          </td>
-                          <td className="px-3 py-2.5 text-right font-mono text-xs">
-                            {formatNumber(row.available_quantity)}
-                          </td>
-                          <td className="px-3 py-2.5 text-right font-mono text-xs">
-                            {formatNumber(row.position_value_cost)}
-                          </td>
+          <div className="space-y-4">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Price + Indicators + Trades</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {plotLoading || materializeLoading ? (
+                  <Skeleton className="h-96 rounded-lg" />
+                ) : priceFigureWithFallbackMarkers ? (
+                  <PlotlyChart figure={priceFigureWithFallbackMarkers ?? undefined} />
+                ) : (
+                  <div className="flex h-48 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">
+                    Detail plot could not be computed.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Trades Ledger</CardTitle>
+              </CardHeader>
+              <CardContent className="px-0 pb-0">
+                {tableLoading || materializeLoading ? (
+                  <div className="space-y-2 px-4 pb-4">
+                    {Array.from({ length: 8 }).map((_, idx) => (
+                      <Skeleton key={idx} className="h-8 rounded-lg" />
+                    ))}
+                  </div>
+                ) : !ledgerRows.length ? (
+                  <div className="py-8 text-center text-sm text-muted-foreground">
+                    Trades ledger could not be computed.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border">
+                          <th className="px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            Timestamp
+                          </th>
+                          <th className="px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            Side
+                          </th>
+                          <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            Prix d&apos;execution (open du jour)
+                          </th>
+                          <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            Quantite
+                          </th>
+                          <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            CMP
+                          </th>
+                          <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            PnL realise
+                          </th>
+                          <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            PnL latent
+                          </th>
+                          <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            Close du jour
+                          </th>
+                          <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            Available Quantity
+                          </th>
+                          <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            Position Value Cost
+                          </th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                      </thead>
+                      <tbody>
+                        {ledgerRows.map((row, idx) => (
+                          <tr key={`${row.timestamp}-${idx}`} className="border-b border-border/50">
+                            <td className="px-3 py-2.5 text-xs">{formatDateTime(row.timestamp)}</td>
+                            <td className="px-3 py-2.5 text-xs">{row.side || "--"}</td>
+                            <td className="px-3 py-2.5 text-right font-mono text-xs">
+                              {formatNumber(row.prix_execution_open_jour)}
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-mono text-xs">
+                              {formatNumber(row.quantite)}
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-mono text-xs">
+                              {formatNumber(row.cmp)}
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-mono text-xs">
+                              {formatNumber(row.pnl_realise)}
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-mono text-xs">
+                              {formatNumber(row.pnl_latent)}
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-mono text-xs">
+                              {formatNumber(row.close_du_jour)}
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-mono text-xs">
+                              {formatNumber(row.available_quantity)}
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-mono text-xs">
+                              {formatNumber(row.position_value_cost)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {showDecisionTab && (
