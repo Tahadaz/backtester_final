@@ -1,0 +1,73 @@
+# Golden Path Smoke Test
+
+The minimal workflow that must always work from a clean environment.
+
+## 1. Boot the Stack
+Ensure you have Docker and Docker Compose installed.
+
+```bash
+cd infra
+docker-compose up -d --build
+```
+Wait for all services to become healthy. You can check the status via:
+```bash
+docker-compose ps
+```
+
+## 2. Upload a Dataset
+Upload a simple CSV or XLSX dataset to the API.
+
+```bash
+curl -X POST http://localhost:8000/datasets/upload \
+  -F "file=@../tests/test_data.csv" \
+  -F 'metadata_json={"source": "uploaded_file"}'
+```
+*Expected Output:* JSON response containing `dataset_id`. Save this ID.
+
+## 3. Create a Run
+Submit a backtest or optimization run using the loaded dataset ID. Create a [run.json](file:///c:/Users/taha/Downloads/backtester_final/run.json) payload:
+
+```json
+{
+  "spec_hash": "smoke-test-run-v1",
+  "dataset_id": "<INSERT_DATASET_ID_HERE>",
+  "spec_json": {
+    "data": {
+      "source": "dataset",
+      "symbols": ["TEST"]
+    },
+    "strategy": { "kind": "buy_hold", "params": {} },
+    "portfolio": { "initial_cash": 100000.0, "allow_short": false },
+    "indicators": { "specs": [] },
+    "optimization": { "n_trials": 0, "kinds": [] },
+    "plots": { "enabled": true, "kinds": ["price_indicators_trades"], "symbols": ["TEST"], "return_plot_artifacts": true }
+  }
+}
+```
+
+Execute the run:
+```bash
+curl -X POST http://localhost:8000/runs \
+  -H "Content-Type: application/json" \
+  -d @run.json
+```
+*Expected Output:* Response with [id](file:///c:/Users/taha/Downloads/backtester_final/services/worker/tasks/execute_run.py#152-158) (the run ID) and `status: "queued"`.
+
+## 4. Confirm Worker Execution
+Poll the run status:
+```bash
+curl http://localhost:8000/runs/<INSERT_RUN_ID_HERE>
+```
+Wait until `status` becomes `"succeeded"`.
+*Expected:* Progress hits 100%, and `engine_version` is populated.
+
+## 5. Fetch Artifacts/Results
+List artifacts for the run:
+```bash
+curl http://localhost:8000/runs/<INSERT_RUN_ID_HERE>/artifacts
+```
+Download a specific artifact (e.g., `equity_curve`):
+```bash
+curl http://localhost:8000/runs/<INSERT_RUN_ID_HERE>/artifacts/equity_curve/download --output equity_curve.json
+```
+*Expected:* File is downloaded successfully and contains JSON data for the equity curve.

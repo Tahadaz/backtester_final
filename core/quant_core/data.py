@@ -260,6 +260,80 @@ def _standardize_ohlcv(
     return df
 
 
+def _validate_ohlcv(df: pd.DataFrame, symbol: str = "") -> pd.DataFrame:
+    """
+    Check OHLC bar integrity and drop (with a warning) any bars that violate:
+      High >= max(Open, Close) >= min(Open, Close) >= Low >= 0
+
+    Returns a cleaned DataFrame. Raises nothing — data quality issues are
+    surfaced as warnings so existing pipelines aren't broken.
+    """
+    import logging
+    import warnings
+
+    tag = f"[{symbol}] " if symbol else ""
+    bad = pd.Series(False, index=df.index)
+
+    if "High" in df.columns and "Low" in df.columns:
+        mask = df["High"] < df["Low"]
+        if mask.any():
+            warnings.warn(
+                f"OHLC integrity {tag}High < Low on {mask.sum()} bar(s); dropping those rows.",
+                stacklevel=3,
+            )
+            bad |= mask
+
+    if "High" in df.columns and "Open" in df.columns:
+        mask = df["High"] < df["Open"]
+        if mask.any():
+            warnings.warn(
+                f"OHLC integrity {tag}High < Open on {mask.sum()} bar(s); dropping those rows.",
+                stacklevel=3,
+            )
+            bad |= mask
+
+    if "High" in df.columns and "Close" in df.columns:
+        mask = df["High"] < df["Close"]
+        if mask.any():
+            warnings.warn(
+                f"OHLC integrity {tag}High < Close on {mask.sum()} bar(s); dropping those rows.",
+                stacklevel=3,
+            )
+            bad |= mask
+
+    if "Low" in df.columns and "Open" in df.columns:
+        mask = df["Low"] > df["Open"]
+        if mask.any():
+            warnings.warn(
+                f"OHLC integrity {tag}Low > Open on {mask.sum()} bar(s); dropping those rows.",
+                stacklevel=3,
+            )
+            bad |= mask
+
+    if "Low" in df.columns and "Close" in df.columns:
+        mask = df["Low"] > df["Close"]
+        if mask.any():
+            warnings.warn(
+                f"OHLC integrity {tag}Low > Close on {mask.sum()} bar(s); dropping those rows.",
+                stacklevel=3,
+            )
+            bad |= mask
+
+    if "Low" in df.columns:
+        mask = df["Low"] < 0
+        if mask.any():
+            warnings.warn(
+                f"OHLC integrity {tag}negative prices on {mask.sum()} bar(s); dropping those rows.",
+                stacklevel=3,
+            )
+            bad |= mask
+
+    if bad.any():
+        df = df[~bad]
+
+    return df
+
+
 def slice_date_range(df: pd.DataFrame, start: Optional[str], end: Optional[str]) -> pd.DataFrame:
     if start is not None:
         df = df[df.index >= pd.Timestamp(start, tz=df.index.tz)]
@@ -350,10 +424,11 @@ class BaseDataSource:
         else:
             bars = self._load_impl(symbols, start, end, interval, **kwargs)
 
-        # Normalize & slice
+        # Normalize, validate OHLC integrity, then slice
         normed: Dict[str, pd.DataFrame] = {}
         for sym, df in bars.items():
             df = _standardize_ohlcv(df, tz=self.timezone)
+            df = _validate_ohlcv(df, symbol=sym)
             df = slice_date_range(df, start, end)
             normed[sym] = df
 

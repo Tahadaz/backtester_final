@@ -811,27 +811,6 @@ def _infer_run_mode(spec_json: dict[str, Any]) -> str:
     return "walk_forward" if bool(walk_forward.get("enabled", False)) else "single"
 
 
-def _assert_wfo_resolved_dates(spec_json: dict[str, Any], *, caller: str) -> None:
-    optimization = dict(spec_json.get("optimization") or {})
-    walk_forward = dict(optimization.get("walk_forward") or {})
-    if not bool(walk_forward.get("enabled", False)):
-        return
-
-    missing_fields: list[str] = []
-    for field in ("resolved_start_date", "resolved_end_date"):
-        if str(walk_forward.get(field) or "").strip():
-            continue
-        missing_fields.append(f"optimization.walk_forward.{field}")
-
-    if missing_fields:
-        raise ValueError(
-            f"{caller}: walk_forward.enabled=true requires resolved date bounds before run_pipeline. "
-            f"Missing {', '.join(missing_fields)}. "
-            "These fields must be produced by core/quant_core/wfo/date_resolution.py "
-            "(resolve_wfo_start_end_dates)."
-        )
-
-
 def _extract_seed(spec_json: dict[str, Any]) -> int | None:
     optimization = dict(spec_json.get("optimization") or {})
     raw = optimization.get("seed")
@@ -1001,7 +980,6 @@ def _run_symbol_pipeline(spec_json: dict, symbol: str, dataset_path: str | None)
         sym_spec.setdefault("data", {})
         sym_spec["data"]["source"] = "bmce"
         sym_spec["data"]["bmce_paths"] = dataset_path
-    _assert_wfo_resolved_dates(sym_spec, caller="_run_symbol_pipeline")
     return symbol, run_pipeline(sym_spec)
 
 
@@ -2891,7 +2869,6 @@ def execute_run(run_id: str) -> dict:
                 spec_json = _apply_store_as_parquet(spec_json, local_paths)
 
         spec_json = _apply_wfo_defaults(spec_json)
-        _assert_wfo_resolved_dates(spec_json, caller="execute_run")
         portfolio_cfg = dict(spec_json.get("portfolio") or {})
         portfolio_cfg.setdefault("fill_price_model", "next_open")
         portfolio_cfg.setdefault("mtm_model", "close_t1")
@@ -3030,41 +3007,19 @@ def execute_run(run_id: str) -> dict:
                 spec_json["data"]["source"] = "bmce"
                 spec_json["data"]["bmce_paths"] = str(temp_dataset_file)
             _check_cancel(cancel_redis, job_id)
-
-            # ---- parallel optimisation path ----
-            _opt_json = spec_json.get("optimization") or {}
-            _use_parallel = bool(_opt_json.get("parallel", False))
-
-            if _use_parallel:
-                from services.worker.tasks.parallel_opt import run_parallel_optimization
-                run_parallel_optimization(
-                    db=db,
-                    rid=rid,
-                    job_id=job_id,
-                    spec_json=spec_json,
-                    dataset_hash=dataset_hash,
-                    dataset_id=dataset_id,
-                    dataset_meta=dataset_meta,
-                    cancel_redis=cancel_redis,
-                    set_progress_fn=_set_progress,
-                    check_cancel_fn=_check_cancel,
-                    persist_pipeline_output_fn=_persist_pipeline_output,
-                )
-            else:
-                # ---- normal (sequential) path ----
-                out = run_pipeline(spec_json)
-                _check_cancel(cancel_redis, job_id)
-                default_symbol = str(symbols[0]) if symbols else "__ALL__"
-                _persist_pipeline_output(
-                    db=db,
-                    rid=rid,
-                    out=out,
-                    default_symbol=default_symbol,
-                    spec_json=spec_json,
-                    dataset_meta=dataset_meta,
-                    dataset_hash=dataset_hash,
-                )
-                db.commit()
+            out = run_pipeline(spec_json)
+            _check_cancel(cancel_redis, job_id)
+            default_symbol = str(symbols[0]) if symbols else "__ALL__"
+            _persist_pipeline_output(
+                db=db,
+                rid=rid,
+                out=out,
+                default_symbol=default_symbol,
+                spec_json=spec_json,
+                dataset_meta=dataset_meta,
+                dataset_hash=dataset_hash,
+            )
+            db.commit()
 
         # 5) mark succeeded
         db.execute(

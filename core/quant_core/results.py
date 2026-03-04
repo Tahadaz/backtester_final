@@ -108,6 +108,7 @@ class ResultsAnalyzer:
         plot_indicators: Optional[List[str]] = None,
         benchmark_market_data=None,
         benchmark_symbol: Optional[str] = None,
+        fast_mode: bool = False,
     ) -> BacktestReport:
         symbols = list(symbols)
         if not symbols:
@@ -116,6 +117,52 @@ class ResultsAnalyzer:
         # --- core strategy series ---
         equity = portfolio_result.equity_curve.astype(float).sort_index()
         rets = portfolio_result.returns.astype(float).reindex(equity.index).fillna(0.0)
+        # ================================================================
+        # FAST MODE: skip heavy computations (plots, ledgers, tables)
+        # Only compute metrics needed for strategy ranking.
+        # ================================================================
+        cum = (1.0 + rets).cumprod() - 1.0
+        dd = self._drawdown_from_equity(equity)
+        pnl = equity.diff().fillna(0.0)
+        cum_pnl = pnl.cumsum()
+        pnl_total = float(equity.iloc[-1] - equity.iloc[0]) if len(equity) else 0.0
+
+        raw_fills = portfolio_result.trades
+        n_fills = int(len(raw_fills)) if raw_fills is not None and not raw_fills.empty else 0
+
+        if fast_mode:
+            # Lightweight volume_inv calculation (avoid full _prepare_trades_table)
+            volume_inv = self._volume_invested_reset_last_sell_monthly(raw_fills)
+            efficiency = 1.0 if volume_inv <= 0 else float(pnl_total / volume_inv)
+
+            metrics = self._headline_metrics(rets, dd, None)
+            metrics["Net PnL"] = float(pnl_total)
+            metrics["VolumeInv"] = float(volume_inv)
+            metrics["Efficiency"] = float(efficiency)
+            metrics["n_fills"] = n_fills
+
+            series: Dict[str, pd.Series] = {
+                "equity": equity,
+                "returns": rets,
+                "cum_returns": cum,
+                "drawdown": dd,
+                "pnl": pnl,
+                "cum_pnl": cum_pnl,
+            }
+
+            return BacktestReport(
+                metrics=metrics,
+                series=series,
+                tables={},
+                plots={},
+                style={},
+                explain={},
+                meta={"symbols": symbols, "fast_mode": True},
+            )
+
+        # ================================================================
+        # FULL MODE: complete analysis with all tables and plots
+        # ================================================================
         explain: Dict[str, ExplainItem] = {
             # --- metrics ---
             "metric.pnl": ExplainItem(
@@ -177,12 +224,6 @@ class ResultsAnalyzer:
         }
 
 
-        cum = (1.0 + rets).cumprod() - 1.0
-        dd = self._drawdown_from_equity(equity)
-        pnl = equity.diff().fillna(0.0)              # currency PnL per bar
-        cum_pnl = pnl.cumsum()
-
-
         # --- price + indicators payload (single asset for now) ---
         sym0 = symbols[0]
         px = market_data.bars[sym0]["Close"].reindex(equity.index).astype(float)
@@ -203,10 +244,6 @@ class ResultsAnalyzer:
         # trades payload (fills)
         init_cash = float(portfolio_result.meta.get("config", {}).get("initial_cash", 0.0))
         sym0 = symbols[0]
-        # -------------------------
-        # Fills: keep RAW + DISPLAY
-        # -------------------------
-        raw_fills = portfolio_result.trades  # canonical: timestamp,symbol,qty,price,cost,...
 
         trades = self._prepare_trades_table(
             raw_fills,
@@ -221,7 +258,6 @@ class ResultsAnalyzer:
         volume_inv   = self._volume_invested_reset_last_sell_monthly(raw_fills)
         round_trips  = self._round_trips_from_fills(raw_fills)
 
-        pnl_total = float(equity.iloc[-1] - equity.iloc[0]) if len(equity) else 0.0
         efficiency = 1.0 if volume_inv <= 0 else float(pnl_total / volume_inv)
         # --- benchmark series (optional) ---
         bench_rets = None
@@ -482,7 +518,9 @@ class ResultsAnalyzer:
         e = equity.astype(float).copy()
         peak = e.cummax()
         dd = e / peak - 1.0
-        return dd.fillna(0.0)
+        # Use NaN (not 0) for undefined bars so callers can distinguish "no drawdown"
+        # from "drawdown undefined" (e.g. during warmup or before first valid equity).
+        return dd.fillna(np.nan)
 
     def _annualized_return(self, rets: pd.Series) -> float:
         r = rets.dropna()
@@ -490,7 +528,16 @@ class ResultsAnalyzer:
         if n <= 1:
             return np.nan
         total = (1.0 + r).prod()
-        return float(total ** (self.periods_per_year / n) - 1.0)
+        # Use actual elapsed calendar time when a DatetimeIndex is available.
+        # Falling back to period count avoids breaking non-time-indexed series.
+        if isinstance(r.index, pd.DatetimeIndex) and len(r.index) >= 2:
+            days = (r.index[-1] - r.index[0]).days
+            years = days / 365.25
+        else:
+            years = n / self.periods_per_year
+        if years <= 0:
+            return np.nan
+        return float(total ** (1.0 / years) - 1.0)
 
     def _annualized_vol(self, rets: pd.Series) -> float:
         r = rets.dropna()
@@ -508,13 +555,21 @@ class ResultsAnalyzer:
         r = rets.dropna()
         if r.empty:
             return np.nan
-        downside = r[r < 0]
-        if downside.empty:
+        # Downside semi-variance: sqrt(mean(min(r - MAR, 0)^2) * ppy).
+        # Using the full-sample semi-variance (zeros for r >= MAR) is the
+        # statistically correct denominator — it doesn't shrink when there are
+        # fewer bad periods, unlike taking std only over the negative subsample.
+        rf_daily = (1.0 + self.rf_annual) ** (1.0 / self.periods_per_year) - 1.0
+        excess_daily = r.values - rf_daily
+        downside = np.minimum(excess_daily, 0.0)
+        downside_var = float(np.mean(downside ** 2))
+        if downside_var == 0.0:
             return np.inf
-        downside_dev = downside.std(ddof=1) * np.sqrt(self.periods_per_year)
-        if downside_dev == 0 or np.isnan(downside_dev):
+        downside_dev = np.sqrt(downside_var * self.periods_per_year)
+        ann_return = self._annualized_return(r)
+        if np.isnan(ann_return):
             return np.nan
-        return float((self._annualized_return(r) - self.rf_annual) / downside_dev)
+        return float((ann_return - self.rf_annual) / downside_dev)
 
     def _headline_metrics(self, rets: pd.Series, dd: pd.Series, bench_rets: Optional[pd.Series]) -> Dict[str, float]:
         out = {

@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: app
       POSTGRES_DB: quant
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB" ]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -21,7 +21,7 @@ services:
     ports:
       - "6379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -43,7 +43,7 @@ services:
     volumes:
       - miniodata:/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/ready >/dev/null"]
+      test: [ "CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/ready >/dev/null" ]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -54,11 +54,10 @@ services:
     depends_on:
       quant_minio:
         condition: service_healthy
-    entrypoint: ["/bin/sh", "-ec"]
+    entrypoint: [ "/bin/sh", "-ec" ]
     command:
       - >
-        i=0;
-        until mc alias set local http://minio:9000 minio minio12345 >/dev/null 2>&1; do
+        i=0; until mc alias set local http://minio:9000 minio minio12345 >/dev/null 2>&1; do
           i=$$((i+1));
           echo "Waiting for MinIO... ($$i)";
           if [ "$$i" -ge 60 ]; then
@@ -66,11 +65,9 @@ services:
             exit 1;
           fi;
           sleep 2;
-        done;
-        mc mb --ignore-existing local/quant-artifacts;
-        echo "MinIO bucket ready: quant-artifacts"
+        done; mc mb --ignore-existing local/quant-artifacts; echo "MinIO bucket ready: quant-artifacts"
     restart: "no"
-    
+
   quant_db_migrate:
     build:
       context: ..
@@ -86,7 +83,7 @@ services:
       - ../services/api:/repo/services/api
       - ../core:/repo/core
     restart: "no"
-  
+
   quant_worker:
     build:
       context: ..
@@ -104,7 +101,7 @@ services:
       S3_ACCESS_KEY: minio
       S3_SECRET_KEY: minio12345
       S3_BUCKET: quant-artifacts
-      PYTHONPATH: /app
+      PYTHONPATH: /repo
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
       OMP_NUM_THREADS: ${OMP_NUM_THREADS:-1}
       MKL_NUM_THREADS: ${MKL_NUM_THREADS:-1}
@@ -125,7 +122,23 @@ services:
       - ../services/worker:/repo/services/worker
       - ../core:/repo/core
     healthcheck:
-      test: ["CMD-SHELL", "python - << 'PY'\nfrom redis import Redis\nimport os\nr=Redis.from_url(os.environ['REDIS_URL'])\nassert r.ping()\nprint('ok')\nPY"]
+      test:
+        [
+          "CMD-SHELL",
+          "python - << 'PY'
+
+            from redis import Redis
+
+            import os
+
+            r=Redis.from_url(os.environ['REDIS_URL'])
+
+            assert r.ping()
+
+            print('ok')
+
+            PY"
+        ]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -150,7 +163,7 @@ services:
       S3_ACCESS_KEY: minio
       S3_SECRET_KEY: minio12345
       S3_BUCKET: quant-artifacts
-      PYTHONPATH: /app
+      PYTHONPATH: /repo
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
       OMP_NUM_THREADS: ${OMP_NUM_THREADS:-1}
       MKL_NUM_THREADS: ${MKL_NUM_THREADS:-1}
@@ -171,14 +184,30 @@ services:
       - ../services/worker:/repo/services/worker
       - ../core:/repo/core
     healthcheck:
-      test: ["CMD-SHELL", "python - << 'PY'\nfrom redis import Redis\nimport os\nr=Redis.from_url(os.environ['REDIS_URL'])\nassert r.ping()\nprint('ok')\nPY"]
+      test:
+        [
+          "CMD-SHELL",
+          "python - << 'PY'
+
+            from redis import Redis
+
+            import os
+
+            r=Redis.from_url(os.environ['REDIS_URL'])
+
+            assert r.ping()
+
+            print('ok')
+
+            PY"
+        ]
       interval: 10s
       timeout: 3s
       retries: 5
       start_period: 15s
     command: python -m services.worker.worker
     restart: unless-stopped
-  
+
   quant_api:
     build:
       context: ..
@@ -216,14 +245,23 @@ services:
       - ../services/api:/repo/services/api
       - ../core:/repo/core
     healthcheck:
-      test: ["CMD-SHELL", "python - << 'PY'\nimport urllib.request\nurllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).read()\nprint('ok')\nPY"]
+      test:
+        [
+          "CMD-SHELL",
+          "python - << 'PY'
+
+            import urllib.request
+
+            urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).read()
+
+            print('ok')
+
+            PY"
+        ]
       interval: 10s
       timeout: 3s
       retries: 5
       start_period: 15s
-
-
-
 
 volumes:
   pgdata:

@@ -135,6 +135,10 @@ class StrategyLeaderboardOut(BaseModel):
     efficiency: Optional[float]
     n_fills: Optional[int]
 
+    confidence_score: Optional[float]
+    opportunity_score: Optional[float]
+    horizon: Optional[str]
+
     signal_label: Optional[str]
     signal_today: Optional[float]
     signal_date: Optional[datetime]

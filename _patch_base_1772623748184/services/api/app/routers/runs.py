@@ -24,9 +24,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from ..config import settings
-from sqlalchemy.exc import IntegrityError  # add near other imports at top if not present
+
 from ..db import get_db
-from ..json_sanitize import sanitize_json_compatible
 from ..services.hash_utils import json_hash
 from ..models import (
     Artifact,
@@ -111,30 +110,6 @@ def _infer_mode(spec_json: dict[str, Any]) -> str:
     optimization = dict(spec_json.get("optimization") or {})
     walk_forward = dict(optimization.get("walk_forward") or {})
     return "walk_forward" if bool(walk_forward.get("enabled", False)) else "single"
-
-
-def _assert_wfo_resolved_dates(spec_json: dict[str, Any], *, caller: str) -> None:
-    optimization = dict(spec_json.get("optimization") or {})
-    walk_forward = dict(optimization.get("walk_forward") or {})
-    if not bool(walk_forward.get("enabled", False)):
-        return
-
-    missing_fields: list[str] = []
-    for field in ("resolved_start_date", "resolved_end_date"):
-        if str(walk_forward.get(field) or "").strip():
-            continue
-        missing_fields.append(f"optimization.walk_forward.{field}")
-
-    if missing_fields:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"{caller}: walk_forward.enabled=true requires resolved date bounds before run_pipeline. "
-                f"Missing {', '.join(missing_fields)}. "
-                "These fields must be produced by core/quant_core/wfo/date_resolution.py "
-                "(resolve_wfo_start_end_dates)."
-            ),
-        )
 
 
 def _extract_seed(spec_json: dict[str, Any]) -> int | None:
@@ -892,10 +867,10 @@ def _prepare_detail_spec(
     # The frontend may send strategy_params in leaderboard format, where keys are
     # prefixed with "strategy." or "portfolio." (e.g., {"strategy.window": 40,
     # "portfolio.buy_pct_cash": 0.8}).  Normalise before merging:
-    #   "strategy.X"   → plain strategy param X
-    #   "portfolio.X"  → portfolio override (collected separately)
-    #   bare "X"       → plain strategy param (pass through as-is)
-    #   "data.*" / "walk_forward.*" / etc. → skip
+    #   "strategy.X"   ? plain strategy param X
+    #   "portfolio.X"  ? portfolio override (collected separately)
+    #   bare "X"       ? plain strategy param (pass through as-is)
+    #   "data.*" / "walk_forward.*" / etc. ? skip
     _SKIP_PREFIXES = ("data.", "walk_forward.", "simple_wfo.", "meta.")
     clean_strategy_params: dict[str, Any] = {}
     implicit_portfolio: dict[str, Any] = {}
@@ -1010,15 +985,14 @@ def create_run(payload: RunCreateRequest, db: Session = Depends(get_db)):
             dataset_id=payload.dataset_id,
             spec_json=spec_json,
         )
-        _assert_wfo_resolved_dates(spec_json, caller="create_run")
 
     provided_spec_hash = str(payload.spec_hash or "").strip()
     computed_spec_hash = json_hash(spec_json)
     spec_hash = computed_spec_hash or provided_spec_hash
 
-    # New runs get a random UUID to avoid collisions.
-    # We still keep deterministic IDs for legacy lookup (below).
-    run_id = uuid.uuid4()
+    # Deterministic run_id is bound to (spec_hash, dataset_id), so changing
+    # dataset does not accidentally collide with a previous run.
+    run_id = _compute_run_id(spec_hash, payload.dataset_id)
 
     run_type = _infer_run_type(spec_json)
     run_mode = _infer_mode(spec_json)
@@ -1033,7 +1007,7 @@ def create_run(payload: RunCreateRequest, db: Session = Depends(get_db)):
         if h and h not in hash_candidates:
             hash_candidates.append(h)
 
-    candidate_ids: list[UUID] = []
+    candidate_ids = [run_id]
     for h in hash_candidates:
         candidate_ids.append(_compute_run_id(h, payload.dataset_id))
         candidate_ids.extend(_legacy_run_id_candidates(h))
@@ -1094,14 +1068,7 @@ def create_run(payload: RunCreateRequest, db: Session = Depends(get_db)):
         error_message=None,
     )
     db.add(run)
-    try:
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        # Extremely unlikely with uuid4, but prevents 500s if it happens.
-        run.id = uuid.uuid4()
-        db.add(run)
-        db.commit()
+    db.commit()
 
     return RunCreateResponse(run_id=run.id, status=run.status, run_type=run.run_type)
 
@@ -1660,28 +1627,6 @@ def list_strategy_leaderboard(
     portfolio_json = dict(spec_json.get("portfolio") or {})
     initial_cash = _as_summary_float(portfolio_json.get("initial_cash")) or 100000.0
 
-    # Extract horizon from spec_json
-    opt_json = dict(spec_json.get("optimization") or {})
-    wf_json = dict(opt_json.get("walk_forward") or {})
-    run_horizon: str | None = str(wf_json.get("horizon") or "").strip().lower() or None
-
-    # Fetch decision scores (best rank per symbol+kind) for this run
-    decision_rows = (
-        db.query(StrategyDecision)
-        .filter(
-            StrategyDecision.run_id == run_id,
-            StrategyDecision.rank == 1,
-        )
-        .all()
-    )
-    decision_map: dict[tuple[str, str], tuple[float | None, float | None]] = {}
-    for dr in decision_rows:
-        key = (str(dr.symbol), str(dr.strategy_kind).lower())
-        decision_map[key] = (
-            float(dr.opportunity_score) if dr.opportunity_score is not None else None,
-            float(dr.confidence_score) if dr.confidence_score is not None else None,
-        )
-
     symbols = sorted({r.symbol for r in rows})
     metric_rows_q = db.query(RunMetric).filter(RunMetric.run_id == run_id)
     if symbol:
@@ -1749,9 +1694,6 @@ def list_strategy_leaderboard(
             win_pct = _metric_lookup(metrics_by_symbol, row_symbol_key, ["Win Rate", "Trade Winning %"])
         win_pct = _normalize_win_pct(_as_summary_float(win_pct))
 
-        decision_key = (row_symbol, strategy_kind_key)
-        opp_score, conf_score = decision_map.get(decision_key, (None, None))
-
         out.append(
             {
                 "run_id": row.run_id,
@@ -1766,9 +1708,6 @@ def list_strategy_leaderboard(
                 "win_pct": win_pct,
                 "efficiency": row.efficiency,
                 "n_fills": row.n_fills,
-                "confidence_score": conf_score,
-                "opportunity_score": opp_score,
-                "horizon": run_horizon,
                 "signal_label": row.signal_label,
                 "signal_today": row.signal_today,
                 "signal_date": row.signal_date,
@@ -2368,7 +2307,6 @@ def get_strategy_decision_dashboard(
             )
             from core.quant_core.pipeline import run_pipeline
 
-            _assert_wfo_resolved_dates(spec_json, caller="strategy_decision_detail")
             out_raw = run_pipeline(spec_json)
             if isinstance(out_raw, dict):
                 out = out_raw
@@ -2738,7 +2676,6 @@ def materialize_strategy_details(
 
         from core.quant_core.pipeline import run_pipeline  # local import keeps API startup light
 
-        _assert_wfo_resolved_dates(spec_json, caller="materialize_strategy_details")
         out = run_pipeline(spec_json)
         strategy_results = dict(out.get("strategy_results") or {})
         strategy_payload = strategy_results.get(strategy_kind)
@@ -2798,7 +2735,7 @@ def materialize_strategy_details(
         )
         metrics = dict(strategy_payload.get("metrics") or {})
 
-        response_payload = {
+        return {
             "run_id": run.id,
             "symbol": symbol,
             "strategy_kind": strategy_kind,
@@ -2810,7 +2747,6 @@ def materialize_strategy_details(
             "signal_today": signal_today,
             "signal_date": signal_date,
         }
-        return sanitize_json_compatible(response_payload)
     finally:
         for p in temp_files:
             try:

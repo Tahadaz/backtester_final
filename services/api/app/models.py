@@ -43,7 +43,7 @@ class MarketDataStore(Base):
 class Run(Base):
     __tablename__ = "run"
 
-    id = Column(UUID(as_uuid=True), primary_key=True)  # we will set to spec_hash UUID
+    id = Column(UUID(as_uuid=True), primary_key=True)
     status = Column(String, nullable=False)            # created/queued/running/succeeded/failed
     run_type = Column(String, nullable=False, default="backtest")  # backtest/optimization
 
@@ -71,6 +71,8 @@ class Run(Base):
     progress_stage = Column(String, nullable=True)
     progress_message = Column(Text, nullable=True)
     last_heartbeat_at = Column(DateTime(timezone=True), nullable=True)
+
+    leaderboard_json = Column(JSONB, nullable=True)
 
 
 class Artifact(Base):
@@ -304,3 +306,42 @@ class StrategyDefaultSet(Base):
     defaults_json = Column(JSONB, nullable=False, default=dict)
     meta_json = Column(JSONB, nullable=False, default=dict)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class OptTask(Base):
+    __tablename__ = "opt_task"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    run_id = Column(UUID(as_uuid=True), ForeignKey("run.id"), nullable=False, index=True)
+    fold_id = Column(String, nullable=False)
+    chunk_id = Column(Integer, nullable=False)
+    status = Column(String, nullable=False, default="queued") # queued|running|succeeded|failed|canceled
+    worker_job_id = Column(String, nullable=True, index=True)
+    params_count = Column(Integer, nullable=False, default=0)
+    spec_hash = Column(String, nullable=True)
+    attempt = Column(Integer, nullable=False, default=1)
+    error_message = Column(Text, nullable=True)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_opt_task_run_fold_status", "run_id", "fold_id", "status"),
+    )
+
+
+class OptResult(Base):
+    __tablename__ = "opt_result"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    run_id = Column(UUID(as_uuid=True), ForeignKey("run.id"), nullable=False)
+    fold_id = Column(String, nullable=False)
+    chunk_id = Column(Integer, nullable=False)
+    
+    topk_json = Column(JSONB, nullable=False, default=list) # array length <= K
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("run_id", "fold_id", "chunk_id", name="uq_opt_result_run_fold_chunk"),
+    )

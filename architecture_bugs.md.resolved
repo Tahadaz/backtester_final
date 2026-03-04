@@ -1,0 +1,38 @@
+# Architectual Bugs & Stabilization Priorities
+
+Based on a scan of the repository architecture, here are the critical issues that need to be addressed before any new features or performance work.
+
+## P0: Prevents Golden Path & Reliability
+### 1. Volume Mount / PYTHONPATH Mismatch in Worker
+- **Where:** [infra/docker-compose.yml](file:///c:/Users/taha/Downloads/backtester_final/infra/docker-compose.yml) -> `quant_worker` and `quant_worker_defaults`
+- **Why it's broken:** The compose file mounts local code to `/repo/services/worker` and `/repo/core`, but explicitly sets `PYTHONPATH: /app`. If the worker executes `python -m services.worker.main`, it's running the baked-in image code (if `/app` contains copied code) rather than the live mounted code. Any changes to `services/worker` or `core` on the host will be ignored, leading to deeply confusing "code not updating" issues during development.
+- **Smallest safe fix:** Change `PYTHONPATH: /repo` in the worker definition in `docker-compose.yml`, matching the API service.
+- **Validation:** Modify a print statement in the worker code locally, restart the container, and verify the log shows the new string without needing a rebuild.
+
+## P1: Breaks Correctness Under Load / Multi-run
+### 2. Lack of Run Idempotency (Duplicated Runs)
+- **Where:** `services/api/app/models.py` (`Run` table) & API create endpoint.
+- **Why it's broken:** The `Run` table has no unique constraint on `spec_hash` (only `nullable=False`). If a user double-clicks the run button, it inserts multiple identical runs. The worker will execute both in parallel. Because MinIO keys are deterministic based on Run/Artifact name, both workers might write to the exact same S3 objects simultaneously, causing corrupted JSONs or race conditions.
+- **Smallest safe fix:** 
+  1. Add a unique constraint: `UniqueConstraint("spec_hash", name="uq_run_spec_hash")` to the `Run` model.
+  2. In `/runs` API, query `db.query(Run).filter_by(spec_hash=...).first()`. If it exists, return the existing run ID instead of enqueuing a new one.
+- **Validation:** Send the exact same `run.json` payload twice via `curl`. It should return the same `id` and only enqueue one job in Redis.
+
+### 3. Zombied Runs on Worker Crash (Swallowed Errors)
+- **Where:** `services/worker/tasks/execute_run.py`
+- **Why it's broken:** If the quant engine raises an unhandled exception (e.g., division by zero, `KeyError` in pandas, or OOM), the worker process/thread dies or fails the job at the RQ/Redis level. However, the DB `status` remains `"running"`. The frontend will poll infinitely, showing a hung UI.
+- **Smallest safe fix:** Wrap the top-level execution in `execute_run.py` in a generic `try/except Exception as e:` block. In the `except` block, safely update the DB `status = 'failed'` and save `str(e)` to `error_message`, then re-raise.
+- **Validation:** Intentionally inject `raise ValueError("Test crash")` in the pipeline. Submit a run. Ensure the API reports `status: "failed"` and the error message appears in the response.
+
+## P2: Performance and UX Improvements
+### 4. Database Connection Leaks / Blocking
+- **Where:** Global DB connections or synchronous workers. 
+- **Why it's broken:** If the API uses standard synchronous SQLAlchemy for large queries without bounding connection pools, multiple concurrent large artifact fetches might starve the connection pool.
+- **Smallest safe fix:** Ensure FastAPI dependencies yield DB sessions cleanly and use a fixed connection pool in `db.py`.
+- **Validation:** Send 100 concurrent requests to an API endpoint; ensure no 500s or timeout errors occur.
+
+### 5. In-Memory S3 Downloads
+- **Where:** API `routers/runs.py` / Worker MinIO fetch logic.
+- **Why it's broken:** Using `_safe_get_object_bytes` to load large Parquet or CSV artifacts entirely into RAM (as a single byte block) will OOM the worker or API pod if datasets grow to 1GB+. 
+- **Smallest safe fix:** Use streaming readers via `boto3` or `pandas.read_parquet` direct integrations with `s3fs` instead of materializing to raw bytes first.
+- **Validation:** Upload a 2GB dataset and verify the worker memory never spikes linearly with file size.

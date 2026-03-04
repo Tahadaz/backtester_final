@@ -508,6 +508,42 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
         out = _normalize_record_frame(out[cols])
         return out.to_dict("records")
 
+    def _normalize_trade_ledger_records(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if not rows:
+            return []
+
+        alias_map: dict[str, tuple[str, ...]] = {
+            "side": ("trade_side", "direction"),
+            "prix_execution_open_jour": ("price", "prix_execution_open_du_jour"),
+            "quantite": ("qty", "quantity"),
+            "pnl_realise": ("pnl_realized", "pnl_realised"),
+            "close_du_jour": ("mark_price", "_mark"),
+            "cost": ("fees",),
+        }
+
+        out_rows: list[dict[str, Any]] = []
+        for row in rows:
+            normalized = dict(row or {})
+            for canonical, aliases in alias_map.items():
+                if canonical in normalized and normalized.get(canonical) is not None:
+                    continue
+                for alias in aliases:
+                    if alias in normalized and normalized.get(alias) is not None:
+                        normalized[canonical] = normalized.get(alias)
+                        break
+
+            # Keep UI "notional" populated when presentation rows only expose qty/price aliases.
+            if normalized.get("notional") is None:
+                try:
+                    qty = normalized.get("quantite")
+                    px = normalized.get("prix_execution_open_jour")
+                    if qty is not None and px is not None:
+                        normalized["notional"] = abs(float(qty)) * float(px)
+                except Exception:
+                    pass
+            out_rows.append(normalized)
+        return out_rows
+
     def _safe_metrics(metrics: dict[str, Any] | None) -> dict[str, Any]:
         out: dict[str, Any] = {}
         for k, v in dict(metrics or {}).items():
@@ -768,7 +804,10 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                 )
                 out_symbols[sym] = fig.to_plotly_json()
             except Exception:
-                out_symbols[sym] = {}
+                _pipeline_logger.warning(
+                    "plot_price_indicators_trades_line failed for symbol %s", sym, exc_info=True
+                )
+                # Do NOT store empty dict — frontend treats {} as a broken figure.
         return {"symbols": out_symbols}
 
     def _build_summary_plot_artifacts(bundle: Any) -> dict[str, Any]:
@@ -837,13 +876,19 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
         report_tables = dict(getattr(bundle.report, "tables", None) or {})
         symbols_in_bundle = [str(s) for s in list(getattr(bundle.md, "bars", {}).keys())]
         decision_stats = dict((getattr(bundle, "meta", None) or {}).get("decision_stats") or {})
+        per_fill_trade_ledger = _normalize_trade_ledger_records(
+            _table_to_records(report_tables.get("trades"))
+        )
+        fifo_trade_ledger = _table_to_records(report_tables.get("trade_ledger"))
         return {
             "strategy_kind": kind,
             "best_strategy_params": dict(best_params or {}),
             "symbols": symbols_in_bundle,
             "metrics": _safe_metrics(getattr(bundle.report, "metrics", None) or {}),
-            # Canonical UI ledger: results._prepare_trades_table output.
-            "trade_ledger": _table_to_records(report_tables.get("trades")),
+            # Canonical UI ledger is the per-fill accounting table from results._prepare_trades_table.
+            "trade_ledger": per_fill_trade_ledger,
+            # Keep FIFO round-trips available for downstream consumers.
+            "fifo_trade_ledger": fifo_trade_ledger,
             "trade_performance": _table_to_metric_records(report_tables.get("trade_performance")),
             "opportunity_calibration": _table_to_records(report_tables.get("opportunity_calibration")),
             "confidence_calibration": _table_to_records(report_tables.get("confidence_calibration")),
@@ -1391,7 +1436,8 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                 rows: list[dict[str, Any]] = []
                 top_variants_per_fold = max(1, int(opt_cfg.top_k or 1))
                 _fold_perf: list[dict] = []
-                for fold_idx, label in enumerate(selected_periods):
+                def _eval_fold(fold_idx_label: tuple[int, str]):
+                    fold_idx, label = fold_idx_label
                     _t_fold = time.perf_counter()
                     _fp_opt_ms, _fp_n_trials = 0.0, 0
                     fold = period_rows_by_label[label]
@@ -1437,6 +1483,8 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                                 train_candidates.append((trial_rank, train_row_spec, train_obj_val))
 
                     _t_bt = time.perf_counter()
+                    _fold_rows: list[dict[str, Any]] = []
+                    _fold_ret_series: list[pd.Series] = []
                     for trial_rank, train_candidate_spec, train_objective_value in train_candidates:
                         test_spec = replace(
                             train_candidate_spec,
@@ -1448,11 +1496,11 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                                 exclude_windows=None,
                             ),
                         )
-                        bundle = BacktestEngine(test_spec).run()
+                        bundle = BacktestEngine(test_spec).run(fast_mode=True)
                         if trial_rank == 1:
                             ret_series = dict(getattr(bundle.report, "series", None) or {}).get("returns")
                             if isinstance(ret_series, pd.Series):
-                                wf_returns_by_kind.setdefault(kind, []).append(pd.to_numeric(ret_series, errors="coerce").dropna())
+                                _fold_ret_series.append(pd.to_numeric(ret_series, errors="coerce").dropna())
                         metrics = dict(getattr(bundle.report, "metrics", None) or {})
                         signal_snapshot = _signal_snapshot_from_bundle(bundle, preferred_symbol=symbol_label)
                         row = {
@@ -1489,21 +1537,38 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                         }
                         for k_param, v_param in _best_params_from_spec(test_spec).items():
                             row[f"param.{k_param}"] = v_param
-                        rows.append(row)
+                        _fold_rows.append(row)
 
                     _fp_bt_ms = round((time.perf_counter() - _t_bt) * 1000.0, 2)
                     _fp_total_ms = round((time.perf_counter() - _t_fold) * 1000.0, 2)
-                    _fold_perf.append({
+                    _fold_perf_item = {
                         "idx": fold_idx, "label": label,
                         "train_start": train_start, "test_start": test_start,
                         "opt_ms": _fp_opt_ms, "n_trials": _fp_n_trials,
                         "backtest_ms": _fp_bt_ms, "fold_ms": _fp_total_ms,
-                    })
+                    }
                     _pipeline_logger.info(
                         "[perf] kind=%s fold %d/%d '%s' opt=%.0f ms bt=%.0f ms total=%.0f ms",
                         kind, fold_idx + 1, len(selected_periods), label,
                         _fp_opt_ms, _fp_bt_ms, _fp_total_ms,
                     )
+                    return _fold_rows, _fold_ret_series, _fold_perf_item
+
+                _n_fold_workers = min(len(selected_periods), max(1, (os.cpu_count() or 4)))
+                with ThreadPoolExecutor(max_workers=_n_fold_workers) as _fold_pool:
+                    _fold_futures = [
+                        _fold_pool.submit(_eval_fold, (fi, lbl))
+                        for fi, lbl in enumerate(selected_periods)
+                    ]
+                    for _fut in as_completed(_fold_futures):
+                        try:
+                            _fold_rows, _fold_ret_series, _fold_perf_item = _fut.result()
+                            rows.extend(_fold_rows)
+                            for _rs in _fold_ret_series:
+                                wf_returns_by_kind.setdefault(kind, []).append(_rs)
+                            _fold_perf.append(_fold_perf_item)
+                        except Exception as _fold_exc:
+                            _pipeline_logger.error("[wfo] fold error: %s", _fold_exc, exc_info=True)
 
                 _fold_perf_by_kind[kind] = _fold_perf
                 if rows:
@@ -1518,7 +1583,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                         base_spec_k,
                         data=replace(base_spec_k.data, start=str(p_start), end=str(p_end), include_windows=None, exclude_windows=None),
                     )
-                    bundle = BacktestEngine(per_spec).run()
+                    bundle = BacktestEngine(per_spec).run(fast_mode=True)
                     metrics = dict(getattr(bundle.report, "metrics", None) or {})
                     row = {
                         "period": label,
@@ -1560,7 +1625,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                     base_spec_k,
                     data=replace(base_spec_k.data, start=str(p_start), end=str(p_end), include_windows=None, exclude_windows=None),
                 )
-                bundle = BacktestEngine(per_spec).run()
+                bundle = BacktestEngine(per_spec).run(fast_mode=True)
                 metrics = dict(getattr(bundle.report, "metrics", None) or {})
                 row = {
                     "period": label,

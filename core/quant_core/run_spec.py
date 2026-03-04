@@ -39,6 +39,10 @@ def build_run_spec(
     opt_method: str,
     n_trials: int,
     top_k: int,
+    parallel: bool = False,
+    chunk_size: int = 100,
+    max_in_flight: int = 4,
+    top_n_artifacts: int = 1,
     # portfolio-impacting params that MUST be part of the cache key:
     allow_short: bool,
     initial_cash: float,
@@ -72,6 +76,10 @@ def build_run_spec(
             "method": opt_method,
             "n_trials": int(n_trials),
             "top_k": int(top_k),
+            "parallel": bool(parallel),
+            "chunk_size": int(chunk_size),
+            "max_in_flight": int(max_in_flight),
+            "top_n_artifacts": int(top_n_artifacts),
             "domains_by_kind": domains_by_kind,
         },
         "portfolio": {

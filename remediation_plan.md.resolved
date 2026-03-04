@@ -1,0 +1,43 @@
+# Remediation PR Plan
+
+We will stabilize the system using tightly scoped PR lanes. No feature work will be started until these gates pass.
+
+## PR 1: Infrastructure & Correctness Fixes
+**Goal:** Ensure the system boots predictably and workers execute the correct code.
+- **Changes:**
+  - Fix `PYTHONPATH: /repo` in [docker-compose.yml](file:///c:/Users/taha/Downloads/backtester_final/infra/docker-compose.yml) for all worker services.
+  - Verify MinIO bucket init script is robust and deterministic.
+- **Validation Gate:**
+  - `docker-compose up -d --build`
+  - Modify a print statement in the worker.
+  - Check `docker logs` to verify the modified code executed.
+
+## PR 2: Idempotency & Run De-duplication
+**Goal:** Prevent race conditions and wasted resources from duplicate run requests.
+- **Changes:**
+  - Update [services/api/app/models.py](file:///c:/Users/taha/Downloads/backtester_final/services/api/app/models.py) to add a unique constraint on `Run.spec_hash`.
+  - Generate a new Alembic migration for the constraint.
+  - Update API [routers/runs.py](file:///c:/Users/taha/Downloads/backtester_final/services/api/app/routers/runs.py) to check for `spec_hash` existence before creating a new [Run](file:///c:/Users/taha/Downloads/backtester_final/services/api/app/models.py#43-74) record.
+- **Validation Gate:**
+  - Send identical [run.json](file:///c:/Users/taha/Downloads/backtester_final/run.json) payloads sequentially.
+  - Verify DB `SELECT count(*) FROM run WHERE spec_hash = X;` returns exactly 1.
+  - Confirm HTTP 200/201 returns the existing ID on the second request.
+
+## PR 3: Worker Resiliency & Zombie Prevention
+**Goal:** Ensure the UI always receives a terminal state (`succeeded`, `failed`, or `canceled`).
+- **Changes:**
+  - Refactor the entry point of [execute_run.py](file:///c:/Users/taha/Downloads/backtester_final/services/worker/tasks/execute_run.py).
+  - Wrap the core lifecycle with `try...except Exception as e`.
+  - On exception, aggressively write `status="failed"` and the error traceback to the DB.
+  - Close DB connections / Redis sessions in a `finally` block to prevent descriptor leaks.
+- **Validation Gate:**
+  - Inject a forced exception in the worker.
+  - Run the Golden Path smoke test.
+  - UI / API must show `status: "failed"` and properly surface the error message rather than hanging on `"running"`.
+
+## PR 4: OOM & Large File Protections (Optional but Recommended)
+**Goal:** Prevent large datasets from crashing API and Worker pods.
+- **Changes:**
+  - Refactor S3/MinIO reads to use streaming (e.g., `StreamingResponse` in FastAPI, `s3fs` in pandas).
+- **Validation Gate:**
+  - Monitor memory usage via `docker stats` while uploading/processing a 1GB dataset.

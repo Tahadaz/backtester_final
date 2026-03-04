@@ -3030,41 +3030,19 @@ def execute_run(run_id: str) -> dict:
                 spec_json["data"]["source"] = "bmce"
                 spec_json["data"]["bmce_paths"] = str(temp_dataset_file)
             _check_cancel(cancel_redis, job_id)
-
-            # ---- parallel optimisation path ----
-            _opt_json = spec_json.get("optimization") or {}
-            _use_parallel = bool(_opt_json.get("parallel", False))
-
-            if _use_parallel:
-                from services.worker.tasks.parallel_opt import run_parallel_optimization
-                run_parallel_optimization(
-                    db=db,
-                    rid=rid,
-                    job_id=job_id,
-                    spec_json=spec_json,
-                    dataset_hash=dataset_hash,
-                    dataset_id=dataset_id,
-                    dataset_meta=dataset_meta,
-                    cancel_redis=cancel_redis,
-                    set_progress_fn=_set_progress,
-                    check_cancel_fn=_check_cancel,
-                    persist_pipeline_output_fn=_persist_pipeline_output,
-                )
-            else:
-                # ---- normal (sequential) path ----
-                out = run_pipeline(spec_json)
-                _check_cancel(cancel_redis, job_id)
-                default_symbol = str(symbols[0]) if symbols else "__ALL__"
-                _persist_pipeline_output(
-                    db=db,
-                    rid=rid,
-                    out=out,
-                    default_symbol=default_symbol,
-                    spec_json=spec_json,
-                    dataset_meta=dataset_meta,
-                    dataset_hash=dataset_hash,
-                )
-                db.commit()
+            out = run_pipeline(spec_json)
+            _check_cancel(cancel_redis, job_id)
+            default_symbol = str(symbols[0]) if symbols else "__ALL__"
+            _persist_pipeline_output(
+                db=db,
+                rid=rid,
+                out=out,
+                default_symbol=default_symbol,
+                spec_json=spec_json,
+                dataset_meta=dataset_meta,
+                dataset_hash=dataset_hash,
+            )
+            db.commit()
 
         # 5) mark succeeded
         db.execute(
@@ -3188,3 +3166,4 @@ def execute_run(run_id: str) -> dict:
                 pass
 
         db.close()
+

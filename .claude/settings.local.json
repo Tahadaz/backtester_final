@@ -6,7 +6,8 @@
       "Bash(ls -d /c/Users/taha/Downloads/backtester_final/*/)",
       "Bash(grep:*)",
       "Bash(python:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(.venv/Scripts/python.exe:*)"
     ]
   }
 }
