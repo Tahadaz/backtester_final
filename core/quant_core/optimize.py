@@ -15,7 +15,7 @@ import pandas as pd
 from .data import BMCEDataSource, YahooFinanceDataSource, MarketData, make_synthetic_ohlcv
 from .strategy import SignalFrame
 from .indicators import IndicatorEngine, FeatureSpec, FeaturesData
-from .engine import EngineSpec, DataConfig, StrategyConfig, estimate_warmup_bars_from_params, BacktestEngine
+from .engine import EngineSpec, DataConfig, StrategyConfig, estimate_warmup_bars_from_params
 from .portfolio import PortfolioEngine, PortfolioConfig
 
 
@@ -2227,7 +2227,7 @@ def batch_optimize_by_period(
             data=replace(base_spec.data, start=str(p_start), end=str(p_end)),
         )
 
-        best, top_df, best_params, best_spec, ranked_df, _bt_timing = run_optimization(
+        _best, _top_df, best_params, _best_spec, _ranked_df, _bt_timing = run_optimization(
             base_spec=per_spec,
             active_params=active_params,
             cfg=cfg,
@@ -2254,28 +2254,11 @@ def batch_optimize_by_period(
         for k, v in stats.items():
             row[f"stat.{k}"] = v
 
-        # ---- FULL run ONLY for best spec (fills -> trade ledger/perf) ----
-        try:
-            best_bundle = BacktestEngine(best_spec).run()
-
-            trades_df = best_bundle.report.tables.get("trades", pd.DataFrame())
-            ledger = best_bundle.report.tables.get("trade_ledger", pd.DataFrame())
-            tperf  = best_bundle.report.tables.get("trade_performance", pd.DataFrame())
-
-            row["best.trades"] = int(len(trades_df))
-            row["best.ledger_trades"] = int(len(ledger))
-
-            if (tperf is not None) and (not tperf.empty) and ("Value" in tperf.columns) and ("Win Rate" in tperf.index):
-                row["best.win_rate"] = float(tperf.loc["Win Rate", "Value"])
-            else:
-                row["best.win_rate"] = np.nan
-
-        except Exception as e:
-            # Don't kill the batch if full run fails; keep audit trail
-            row["best.trades"] = np.nan
-            row["best.ledger_trades"] = np.nan
-            row["best.win_rate"] = np.nan
-            row["best.full_run_error"] = f"{type(e).__name__}: {e}"
+        # Keep output columns stable while deferring full artifact materialization
+        # to the winner-only stage in pipeline orchestration.
+        row["best.trades"] = np.nan
+        row["best.ledger_trades"] = np.nan
+        row["best.win_rate"] = np.nan
 
         rows.append(row)
 
