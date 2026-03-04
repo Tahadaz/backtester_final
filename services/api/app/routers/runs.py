@@ -112,6 +112,30 @@ def _infer_mode(spec_json: dict[str, Any]) -> str:
     return "walk_forward" if bool(walk_forward.get("enabled", False)) else "single"
 
 
+def _assert_wfo_resolved_dates(spec_json: dict[str, Any], *, caller: str) -> None:
+    optimization = dict(spec_json.get("optimization") or {})
+    walk_forward = dict(optimization.get("walk_forward") or {})
+    if not bool(walk_forward.get("enabled", False)):
+        return
+
+    missing_fields: list[str] = []
+    for field in ("resolved_start_date", "resolved_end_date"):
+        if str(walk_forward.get(field) or "").strip():
+            continue
+        missing_fields.append(f"optimization.walk_forward.{field}")
+
+    if missing_fields:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"{caller}: walk_forward.enabled=true requires resolved date bounds before run_pipeline. "
+                f"Missing {', '.join(missing_fields)}. "
+                "These fields must be produced by core/quant_core/wfo/date_resolution.py "
+                "(resolve_wfo_start_end_dates)."
+            ),
+        )
+
+
 def _extract_seed(spec_json: dict[str, Any]) -> int | None:
     candidates = [
         ((spec_json.get("optimization") or {}).get("seed") if isinstance(spec_json.get("optimization"), dict) else None),
@@ -985,6 +1009,7 @@ def create_run(payload: RunCreateRequest, db: Session = Depends(get_db)):
             dataset_id=payload.dataset_id,
             spec_json=spec_json,
         )
+        _assert_wfo_resolved_dates(spec_json, caller="create_run")
 
     provided_spec_hash = str(payload.spec_hash or "").strip()
     computed_spec_hash = json_hash(spec_json)
@@ -2307,6 +2332,7 @@ def get_strategy_decision_dashboard(
             )
             from core.quant_core.pipeline import run_pipeline
 
+            _assert_wfo_resolved_dates(spec_json, caller="strategy_decision_detail")
             out_raw = run_pipeline(spec_json)
             if isinstance(out_raw, dict):
                 out = out_raw
@@ -2676,6 +2702,7 @@ def materialize_strategy_details(
 
         from core.quant_core.pipeline import run_pipeline  # local import keeps API startup light
 
+        _assert_wfo_resolved_dates(spec_json, caller="materialize_strategy_details")
         out = run_pipeline(spec_json)
         strategy_results = dict(out.get("strategy_results") or {})
         strategy_payload = strategy_results.get(strategy_kind)
