@@ -1,6 +1,8 @@
 # strategy.py
 from __future__ import annotations
 
+import logging
+import warnings
 from dataclasses import dataclass, field, asdict
 from typing import Any, Dict, List, Optional, Protocol, Sequence, Tuple
 from abc import ABC, abstractmethod
@@ -11,6 +13,43 @@ import numpy as np
 # Import your FeatureSpec from the indicator layer.
 # (Keep strategy -> indicators dependency; indicators should NOT depend on strategy.)
 from .indicators import FeatureSpec
+
+_log = logging.getLogger(__name__)
+
+
+def _build_common_index(market_data_bars: Dict[str, pd.DataFrame], symbols: Sequence[str]) -> pd.DatetimeIndex:
+    """
+    Build the union of symbol indexes and warn when calendar gaps are large.
+
+    Multi-asset strategies use the union so every symbol gets a signal on every
+    date; the nan_policy on each strategy handles bars where indicators are NaN
+    (e.g., because symbol B didn't trade on a date symbol A did).
+
+    A warning is emitted when the union contains >5% more bars than the
+    intersection — a sign that the symbols trade on substantially different
+    calendars and NaN-filling may silently distort signals.
+    """
+    all_indexes = [market_data_bars[s].index for s in symbols]
+    if len(all_indexes) == 1:
+        return all_indexes[0].sort_values()
+
+    union_idx = all_indexes[0]
+    inter_idx = all_indexes[0]
+    for idx in all_indexes[1:]:
+        union_idx = union_idx.union(idx)
+        inter_idx = inter_idx.intersection(idx)
+
+    n_union = len(union_idx)
+    n_inter = len(inter_idx)
+    if n_inter > 0 and (n_union - n_inter) / n_inter > 0.05:
+        warnings.warn(
+            f"Multi-symbol calendar mismatch: union has {n_union} bars but intersection "
+            f"has only {n_inter} ({100*(n_union-n_inter)/n_inter:.1f}% extra). "
+            "Dates where a symbol didn't trade will be NaN-filled — check nan_policy.",
+            stacklevel=4,
+        )
+
+    return union_idx.sort_values()
 
 
 # =============================================================================
@@ -469,14 +508,15 @@ class PriceAboveSMAStrategy(BaseStrategy):
                 long_mask = (close > sma) & (prev_close <= prev_sma)
                 short_mask = (close < sma) & (prev_close >= prev_sma)
                 signal[long_mask] = 1.0
-                if self.params.allow_short:
-                    signal[short_mask] = -1.0
+                # -1.0 means "exit" regardless of allow_short; allow_short only controls
+                # whether the portfolio opens a short position after exit.
+                signal[short_mask] = -1.0
             else:
                 long_mask = close > sma
                 short_mask = close < sma
                 signal[long_mask] = 1.0
-                if self.params.allow_short:
-                    signal[short_mask] = -1.0
+                # -1.0 means "exit" regardless of allow_short.
+                signal[short_mask] = -1.0
 
             if self.params.nan_policy == "flat":
                 signal = signal.where(valid, 0.0)
@@ -666,18 +706,11 @@ class MACDStrategy(BaseStrategy):
                 out[buy] = 1.0
                 out[sell] = -1.0
 
-            else:  # "zero"
+            else:  # "zero" — hold +1 while MACD line is above zero, -1 while below
+                # Position-level signal: long when MACD > 0, short/flat when MACD < 0.
+                # (Not a cross signal — this gives a sustained directional view.)
                 out[line > 0.0] = 1.0
                 out[line < 0.0] = -1.0
-                prev_line = line.shift(1)
-                prev_sigl = sigl.shift(1)
-
-                buy = (line > 0.0) & (prev_line <= 0)   # cross up
-                sell = (line < 0.0) & (prev_line >= 0)  # cross down
-
-                out[:] = 0.0
-                out[buy] = 1.0
-                out[sell] = -1.0
 
             if self.params.nan_policy == "flat":
                 out = out.where(valid, 0.0)

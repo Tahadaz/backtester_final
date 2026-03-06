@@ -29,6 +29,7 @@ from core.quant_core.research.horizon import get_horizon_config
 from services.worker.config import settings
 from services.worker.db import SessionLocal
 from services.worker.storage import ensure_bucket, s3_client
+from core.quant_core.s3_keys import build_dataset_object_key
 
 
 def _utcnow() -> datetime:
@@ -419,10 +420,11 @@ def _canonicalize_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
     return out[["Open", "High", "Low", "Close", "Volume"]]
 
 
-def _materialize_dataset_file(*, filename: str, data_hash: str) -> Path:
+def _materialize_dataset_file(*, filename: str, data_hash: str, object_key: str | None = None) -> Path:
     s3 = s3_client()
-    object_key = f"datasets/{data_hash}/{filename}"
-    payload = s3.get_object(Bucket=settings.S3_BUCKET, Key=object_key)["Body"].read()
+    # Prefer the stored object_key; fall back to canonical reconstruction for legacy rows.
+    key = object_key or build_dataset_object_key(data_hash=data_hash, filename=filename)
+    payload = s3.get_object(Bucket=settings.S3_BUCKET, Key=key)["Body"].read()
     suffix = Path(filename).suffix or ".bin"
     tmp = NamedTemporaryFile(delete=False, suffix=suffix)
     try:
@@ -476,14 +478,18 @@ def _load_bars_from_dataset(
     ticker: str | None,
 ) -> pd.DataFrame:
     row = db.execute(
-        text("select filename, data_hash from dataset where id = :id"),
+        text("select filename, data_hash, object_key from dataset where id = :id"),
         {"id": dataset_id},
     ).mappings().first()
     if not row:
         raise RuntimeError(f"dataset not found: {dataset_id}")
 
     filename = str(row.get("filename") or "upload.xlsx")
-    temp_file = _materialize_dataset_file(filename=filename, data_hash=str(row["data_hash"]))
+    temp_file = _materialize_dataset_file(
+        filename=filename,
+        data_hash=str(row["data_hash"]),
+        object_key=str(row["object_key"]) if row.get("object_key") else None,
+    )
     try:
         ext = Path(filename).suffix.lower()
         if ext in {".xlsx", ".xls"}:

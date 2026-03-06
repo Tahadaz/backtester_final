@@ -3,18 +3,23 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from tempfile import NamedTemporaryFile
+from tempfile import gettempdir
 from uuid import UUID, uuid4
 from typing import Any
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, ThreadPoolExecutor, wait
 import copy
+import logging
 import traceback
 import json
 import hashlib
 import math
 import os
 import subprocess
+import time
 import pandas as pd
+
+logger = logging.getLogger(__name__)
+from threading import Lock
 from redis import Redis
 from rq import get_current_job
 from plotly.utils import PlotlyJSONEncoder
@@ -27,6 +32,7 @@ from services.worker.config import settings
 from services.worker.storage import s3_client, ensure_bucket
 
 from core.quant_core.pipeline import run_pipeline
+from core.quant_core.s3_keys import build_dataset_object_key
 from core.quant_core.integrity import build_integrity_report
 from core.quant_core.mean_reversion import adf_test, cadf_cointegration, estimate_half_life
 from core.quant_core.research.horizon import get_horizon_config
@@ -40,6 +46,8 @@ from core.quant_core.decision import (
     compute_rr_and_invalidation,
     deterministic_seed_from_key,
 )
+
+TOP_N_DECISION_DETAILS = 3
 
 
 def _utcnow():
@@ -67,6 +75,82 @@ def _has_column(db: Session, table_name: str, column_name: str) -> bool:
 
 def _sha256_bytes(b: bytes) -> str:
     return hashlib.sha256(b).hexdigest()
+
+
+_ARTIFACT_SHA_CACHE_LOCK = Lock()
+_ARTIFACT_SHA_CACHE: dict[tuple[str, str], str] = {}
+
+
+def _preferred_dataset_cache_root() -> Path:
+    configured = str(os.getenv("WORKER_DATASET_CACHE_DIR", "/tmp/datasets")).strip()
+    if configured:
+        return Path(configured)
+    return Path("/tmp/datasets")
+
+
+def _dataset_cache_root() -> Path:
+    preferred = _preferred_dataset_cache_root()
+    try:
+        preferred.mkdir(parents=True, exist_ok=True)
+        return preferred
+    except Exception:
+        fallback = Path(gettempdir()) / "datasets"
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
+
+
+def _safe_path_token(value: str, *, fallback: str) -> str:
+    cleaned = "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "_" for ch in str(value or ""))
+    cleaned = cleaned.strip("._-")
+    return cleaned or fallback
+
+
+def _atomic_write_bytes(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_name = f".{path.name}.{uuid4().hex}.tmp"
+    tmp_path = path.parent / tmp_name
+    try:
+        tmp_path.write_bytes(payload)
+        os.replace(tmp_path, path)
+    finally:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
+def _materialize_object_to_cache(
+    *,
+    bucket: str,
+    object_key: str,
+    cache_key: str,
+    filename: str,
+    require_non_empty: bool = False,
+) -> Path:
+    cache_dir = _dataset_cache_root() / _safe_path_token(cache_key, fallback="cache")
+    cache_path = cache_dir / _safe_path_token(filename, fallback="dataset.bin")
+    try:
+        if cache_path.exists() and cache_path.stat().st_size > 0:
+            return cache_path
+    except Exception:
+        pass
+
+    payload = s3_client().get_object(Bucket=bucket, Key=object_key)["Body"].read()
+    if require_non_empty and not payload:
+        raise RuntimeError(f"Empty parquet object: {object_key}")
+    _atomic_write_bytes(cache_path, payload)
+    return cache_path
+
+
+def _is_dataset_cache_path(path: Path | None) -> bool:
+    if path is None:
+        return False
+    try:
+        resolved_path = Path(path).resolve()
+        cache_root = _dataset_cache_root().resolve()
+        return resolved_path == cache_root or cache_root in resolved_path.parents
+    except Exception:
+        return False
 def _rq_job_id() -> str | None:
     try:
         job = get_current_job()
@@ -233,11 +317,82 @@ def _json_dumps_pg(payload: Any) -> str:
     )
 
 
-def _upload_json(object_key: str, payload: Any) -> tuple[int, str]:
+def _artifact_candidate_key(db: Session, *, sha256: str, content_type: str) -> str | None:
+    row = db.execute(
+        text(
+            """
+            select object_key
+            from artifact
+            where sha256=:sha and content_type=:ctype and bucket=:bucket
+            order by created_at desc
+            limit 1
+            """
+        ),
+        {"sha": sha256, "ctype": content_type, "bucket": settings.S3_BUCKET},
+    ).mappings().first()
+    if not row:
+        return None
+    key = str(row.get("object_key") or "").strip()
+    return key or None
+
+
+def _s3_object_matches_sha(s3: Any, *, object_key: str, expected_sha256: str) -> bool:
+    try:
+        head = s3.head_object(Bucket=settings.S3_BUCKET, Key=object_key)
+    except Exception:
+        return False
+    metadata = dict(head.get("Metadata") or {})
+    stored_sha = str(metadata.get("sha256") or metadata.get("sha") or "").strip().lower()
+    return bool(stored_sha and stored_sha == expected_sha256.lower())
+
+
+def _upload_content(
+    *,
+    object_key: str,
+    content_type: str,
+    content: bytes,
+    db: Session | None = None,
+) -> tuple[int, str, str]:
     ensure_bucket()
     s3 = s3_client()
-    # Use Plotly encoder so datetime-like arrays are emitted as ISO strings,
-    # preserving chart coordinates in the browser.
+    sha256 = _sha256_bytes(content)
+    size_bytes = len(content)
+    cache_key = (sha256, content_type)
+
+    with _ARTIFACT_SHA_CACHE_LOCK:
+        cached_key = _ARTIFACT_SHA_CACHE.get(cache_key)
+    if cached_key and _s3_object_matches_sha(s3, object_key=cached_key, expected_sha256=sha256):
+        return size_bytes, sha256, cached_key
+
+    # Fast-path for reruns where the same run-scoped key already exists.
+    if _s3_object_matches_sha(s3, object_key=object_key, expected_sha256=sha256):
+        with _ARTIFACT_SHA_CACHE_LOCK:
+            _ARTIFACT_SHA_CACHE[cache_key] = object_key
+        return size_bytes, sha256, object_key
+
+    if db is not None:
+        try:
+            prior_key = _artifact_candidate_key(db, sha256=sha256, content_type=content_type)
+        except Exception:
+            prior_key = None
+        if prior_key and _s3_object_matches_sha(s3, object_key=prior_key, expected_sha256=sha256):
+            with _ARTIFACT_SHA_CACHE_LOCK:
+                _ARTIFACT_SHA_CACHE[cache_key] = prior_key
+            return size_bytes, sha256, prior_key
+
+    s3.put_object(
+        Bucket=settings.S3_BUCKET,
+        Key=object_key,
+        Body=content,
+        ContentType=content_type,
+        Metadata={"sha256": sha256},
+    )
+    with _ARTIFACT_SHA_CACHE_LOCK:
+        _ARTIFACT_SHA_CACHE[cache_key] = object_key
+    return size_bytes, sha256, object_key
+
+
+def _upload_json(object_key: str, payload: Any, *, db: Session | None = None) -> tuple[int, str, str]:
     content = json.dumps(
         _sanitize_for_json(payload),
         ensure_ascii=False,
@@ -245,39 +400,32 @@ def _upload_json(object_key: str, payload: Any) -> tuple[int, str]:
         cls=PlotlyJSONEncoder,
         default=_json_default,
     ).encode("utf-8")
-    s3.put_object(
-        Bucket=settings.S3_BUCKET,
-        Key=object_key,
-        Body=content,
-        ContentType="application/json",
+    return _upload_content(
+        object_key=object_key,
+        content_type="application/json",
+        content=content,
+        db=db,
     )
-    return len(content), _sha256_bytes(content)
 
 
-def _upload_text(object_key: str, text_content: str) -> tuple[int, str]:
-    ensure_bucket()
-    s3 = s3_client()
+def _upload_text(object_key: str, text_content: str, *, db: Session | None = None) -> tuple[int, str, str]:
     content = text_content.encode("utf-8")
-    s3.put_object(
-        Bucket=settings.S3_BUCKET,
-        Key=object_key,
-        Body=content,
-        ContentType="text/plain",
+    return _upload_content(
+        object_key=object_key,
+        content_type="text/plain",
+        content=content,
+        db=db,
     )
-    return len(content), _sha256_bytes(content)
 
 
-def _upload_csv(object_key: str, frame: pd.DataFrame) -> tuple[int, str]:
-    ensure_bucket()
-    s3 = s3_client()
+def _upload_csv(object_key: str, frame: pd.DataFrame, *, db: Session | None = None) -> tuple[int, str, str]:
     content = frame.to_csv(index=False).encode("utf-8")
-    s3.put_object(
-        Bucket=settings.S3_BUCKET,
-        Key=object_key,
-        Body=content,
-        ContentType="text/csv",
+    return _upload_content(
+        object_key=object_key,
+        content_type="text/csv",
+        content=content,
+        db=db,
     )
-    return len(content), _sha256_bytes(content)
 
 
 def _as_float(v, default: float | None = None) -> float | None:
@@ -485,23 +633,17 @@ def _coerce_datetime_value(value: Any, *, utc: bool) -> pd.Timestamp | None:
     return pd.Timestamp(parsed)
 
 
-def _build_dataset_object_key(filename: str, data_hash: str) -> str:
-    return f"datasets/{data_hash}/{filename}"
-
-
-def _materialize_dataset_file(*, filename: str, data_hash: str) -> Path:
-    s3 = s3_client()
-    object_key = _build_dataset_object_key(filename=filename, data_hash=data_hash)
-    payload = s3.get_object(Bucket=settings.S3_BUCKET, Key=object_key)["Body"].read()
-
-    suffix = Path(filename).suffix or ".bin"
-    tmp = NamedTemporaryFile(delete=False, suffix=suffix)
-    try:
-        tmp.write(payload)
-    finally:
-        tmp.close()
-
-    return Path(tmp.name)
+def _materialize_dataset_file(*, filename: str, data_hash: str, object_key: str | None = None) -> Path:
+    # Prefer the stored object_key (guaranteed to match what was uploaded).
+    # Fall back to canonical reconstruction for legacy rows where it is NULL.
+    key = object_key or build_dataset_object_key(data_hash=data_hash, filename=filename)
+    effective_filename = str(filename or Path(key).name or "dataset.bin")
+    return _materialize_object_to_cache(
+        bucket=settings.S3_BUCKET,
+        object_key=key,
+        cache_key=f"uploaded/{data_hash}",
+        filename=effective_filename,
+    )
 
 
 def _store_key_for_symbol(*, db: Session, symbol: str, timeframe: str = "1D") -> str:
@@ -516,17 +658,17 @@ def _store_key_for_symbol(*, db: Session, symbol: str, timeframe: str = "1D") ->
 
 
 def _materialize_store_parquet(*, object_key: str) -> Path:
-    s3 = s3_client()
-    payload = s3.get_object(Bucket=settings.S3_BUCKET, Key=object_key)["Body"].read()
-    if not payload:
-        raise RuntimeError(f"Empty parquet object: {object_key}")
-
-    tmp = NamedTemporaryFile(delete=False, suffix=".parquet")
-    try:
-        tmp.write(payload)
-    finally:
-        tmp.close()
-    return Path(tmp.name)
+    store_hash = _sha256_bytes(object_key.encode("utf-8"))
+    filename = Path(object_key).name or "ohlcv.parquet"
+    if not str(filename).lower().endswith(".parquet"):
+        filename = f"{filename}.parquet"
+    return _materialize_object_to_cache(
+        bucket=settings.S3_BUCKET,
+        object_key=object_key,
+        cache_key=f"store/{store_hash}",
+        filename=filename,
+        require_non_empty=True,
+    )
 
 
 def _normalize_symbols(raw_symbols) -> list[str]:
@@ -669,6 +811,27 @@ def _infer_run_mode(spec_json: dict[str, Any]) -> str:
     optimization = dict(spec_json.get("optimization") or {})
     walk_forward = dict(optimization.get("walk_forward") or {})
     return "walk_forward" if bool(walk_forward.get("enabled", False)) else "single"
+
+
+def _assert_wfo_resolved_dates(spec_json: dict[str, Any], *, caller: str) -> None:
+    optimization = dict(spec_json.get("optimization") or {})
+    walk_forward = dict(optimization.get("walk_forward") or {})
+    if not bool(walk_forward.get("enabled", False)):
+        return
+
+    missing_fields: list[str] = []
+    for field in ("resolved_start_date", "resolved_end_date"):
+        if str(walk_forward.get(field) or "").strip():
+            continue
+        missing_fields.append(f"optimization.walk_forward.{field}")
+
+    if missing_fields:
+        raise ValueError(
+            f"{caller}: walk_forward.enabled=true requires resolved date bounds before run_pipeline. "
+            f"Missing {', '.join(missing_fields)}. "
+            "These fields must be produced by core/quant_core/wfo/date_resolution.py "
+            "(resolve_wfo_start_end_dates)."
+        )
 
 
 def _extract_seed(spec_json: dict[str, Any]) -> int | None:
@@ -840,6 +1003,7 @@ def _run_symbol_pipeline(spec_json: dict, symbol: str, dataset_path: str | None)
         sym_spec.setdefault("data", {})
         sym_spec["data"]["source"] = "bmce"
         sym_spec["data"]["bmce_paths"] = dataset_path
+    _assert_wfo_resolved_dates(sym_spec, caller="_run_symbol_pipeline")
     return symbol, run_pipeline(sym_spec)
 
 
@@ -1108,6 +1272,135 @@ def _walk_forward_oos_summary_by_kind(out: dict[str, Any]) -> dict[str, dict[str
     return out_summary
 
 
+def _decode_storage_rank(rank: Any) -> tuple[int | None, int | None]:
+    rank_int = _as_int(rank)
+    if rank_int is None or rank_int <= 0:
+        return None, None
+    if rank_int <= 1000:
+        return 0, int(rank_int)
+    return int(rank_int // 1000), int(rank_int % 1000 or 1000)
+
+
+def _extract_horizon_and_local_rank(row: dict[str, Any]) -> tuple[str | None, int | None, int | None]:
+    params = _as_dict(row.get("params_json"))
+    horizon = str(
+        params.get("simple_wfo.horizon")
+        or params.get("walk_forward.horizon")
+        or ""
+    ).strip().lower() or None
+    local_rank = _as_int(params.get("simple_wfo.rank"))
+    horizon_index = None
+    if local_rank is None:
+        horizon_index, local_rank = _decode_storage_rank(row.get("rank"))
+    else:
+        horizon_index, _ = _decode_storage_rank(row.get("rank"))
+    return horizon, local_rank, horizon_index
+
+
+def _slice_bars_to_last_oos_window(
+    bars: pd.DataFrame,
+    *,
+    last_test_start: Any,
+    last_test_end: Any,
+) -> tuple[pd.DataFrame, str, list[str]]:
+    warnings: list[str] = []
+    if bars is None or bars.empty:
+        return pd.DataFrame(), "empty_bars", ["bars are empty; cannot slice last OOS window."]
+
+    start_raw = str(last_test_start or "").strip()
+    end_raw = str(last_test_end or "").strip()
+    if not start_raw or not end_raw:
+        return bars, "full_bars", warnings
+
+    start_ts = pd.to_datetime(start_raw, errors="coerce", utc=True)
+    end_ts = pd.to_datetime(end_raw, errors="coerce", utc=True)
+    if pd.isna(start_ts) or pd.isna(end_ts):
+        warnings.append("invalid last_test_start/end; using full bars for opportunity.")
+        return bars, "full_bars_fallback_invalid_bounds", warnings
+
+    idx_utc = pd.to_datetime(pd.Series(bars.index), errors="coerce", utc=True)
+    mask = idx_utc.notna() & (idx_utc >= start_ts) & (idx_utc <= (end_ts + pd.Timedelta(days=1) - pd.Timedelta(nanoseconds=1)))
+    sliced = bars.loc[mask.to_numpy()]
+    if sliced.empty:
+        warnings.append("last_test_start/end produced empty slice; using full bars for opportunity.")
+        return bars, "full_bars_fallback_empty_slice", warnings
+    return sliced, "last_oos_window", warnings
+
+
+def _wf_summary_from_best_params_summary(summary: dict[str, Any]) -> dict[str, Any]:
+    payload = _as_dict(summary)
+    out = {
+        "n_folds": _as_int(payload.get("n_folds")),
+        "objective_mean": _as_float(payload.get("objective_mean"), _as_float(payload.get("mean"), _as_float(payload.get("selection_score")))),
+        "objective_median": _as_float(payload.get("objective_median"), _as_float(payload.get("median"))),
+        "positive_ratio": _as_float(payload.get("positive_ratio")),
+        "is_oos_gap_median": _as_float(payload.get("is_oos_gap_median")),
+        "cagr": _as_float(payload.get("cagr")),
+        "sharpe": _as_float(payload.get("sharpe")),
+    }
+    cleaned: dict[str, Any] = {}
+    for key, value in out.items():
+        if value is None:
+            continue
+        cleaned[key] = value
+    return cleaned
+
+
+def _value_matches(lhs: Any, rhs: Any) -> bool:
+    lf = _as_float(lhs)
+    rf = _as_float(rhs)
+    if lf is not None and rf is not None:
+        return abs(lf - rf) <= 1e-12
+    return str(lhs) == str(rhs)
+
+
+def _match_run_fold_rows_for_candidate(
+    fold_rows: list[dict[str, Any]],
+    *,
+    strategy_kind: str,
+    horizon: str | None,
+    params_json: dict[str, Any],
+) -> list[dict[str, Any]]:
+    strategy_kind_norm = _normalize_strategy_kind(strategy_kind)
+    expected_params = {
+        str(k): v
+        for k, v in _as_dict(params_json).items()
+        if str(k).startswith("strategy.") or str(k).startswith("portfolio.")
+    }
+
+    out: list[dict[str, Any]] = []
+    for fold in fold_rows:
+        if _normalize_strategy_kind(fold.get("strategy_kind")) != strategy_kind_norm:
+            continue
+
+        fold_horizon = str(
+            fold.get("horizon")
+            or _as_dict(fold.get("_fold_artifacts")).get("horizon")
+            or ""
+        ).strip().lower() or None
+        if horizon and fold_horizon and fold_horizon != horizon:
+            continue
+
+        matched_params = 0
+        mismatched = False
+        for key, expected_val in expected_params.items():
+            actual_val = fold.get(f"param.{key}")
+            if actual_val is None:
+                actual_val = fold.get(key)
+            if actual_val is None:
+                continue
+            matched_params += 1
+            if not _value_matches(actual_val, expected_val):
+                mismatched = True
+                break
+        if mismatched:
+            continue
+        if expected_params and matched_params == 0:
+            continue
+        out.append(fold)
+    return out
+
+
 def _insert_artifact_row(
     *,
     db: Session,
@@ -1143,6 +1436,138 @@ def _insert_artifact_row(
             "sha": sha256,
         },
     )
+
+
+def _warmup_artifact_options(spec_json: dict[str, Any] | None) -> tuple[bool, int]:
+    env_enabled = _as_bool(os.getenv("WORKER_WARMUP_ARTIFACT_ENABLED"), False)
+    env_max_rows = _as_int(os.getenv("WORKER_WARMUP_ARTIFACT_MAX_ROWS"), 320) or 320
+
+    cfg = dict((spec_json or {}).get("cache") or {})
+    warm_cfg_raw = cfg.get("warmup_artifact")
+    if isinstance(warm_cfg_raw, dict):
+        enabled = _as_bool(warm_cfg_raw.get("enabled"), env_enabled)
+        max_rows = _as_int(warm_cfg_raw.get("max_rows"), env_max_rows) or env_max_rows
+        return enabled, max(1, max_rows)
+    if warm_cfg_raw is not None:
+        enabled = _as_bool(warm_cfg_raw, env_enabled)
+        return enabled, max(1, env_max_rows)
+    return env_enabled, max(1, env_max_rows)
+
+
+def _resolve_dataset_cache_identity(
+    *,
+    dataset_hash: str | None,
+    spec_json: dict[str, Any] | None,
+) -> str:
+    if dataset_hash:
+        return str(dataset_hash)
+
+    spec = dict(spec_json or {})
+    data_cfg = dict(spec.get("data") or {})
+    payload = {
+        "source": str(spec.get("source_key") or data_cfg.get("source") or ""),
+        "symbols": [str(s) for s in list(spec.get("symbols") or data_cfg.get("symbols") or []) if str(s).strip()],
+        "interval": str(data_cfg.get("interval") or data_cfg.get("timeframe") or ""),
+        "start": data_cfg.get("start"),
+        "end": data_cfg.get("end"),
+        "dataset_symbol_map": data_cfg.get("dataset_symbol_map"),
+        "parquet_paths": data_cfg.get("parquet_paths"),
+    }
+    raw = json.dumps(payload, sort_keys=True, ensure_ascii=True, default=str)
+    return f"spec:{hashlib.sha256(raw.encode('utf-8')).hexdigest()}"
+
+
+def _build_warmup_snapshot_payload(
+    *,
+    strategy_kind: str,
+    strategy_payload: dict[str, Any],
+    max_rows: int,
+) -> dict[str, Any] | None:
+    decision_inputs = strategy_payload.get("decision_inputs")
+    if not isinstance(decision_inputs, dict):
+        return None
+
+    symbols_in = decision_inputs.get("symbols")
+    symbols_snapshot: dict[str, Any] = {}
+    if isinstance(symbols_in, dict):
+        for sym_raw, sym_payload_any in symbols_in.items():
+            sym_payload = sym_payload_any if isinstance(sym_payload_any, dict) else {}
+            features = [r for r in list(sym_payload.get("features") or []) if isinstance(r, dict)][-max_rows:]
+            signals = [r for r in list(sym_payload.get("signals") or []) if isinstance(r, dict)][-max_rows:]
+            if not features and not signals:
+                continue
+            symbols_snapshot[str(sym_raw)] = {
+                "features": features,
+                "signals": signals,
+            }
+
+    returns_rows = [r for r in list(decision_inputs.get("returns") or []) if isinstance(r, dict)][-max_rows:]
+    if not symbols_snapshot and not returns_rows:
+        return None
+
+    best_params = _as_dict(strategy_payload.get("best_params"))
+    return {
+        "schema_version": 1,
+        "generated_at": _utcnow().isoformat(),
+        "strategy_kind": strategy_kind,
+        "symbols": symbols_snapshot,
+        "returns": returns_rows,
+        "best_params": best_params,
+    }
+
+
+def _persist_warmup_artifacts(
+    *,
+    db: Session,
+    rid: UUID,
+    out: dict[str, Any],
+    spec_json: dict[str, Any] | None,
+    dataset_hash: str | None,
+) -> None:
+    enabled, max_rows = _warmup_artifact_options(spec_json)
+    if not enabled:
+        return
+
+    strategy_results = out.get("strategy_results") or {}
+    if not isinstance(strategy_results, dict) or not strategy_results:
+        return
+
+    spec = dict(spec_json or {})
+    data_cfg = dict(spec.get("data") or {})
+    dataset_identity = _resolve_dataset_cache_identity(dataset_hash=dataset_hash, spec_json=spec_json)
+    dataset_token = _safe_path_token(dataset_identity, fallback="dataset")
+    timeframe = str(data_cfg.get("interval") or data_cfg.get("timeframe") or "1d")
+    timeframe_token = _safe_path_token(timeframe, fallback="1d")
+
+    for strategy_kind_raw, payload_any in strategy_results.items():
+        strategy_kind = str(strategy_kind_raw).strip().lower()
+        if not strategy_kind:
+            continue
+        payload = payload_any if isinstance(payload_any, dict) else {}
+        snapshot_payload = _build_warmup_snapshot_payload(
+            strategy_kind=strategy_kind,
+            strategy_payload=payload,
+            max_rows=max_rows,
+        )
+        if not snapshot_payload:
+            continue
+
+        strategy_token = _safe_path_token(strategy_kind, fallback="strategy")
+        object_key = (
+            f"cache/warmup/{dataset_token}/{timeframe_token}/{strategy_token}/snapshot.json"
+        )
+        size_bytes, sha256, effective_key = _upload_json(object_key, snapshot_payload, db=db)
+        _insert_artifact_row(
+            db=db,
+            rid=rid,
+            symbol="__ALL__",
+            artifact_type="cache_warmup_json",
+            name=f"warmup.{strategy_kind}",
+            object_key=effective_key,
+            content_type="application/json",
+            size_bytes=size_bytes,
+            sha256=sha256,
+        )
 
 
 def _persist_integrity(
@@ -1199,14 +1624,14 @@ def _persist_integrity(
     )
 
     object_key = f"runs/{rid}/integrity/report.json"
-    size_bytes, sha256 = _upload_json(object_key, report)
+    size_bytes, sha256, effective_key = _upload_json(object_key, report, db=db)
     _insert_artifact_row(
         db=db,
         rid=rid,
         symbol="__ALL__",
         artifact_type="run_integrity_json",
         name="integrity.report",
-        object_key=object_key,
+        object_key=effective_key,
         content_type="application/json",
         size_bytes=size_bytes,
         sha256=sha256,
@@ -1220,9 +1645,154 @@ def _persist_walk_forward_folds(
     out: dict[str, Any],
     default_symbol: str,
 ) -> None:
+    can_persist_run_fold = _has_table(db, "run_fold")
+    artifacts = _as_dict(out.get("artifacts"))
     simple_wfo = out.get("simple_wfo_multi_horizon")
+    if not isinstance(simple_wfo, dict):
+        simple_wfo = artifacts.get("simple_wfo_multi_horizon")
     if isinstance(simple_wfo, dict) and _as_bool(simple_wfo.get("enabled"), False):
-        # Simplified WFO mode intentionally hides fold-by-fold persistence/details.
+        simple_payload = dict(simple_wfo or {})
+        rows_by_horizon_raw = simple_payload.get("fold_rows_by_horizon")
+        rows_by_horizon = rows_by_horizon_raw if isinstance(rows_by_horizon_raw, dict) else {}
+        summary_by_horizon_raw = simple_payload.get("summary_by_horizon")
+        summary_by_horizon = summary_by_horizon_raw if isinstance(summary_by_horizon_raw, dict) else {}
+
+        horizons: list[str] = []
+        for item in list(simple_payload.get("horizons") or []):
+            token = str(item or "").strip().lower()
+            if token and token not in horizons:
+                horizons.append(token)
+        for item in list(rows_by_horizon.keys()):
+            token = str(item or "").strip().lower()
+            if token and token not in horizons:
+                horizons.append(token)
+        for item in list(summary_by_horizon.keys()):
+            token = str(item or "").strip().lower()
+            if token and token not in horizons:
+                horizons.append(token)
+
+        if not horizons:
+            return
+
+        for horizon_index, horizon in enumerate(horizons):
+            rows = [
+                dict(r)
+                for r in list(rows_by_horizon.get(horizon) or [])
+                if isinstance(r, dict)
+            ]
+
+            if rows and can_persist_run_fold:
+                for i, row in enumerate(rows):
+                    local_fold = _as_int(row.get("fold_index"))
+                    if local_fold is None:
+                        period_label = str(row.get("period") or row.get("label") or "")
+                        if period_label.lower().startswith("fold"):
+                            try:
+                                local_fold = int(period_label.split()[-1]) - 1
+                            except Exception:
+                                local_fold = i
+                        else:
+                            local_fold = i
+                    trial_rank = _as_int(row.get("trial_rank"), 1) or 1
+                    fold_index = horizon_index * 1_000_000 + int(local_fold) * 1000 + int(trial_rank)
+
+                    db.execute(
+                        text(
+                            """
+                            insert into run_fold(
+                                run_id, fold_index, train_start, train_end, test_start, test_end, fold_metrics_json, fold_artifacts, created_at
+                            ) values (
+                                :run_id, :fold_index, :train_start, :train_end, :test_start, :test_end,
+                                cast(:fold_metrics_json as jsonb), cast(:fold_artifacts as jsonb), :created_at
+                            )
+                            on conflict (run_id, fold_index)
+                            do update set
+                                train_start = excluded.train_start,
+                                train_end = excluded.train_end,
+                                test_start = excluded.test_start,
+                                test_end = excluded.test_end,
+                                fold_metrics_json = excluded.fold_metrics_json,
+                                fold_artifacts = excluded.fold_artifacts,
+                                created_at = excluded.created_at
+                            """
+                        ),
+                        {
+                            "run_id": rid,
+                            "fold_index": int(fold_index),
+                            "train_start": _to_pg_ts(row.get("train_start")),
+                            "train_end": _to_pg_ts(row.get("train_end")),
+                            "test_start": _to_pg_ts(row.get("test_start") or row.get("start")),
+                            "test_end": _to_pg_ts(row.get("test_end") or row.get("end")),
+                            "fold_metrics_json": _json_dumps_pg(row),
+                            "fold_artifacts": _json_dumps_pg(
+                                {
+                                    "symbol": default_symbol,
+                                    "horizon": horizon,
+                                    "horizon_label": row.get("horizon_label"),
+                                    "local_fold_index": int(local_fold),
+                                    "trial_rank": int(trial_rank),
+                                }
+                            ),
+                            "created_at": _utcnow(),
+                        },
+                    )
+
+            folds_object_key = f"runs/{rid}/wfo/{default_symbol}/{horizon}/folds.json"
+            size_bytes, sha256, effective_key = _upload_json(folds_object_key, rows, db=db)
+            _insert_artifact_row(
+                db=db,
+                rid=rid,
+                symbol=str(default_symbol or "__ALL__"),
+                artifact_type="walk_forward_json",
+                name="walk_forward.folds",
+                object_key=effective_key,
+                content_type="application/json",
+                size_bytes=size_bytes,
+                sha256=sha256,
+            )
+
+            summary_payload = _as_dict(summary_by_horizon.get(horizon))
+            if not summary_payload:
+                oos_vals = pd.to_numeric(pd.Series([r.get("objective_value") for r in rows]), errors="coerce").dropna()
+                positives = float((oos_vals > 0).mean()) if not oos_vals.empty else None
+                last_test_start = None
+                last_test_end = None
+                if rows:
+                    sorted_rows = sorted(
+                        rows,
+                        key=lambda r: pd.to_datetime(r.get("test_end") or r.get("end"), errors="coerce"),
+                    )
+                    last_row = sorted_rows[-1]
+                    last_start_ts = pd.to_datetime(last_row.get("test_start") or last_row.get("start"), errors="coerce")
+                    last_end_ts = pd.to_datetime(last_row.get("test_end") or last_row.get("end"), errors="coerce")
+                    if pd.notna(last_start_ts):
+                        last_test_start = pd.Timestamp(last_start_ts).date().isoformat()
+                    if pd.notna(last_end_ts):
+                        last_test_end = pd.Timestamp(last_end_ts).date().isoformat()
+                summary_payload = {
+                    "n_folds": int(len(oos_vals)),
+                    "mean": float(oos_vals.mean()) if not oos_vals.empty else None,
+                    "median": float(oos_vals.median()) if not oos_vals.empty else None,
+                    "std": float(oos_vals.std(ddof=0)) if not oos_vals.empty else None,
+                    "positive_ratio": positives,
+                    "last_test_start": last_test_start,
+                    "last_test_end": last_test_end,
+                }
+            summary_payload["horizon"] = horizon
+
+            summary_object_key = f"runs/{rid}/wfo/{default_symbol}/{horizon}/summary.json"
+            size_bytes, sha256, effective_key = _upload_json(summary_object_key, summary_payload, db=db)
+            _insert_artifact_row(
+                db=db,
+                rid=rid,
+                symbol=str(default_symbol or "__ALL__"),
+                artifact_type="walk_forward_json",
+                name="walk_forward.summary",
+                object_key=effective_key,
+                content_type="application/json",
+                size_bytes=size_bytes,
+                sha256=sha256,
+            )
         return
 
     rows = _walk_forward_rows(out)
@@ -1242,73 +1812,76 @@ def _persist_walk_forward_folds(
     date_resolution = dict(wfo_meta.get("date_resolution") or {})
 
     for i, row in enumerate(rows):
-        fold_index = _as_int(row.get("fold_index"))
-        if fold_index is None:
+        local_fold_index = _as_int(row.get("fold_index"))
+        if local_fold_index is None:
             period_label = str(row.get("period") or row.get("label") or "")
             if period_label.lower().startswith("fold"):
                 try:
-                    fold_index = int(period_label.split()[-1]) - 1
+                    local_fold_index = int(period_label.split()[-1]) - 1
                 except Exception:
-                    fold_index = i
+                    local_fold_index = i
             else:
-                fold_index = i
+                local_fold_index = i
+        trial_rank = _as_int(row.get("trial_rank"), 1) or 1
+        fold_index = int(local_fold_index) * 1000 + int(trial_rank)
 
-        db.execute(
-            text(
-                """
-                insert into run_fold(
-                    run_id, fold_index, train_start, train_end, test_start, test_end, fold_metrics_json, fold_artifacts, created_at
-                ) values (
-                    :run_id, :fold_index, :train_start, :train_end, :test_start, :test_end,
-                    cast(:fold_metrics_json as jsonb), cast(:fold_artifacts as jsonb), :created_at
-                )
-                on conflict (run_id, fold_index)
-                do update set
-                    train_start = excluded.train_start,
-                    train_end = excluded.train_end,
-                    test_start = excluded.test_start,
-                    test_end = excluded.test_end,
-                    fold_metrics_json = excluded.fold_metrics_json,
-                    fold_artifacts = excluded.fold_artifacts,
-                    created_at = excluded.created_at
-                """
-            ),
-            {
-                "run_id": rid,
-                "fold_index": int(fold_index),
-                "train_start": _to_pg_ts(row.get("train_start")),
-                "train_end": _to_pg_ts(row.get("train_end")),
-                "test_start": _to_pg_ts(row.get("test_start") or row.get("start")),
-                "test_end": _to_pg_ts(row.get("test_end") or row.get("end")),
-                "fold_metrics_json": _json_dumps_pg(row),
-                "fold_artifacts": _json_dumps_pg(
-                    {
-                        "symbol": default_symbol,
-                        "horizon": horizon,
-                        "horizon_label": horizon_label,
-                        "horizon_cfg": horizon_cfg,
-                        "train": wfo_train,
-                        "test": wfo_test,
-                        "step": wfo_step,
-                        "resolved_start_date": resolved_start_date,
-                        "resolved_end_date": resolved_end_date,
-                        "end_date_policy": end_date_policy,
-                        "date_resolution": date_resolution,
-                    }
+        if can_persist_run_fold:
+            db.execute(
+                text(
+                    """
+                    insert into run_fold(
+                        run_id, fold_index, train_start, train_end, test_start, test_end, fold_metrics_json, fold_artifacts, created_at
+                    ) values (
+                        :run_id, :fold_index, :train_start, :train_end, :test_start, :test_end,
+                        cast(:fold_metrics_json as jsonb), cast(:fold_artifacts as jsonb), :created_at
+                    )
+                    on conflict (run_id, fold_index)
+                    do update set
+                        train_start = excluded.train_start,
+                        train_end = excluded.train_end,
+                        test_start = excluded.test_start,
+                        test_end = excluded.test_end,
+                        fold_metrics_json = excluded.fold_metrics_json,
+                        fold_artifacts = excluded.fold_artifacts,
+                        created_at = excluded.created_at
+                    """
                 ),
-                "created_at": _utcnow(),
-            },
-        )
+                {
+                    "run_id": rid,
+                    "fold_index": int(fold_index),
+                    "train_start": _to_pg_ts(row.get("train_start")),
+                    "train_end": _to_pg_ts(row.get("train_end")),
+                    "test_start": _to_pg_ts(row.get("test_start") or row.get("start")),
+                    "test_end": _to_pg_ts(row.get("test_end") or row.get("end")),
+                    "fold_metrics_json": _json_dumps_pg(row),
+                    "fold_artifacts": _json_dumps_pg(
+                        {
+                            "symbol": default_symbol,
+                            "horizon": horizon,
+                            "horizon_label": horizon_label,
+                            "horizon_cfg": horizon_cfg,
+                            "train": wfo_train,
+                            "test": wfo_test,
+                            "step": wfo_step,
+                            "resolved_start_date": resolved_start_date,
+                            "resolved_end_date": resolved_end_date,
+                            "end_date_policy": end_date_policy,
+                            "date_resolution": date_resolution,
+                        }
+                    ),
+                    "created_at": _utcnow(),
+                },
+            )
 
     object_key = f"runs/{rid}/wfo/{default_symbol}/{horizon}/folds.json"
-    size_bytes, sha256 = _upload_json(object_key, rows)
+    size_bytes, sha256, effective_key = _upload_json(object_key, rows, db=db)
     _insert_artifact_row(
         db=db,
         rid=rid,
         symbol=str(default_symbol or "__ALL__"),
         artifact_type="walk_forward_json",
         name="walk_forward.folds",
-        object_key=object_key,
+        object_key=effective_key,
         content_type="application/json",
         size_bytes=size_bytes,
         sha256=sha256,
@@ -1378,14 +1951,14 @@ def _persist_significance(
         persisted[kind] = payload
 
     object_key = f"runs/{rid}/significance/report.json"
-    size_bytes, sha256 = _upload_json(object_key, persisted)
+    size_bytes, sha256, effective_key = _upload_json(object_key, persisted, db=db)
     _insert_artifact_row(
         db=db,
         rid=rid,
         symbol="__ALL__",
         artifact_type="run_significance_json",
         name="significance.report",
-        object_key=object_key,
+        object_key=effective_key,
         content_type="application/json",
         size_bytes=size_bytes,
         sha256=sha256,
@@ -1480,14 +2053,18 @@ def _persist_risk(
     )
 
     object_key = f"runs/{rid}/risk/report.json"
-    size_bytes, sha256 = _upload_json(object_key, {**risk_report, "strategy_kind": primary_kind})
+    size_bytes, sha256, effective_key = _upload_json(
+        object_key,
+        {**risk_report, "strategy_kind": primary_kind},
+        db=db,
+    )
     _insert_artifact_row(
         db=db,
         rid=rid,
         symbol="__ALL__",
         artifact_type="run_risk_json",
         name="risk.report",
-        object_key=object_key,
+        object_key=effective_key,
         content_type="application/json",
         size_bytes=size_bytes,
         sha256=sha256,
@@ -1539,14 +2116,14 @@ def _persist_mean_reversion(
                 report["pairs"].append({"y": sym_a, "x": sym_b, "error": str(exc)})
 
     object_key = f"runs/{rid}/mean_reversion/report.json"
-    size_bytes, sha256 = _upload_json(object_key, report)
+    size_bytes, sha256, effective_key = _upload_json(object_key, report, db=db)
     _insert_artifact_row(
         db=db,
         rid=rid,
         symbol="__ALL__",
         artifact_type="mean_reversion_json",
         name="mean_reversion.report",
-        object_key=object_key,
+        object_key=effective_key,
         content_type="application/json",
         size_bytes=size_bytes,
         sha256=sha256,
@@ -1564,12 +2141,29 @@ def _persist_decisions(
     decision_source_by_kind = _decision_source_by_kind(out)
     leaderboard_rows = [r for r in list(out.get("leaderboard") or []) if isinstance(r, dict)]
     top_k = max(1, int(settings.TOP_K_DECISIONS or 1))
+    simple_wfo = out.get("simple_wfo_multi_horizon")
+    simple_wfo_enabled = isinstance(simple_wfo, dict) and _as_bool(simple_wfo.get("enabled"), False)
     bars_by_symbol = _decision_bars_by_symbol(decision_source_by_kind)
     signals_by_kind_symbol = _decision_signals_by_kind_symbol(decision_source_by_kind)
     returns_by_kind = _decision_returns_by_kind(decision_source_by_kind)
     ledger_by_kind = _decision_trade_ledger_by_kind(decision_source_by_kind)
     wf_rows = _walk_forward_rows(out)
     wf_oos_summary_by_kind = _walk_forward_oos_summary_by_kind(out)
+    run_fold_rows: list[dict[str, Any]] = []
+    if _has_table(db, "run_fold"):
+        try:
+            fold_db_rows = db.execute(
+                text("select fold_metrics_json, fold_artifacts from run_fold where run_id = :run_id"),
+                {"run_id": rid},
+            ).mappings().all()
+            for fold_db_row in fold_db_rows:
+                fold_metrics = _as_dict(fold_db_row.get("fold_metrics_json"))
+                if not fold_metrics:
+                    continue
+                fold_metrics["_fold_artifacts"] = _as_dict(fold_db_row.get("fold_artifacts"))
+                run_fold_rows.append(fold_metrics)
+        except Exception:
+            run_fold_rows = []
 
     normalized_rows: list[dict[str, Any]] = []
     if leaderboard_rows:
@@ -1631,20 +2225,33 @@ def _persist_decisions(
     if not normalized_rows:
         return
 
-    by_symbol_rows: dict[str, list[dict[str, Any]]] = {}
-    for row in normalized_rows:
-        by_symbol_rows.setdefault(_normalize_symbol(row.get("symbol")), []).append(row)
-
     candidates: list[dict[str, Any]] = []
-    for symbol, rows in by_symbol_rows.items():
-        ranked = sorted(
-            rows,
+    if simple_wfo_enabled:
+        ranked_rows = sorted(
+            normalized_rows,
             key=lambda r: (
                 int(r.get("rank") or 999999),
                 -float(r.get("cagr") if r.get("cagr") is not None else -999999.0),
             ),
         )
-        candidates.extend(ranked[:top_k])
+        for row in ranked_rows:
+            _, local_rank, _ = _extract_horizon_and_local_rank(row)
+            if local_rank is None or int(local_rank) > int(TOP_N_DECISION_DETAILS):
+                continue
+            candidates.append(row)
+    else:
+        by_symbol_rows: dict[str, list[dict[str, Any]]] = {}
+        for row in normalized_rows:
+            by_symbol_rows.setdefault(_normalize_symbol(row.get("symbol")), []).append(row)
+        for symbol, rows in by_symbol_rows.items():
+            ranked = sorted(
+                rows,
+                key=lambda r: (
+                    int(r.get("rank") or 999999),
+                    -float(r.get("cagr") if r.get("cagr") is not None else -999999.0),
+                ),
+            )
+            candidates.extend(ranked[:top_k])
 
     by_symbol_kind_rows: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for row in normalized_rows:
@@ -1672,7 +2279,17 @@ def _persist_decisions(
         )
         direction = 1 if signal_today > 0 else -1 if signal_today < 0 else 0
 
-        levels = compute_levels_support_resistance(bars, direction=direction)
+        last_test_start = params_json.get("last_test_start")
+        last_test_end = params_json.get("last_test_end")
+        bars_for_opportunity, opportunity_source, opportunity_warnings = _slice_bars_to_last_oos_window(
+            bars,
+            last_test_start=last_test_start,
+            last_test_end=last_test_end,
+        )
+        if bars_for_opportunity is None or bars_for_opportunity.empty:
+            bars_for_opportunity = bars
+
+        levels = compute_levels_support_resistance(bars_for_opportunity, direction=direction)
         risk_payload = compute_rr_and_invalidation(
             direction=direction,
             entry=_as_float(levels.get("entry")),
@@ -1680,13 +2297,14 @@ def _persist_decisions(
             target=_as_float(levels.get("target")),
         )
         opportunity = compute_opportunity_score(
-            bars=bars,
+            bars=bars_for_opportunity,
             strategy_direction=direction,
             strategy_kind=strategy_kind,
             levels_payload=levels,
         )
 
         summary = _as_dict(params_json.get("_summary"))
+        horizon, _, _ = _extract_horizon_and_local_rank(row)
         row_for_confidence = {
             "strategy_kind": strategy_kind,
             "best_params_json": params_json,
@@ -1700,12 +2318,30 @@ def _persist_decisions(
         same_rows = by_symbol_kind_rows.get((symbol, strategy_kind), [])
         returns = returns_by_kind.get(strategy_kind, [])
         trade_ledger = ledger_by_kind.get(strategy_kind, [])
+        matched_run_fold_rows = _match_run_fold_rows_for_candidate(
+            run_fold_rows,
+            strategy_kind=strategy_kind,
+            horizon=horizon,
+            params_json=params_json,
+        )
+        confidence_rows = matched_run_fold_rows if matched_run_fold_rows else wf_rows
+        confidence_summary = None
+        confidence_source = "run_fold" if matched_run_fold_rows else "decision_support"
+        if not matched_run_fold_rows:
+            fallback_summary = _wf_summary_from_best_params_summary(summary)
+            if fallback_summary:
+                confidence_summary = fallback_summary
+                confidence_source = "best_params_summary_fallback"
+            else:
+                confidence_summary = wf_oos_summary_by_kind.get(strategy_kind)
+                confidence_source = "decision_support"
+
         seed_key = f"{rid}:{symbol}:{strategy_kind}:{trial_id}"
         confidence = compute_confidence_score(
             row=row_for_confidence,
             same_strategy_rows=same_rows,
-            walk_forward_rows=wf_rows,
-            walk_forward_summary=wf_oos_summary_by_kind.get(strategy_kind),
+            walk_forward_rows=confidence_rows,
+            walk_forward_summary=confidence_summary,
             trade_ledger=trade_ledger,
             returns=returns,
             mc_paths=int(settings.MC_NUM_PATHS),
@@ -1713,8 +2349,8 @@ def _persist_decisions(
         )
         as_of_date = None
         try:
-            if len(bars.index) > 0:
-                as_of_ts = pd.to_datetime(bars.index[-1], errors="coerce")
+            if len(bars_for_opportunity.index) > 0:
+                as_of_ts = pd.to_datetime(bars_for_opportunity.index[-1], errors="coerce")
                 if pd.notna(as_of_ts):
                     as_of_date = as_of_ts.date().isoformat()
         except Exception:
@@ -1733,6 +2369,12 @@ def _persist_decisions(
                 "params_hash": params_hash,
                 "signal_today": signal_today,
                 "source": "post_run_worker",
+                "opportunity_source": opportunity_source,
+                "opportunity_last_test_start": last_test_start,
+                "opportunity_last_test_end": last_test_end,
+                "opportunity_warnings": opportunity_warnings,
+                "confidence_source": confidence_source,
+                "confidence_n_rows": len(confidence_rows),
             },
             as_of_date=as_of_date,
         )
@@ -1826,20 +2468,93 @@ def _persist_optimization_timing(
     if profile_text and isinstance(profile_text, str):
         try:
             object_key = f"runs/{rid}/_debug/profile.txt"
-            size_bytes, sha256 = _upload_text(object_key, profile_text)
+            size_bytes, sha256, effective_key = _upload_text(object_key, profile_text, db=db)
             _insert_artifact_row(
                 db=db,
                 rid=rid,
                 symbol="__opt__",
                 artifact_type="profile_txt",
                 name="optimize_profile",
-                object_key=object_key,
+                object_key=effective_key,
                 content_type="text/plain",
                 size_bytes=size_bytes,
                 sha256=sha256,
             )
         except Exception:
             pass
+
+
+def _upload_perf_profile(
+    *,
+    db: Session,
+    rid: UUID,
+    out: dict[str, Any],
+    perf_phases: dict[str, Any],
+    total_ms: float,
+) -> None:
+    """Build and upload runs/{run_id}/_perf/profile.json with nested timing data."""
+    pipeline_perf = dict(out.get("_perf") or {})
+    opt_timing = dict(out.get("optimization_timing") or {})
+
+    params_tested = int(opt_timing.get("n_trials_run", 0) or 0)
+
+    # Fold counts from nested _perf
+    folds_by_kind: dict[str, list] = dict(pipeline_perf.get("folds_by_kind") or {})
+    horizons_raw = dict(pipeline_perf.get("horizons") or {})
+
+    # For multi-horizon runs, aggregate fold counts from nested horizon perfs
+    if horizons_raw and not folds_by_kind:
+        for h_perf in horizons_raw.values():
+            if isinstance(h_perf, dict):
+                for k, v in dict(h_perf.get("folds_by_kind") or {}).items():
+                    folds_by_kind.setdefault(k, []).extend(v if isinstance(v, list) else [])
+        params_tested = params_tested or sum(
+            int(h.get("folds_count", 0)) * int(opt_timing.get("n_trials_run", 0) or 0)
+            for h in horizons_raw.values()
+            if isinstance(h, dict)
+        )
+
+    folds_total = sum(len(v) for v in folds_by_kind.values())
+    if not folds_total and horizons_raw:
+        folds_total = sum(
+            int(h.get("folds_count", 0))
+            for h in horizons_raw.values()
+            if isinstance(h, dict)
+        )
+
+    profile: dict[str, Any] = {
+        "generated_at": _utcnow().isoformat(),
+        "total_ms": round(total_ms, 2),
+        "cpu_threads": int(os.cpu_count() or 1),
+        "phases_ms": perf_phases,
+        "horizons": horizons_raw,
+        "folds_by_kind": folds_by_kind,
+        "folds_total": folds_total,
+        "params_tested": params_tested,
+        "opt_timing": {k: v for k, v in opt_timing.items() if k != "profile_text"},
+    }
+
+    object_key = f"runs/{rid}/_perf/profile.json"
+    size_bytes, sha256, effective_key = _upload_json(object_key, profile, db=db)
+    _insert_artifact_row(
+        db=db,
+        rid=rid,
+        symbol="__perf__",
+        artifact_type="perf_profile",
+        name="perf_profile",
+        object_key=effective_key,
+        content_type="application/json",
+        size_bytes=size_bytes,
+        sha256=sha256,
+    )
+    logger.info(
+        "[perf] run=%s total=%.0f ms pipeline=%.0f ms folds=%d params=%d",
+        rid,
+        total_ms,
+        float(perf_phases.get("pipeline_ms", 0)),
+        folds_total,
+        params_tested,
+    )
 
 
 def _persist_pipeline_output(
@@ -1850,6 +2565,7 @@ def _persist_pipeline_output(
     default_symbol: str,
     spec_json: dict[str, Any] | None = None,
     dataset_meta: dict[str, Any] | None = None,
+    dataset_hash: str | None = None,
 ) -> None:
     # --- 0) run-level metrics + fills + position ledger ---
     strategy_results_for_metrics = out.get("strategy_results") or {}
@@ -1973,30 +2689,17 @@ def _persist_pipeline_output(
         if not fig_json:
             continue
         object_key = f"runs/{rid}/symbols/{sym}/plots/price_indicators_trades.json"
-        size_bytes, sha256 = _upload_json(object_key, fig_json)
-
-        db.execute(
-            text(
-                """
-                insert into artifact(
-                    id, run_id, symbol, artifact_type, name, object_key, bucket, content_type, size_bytes, sha256
-                ) values (
-                    :id, :run_id, :symbol, :atype, :name, :key, :bucket, :ctype, :size, :sha
-                )
-                """
-            ),
-            {
-                "id": uuid4(),
-                "run_id": rid,
-                "symbol": sym,
-                "atype": "plotly_json",
-                "name": "price_indicators_trades",
-                "key": object_key,
-                "bucket": settings.S3_BUCKET,
-                "ctype": "application/json",
-                "size": size_bytes,
-                "sha": sha256,
-            },
+        size_bytes, sha256, effective_key = _upload_json(object_key, fig_json, db=db)
+        _insert_artifact_row(
+            db=db,
+            rid=rid,
+            symbol=str(sym),
+            artifact_type="plotly_json",
+            name="price_indicators_trades",
+            object_key=effective_key,
+            content_type="application/json",
+            size_bytes=size_bytes,
+            sha256=sha256,
         )
 
     # --- 1.5) batch period artifacts ---
@@ -2016,60 +2719,43 @@ def _persist_pipeline_output(
             results_df = pd.DataFrame(results_rows)
             if not results_df.empty:
                 object_key = f"{bp_prefix}/results.csv"
-                size_bytes, sha256 = _upload_csv(object_key, results_df)
-                db.execute(
-                    text(
-                        """
-                        insert into artifact(
-                            id, run_id, symbol, artifact_type, name, object_key, bucket, content_type, size_bytes, sha256
-                        ) values (
-                            :id, :run_id, :symbol, :atype, :name, :key, :bucket, :ctype, :size, :sha
-                        )
-                        """
-                    ),
-                    {
-                        "id": uuid4(),
-                        "run_id": rid,
-                        "symbol": bp_symbol,
-                        "atype": "batch_period_csv",
-                        "name": "batch_period.results",
-                        "key": object_key,
-                        "bucket": settings.S3_BUCKET,
-                        "ctype": "text/csv",
-                        "size": size_bytes,
-                        "sha": sha256,
-                    },
+                size_bytes, sha256, effective_key = _upload_csv(object_key, results_df, db=db)
+                _insert_artifact_row(
+                    db=db,
+                    rid=rid,
+                    symbol=bp_symbol,
+                    artifact_type="batch_period_csv",
+                    name="batch_period.results",
+                    object_key=effective_key,
+                    content_type="text/csv",
+                    size_bytes=size_bytes,
+                    sha256=sha256,
                 )
 
         heatmap_json = batch_period.get("heatmap")
         if isinstance(heatmap_json, dict) and heatmap_json:
             object_key = f"{bp_prefix}/heatmap.json"
-            size_bytes, sha256 = _upload_json(object_key, heatmap_json)
-            db.execute(
-                text(
-                    """
-                    insert into artifact(
-                        id, run_id, symbol, artifact_type, name, object_key, bucket, content_type, size_bytes, sha256
-                    ) values (
-                        :id, :run_id, :symbol, :atype, :name, :key, :bucket, :ctype, :size, :sha
-                    )
-                    """
-                ),
-                {
-                    "id": uuid4(),
-                    "run_id": rid,
-                    "symbol": bp_symbol,
-                    "atype": "batch_period_plotly_json",
-                    "name": "batch_period.heatmap",
-                    "key": object_key,
-                    "bucket": settings.S3_BUCKET,
-                    "ctype": "application/json",
-                    "size": size_bytes,
-                    "sha": sha256,
-                },
+            size_bytes, sha256, effective_key = _upload_json(object_key, heatmap_json, db=db)
+            _insert_artifact_row(
+                db=db,
+                rid=rid,
+                symbol=bp_symbol,
+                artifact_type="batch_period_plotly_json",
+                name="batch_period.heatmap",
+                object_key=effective_key,
+                content_type="application/json",
+                size_bytes=size_bytes,
+                sha256=sha256,
             )
 
     strategy_results = out.get("strategy_results") or {}
+    _persist_warmup_artifacts(
+        db=db,
+        rid=rid,
+        out=out,
+        spec_json=spec_json,
+        dataset_hash=dataset_hash,
+    )
     strategy_summary_map = _collect_strategy_summary_by_symbol(strategy_results, default_symbol)
 
     # --- 2) leaderboard ---
@@ -2105,18 +2791,18 @@ def _persist_pipeline_output(
             "max_drawdown": _as_float(row.get("max_drawdown")),
             "sharpe": _as_float(row.get("sharpe")),
         }
-        if rank == 1:
-            strategy_summary = strategy_summary_map.get((symbol_key, strategy_kind), {})
-            merged_summary: dict[str, float] = {}
-            for metric_key in ("total_return", "win_pct", "max_drawdown", "sharpe"):
-                value = row_summary.get(metric_key)
-                if value is None:
-                    value = _as_float(strategy_summary.get(metric_key))
-                if value is None:
-                    continue
-                merged_summary[metric_key] = float(value)
-            if merged_summary:
-                best_params_json["_summary"] = merged_summary
+        existing_summary = _as_dict(best_params_json.get("_summary"))
+        merged_summary: dict[str, Any] = dict(existing_summary)
+        strategy_summary = strategy_summary_map.get((symbol_key, strategy_kind), {}) if rank == 1 else {}
+        for metric_key in ("total_return", "win_pct", "max_drawdown", "sharpe"):
+            value = row_summary.get(metric_key)
+            if value is None and rank == 1:
+                value = _as_float(strategy_summary.get(metric_key))
+            if value is None:
+                continue
+            merged_summary[metric_key] = float(value)
+        if merged_summary:
+            best_params_json["_summary"] = merged_summary
 
         best_params_clean: dict[str, Any] = {}
         for k, v in best_params_json.items():
@@ -2190,29 +2876,17 @@ def _persist_pipeline_output(
             if not fig_json:
                 continue
             object_key = f"runs/{rid}/symbols/{sym}/strategies/{strategy_kind}/plots/price_indicators_trades.json"
-            size_bytes, sha256 = _upload_json(object_key, fig_json)
-            db.execute(
-                text(
-                    """
-                    insert into artifact(
-                        id, run_id, symbol, artifact_type, name, object_key, bucket, content_type, size_bytes, sha256
-                    ) values (
-                        :id, :run_id, :symbol, :atype, :name, :key, :bucket, :ctype, :size, :sha
-                    )
-                    """
-                ),
-                {
-                    "id": uuid4(),
-                    "run_id": rid,
-                    "symbol": sym,
-                    "atype": "strategy_plotly_json",
-                    "name": f"{strategy_kind}.price_indicators_trades",
-                    "key": object_key,
-                    "bucket": settings.S3_BUCKET,
-                    "ctype": "application/json",
-                    "size": size_bytes,
-                    "sha": sha256,
-                },
+            size_bytes, sha256, effective_key = _upload_json(object_key, fig_json, db=db)
+            _insert_artifact_row(
+                db=db,
+                rid=rid,
+                symbol=str(sym),
+                artifact_type="strategy_plotly_json",
+                name=f"{strategy_kind}.price_indicators_trades",
+                object_key=effective_key,
+                content_type="application/json",
+                size_bytes=size_bytes,
+                sha256=sha256,
             )
 
         summary_plots = dict(payload.get("summary_plot_artifacts") or {})
@@ -2224,29 +2898,17 @@ def _persist_pipeline_output(
                 continue
             for sym in target_symbols:
                 object_key = f"runs/{rid}/symbols/{sym}/strategies/{strategy_kind}/plots/{safe_name}.json"
-                size_bytes, sha256 = _upload_json(object_key, fig_json)
-                db.execute(
-                    text(
-                        """
-                        insert into artifact(
-                            id, run_id, symbol, artifact_type, name, object_key, bucket, content_type, size_bytes, sha256
-                        ) values (
-                            :id, :run_id, :symbol, :atype, :name, :key, :bucket, :ctype, :size, :sha
-                        )
-                        """
-                    ),
-                    {
-                        "id": uuid4(),
-                        "run_id": rid,
-                        "symbol": sym,
-                        "atype": "strategy_plotly_json",
-                        "name": f"{strategy_kind}.{safe_name}",
-                        "key": object_key,
-                        "bucket": settings.S3_BUCKET,
-                        "ctype": "application/json",
-                        "size": size_bytes,
-                        "sha": sha256,
-                    },
+                size_bytes, sha256, effective_key = _upload_json(object_key, fig_json, db=db)
+                _insert_artifact_row(
+                    db=db,
+                    rid=rid,
+                    symbol=str(sym),
+                    artifact_type="strategy_plotly_json",
+                    name=f"{strategy_kind}.{safe_name}",
+                    object_key=effective_key,
+                    content_type="application/json",
+                    size_bytes=size_bytes,
+                    sha256=sha256,
                 )
 
         perf_rows = payload.get("trade_performance") or []
@@ -2263,29 +2925,17 @@ def _persist_pipeline_output(
 
                 for sym in target_symbols:
                     object_key = f"runs/{rid}/symbols/{sym}/strategies/{strategy_kind}/tables/trade_performance.csv"
-                    size_bytes, sha256 = _upload_csv(object_key, perf_df)
-                    db.execute(
-                        text(
-                            """
-                            insert into artifact(
-                                id, run_id, symbol, artifact_type, name, object_key, bucket, content_type, size_bytes, sha256
-                            ) values (
-                                :id, :run_id, :symbol, :atype, :name, :key, :bucket, :ctype, :size, :sha
-                            )
-                            """
-                        ),
-                        {
-                            "id": uuid4(),
-                            "run_id": rid,
-                            "symbol": sym,
-                            "atype": "strategy_trade_performance_csv",
-                            "name": f"{strategy_kind}.trade_performance",
-                            "key": object_key,
-                            "bucket": settings.S3_BUCKET,
-                            "ctype": "text/csv",
-                            "size": size_bytes,
-                            "sha": sha256,
-                        },
+                    size_bytes, sha256, effective_key = _upload_csv(object_key, perf_df, db=db)
+                    _insert_artifact_row(
+                        db=db,
+                        rid=rid,
+                        symbol=str(sym),
+                        artifact_type="strategy_trade_performance_csv",
+                        name=f"{strategy_kind}.trade_performance",
+                        object_key=effective_key,
+                        content_type="text/csv",
+                        size_bytes=size_bytes,
+                        sha256=sha256,
                     )
 
                 # Single backtests rely on run_metric for the metrics tab.
@@ -2323,29 +2973,17 @@ def _persist_pipeline_output(
 
                 for sym, sub in grouped:
                     object_key = f"runs/{rid}/symbols/{sym}/strategies/{strategy_kind}/ledgers/trade_ledger.csv"
-                    size_bytes, sha256 = _upload_csv(object_key, sub)
-                    db.execute(
-                        text(
-                            """
-                            insert into artifact(
-                                id, run_id, symbol, artifact_type, name, object_key, bucket, content_type, size_bytes, sha256
-                            ) values (
-                                :id, :run_id, :symbol, :atype, :name, :key, :bucket, :ctype, :size, :sha
-                            )
-                            """
-                        ),
-                        {
-                            "id": uuid4(),
-                            "run_id": rid,
-                            "symbol": sym,
-                            "atype": "strategy_trade_ledger_csv",
-                            "name": f"{strategy_kind}.trade_ledger",
-                            "key": object_key,
-                            "bucket": settings.S3_BUCKET,
-                            "ctype": "text/csv",
-                            "size": size_bytes,
-                            "sha": sha256,
-                        },
+                    size_bytes, sha256, effective_key = _upload_csv(object_key, sub, db=db)
+                    _insert_artifact_row(
+                        db=db,
+                        rid=rid,
+                        symbol=str(sym),
+                        artifact_type="strategy_trade_ledger_csv",
+                        name=f"{strategy_kind}.trade_ledger",
+                        object_key=effective_key,
+                        content_type="text/csv",
+                        size_bytes=size_bytes,
+                        sha256=sha256,
                     )
 
         for cal_key in ("opportunity_calibration", "confidence_calibration"):
@@ -2358,29 +2996,17 @@ def _persist_pipeline_output(
 
             for sym in target_symbols:
                 object_key = f"runs/{rid}/symbols/{sym}/strategies/{strategy_kind}/tables/{cal_key}.csv"
-                size_bytes, sha256 = _upload_csv(object_key, cal_df)
-                db.execute(
-                    text(
-                        """
-                        insert into artifact(
-                            id, run_id, symbol, artifact_type, name, object_key, bucket, content_type, size_bytes, sha256
-                        ) values (
-                            :id, :run_id, :symbol, :atype, :name, :key, :bucket, :ctype, :size, :sha
-                        )
-                        """
-                    ),
-                    {
-                        "id": uuid4(),
-                        "run_id": rid,
-                        "symbol": sym,
-                        "atype": "strategy_decision_calibration_csv",
-                        "name": f"{strategy_kind}.{cal_key}",
-                        "key": object_key,
-                        "bucket": settings.S3_BUCKET,
-                        "ctype": "text/csv",
-                        "size": size_bytes,
-                        "sha": sha256,
-                    },
+                size_bytes, sha256, effective_key = _upload_csv(object_key, cal_df, db=db)
+                _insert_artifact_row(
+                    db=db,
+                    rid=rid,
+                    symbol=str(sym),
+                    artifact_type="strategy_decision_calibration_csv",
+                    name=f"{strategy_kind}.{cal_key}",
+                    object_key=effective_key,
+                    content_type="text/csv",
+                    size_bytes=size_bytes,
+                    sha256=sha256,
                 )
 
     safe_spec = dict(spec_json or {})
@@ -2400,17 +3026,16 @@ def _persist_pipeline_output(
         except Exception:
             pass
 
-    if _has_table(db, "run_fold"):
-        try:
-            with db.begin_nested():
-                _persist_walk_forward_folds(
-                    db=db,
-                    rid=rid,
-                    out=out,
-                    default_symbol=default_symbol,
-                )
-        except Exception:
-            pass
+    try:
+        with db.begin_nested():
+            _persist_walk_forward_folds(
+                db=db,
+                rid=rid,
+                out=out,
+                default_symbol=default_symbol,
+            )
+    except Exception:
+        pass
 
     if _has_table(db, "run_significance"):
         try:
@@ -2455,9 +3080,7 @@ def _persist_pipeline_output(
 
     # Decisions are best-effort and should never invalidate persisted run outputs.
     # Use a savepoint so missing/partial decision schema doesn't abort the main tx.
-    simple_wfo = out.get("simple_wfo_multi_horizon")
-    simple_wfo_enabled = isinstance(simple_wfo, dict) and _as_bool(simple_wfo.get("enabled"), False)
-    if _has_table(db, "strategy_decision") and not simple_wfo_enabled:
+    if _has_table(db, "strategy_decision"):
         try:
             with db.begin_nested():
                 _persist_decisions(
@@ -2481,6 +3104,9 @@ def execute_run(run_id: str) -> dict:
     dataset_hash: str | None = None
     code_version: str | None = None
     run_has_integrity_status = False
+
+    _t_exe_start = time.perf_counter()
+    _perf_phases: dict[str, Any] = {}
 
     try:
         rid = UUID(run_id)
@@ -2511,7 +3137,7 @@ def execute_run(run_id: str) -> dict:
             dataset_row = db.execute(
                 text(
                     """
-                    select id, source, symbol, timeframe, data_hash, filename
+                    select id, source, symbol, timeframe, data_hash, filename, object_key
                     from dataset
                     where id = :id
                     """
@@ -2524,6 +3150,7 @@ def execute_run(run_id: str) -> dict:
             temp_dataset_file = _materialize_dataset_file(
                 filename=str(dataset_row.get("filename") or dataset_row.get("symbol") or "upload.xlsx"),
                 data_hash=str(dataset_row["data_hash"]),
+                object_key=str(dataset_row["object_key"]) if dataset_row.get("object_key") else None,
             )
             temp_uploaded_files.append(temp_dataset_file)
             spec_json = _apply_uploaded_dataset(spec_json, dataset_row, temp_dataset_file)
@@ -2566,7 +3193,7 @@ def execute_run(run_id: str) -> dict:
                     dataset_row = db.execute(
                         text(
                             """
-                            select id, source, symbol, timeframe, data_hash, filename
+                            select id, source, symbol, timeframe, data_hash, filename, object_key
                             from dataset
                             where id = :id
                             """
@@ -2579,6 +3206,7 @@ def execute_run(run_id: str) -> dict:
                     p = _materialize_dataset_file(
                         filename=str(dataset_row.get("filename") or dataset_row.get("symbol") or "upload.xlsx"),
                         data_hash=str(dataset_row["data_hash"]),
+                        object_key=str(dataset_row["object_key"]) if dataset_row.get("object_key") else None,
                     )
                     temp_uploaded_files.append(p)
                     dataset_file_cache[dsid_key] = p
@@ -2604,6 +3232,7 @@ def execute_run(run_id: str) -> dict:
                 spec_json = _apply_store_as_parquet(spec_json, local_paths)
 
         spec_json = _apply_wfo_defaults(spec_json)
+        _assert_wfo_resolved_dates(spec_json, caller="execute_run")
         portfolio_cfg = dict(spec_json.get("portfolio") or {})
         portfolio_cfg.setdefault("fill_price_model", "next_open")
         portfolio_cfg.setdefault("mtm_model", "close_t1")
@@ -2675,6 +3304,7 @@ def execute_run(run_id: str) -> dict:
                         default_symbol=symbol,
                         spec_json=spec_json,
                         dataset_meta=dataset_meta,
+                        dataset_hash=dataset_hash,
                     )
                     db.commit()
                     _set_progress(db, rid, job_id, stage="persisted", done=i + 1, total=total_syms, message=f"Saved results for {symbol}")
@@ -2722,6 +3352,7 @@ def execute_run(run_id: str) -> dict:
                                 default_symbol=out_symbol,
                                 spec_json=spec_json,
                                 dataset_meta=dataset_meta,
+                                dataset_hash=dataset_hash,
                             )
                             db.commit()
                             done_count += 1
@@ -2740,18 +3371,41 @@ def execute_run(run_id: str) -> dict:
                 spec_json["data"]["source"] = "bmce"
                 spec_json["data"]["bmce_paths"] = str(temp_dataset_file)
             _check_cancel(cancel_redis, job_id)
-            out = run_pipeline(spec_json)
-            _check_cancel(cancel_redis, job_id)
-            default_symbol = str(symbols[0]) if symbols else "__ALL__"
-            _persist_pipeline_output(
-                db=db,
-                rid=rid,
-                out=out,
-                default_symbol=default_symbol,
-                spec_json=spec_json,
-                dataset_meta=dataset_meta,
-            )
-            db.commit()
+
+            # ---- parallel optimisation path ----
+            _opt_json = spec_json.get("optimization") or {}
+            _use_parallel = bool(_opt_json.get("parallel", False))
+
+            if _use_parallel:
+                from services.worker.tasks.parallel_opt import run_parallel_optimization
+                run_parallel_optimization(
+                    db=db,
+                    rid=rid,
+                    job_id=job_id,
+                    spec_json=spec_json,
+                    dataset_hash=dataset_hash,
+                    dataset_id=dataset_id,
+                    dataset_meta=dataset_meta,
+                    cancel_redis=cancel_redis,
+                    set_progress_fn=_set_progress,
+                    check_cancel_fn=_check_cancel,
+                    persist_pipeline_output_fn=_persist_pipeline_output,
+                )
+            else:
+                # ---- normal (sequential) path ----
+                out = run_pipeline(spec_json)
+                _check_cancel(cancel_redis, job_id)
+                default_symbol = str(symbols[0]) if symbols else "__ALL__"
+                _persist_pipeline_output(
+                    db=db,
+                    rid=rid,
+                    out=out,
+                    default_symbol=default_symbol,
+                    spec_json=spec_json,
+                    dataset_meta=dataset_meta,
+                    dataset_hash=dataset_hash,
+                )
+                db.commit()
 
         # 5) mark succeeded
         db.execute(
@@ -2851,13 +3505,15 @@ def execute_run(run_id: str) -> dict:
 
     finally:
         # cleanup uploaded dataset temp file
-        if temp_dataset_file is not None:
+        if temp_dataset_file is not None and not _is_dataset_cache_path(temp_dataset_file):
             try:
                 temp_dataset_file.unlink(missing_ok=True)
             except Exception:
                 pass
 
         for p in temp_uploaded_files:
+            if _is_dataset_cache_path(p):
+                continue
             try:
                 p.unlink(missing_ok=True)
             except Exception:
@@ -2865,6 +3521,8 @@ def execute_run(run_id: str) -> dict:
 
         # cleanup canonical-store parquet temp files
         for p in temp_store_files:
+            if _is_dataset_cache_path(p):
+                continue
             try:
                 p.unlink(missing_ok=True)
             except Exception:

@@ -55,21 +55,6 @@ def slice_df_by_start_end(df: pd.DataFrame, start: Optional[str], end: Optional[
     return out
 
 
-def slice_marketdata(md: MarketData, start: Optional[str], end: Optional[str]) -> MarketData:
-    if md is None:
-        return md
-    new_bars = {sym: slice_df_by_start_end(df, start, end) for sym, df in md.bars.items()}
-    return MarketData(bars=new_bars, source=md.source, timezone=md.timezone, interval=md.interval)
-
-
-def slice_features(feats: FeaturesData, md: MarketData) -> FeaturesData:
-    # align feats strictly to md index per symbol
-    new = {}
-    for sym, bars in md.bars.items():
-        f = feats.features.get(sym, pd.DataFrame(index=bars.index))
-        new[sym] = f.reindex(bars.index)
-    return FeaturesData(features=new, source=feats.source, timezone=feats.timezone, interval=feats.interval, meta=feats.meta)
-
 # -----------------------------
 # Engine Spec Objects
 # -----------------------------
@@ -671,12 +656,12 @@ def slice_df_period(
 
 
 def slice_marketdata(
-    md,
+    md: MarketData,
     start: Optional[str],
     end: Optional[str],
     include_windows: Optional[List[Tuple[str, str]]] = None,
     exclude_windows: Optional[List[Tuple[str, str]]] = None,
-):
+) -> MarketData:
     """Slice MarketData.bars per symbol with start/end and include/exclude windows."""
     if md is None:
         return md
@@ -701,7 +686,7 @@ def slice_marketdata(
     )
 
 
-def slice_features(feats_full, md_sliced):
+def slice_features(feats_full: FeaturesData, md_sliced: MarketData) -> FeaturesData:
     """
     Align features index to exactly the sliced md bars index per symbol.
     This preserves indicator lookback effects because feats_full was computed on padded history,
@@ -734,7 +719,7 @@ class BacktestEngine:
     def __init__(self, spec: EngineSpec) -> None:
         self.spec = spec
 
-    def run(self) -> BacktestBundle:
+    def run(self, fast_mode: bool = False) -> BacktestBundle:
         base_cfg = self.spec.data
         symbols = base_cfg.symbols
 
@@ -867,6 +852,7 @@ class BacktestEngine:
             plot_indicators=plot_inds,
             benchmark_market_data=None,
             benchmark_symbol=None,
+            fast_mode=fast_mode,
         )
 
         return BacktestBundle(md=md, feats=feats, signals=sf, portfolio_result=pres, report=report, meta={})

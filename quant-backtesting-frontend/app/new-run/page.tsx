@@ -34,11 +34,13 @@ import {
   type Dataset,
   type MarketSymbolRow,
 } from "@/lib/api"
+import { buildSingleBacktestPlotsConfig } from "@/lib/single-backtest-spec"
 import { cn } from "@/lib/utils"
 
 import { STRAT_PARAM_KEYS, PORTF_KEYS } from "@/lib/strategy-registry"
 type RunMode = "single" | "optimize"
 type EndDatePolicy = "latest" | "fixed"
+type RankMetric = "pnl" | "cagr" | "sharpe"
 
 const initialParamUI: Record<string, ParamUI> = {}
 for (const [k, v] of Object.entries(PARAM_DEFAULTS)) {
@@ -138,7 +140,7 @@ interface WizardState {
   optimizePortfolio: boolean
   optMethod: "random" | "grid"
   nTrials: number
-  topK: number
+  rankMetric: RankMetric
   seed: number
   paramUI: Record<string, ParamUI>
   singleStartDate: string
@@ -433,9 +435,9 @@ export default function NewRunPage() {
     participationRate: 0.05,
     participationAdvWindow: 20,
     optimizePortfolio: true,
-    optMethod: "grid",
-    nTrials: 300,
-    topK: 30,
+    optMethod: "random",
+    nTrials: 50,
+    rankMetric: "pnl",
     seed: 42,
     paramUI: initialParamUI,
     singleStartDate: "",
@@ -672,11 +674,12 @@ export default function NewRunPage() {
 
         // OPTIMIZATION: backend expects optimization block
         optimization: {
-          rank_metric: "pnl",
+          rank_metric: state.mode === "optimize" ? state.rankMetric : "pnl",
           kinds: state.mode === "optimize" ? state.strategies.map(s => s.toLowerCase()) : [],
           method: state.optMethod,
           n_trials: state.mode === "optimize" ? state.nTrials : 0,
-          top_k: state.mode === "optimize" ? state.topK : 1,
+          top_k: state.mode === "optimize" ? 20 : 1,
+          top_n_artifacts: state.mode === "optimize" ? 3 : 1,
           seed: state.seed,
           batch_per_symbol: state.mode === "optimize",
           domains_by_kind: domainsByKind,
@@ -698,6 +701,7 @@ export default function NewRunPage() {
                     start_date: state.walkForwardStartDate || null,
                     end_date: walkForwardEnd,
                     end_date_policy: state.walkForwardEndDatePolicy,
+                    max_folds: 20,
                   },
                 }
               : {
@@ -711,6 +715,7 @@ export default function NewRunPage() {
                     objective: state.walkForwardObjective,
                     end_date: walkForwardEnd,
                     end_date_policy: state.walkForwardEndDatePolicy,
+                    max_folds: 20,
                   },
                 }
             : {
@@ -768,6 +773,7 @@ export default function NewRunPage() {
           }
         }
         specJson.strategy = { kind: primaryKind, params: stratParams }
+        specJson.plots = buildSingleBacktestPlotsConfig(symbolsList)
       }
 
 
@@ -820,7 +826,10 @@ export default function NewRunPage() {
       {step === 1 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Choose Run Mode</CardTitle>
+            <CardTitle className="text-base">Mode d&apos;exécution</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Le mode WFO (Walk-Forward Optimization) est le mode recommandé pour alimenter la page Résultats Globaux.
+            </p>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
@@ -828,15 +837,17 @@ export default function NewRunPage() {
                 [
                   {
                     value: "single" as RunMode,
-                    title: "Single Backtest",
-                    desc: "Run one strategy with fixed parameters",
+                    title: "Backtest unique",
+                    desc: "Teste une stratégie avec des paramètres fixes sur une période donnée.",
                     icon: Target,
+                    tag: null,
                   },
                   {
                     value: "optimize" as RunMode,
-                    title: "Optimize per Symbol",
-                    desc: "Grid search over parameter combinations",
+                    title: "Optimisation WFO",
+                    desc: "Optimisation walk-forward multi-horizon (Court / Moyen / Long terme) avec validation out-of-sample.",
                     icon: Zap,
+                    tag: "Recommandé",
                   },
                 ] as const
               ).map((opt) => (
@@ -850,14 +861,12 @@ export default function NewRunPage() {
                       : "border-border hover:border-primary/30 hover:bg-secondary/50"
                   )}
                 >
-                  <opt.icon
-                    className={cn(
-                      "h-5 w-5",
-                      state.mode === opt.value
-                        ? "text-primary"
-                        : "text-muted-foreground"
+                  <div className="flex items-center gap-2 w-full">
+                    <opt.icon className={cn("h-5 w-5", state.mode === opt.value ? "text-primary" : "text-muted-foreground")} />
+                    {opt.tag && (
+                      <span className="ml-auto rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">{opt.tag}</span>
                     )}
-                  />
+                  </div>
                   <div>
                     <p className="font-semibold text-foreground">{opt.title}</p>
                     <p className="text-xs text-muted-foreground">{opt.desc}</p>
@@ -1036,6 +1045,21 @@ export default function NewRunPage() {
                 />
               </div>
 
+              {state.mode === "optimize" ? (
+                <div>
+                  <Label className="text-xs text-muted-foreground">Rank metric</Label>
+                  <select
+                    className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
+                    value={state.rankMetric}
+                    onChange={(e) => update("rankMetric", e.target.value as RankMetric)}
+                  >
+                    <option value="pnl">PnL</option>
+                    <option value="cagr">CAGR</option>
+                    <option value="sharpe">Sharpe</option>
+                  </select>
+                </div>
+              ) : null}
+
               {state.mode !== "optimize" ? (
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
@@ -1078,12 +1102,38 @@ export default function NewRunPage() {
                   </div>
 
                   {state.walkForwardMode === "preset" ? (
-                    <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1">
-                      <p className="text-xs font-medium text-foreground">3 horizons calculés automatiquement</p>
-                      <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
-                        <div><span className="font-medium text-foreground">Court terme</span><br />Train 252j · Test 63j · 5 ans</div>
-                        <div><span className="font-medium text-foreground">Moyen terme</span><br />Train 504j · Test 126j · 10 ans</div>
-                        <div><span className="font-medium text-foreground">Long terme</span><br />Train 756j · Test 252j · 20 ans</div>
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted-foreground">
+                        Les 3 horizons sont calculés en parallèle. Les résultats apparaîtront dans la page &ldquo;Résultats Globaux&rdquo; sous les onglets correspondants.
+                      </p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {([
+                          { key: "short",  label: "Court terme",  duration: "5 ans",  train: "252j (~1 an)",   test: "63j (~3 mois)", step: "21j (~1 mois)", color: "border-blue-200 bg-blue-50" },
+                          { key: "medium", label: "Moyen terme",  duration: "10 ans", train: "504j (~2 ans)",  test: "126j (~6 mois)", step: "21j (~1 mois)", color: "border-violet-200 bg-violet-50" },
+                          { key: "long",   label: "Long terme",   duration: "20 ans", train: "756j (~3 ans)",  test: "252j (~1 an)",  step: "21j (~1 mois)", color: "border-amber-200 bg-amber-50" },
+                        ] as const).map((h) => (
+                          <div key={h.key} className={`rounded-lg border p-3 space-y-2 ${h.color}`}>
+                            <p className="text-xs font-bold text-foreground">{h.label}</p>
+                            <div className="space-y-1 text-[10px]">
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">Durée sélectionnée</span>
+                                <span className="font-semibold">{h.duration}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">Train</span>
+                                <span className="font-mono">{h.train}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">Test (OOS)</span>
+                                <span className="font-mono">{h.test}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">Step</span>
+                                <span className="font-mono">{h.step}</span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   ) : (

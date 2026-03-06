@@ -10,6 +10,7 @@ import {
   fetchArtifactText,
   materializeStrategyDetails,
   type Artifact,
+  type LeaderboardRow,
   type MetricRow,
   type PlotlyFigure,
 } from "@/lib/api"
@@ -82,6 +83,40 @@ type SignalExplanation = {
   explanation: string
   checks: SignalExplanationCheck[]
 }
+
+type DecisionObjective = "pnl" | "cagr" | "sharpe"
+
+type DecisionFoldMeta = {
+  key: string
+  label: string
+  index: number
+  start: string | null
+  end: string | null
+}
+
+type DecisionVariantAggregate = {
+  key: string
+  label: string
+  params: Record<string, unknown>
+  foldValues: Map<string, number>
+  mean: number | null
+  std: number | null
+  cv: number | null
+}
+
+type DecisionNeighborRow = {
+  label: string
+  paramsText: string
+  metric: number | null
+  deltaPct: number | null
+}
+
+const DECISION_CV_MAX = 1.0
+const DECISION_DROP_MAX = 0.35
+const DECISION_SLOPE_LOOKBACK = 20
+const DECISION_VOL_WINDOW = 20
+const DECISION_CROSS_FRESH_DAYS = 10
+const DECISION_EPS = 1e-9
 
 const PLOT_SPECS: PlotSpec[] = [
   { key: "price_indicators_trades", label: "Price + Indicators + Trades" },
@@ -544,11 +579,44 @@ function withLedgerTradeMarkers(
 ): PlotlyFigure | null {
   if (!figure) return null
   if (!Array.isArray(figure.data) || !figure.data.length) return figure
-  if (!ledgerRows.length) return figure
 
   const hasBuy = hasNamedTrace(figure, "BUY")
   const hasSell = hasNamedTrace(figure, "SELL")
-  if (hasBuy && hasSell) return figure
+  let styledExistingMarkers = false
+  const nextData = figure.data.map((raw) => {
+    if (!isRecord(raw)) return raw
+    const target = traceName(raw).trim().toUpperCase()
+    if (target !== "BUY" && target !== "SELL") return raw
+
+    styledExistingMarkers = true
+    const side = target as "BUY" | "SELL"
+    const xValues = toArrayData(raw.x)
+    const marker = isRecord(raw.marker) ? { ...raw.marker } : {}
+
+    return {
+      ...raw,
+      mode: "markers+text",
+      marker: {
+        ...marker,
+        size: 14,
+        symbol: side === "BUY" ? "triangle-up" : "triangle-down",
+        color: side === "BUY" ? "#00B050" : "#C00000",
+        line: {
+          color: side === "BUY" ? "#004D1A" : "#4D0000",
+          width: 1.5,
+        },
+      },
+      text: xValues.map(() => side),
+      textposition: side === "BUY" ? "top center" : "bottom center",
+      textfont: {
+        size: 12,
+        color: side === "BUY" ? "#004D1A" : "#4D0000",
+      },
+    }
+  })
+  if (!ledgerRows.length) {
+    return styledExistingMarkers ? { ...figure, data: nextData } : figure
+  }
 
   const buyX: string[] = []
   const buyY: number[] = []
@@ -595,7 +663,6 @@ function withLedgerTradeMarkers(
     }
   }
 
-  const nextData = [...figure.data]
   if (!hasBuy && buyX.length) {
     nextData.push({
       type: "scatter",
@@ -633,7 +700,7 @@ function withLedgerTradeMarkers(
     })
   }
 
-  if (nextData.length === figure.data.length) return figure
+  if (!styledExistingMarkers && nextData.length === figure.data.length) return figure
   return { ...figure, data: nextData }
 }
 
@@ -1173,6 +1240,349 @@ function buildSignalExplanation(
   }
 }
 
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value))
+}
+
+function stdPop(values: number[]): number | null {
+  if (!values.length) return null
+  const mean = values.reduce((acc, v) => acc + v, 0) / values.length
+  const variance =
+    values.reduce((acc, v) => acc + (v - mean) ** 2, 0) / values.length
+  return Math.sqrt(variance)
+}
+
+function normalizeObjective(
+  raw: unknown,
+  fallback: DecisionObjective = "pnl"
+): DecisionObjective {
+  const token = String(raw ?? "").trim().toLowerCase()
+  if (token === "pnl") return "pnl"
+  if (token === "cagr") return "cagr"
+  if (token === "sharpe") return "sharpe"
+  return fallback
+}
+
+function objectiveFromRunSpec(runSpec: Record<string, unknown> | undefined): DecisionObjective {
+  if (!isRecord(runSpec)) return "pnl"
+  const optimization = isRecord(runSpec.optimization) ? runSpec.optimization : {}
+  const walkForward = isRecord(optimization.walk_forward) ? optimization.walk_forward : {}
+  return normalizeObjective(walkForward.objective, "pnl")
+}
+
+function parseUnknownObject(raw: unknown): Record<string, unknown> {
+  if (!raw) return {}
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw) as unknown
+      return isRecord(parsed) ? parsed : {}
+    } catch {
+      return {}
+    }
+  }
+  return isRecord(raw) ? raw : {}
+}
+
+function normalizeSignalMode(value: unknown): string {
+  const token = String(value ?? "").trim().toLowerCase()
+  if (token === "cross" || token === "level") return token
+  return "level"
+}
+
+function extractSmaParams(params: Record<string, unknown>): {
+  window: number | null
+  signalMode: string
+} {
+  const window = getParamNumber(params, [
+    "sma_window",
+    "window",
+    "strategy.sma_window",
+    "param.strategy.sma_window",
+  ])
+  const signalMode = normalizeSignalMode(
+    getParamText(
+      params,
+      ["signal_mode", "strategy.signal_mode", "param.strategy.signal_mode"],
+      "level"
+    )
+  )
+  return { window, signalMode }
+}
+
+function decisionVariantKey(window: number | null, signalMode: string): string {
+  return `w:${window ?? "na"}|m:${normalizeSignalMode(signalMode)}`
+}
+
+function decisionVariantLabel(window: number | null, signalMode: string): string {
+  const wText = window === null ? "SMA ?" : `SMA ${formatNumber(window, 0)}`
+  return `${wText} | ${normalizeSignalMode(signalMode)}`
+}
+
+function parseBatchMetric(
+  row: Record<string, unknown>,
+  objective: DecisionObjective
+): number | null {
+  const keys =
+    objective === "pnl"
+      ? ["stat.pnl", "pnl", "objective_value"]
+      : objective === "cagr"
+        ? ["stat.cagr", "cagr", "objective_value"]
+        : ["stat.sharpe", "sharpe", "objective_value"]
+  for (const key of keys) {
+    const value = toNumber(row[key])
+    if (value !== null && Number.isFinite(value)) return value
+  }
+  return null
+}
+
+function parseBatchFoldMeta(row: Record<string, unknown>): DecisionFoldMeta {
+  const foldIndexRaw = toNumber(row.fold_index)
+  const foldIndex =
+    foldIndexRaw !== null && Number.isFinite(foldIndexRaw)
+      ? Math.max(0, Math.round(foldIndexRaw))
+      : 0
+  const periodRaw = String(row.period ?? row.label ?? "").trim()
+  const label = periodRaw || `Fold ${foldIndex + 1}`
+  const start = String(
+    row.test_start ?? row.start ?? row.fold_test_start ?? ""
+  ).trim()
+  const end = String(row.test_end ?? row.end ?? row.fold_test_end ?? "").trim()
+  const key = `${foldIndex}|${label}|${start}|${end}`
+  return {
+    key,
+    label,
+    index: foldIndex,
+    start: start || null,
+    end: end || null,
+  }
+}
+
+function rowHorizonToken(row: Record<string, unknown>): string {
+  return String(
+    row.horizon ??
+      row["simple_wfo.horizon"] ??
+      row["walk_forward.horizon"] ??
+      ""
+  )
+    .trim()
+    .toLowerCase()
+}
+
+function parseBatchDecisionRows(
+  rows: Array<Record<string, string>>,
+  objective: DecisionObjective,
+  selectedHorizon: string | null
+): {
+  folds: DecisionFoldMeta[]
+  variants: Array<{
+    key: string
+    label: string
+    params: Record<string, unknown>
+    foldValues: Map<string, number>
+  }>
+} {
+  const horizonToken = String(selectedHorizon ?? "").trim().toLowerCase()
+  const foldsByKey = new Map<string, DecisionFoldMeta>()
+  const variantsByKey = new Map<
+    string,
+    {
+      key: string
+      label: string
+      params: Record<string, unknown>
+      foldValues: Map<string, { metric: number; trialRank: number }>
+    }
+  >()
+
+  for (const rowRaw of rows) {
+    const row: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(rowRaw)) row[k] = v
+
+    const strategyKind = normalizeStrategyKind(String(row.strategy_kind ?? ""))
+    if (strategyKind !== "sma_price") continue
+
+    if (horizonToken) {
+      const rowHorizon = rowHorizonToken(row)
+      if (rowHorizon && rowHorizon !== horizonToken) continue
+    }
+
+    const fold = parseBatchFoldMeta(row)
+    foldsByKey.set(fold.key, fold)
+
+    const params: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(row)) {
+      if (key.startsWith("param.strategy.")) {
+        params[key.slice("param.".length)] = value
+      } else if (key.startsWith("strategy.")) {
+        params[key] = value
+      }
+    }
+    const sma = extractSmaParams(params)
+    const variantKey = decisionVariantKey(sma.window, sma.signalMode)
+    const variantLabel = decisionVariantLabel(sma.window, sma.signalMode)
+    const metric = parseBatchMetric(row, objective)
+    if (metric === null) continue
+
+    const trialRank = Math.max(
+      1,
+      Math.round(toNumber(row.trial_rank) ?? Number.POSITIVE_INFINITY)
+    )
+    if (!variantsByKey.has(variantKey)) {
+      variantsByKey.set(variantKey, {
+        key: variantKey,
+        label: variantLabel,
+        params,
+        foldValues: new Map(),
+      })
+    }
+    const target = variantsByKey.get(variantKey)!
+    const prev = target.foldValues.get(fold.key)
+    if (!prev || trialRank < prev.trialRank) {
+      target.foldValues.set(fold.key, { metric, trialRank })
+    }
+  }
+
+  const folds = Array.from(foldsByKey.values()).sort((a, b) => a.index - b.index)
+  const variants = Array.from(variantsByKey.values()).map((item) => ({
+    key: item.key,
+    label: item.label,
+    params: item.params,
+    foldValues: new Map(
+      Array.from(item.foldValues.entries()).map(([k, payload]) => [k, payload.metric])
+    ),
+  }))
+
+  return { folds, variants }
+}
+
+function computeVariantAggregates(
+  variants: Array<{
+    key: string
+    label: string
+    params: Record<string, unknown>
+    foldValues: Map<string, number>
+  }>,
+  selectedFoldKeys: string[]
+): DecisionVariantAggregate[] {
+  const out: DecisionVariantAggregate[] = []
+  for (const variant of variants) {
+    const values = selectedFoldKeys
+      .map((foldKey) => variant.foldValues.get(foldKey))
+      .filter((value): value is number => value !== undefined && Number.isFinite(value))
+    const mean =
+      values.length > 0 ? values.reduce((acc, value) => acc + value, 0) / values.length : null
+    const std = values.length > 0 ? stdPop(values) : null
+    const cv =
+      mean !== null && std !== null
+        ? std / (Math.abs(mean) + DECISION_EPS)
+        : null
+
+    out.push({
+      key: variant.key,
+      label: variant.label,
+      params: variant.params,
+      foldValues: variant.foldValues,
+      mean,
+      std,
+      cv,
+    })
+  }
+
+  out.sort((a, b) => {
+    const left = a.mean ?? Number.NEGATIVE_INFINITY
+    const right = b.mean ?? Number.NEGATIVE_INFINITY
+    return right - left
+  })
+  return out
+}
+
+function rollingSmaFromSeries(series: SeriesPoint[], window: number): SeriesPoint[] {
+  const w = Math.max(1, Math.round(window))
+  if (!series.length || w <= 1) return [...series]
+  const out: SeriesPoint[] = []
+  let sum = 0
+  const buffer: number[] = []
+  for (const point of series) {
+    buffer.push(point.value)
+    sum += point.value
+    if (buffer.length > w) {
+      sum -= buffer.shift() ?? 0
+    }
+    if (buffer.length >= w) {
+      out.push({ ts: point.ts, value: sum / w })
+    }
+  }
+  return out
+}
+
+function findSmaSeries(
+  figure: PlotlyFigure | null | undefined,
+  closeSeries: SeriesPoint[],
+  window: number
+): SeriesPoint[] {
+  const named = findSeriesByPredicate(
+    figure,
+    (_, name) => normalizeStrategyKind(name) === `sma_${Math.max(1, Math.round(window))}`
+  )
+  if (named.length > 0) return named
+  return rollingSmaFromSeries(closeSeries, window)
+}
+
+function slopePct(series: SeriesPoint[], lookback = DECISION_SLOPE_LOOKBACK): number | null {
+  if (series.length <= lookback) return null
+  const last = series[series.length - 1]?.value
+  const prev = series[series.length - 1 - lookback]?.value
+  if (last === undefined || prev === undefined) return null
+  return (last - prev) / (Math.abs(prev) + DECISION_EPS)
+}
+
+function trailingVolatility(closeSeries: SeriesPoint[], window = DECISION_VOL_WINDOW): number | null {
+  if (closeSeries.length < window + 1) return null
+  const returns: number[] = []
+  for (let i = closeSeries.length - window; i < closeSeries.length; i += 1) {
+    const prev = closeSeries[i - 1]?.value
+    const curr = closeSeries[i]?.value
+    if (prev === undefined || curr === undefined) continue
+    if (!Number.isFinite(prev) || !Number.isFinite(curr) || prev === 0) continue
+    returns.push(curr / prev - 1)
+  }
+  return stdPop(returns)
+}
+
+function daysSinceLastCrossover(fast: SeriesPoint[], slow: SeriesPoint[]): number | null {
+  if (!fast.length || !slow.length) return null
+  const fastMap = new Map<number, number>()
+  for (const p of fast) fastMap.set(p.ts, p.value)
+  const slowMap = new Map<number, number>()
+  for (const p of slow) slowMap.set(p.ts, p.value)
+  const commonTs = Array.from(fastMap.keys())
+    .filter((ts) => slowMap.has(ts))
+    .sort((a, b) => a - b)
+  if (commonTs.length < 2) return null
+
+  let prevSign = 0
+  let crossTs: number | null = null
+  for (const ts of commonTs) {
+    const diff = (fastMap.get(ts) ?? 0) - (slowMap.get(ts) ?? 0)
+    const sign = diff > 0 ? 1 : diff < 0 ? -1 : 0
+    if (sign !== 0 && prevSign !== 0 && sign !== prevSign) {
+      crossTs = ts
+    }
+    if (sign !== 0) prevSign = sign
+  }
+
+  if (crossTs === null) return null
+  const lastTs = commonTs[commonTs.length - 1]
+  const deltaMs = Math.max(0, lastTs - crossTs)
+  return deltaMs / (24 * 60 * 60 * 1000)
+}
+
+function formatDecisionValue(value: number | null, objective: DecisionObjective): string {
+  if (value === null || !Number.isFinite(value)) return "--"
+  if (objective === "cagr") return formatPercent(value)
+  if (objective === "pnl") return formatCurrency(value)
+  return formatNumber(value, 3)
+}
+
 export function SingleBacktestResults({
   runId,
   symbol,
@@ -1184,6 +1594,10 @@ export function SingleBacktestResults({
   strategyParamsOverride,
   portfolioConfigOverride,
   metricOverrides,
+  decisionBatchRows,
+  decisionSelectedHorizon,
+  decisionSelectedBestParamsRaw,
+  decisionSameStrategyRows,
 }: {
   runId: string
   symbol?: string
@@ -1203,6 +1617,10 @@ export function SingleBacktestResults({
     n_fills?: number | null
     win_pct?: number | null
   }
+  decisionBatchRows?: Array<Record<string, string>>
+  decisionSelectedHorizon?: string | null
+  decisionSelectedBestParamsRaw?: unknown
+  decisionSameStrategyRows?: LeaderboardRow[]
 }) {
   const { data: artifacts, isLoading: artifactsLoading } = useArtifacts(
     runId,
@@ -1260,6 +1678,14 @@ export function SingleBacktestResults({
   const [materializeLoading, setMaterializeLoading] = useState(false)
   const [materializedMetrics, setMaterializedMetrics] = useState<Record<string, number>>({})
   const materializeAttemptedRef = useRef<Set<string>>(new Set())
+  const [decisionObjective, setDecisionObjective] = useState<DecisionObjective>(
+    objectiveFromRunSpec(runSpec)
+  )
+  const [selectedDecisionFoldKeys, setSelectedDecisionFoldKeys] = useState<string[]>([])
+
+  useEffect(() => {
+    setDecisionObjective(objectiveFromRunSpec(runSpec))
+  }, [runSpec])
 
   const displayedStrategyParams = useMemo(() => {
     return Object.fromEntries(
@@ -1673,15 +2099,441 @@ export function SingleBacktestResults({
     [priceFigureWithFallbackMarkers]
   )
 
-  const decisionWeekFigure = useMemo(
-    () => sliceFigureToLastDays(decisionBaseFigure, 7),
-    [decisionBaseFigure]
-  )
-
   const decisionSignalExplanation = useMemo(
     () => buildSignalExplanation(strategy, runStrategyParams, decisionBaseFigure),
     [decisionBaseFigure, runStrategyParams, strategy]
   )
+
+  const isSmaPriceDecision = useMemo(() => {
+    const kind = normalizeStrategyKind(strategy)
+    return kind === "sma_price" || kind === "price_sma" || kind === "price_above_sma"
+  }, [strategy])
+
+  const selectedDecisionHorizon = useMemo(() => {
+    const flat = flattenParams(parseUnknownObject(decisionSelectedBestParamsRaw))
+    const fromBest = String(
+      flat["simple_wfo.horizon"] ?? flat["walk_forward.horizon"] ?? ""
+    )
+      .trim()
+      .toLowerCase()
+    const fromProp = String(decisionSelectedHorizon ?? "")
+      .trim()
+      .toLowerCase()
+    return fromBest || fromProp || null
+  }, [decisionSelectedBestParamsRaw, decisionSelectedHorizon])
+
+  const decisionBatchParsed = useMemo(
+    () =>
+      parseBatchDecisionRows(
+        decisionBatchRows ?? [],
+        decisionObjective,
+        selectedDecisionHorizon
+      ),
+    [decisionBatchRows, decisionObjective, selectedDecisionHorizon]
+  )
+
+  useEffect(() => {
+    const available = decisionBatchParsed.folds.map((fold) => fold.key)
+    setSelectedDecisionFoldKeys((prev) => {
+      if (!available.length) return []
+      const kept = prev.filter((key) => available.includes(key))
+      return kept.length ? kept : available
+    })
+  }, [decisionBatchParsed.folds])
+
+  const decisionEffectiveFoldKeys = useMemo(() => {
+    if (!decisionBatchParsed.folds.length) return [] as string[]
+    if (!selectedDecisionFoldKeys.length) {
+      return decisionBatchParsed.folds.map((fold) => fold.key)
+    }
+    return selectedDecisionFoldKeys.filter((key) =>
+      decisionBatchParsed.folds.some((fold) => fold.key === key)
+    )
+  }, [decisionBatchParsed.folds, selectedDecisionFoldKeys])
+
+  const decisionVariantAggregates = useMemo(
+    () =>
+      computeVariantAggregates(
+        decisionBatchParsed.variants,
+        decisionEffectiveFoldKeys
+      ),
+    [decisionBatchParsed.variants, decisionEffectiveFoldKeys]
+  )
+  const decisionStrategyRowCount = decisionSameStrategyRows?.length ?? 0
+
+  const decisionVariantMinMax = useMemo(() => {
+    const values = decisionVariantAggregates
+      .flatMap((variant) =>
+        decisionEffectiveFoldKeys
+          .map((foldKey) => variant.foldValues.get(foldKey))
+          .filter(
+            (value): value is number => value !== undefined && Number.isFinite(value)
+          )
+      )
+    if (!values.length) return { min: 0, max: 1 }
+    return { min: Math.min(...values), max: Math.max(...values) }
+  }, [decisionEffectiveFoldKeys, decisionVariantAggregates])
+
+  const selectedDecisionVariantKey = useMemo(() => {
+    const raw = {
+      ...flattenParams(parseUnknownObject(decisionSelectedBestParamsRaw)),
+      ...runStrategyParams,
+    }
+    const sma = extractSmaParams(raw)
+    return decisionVariantKey(sma.window, sma.signalMode)
+  }, [decisionSelectedBestParamsRaw, runStrategyParams])
+
+  const selectedDecisionVariant = useMemo(() => {
+    const exact = decisionVariantAggregates.find(
+      (variant) => variant.key === selectedDecisionVariantKey
+    )
+    if (exact) return exact
+    return decisionVariantAggregates[0] ?? null
+  }, [decisionVariantAggregates, selectedDecisionVariantKey])
+
+  const decisionPerformanceScore = useMemo(() => {
+    const currentMean = selectedDecisionVariant?.mean
+    if (currentMean === null || currentMean === undefined) return 0
+    const means = decisionVariantAggregates
+      .map((variant) => variant.mean)
+      .filter((value): value is number => value !== null && Number.isFinite(value))
+    if (!means.length) return 0
+    const min = Math.min(...means)
+    const max = Math.max(...means)
+    if (max - min <= DECISION_EPS) return 50
+    return 100 * clamp01((currentMean - min) / (max - min))
+  }, [decisionVariantAggregates, selectedDecisionVariant])
+
+  const decisionStabilityScore = useMemo(() => {
+    const cv = selectedDecisionVariant?.cv
+    if (cv === null || cv === undefined || !Number.isFinite(cv)) return 0
+    return 100 * (1 - clamp01(cv / DECISION_CV_MAX))
+  }, [selectedDecisionVariant])
+
+  const decisionConfidenceTime = useMemo(
+    () => 0.6 * decisionPerformanceScore + 0.4 * decisionStabilityScore,
+    [decisionPerformanceScore, decisionStabilityScore]
+  )
+
+  const decisionVariantByKey = useMemo(() => {
+    const out = new Map<string, DecisionVariantAggregate>()
+    for (const variant of decisionVariantAggregates) out.set(variant.key, variant)
+    return out
+  }, [decisionVariantAggregates])
+
+  const decisionNeighborRows = useMemo<DecisionNeighborRow[]>(() => {
+    if (!selectedDecisionVariant) return []
+    const base = extractSmaParams(selectedDecisionVariant.params)
+    const neighbors: Array<{ window: number | null; signalMode: string; label: string }> = []
+
+    if (base.window !== null) {
+      if (base.window > 10) {
+        neighbors.push({
+          window: base.window - 1,
+          signalMode: base.signalMode,
+          label: "sma_window - 1",
+        })
+      }
+      if (base.window < 250) {
+        neighbors.push({
+          window: base.window + 1,
+          signalMode: base.signalMode,
+          label: "sma_window + 1",
+        })
+      }
+    }
+
+    const altSignalMode = base.signalMode === "cross" ? "level" : "cross"
+    neighbors.push({
+      window: base.window,
+      signalMode: altSignalMode,
+      label: "signal_mode swap",
+    })
+
+    const out: DecisionNeighborRow[] = []
+    const seen = new Set<string>()
+    const bestMean = selectedDecisionVariant.mean
+    for (const neighbor of neighbors) {
+      const key = decisionVariantKey(neighbor.window, neighbor.signalMode)
+      if (seen.has(key) || key === selectedDecisionVariant.key) continue
+      seen.add(key)
+      const match = decisionVariantByKey.get(key)
+      const metric = match?.mean ?? null
+      const deltaPct =
+        metric !== null &&
+        bestMean !== null &&
+        Number.isFinite(metric) &&
+        Number.isFinite(bestMean)
+          ? (bestMean - metric) / (Math.abs(bestMean) + DECISION_EPS)
+          : null
+      out.push({
+        label: neighbor.label,
+        paramsText: decisionVariantLabel(neighbor.window, neighbor.signalMode),
+        metric,
+        deltaPct,
+      })
+    }
+    return out
+  }, [decisionVariantByKey, selectedDecisionVariant])
+
+  const decisionParamRobustnessScore = useMemo(() => {
+    const bestMean = selectedDecisionVariant?.mean
+    if (bestMean === null || bestMean === undefined) return 0
+    const neighborMetrics = decisionNeighborRows
+      .map((row) => row.metric)
+      .filter((value): value is number => value !== null && Number.isFinite(value))
+    if (!neighborMetrics.length) return 50
+    const neighborMean =
+      neighborMetrics.reduce((acc, value) => acc + value, 0) / neighborMetrics.length
+    const drop =
+      (bestMean - neighborMean) / (Math.abs(bestMean) + DECISION_EPS)
+    return 100 * (1 - clamp01(Math.max(0, drop) / DECISION_DROP_MAX))
+  }, [decisionNeighborRows, selectedDecisionVariant])
+
+  const decisionNeighborMean = useMemo(() => {
+    const neighborMetrics = decisionNeighborRows
+      .map((row) => row.metric)
+      .filter((value): value is number => value !== null && Number.isFinite(value))
+    if (!neighborMetrics.length) return null
+    return neighborMetrics.reduce((acc, value) => acc + value, 0) / neighborMetrics.length
+  }, [decisionNeighborRows])
+
+  const decisionDropPct = useMemo(() => {
+    const bestMean = selectedDecisionVariant?.mean
+    if (bestMean === null || bestMean === undefined || decisionNeighborMean === null) return null
+    return (bestMean - decisionNeighborMean) / (Math.abs(bestMean) + DECISION_EPS)
+  }, [decisionNeighborMean, selectedDecisionVariant])
+
+  const decisionConfidenceFinal = useMemo(
+    () => 0.65 * decisionConfidenceTime + 0.35 * decisionParamRobustnessScore,
+    [decisionConfidenceTime, decisionParamRobustnessScore]
+  )
+
+  const decisionOpportunity = useMemo(() => {
+    const closeSeries = findCloseSeries(decisionBaseFigure)
+    if (!closeSeries.length) {
+      return {
+        total: 0,
+        regime: 0,
+        direction: 0,
+        confirmation: 0,
+        timing: 0,
+        risk: 0,
+        fastWindow: null as number | null,
+        slowWindow: null as number | null,
+        inputs: {
+          distanceToSma200: null as number | null,
+          slope200: null as number | null,
+          slopeSlow: null as number | null,
+          vol20: null as number | null,
+          distFastSlow: null as number | null,
+          daysSinceCross: null as number | null,
+          bull: null as boolean | null,
+          trendLike: null as boolean | null,
+        },
+        closeSeries: [] as SeriesPoint[],
+        fastSeries: [] as SeriesPoint[],
+        slowSeries: [] as SeriesPoint[],
+        sma200Series: [] as SeriesPoint[],
+      }
+    }
+
+    const selectedParams = {
+      ...flattenParams(parseUnknownObject(decisionSelectedBestParamsRaw)),
+      ...runStrategyParams,
+    }
+    const sma = extractSmaParams(selectedParams)
+    const fastWindow = Math.max(10, Math.round(sma.window ?? 50))
+    const slowWindow = Math.min(200, Math.max(fastWindow + 20, fastWindow * 2))
+
+    const fastSeries = findSmaSeries(decisionBaseFigure, closeSeries, fastWindow)
+    const slowSeries = findSmaSeries(decisionBaseFigure, closeSeries, slowWindow)
+    const sma200Series = findSmaSeries(decisionBaseFigure, closeSeries, 200)
+
+    const closeNow = latestValue(closeSeries).current
+    const fastNow = latestValue(fastSeries).current
+    const slowNow = latestValue(slowSeries).current
+    const sma200Now = latestValue(sma200Series).current
+    const slope200 = slopePct(sma200Series, DECISION_SLOPE_LOOKBACK)
+    const slopeSlow = slopePct(slowSeries, DECISION_SLOPE_LOOKBACK)
+    const vol20 = trailingVolatility(closeSeries, DECISION_VOL_WINDOW)
+
+    const distanceToSma200 =
+      closeNow !== null && sma200Now !== null
+        ? (closeNow - sma200Now) / (Math.abs(sma200Now) + DECISION_EPS)
+        : null
+    const distFastSlow =
+      closeNow !== null && fastNow !== null && slowNow !== null
+        ? Math.abs(fastNow - slowNow) / (Math.abs(closeNow) + DECISION_EPS)
+        : null
+    const daysSinceCross = daysSinceLastCrossover(fastSeries, slowSeries)
+
+    const bull =
+      closeNow !== null && sma200Now !== null ? closeNow > sma200Now : null
+    const trendLike = slope200 !== null ? Math.abs(slope200) > 0.01 : null
+
+    const distNorm = distanceToSma200 === null ? 0 : clamp01(Math.abs(distanceToSma200) / 0.12)
+    const slopeNorm = slope200 === null ? 0 : clamp01(Math.abs(slope200) / 0.08)
+    const scoreRegime = 100 * ((distNorm + slopeNorm) / 2)
+
+    let scoreDirection = 40
+    if (
+      closeNow !== null &&
+      sma200Now !== null &&
+      fastNow !== null &&
+      slowNow !== null
+    ) {
+      if (closeNow > sma200Now && fastNow > slowNow) scoreDirection = 92
+      else if (closeNow > sma200Now || fastNow > slowNow) scoreDirection = 62
+      else scoreDirection = 20
+    }
+
+    const confirmationChecks = [
+      closeNow !== null && sma200Now !== null ? closeNow > sma200Now : null,
+      fastNow !== null && slowNow !== null ? fastNow > slowNow : null,
+      slopeSlow !== null ? slopeSlow > 0 : slope200 !== null ? slope200 > 0 : null,
+    ].filter((value): value is boolean => value !== null)
+    const scoreConfirmation = confirmationChecks.length
+      ? (confirmationChecks.filter(Boolean).length / confirmationChecks.length) * 100
+      : 0
+
+    const freshScore =
+      daysSinceCross === null
+        ? 40
+        : daysSinceCross <= DECISION_CROSS_FRESH_DAYS
+          ? 100
+          : Math.max(
+              20,
+              100 -
+                ((daysSinceCross - DECISION_CROSS_FRESH_DAYS) /
+                  DECISION_CROSS_FRESH_DAYS) *
+                  60
+            )
+    const distPenalty = distFastSlow === null ? 0 : clamp01(distFastSlow / 0.08)
+    const scoreTiming = Math.max(0, Math.min(100, freshScore * (1 - 0.5 * distPenalty)))
+
+    const volNorm = vol20 === null ? 0 : clamp01(vol20 / 0.05)
+    const riskIndex = (volNorm + distNorm) / 2
+    const scoreRisk = 100 * (1 - riskIndex)
+
+    const total =
+      0.2 * (scoreRegime + scoreDirection + scoreConfirmation + scoreTiming + scoreRisk)
+
+    return {
+      total,
+      regime: scoreRegime,
+      direction: scoreDirection,
+      confirmation: scoreConfirmation,
+      timing: scoreTiming,
+      risk: scoreRisk,
+      fastWindow,
+      slowWindow,
+      inputs: {
+        distanceToSma200,
+        slope200,
+        slopeSlow,
+        vol20,
+        distFastSlow,
+        daysSinceCross,
+        bull,
+        trendLike,
+      },
+      closeSeries,
+      fastSeries,
+      slowSeries,
+      sma200Series,
+    }
+  }, [decisionBaseFigure, decisionSelectedBestParamsRaw, runStrategyParams])
+
+  const decisionPriceFigure = useMemo<PlotlyFigure | null>(() => {
+    const closeSeries = decisionOpportunity.closeSeries
+    if (!Array.isArray(closeSeries) || closeSeries.length === 0) return null
+
+    const sliceTail = (series: SeriesPoint[], n = 180) => series.slice(Math.max(0, series.length - n))
+    const closeTail = sliceTail(closeSeries)
+    const fastTail = sliceTail(Array.isArray(decisionOpportunity.fastSeries) ? decisionOpportunity.fastSeries : [])
+    const slowTail = sliceTail(Array.isArray(decisionOpportunity.slowSeries) ? decisionOpportunity.slowSeries : [])
+    const sma200Tail = sliceTail(Array.isArray(decisionOpportunity.sma200Series) ? decisionOpportunity.sma200Series : [])
+
+    const toXY = (series: SeriesPoint[]) => ({
+      x: series.map((p) => new Date(p.ts).toISOString().slice(0, 10)),
+      y: series.map((p) => p.value),
+    })
+
+    const closeXY = toXY(closeTail)
+    const fastXY = toXY(fastTail)
+    const slowXY = toXY(slowTail)
+    const sma200XY = toXY(sma200Tail)
+    const bullLabel =
+      decisionOpportunity.inputs.bull === null
+        ? "Unknown"
+        : decisionOpportunity.inputs.bull
+          ? "Bull"
+          : "Bear"
+    const trendLabel =
+      decisionOpportunity.inputs.trendLike === null
+        ? "n/a"
+        : decisionOpportunity.inputs.trendLike
+          ? "Trend-like"
+          : "Range-like"
+
+    return {
+      data: [
+        { type: "scatter", mode: "lines", name: "Close", x: closeXY.x, y: closeXY.y, line: { color: "#2563eb", width: 2 } },
+        { type: "scatter", mode: "lines", name: `MA fast (${decisionOpportunity.fastWindow ?? "?"})`, x: fastXY.x, y: fastXY.y, line: { color: "#16a34a", width: 1.6 } },
+        { type: "scatter", mode: "lines", name: `MA slow (${decisionOpportunity.slowWindow ?? "?"})`, x: slowXY.x, y: slowXY.y, line: { color: "#f59e0b", width: 1.6 } },
+        { type: "scatter", mode: "lines", name: "SMA200", x: sma200XY.x, y: sma200XY.y, line: { color: "#dc2626", width: 1.8, dash: "dot" } },
+      ],
+      layout: {
+        title: "Price + MA Fast + MA Slow + SMA200 (recent bars)",
+        template: "plotly_white",
+        legend: { orientation: "h" },
+        margin: { t: 48, l: 40, r: 20, b: 34 },
+        annotations: [
+          {
+            xref: "paper",
+            yref: "paper",
+            x: 0,
+            y: 1.14,
+            text: `Regime: ${bullLabel} | Structure: ${trendLabel}`,
+            showarrow: false,
+            font: { size: 11 },
+          },
+        ],
+      },
+    }
+  }, [decisionOpportunity])
+
+  const decisionOpportunityBreakdownFigure = useMemo<PlotlyFigure>(() => {
+    const x = ["Regime", "Direction", "Confirmation", "Timing", "Risk"]
+    const y = [
+      decisionOpportunity.regime,
+      decisionOpportunity.direction,
+      decisionOpportunity.confirmation,
+      decisionOpportunity.timing,
+      decisionOpportunity.risk,
+    ]
+    return {
+      data: [
+        {
+          type: "bar",
+          x,
+          y,
+          marker: { color: ["#1d4ed8", "#0f766e", "#f59e0b", "#7c3aed", "#dc2626"] },
+          text: y.map((value) => formatNumber(value, 1)),
+          textposition: "outside",
+        },
+      ],
+      layout: {
+        title: "Opportunity Breakdown (0-100)",
+        template: "plotly_white",
+        margin: { t: 48, l: 40, r: 20, b: 36 },
+        yaxis: { range: [0, 100] },
+      },
+    }
+  }, [decisionOpportunity])
+
+  const decisionShowTab = showDecisionTab && isSmaPriceDecision
 
   function renderMetricValue(
     kind: "percent" | "currency" | "number" | "int",
@@ -1886,7 +2738,7 @@ export function SingleBacktestResults({
           <TabsTrigger value="trades-ledger" className="text-xs">
             Trades Ledger
           </TabsTrigger>
-          {showDecisionTab && (
+          {decisionShowTab && (
             <TabsTrigger value="decision" className="text-xs">
               Decision
             </TabsTrigger>
@@ -2004,173 +2856,425 @@ export function SingleBacktestResults({
         </TabsContent>
 
         <TabsContent value="trades-ledger">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Trades Ledger</CardTitle>
-            </CardHeader>
-            <CardContent className="px-0 pb-0">
-              {tableLoading || materializeLoading ? (
-                <div className="space-y-2 px-4 pb-4">
-                  {Array.from({ length: 8 }).map((_, idx) => (
-                    <Skeleton key={idx} className="h-8 rounded-lg" />
-                  ))}
-                </div>
-              ) : !ledgerRows.length ? (
-                <div className="py-8 text-center text-sm text-muted-foreground">
-                  Trades ledger could not be computed.
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border">
-                        <th className="px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                          Timestamp
-                        </th>
-                        <th className="px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                          Side
-                        </th>
-                        <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                          Prix d&apos;execution (open du jour)
-                        </th>
-                        <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                          Quantite
-                        </th>
-                        <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                          CMP
-                        </th>
-                        <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                          PnL realise
-                        </th>
-                        <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                          PnL latent
-                        </th>
-                        <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                          Close du jour
-                        </th>
-                        <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                          Available Quantity
-                        </th>
-                        <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                          Position Value Cost
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {ledgerRows.map((row, idx) => (
-                        <tr key={`${row.timestamp}-${idx}`} className="border-b border-border/50">
-                          <td className="px-3 py-2.5 text-xs">{formatDateTime(row.timestamp)}</td>
-                          <td className="px-3 py-2.5 text-xs">{row.side || "--"}</td>
-                          <td className="px-3 py-2.5 text-right font-mono text-xs">
-                            {formatNumber(row.prix_execution_open_jour)}
-                          </td>
-                          <td className="px-3 py-2.5 text-right font-mono text-xs">
-                            {formatNumber(row.quantite)}
-                          </td>
-                          <td className="px-3 py-2.5 text-right font-mono text-xs">
-                            {formatNumber(row.cmp)}
-                          </td>
-                          <td className="px-3 py-2.5 text-right font-mono text-xs">
-                            {formatNumber(row.pnl_realise)}
-                          </td>
-                          <td className="px-3 py-2.5 text-right font-mono text-xs">
-                            {formatNumber(row.pnl_latent)}
-                          </td>
-                          <td className="px-3 py-2.5 text-right font-mono text-xs">
-                            {formatNumber(row.close_du_jour)}
-                          </td>
-                          <td className="px-3 py-2.5 text-right font-mono text-xs">
-                            {formatNumber(row.available_quantity)}
-                          </td>
-                          <td className="px-3 py-2.5 text-right font-mono text-xs">
-                            {formatNumber(row.position_value_cost)}
-                          </td>
+          <div className="space-y-4">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Price + Indicators + Trades</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {plotLoading || materializeLoading ? (
+                  <Skeleton className="h-96 rounded-lg" />
+                ) : priceFigureWithFallbackMarkers ? (
+                  <PlotlyChart figure={priceFigureWithFallbackMarkers ?? undefined} />
+                ) : (
+                  <div className="flex h-48 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">
+                    Detail plot could not be computed.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Trades Ledger</CardTitle>
+              </CardHeader>
+              <CardContent className="px-0 pb-0">
+                {tableLoading || materializeLoading ? (
+                  <div className="space-y-2 px-4 pb-4">
+                    {Array.from({ length: 8 }).map((_, idx) => (
+                      <Skeleton key={idx} className="h-8 rounded-lg" />
+                    ))}
+                  </div>
+                ) : !ledgerRows.length ? (
+                  <div className="py-8 text-center text-sm text-muted-foreground">
+                    Trades ledger could not be computed.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border">
+                          <th className="px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            Timestamp
+                          </th>
+                          <th className="px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            Side
+                          </th>
+                          <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            Prix d&apos;execution (open du jour)
+                          </th>
+                          <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            Quantite
+                          </th>
+                          <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            CMP
+                          </th>
+                          <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            PnL realise
+                          </th>
+                          <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            PnL latent
+                          </th>
+                          <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            Close du jour
+                          </th>
+                          <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            Available Quantity
+                          </th>
+                          <th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            Position Value Cost
+                          </th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                      </thead>
+                      <tbody>
+                        {ledgerRows.map((row, idx) => (
+                          <tr key={`${row.timestamp}-${idx}`} className="border-b border-border/50">
+                            <td className="px-3 py-2.5 text-xs">{formatDateTime(row.timestamp)}</td>
+                            <td className="px-3 py-2.5 text-xs">{row.side || "--"}</td>
+                            <td className="px-3 py-2.5 text-right font-mono text-xs">
+                              {formatNumber(row.prix_execution_open_jour)}
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-mono text-xs">
+                              {formatNumber(row.quantite)}
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-mono text-xs">
+                              {formatNumber(row.cmp)}
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-mono text-xs">
+                              {formatNumber(row.pnl_realise)}
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-mono text-xs">
+                              {formatNumber(row.pnl_latent)}
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-mono text-xs">
+                              {formatNumber(row.close_du_jour)}
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-mono text-xs">
+                              {formatNumber(row.available_quantity)}
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-mono text-xs">
+                              {formatNumber(row.position_value_cost)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
-        {showDecisionTab && (
+        {decisionShowTab && (
           <TabsContent value="decision">
             <div className="space-y-4">
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Decision Chart (Last Available Week)</CardTitle>
+                  <CardTitle className="text-base">Decision Scores (sma_price)</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  {plotLoading || materializeLoading ? (
-                    <Skeleton className="h-96 rounded-lg" />
-                  ) : decisionWeekFigure ? (
-                    <PlotlyChart figure={decisionWeekFigure} />
-                  ) : (
-                    <div className="flex h-48 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">
-                      Decision chart not available for this run.
+                <CardContent className="space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-lg border border-border bg-secondary/20 p-3">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                        Confidence
+                      </p>
+                      <p className="mt-1 font-mono text-2xl font-bold text-foreground">
+                        {formatNumber(decisionConfidenceFinal, 1)} / 100
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        0.65 * confidence_time + 0.35 * score_param
+                      </p>
                     </div>
-                  )}
+                    <div className="rounded-lg border border-border bg-secondary/20 p-3">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                        Opportunity
+                      </p>
+                      <p className="mt-1 font-mono text-2xl font-bold text-foreground">
+                        {formatNumber(decisionOpportunity.total, 1)} / 100
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        0.20 * (regime + direction + confirmation + timing + risk)
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Trader view: Confidence mesure la robustesse (temps + params), Opportunity mesure la qualité du setup actuel.
+                  </p>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Why The Signal Is {decisionSignalExplanation.summary}</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <SignalBadge value={decisionSignalExplanation.signalValue} size="md" />
-                    <span className="text-xs text-muted-foreground">
-                      {decisionSignalExplanation.asOf
-                        ? `As of ${formatDateTime(decisionSignalExplanation.asOf)}`
-                        : "As-of timestamp unavailable"}
-                    </span>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <CardTitle className="text-base">Confidence A1 - WFO Heatmap Table</CardTitle>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-muted-foreground">Objective</label>
+                      <select
+                        className="h-8 rounded-md border border-border bg-background px-2 text-xs"
+                        value={decisionObjective}
+                        onChange={(event) =>
+                          setDecisionObjective(
+                            normalizeObjective(event.target.value, "pnl")
+                          )
+                        }
+                      >
+                        <option value="pnl">PnL</option>
+                        <option value="cagr">CAGR</option>
+                        <option value="sharpe">Sharpe</option>
+                      </select>
+                    </div>
                   </div>
-                  <p className="text-sm text-foreground">{decisionSignalExplanation.explanation}</p>
-                  <p className="text-xs text-muted-foreground">
-                    This explanation is computed from the latest plotted indicator values (strategy signal
-                    logic). Execution controls like cooldown/gates can still affect fills.
-                  </p>
-                  {decisionSignalExplanation.checks.length > 0 && (
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {decisionBatchParsed.folds.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {decisionBatchParsed.folds.map((fold) => {
+                        const active = decisionEffectiveFoldKeys.includes(fold.key)
+                        return (
+                          <button
+                            key={fold.key}
+                            type="button"
+                            className={`rounded-md border px-2 py-1 text-[11px] ${
+                              active
+                                ? "border-primary/50 bg-primary/10 text-primary"
+                                : "border-border text-muted-foreground"
+                            }`}
+                            title={`test: ${fold.start ?? "--"} -> ${fold.end ?? "--"}`}
+                            onClick={() => {
+                              setSelectedDecisionFoldKeys((prev) => {
+                                if (prev.includes(fold.key)) {
+                                  const next = prev.filter((key) => key !== fold.key)
+                                  return next.length ? next : [fold.key]
+                                }
+                                return [...prev, fold.key]
+                              })
+                            }}
+                          >
+                            {fold.label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Fold rows not available from `batch_period.results` for this symbol/horizon.
+                      Known strategy rows: {decisionStrategyRowCount}.
+                    </p>
+                  )}
+
+                  {decisionVariantAggregates.length > 0 && decisionEffectiveFoldKeys.length > 0 ? (
                     <div className="overflow-x-auto rounded-lg border border-border/70">
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="border-b border-border bg-secondary/20">
-                            <th className="px-3 py-2 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                              Rule Check
+                            <th className="px-2 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                              Variant
                             </th>
-                            <th className="px-3 py-2 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                              Result
+                            {decisionBatchParsed.folds
+                              .filter((fold) => decisionEffectiveFoldKeys.includes(fold.key))
+                              .map((fold) => (
+                                <th
+                                  key={fold.key}
+                                  title={`test: ${fold.start ?? "--"} -> ${fold.end ?? "--"}`}
+                                  className="px-2 py-2 text-right text-[11px] font-bold uppercase tracking-wider text-muted-foreground"
+                                >
+                                  {fold.label}
+                                </th>
+                              ))}
+                            <th className="px-2 py-2 text-right text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                              MEAN
                             </th>
-                            <th className="px-3 py-2 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                              Details
+                            <th className="px-2 py-2 text-right text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                              DISPERSION
                             </th>
                           </tr>
                         </thead>
                         <tbody>
-                          {decisionSignalExplanation.checks.map((check, idx) => (
-                            <tr key={`${check.label}-${idx}`} className="border-b border-border/50 last:border-0">
-                              <td className="px-3 py-2 text-xs text-foreground">{check.label}</td>
-                              <td className="px-3 py-2 text-xs">
-                                <span
-                                  className={`inline-flex rounded-md px-2 py-0.5 font-semibold ${
-                                    check.passed
-                                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                                      : "bg-muted text-muted-foreground"
-                                  }`}
-                                >
-                                  {check.passed ? "TRUE" : "FALSE"}
-                                </span>
+                          {decisionVariantAggregates.map((variant) => (
+                            <tr key={variant.key} className="border-b border-border/50 last:border-0">
+                              <td className="px-2 py-2 font-mono text-[11px] text-foreground">
+                                {variant.label}
                               </td>
-                              <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{check.detail}</td>
+                              {decisionBatchParsed.folds
+                                .filter((fold) => decisionEffectiveFoldKeys.includes(fold.key))
+                                .map((fold) => {
+                                  const value = variant.foldValues.get(fold.key)
+                                  const hasValue =
+                                    value !== undefined && Number.isFinite(value)
+                                  const ratio =
+                                    hasValue &&
+                                    decisionVariantMinMax.max > decisionVariantMinMax.min
+                                      ? clamp01(
+                                          (value! - decisionVariantMinMax.min) /
+                                            (decisionVariantMinMax.max - decisionVariantMinMax.min)
+                                        )
+                                      : 0
+                                  const bgAlpha = hasValue ? 0.08 + ratio * 0.28 : 0.02
+                                  const bgColor = hasValue
+                                    ? `rgba(34, 197, 94, ${bgAlpha.toFixed(3)})`
+                                    : "rgba(148, 163, 184, 0.06)"
+                                  return (
+                                    <td
+                                      key={`${variant.key}-${fold.key}`}
+                                      className="px-2 py-2 text-right font-mono text-[11px]"
+                                      style={{ backgroundColor: bgColor }}
+                                    >
+                                      {hasValue
+                                        ? formatDecisionValue(value ?? null, decisionObjective)
+                                        : "--"}
+                                    </td>
+                                  )
+                                })}
+                              <td className="px-2 py-2 text-right font-mono text-[11px] font-semibold text-foreground">
+                                {formatDecisionValue(variant.mean, decisionObjective)}
+                              </td>
+                              <td className="px-2 py-2 text-right font-mono text-[11px] text-muted-foreground">
+                                std={formatNumber(variant.std, 4)} | cv={formatNumber(variant.cv, 3)}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Not enough fold/variant rows to build the WFO heatmap table.
+                    </p>
                   )}
+
+                  <div className="rounded-md border border-border/70 bg-secondary/20 p-3 text-xs text-muted-foreground">
+                    <p className="font-semibold text-foreground">Formula</p>
+                    <p>
+                      score_perf = normalized(mean across selected folds), cv = std/(|mean|+eps),
+                      score_stability = 100*(1-clip(cv,0,cv_max)/cv_max), confidence_time = 0.60*score_perf + 0.40*score_stability.
+                    </p>
+                    <p className="mt-1">
+                      Inputs: mean={formatDecisionValue(selectedDecisionVariant?.mean ?? null, decisionObjective)},
+                      std={formatNumber(selectedDecisionVariant?.std, 4)},
+                      cv={formatNumber(selectedDecisionVariant?.cv, 4)},
+                      cv_max={DECISION_CV_MAX}, folds={decisionEffectiveFoldKeys.length}.
+                    </p>
+                    <p className="mt-1">
+                      Trader view: on privilégie des performances OOS élevées et régulières d’un fold à l’autre.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Confidence A2 - Parameter Robustness</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="rounded-md border border-border/70 bg-secondary/20 p-3">
+                    <p className="text-[11px] font-semibold text-foreground">
+                      score_param: {formatNumber(decisionParamRobustnessScore, 1)} / 100
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      drop = (metric_best - mean(metric_neighbors)) / (|metric_best|+eps)
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Inputs: metric_best={formatDecisionValue(selectedDecisionVariant?.mean ?? null, decisionObjective)},
+                      metric_neighbors={formatDecisionValue(decisionNeighborMean, decisionObjective)},
+                      drop={formatPercent(decisionDropPct)},
+                      drop_max={formatPercent(DECISION_DROP_MAX)}.
+                    </p>
+                  </div>
+
+                  {decisionNeighborRows.length > 0 ? (
+                    <div className="overflow-x-auto rounded-lg border border-border/70">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-border bg-secondary/20">
+                            <th className="px-2 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                              Neighbor
+                            </th>
+                            <th className="px-2 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                              Params
+                            </th>
+                            <th className="px-2 py-2 text-right text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                              Metric
+                            </th>
+                            <th className="px-2 py-2 text-right text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                              Drop %
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {decisionNeighborRows.map((row) => (
+                            <tr key={`${row.label}-${row.paramsText}`} className="border-b border-border/50 last:border-0">
+                              <td className="px-2 py-2 text-xs text-foreground">{row.label}</td>
+                              <td className="px-2 py-2 font-mono text-[11px] text-muted-foreground">{row.paramsText}</td>
+                              <td className="px-2 py-2 text-right font-mono text-[11px]">
+                                {formatDecisionValue(row.metric, decisionObjective)}
+                              </td>
+                              <td className="px-2 py-2 text-right font-mono text-[11px]">
+                                {formatPercent(row.deltaPct)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      No local neighbor metrics found (score_param defaults to neutral).
+                    </p>
+                  )}
+
+                  <p className="text-xs text-muted-foreground">
+                    Trader view: si de petits changements de paramètres dégradent fortement la perf, la confiance baisse.
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Opportunity - Price + MAs</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {decisionPriceFigure ? (
+                    <PlotlyChart figure={decisionPriceFigure} />
+                  ) : (
+                    <div className="flex h-48 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">
+                      Price/MA data not available for opportunity view.
+                    </div>
+                  )}
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Signal snapshot: {decisionSignalExplanation.summary}
+                    {decisionSignalExplanation.asOf
+                      ? ` (as of ${formatDateTime(decisionSignalExplanation.asOf)})`
+                      : ""}
+                    .
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Opportunity Breakdown</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <PlotlyChart figure={decisionOpportunityBreakdownFigure} />
+                  <div className="rounded-md border border-border/70 bg-secondary/20 p-3 text-xs text-muted-foreground">
+                    <p className="font-semibold text-foreground">Formula</p>
+                    <p>
+                      regime from |price-SMA200| and |slope200|, direction from price&gt;SMA200 and MAfast&gt;MAslow,
+                      confirmation from boolean MA checks, timing from crossover recency (K={DECISION_CROSS_FRESH_DAYS})
+                      and MA distance penalty, risk from vol20 + distance to SMA200.
+                    </p>
+                    <p className="mt-1">
+                      Inputs: distance_to_SMA200={formatPercent(decisionOpportunity.inputs.distanceToSma200)},
+                      slope200={formatPercent(decisionOpportunity.inputs.slope200)},
+                      vol20={formatNumber(decisionOpportunity.inputs.vol20, 4)},
+                      dist_fast_slow={formatPercent(decisionOpportunity.inputs.distFastSlow)},
+                      days_since_cross={formatNumber(decisionOpportunity.inputs.daysSinceCross, 1)}.
+                    </p>
+                    <p className="mt-1">
+                      Trader view: on favorise un contexte de tendance confirmé, pas trop étiré, et avec un risque court-terme contenu.
+                    </p>
+                  </div>
                 </CardContent>
               </Card>
             </div>

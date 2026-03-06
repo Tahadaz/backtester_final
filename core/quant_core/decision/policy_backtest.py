@@ -6,7 +6,7 @@ from typing import Any, Callable, Literal
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-
+import json
 from ..data import MarketData
 from ..engine import BacktestBundle, build_strategy
 from ..indicators import FeaturesData, IndicatorEngine
@@ -270,7 +270,7 @@ def _make_r_distribution_plot(trades_df: pd.DataFrame) -> dict[str, Any]:
     )
     fig.update_xaxes(title_text="R-multiple")
     fig.update_yaxes(title_text="Count")
-    return fig.to_plotly_json()
+    return json.loads(fig.to_json())
 
 
 def _make_calibration_plot(table: pd.DataFrame, *, title: str) -> dict[str, Any]:
@@ -315,7 +315,7 @@ def _make_calibration_plot(table: pd.DataFrame, *, title: str) -> dict[str, Any]
     )
     fig.update_xaxes(title_text="Score decile")
     fig.update_yaxes(title_text="Rate / Avg R")
-    return fig.to_plotly_json()
+    return json.loads(fig.to_json())
 
 
 def simulate_decision_policy(

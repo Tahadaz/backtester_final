@@ -1,0 +1,29 @@
+# Optimizing WFO Execution via Fast-Mode Backtesting
+
+## Goal Description
+The "optimize per symbol" WFO runs take too long because the application computes full backtest reports (including trade ledgers, HTML tables, and plotting artifacts) for *every* candidate strategy on *every* fold. We want to skip these expensive computations during candidate evaluation, and only compute them for the final (best) strategy over the selected period.
+
+## Proposed Changes
+
+### core/quant_core/results.py
+#### [MODIFY] results.py
+- Add `fast_mode: bool = False` to `ResultsAnalyzer.analyze(...)`.
+- If `fast_mode` is True, compute the core metrics ([equity](file:///c:/Users/taha/Downloads/backtester_final/core/quant_core/results.py#481-486), [returns](file:///c:/Users/taha/Downloads/backtester_final/core/quant_core/results.py#1058-1067), [drawdown](file:///c:/Users/taha/Downloads/backtester_final/core/quant_core/results.py#481-486), `pnl_total`, [volume_inv](file:///c:/Users/taha/Downloads/backtester_final/core/quant_core/results.py#834-911), `efficiency`) and headline metrics, but **skip** computing [_trade_ledger_from_fills](file:///c:/Users/taha/Downloads/backtester_final/core/quant_core/results.py#1217-1415), [_curve_vs_benchmark_table](file:///c:/Users/taha/Downloads/backtester_final/core/quant_core/results.py#1095-1145), [_trade_table](file:///c:/Users/taha/Downloads/backtester_final/core/quant_core/results.py#1146-1181), monthly/yearly heatmap formats and any `plots` / `tables`.
+- Return a lightweight [BacktestReport](file:///c:/Users/taha/Downloads/backtester_final/core/quant_core/results.py#63-78) with empty `plots`, `tables`, and `explain`. Also ensure `metrics["Total Trades"] = len(raw_fills)` is added so [pipeline.py](file:///c:/Users/taha/Downloads/backtester_final/core/quant_core/pipeline.py) can capture `n_fills`.
+
+### core/quant_core/engine.py
+#### [MODIFY] engine.py
+- Add `fast_mode: bool = False` to `BacktestEngine.run(self, fast_mode: bool = False)`.
+- Pass `fast_mode=fast_mode` down to `analyzer.analyze(..., fast_mode=fast_mode)`.
+
+### core/quant_core/pipeline.py
+#### [MODIFY] pipeline.py
+- Update the WFO `trial_rank` loop (around line 1451) to use `bundle = BacktestEngine(test_spec).run(fast_mode=True)`.
+- Update the [batch_period](file:///c:/Users/taha/Downloads/backtester_final/core/quant_core/pipeline.py#403-448) strategy evaluation loops (around line 1521 and 1563) to use `bundle = BacktestEngine(per_spec).run(fast_mode=True)`.
+- Leave the final `bundles_by_kind[kind] = BacktestEngine(best_spec_k).run()` (around line 1642 and 1646) unchanged to ensure the global optimal strategy still gets the full detailed payload (ledgers, plots, etc).
+
+## Verification Plan
+### Automated Tests
+- N/A (no tests locally configured for these specific components). We will inspect the code edits to ensure syntax correctness.
+### Manual Verification
+- We will ask the user to dry-run the "optimize per symbol" WFO flow in their application to confirm the UI shows results faster, while ensuring the final overview tables still include trade details and plots for the overall winners.

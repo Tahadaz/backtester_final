@@ -4,9 +4,13 @@ from dataclasses import replace
 from typing import Any, Dict, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import copy
+import logging
 import os
+import time
 import numpy as np
 import pandas as pd
+import json
+_pipeline_logger = logging.getLogger(__name__)
 from .engine import BacktestEngine, DataConfig, IndicatorsConfig, StrategyConfig, EngineSpec
 from .research.horizon import get_horizon_config
 from .optimize import (
@@ -220,7 +224,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
         comm_bourse_bps=float(portfolio_json.get("cost_model", {}).get("comm_bourse_bps", 0.1)),
         reg_liv_bps=float(portfolio_json.get("cost_model", {}).get("reg_liv_bps", 0.0)),
         slippage_bps=float(portfolio_json.get("cost_model", {}).get("slippage_bps", 0.0)),
-        tva_rate=float(portfolio_json.get("cost_model", {}).get("tva_rate", 0.000300000142168438)),
+        tva_rate=float(portfolio_json.get("cost_model", {}).get("tva_rate", 0.1)),
     )
 
     portfolio_cfg = PortfolioConfig(
@@ -266,7 +270,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
         yf_period=data_cfg.yf_period,
         yf_interval=data_cfg.yf_interval,
         yf_auto_adjust=data_cfg.yf_auto_adjust,
-        rank_metric=str(optimization_json.get("rank_metric", "sharpe")),
+        rank_metric=str(optimization_json.get("rank_metric", "pnl")),
         lb_opt_kinds=list(optimization_json.get("kinds") or []),
         opt_method=str(optimization_json.get("method", "random")),
         n_trials=int(optimization_json.get("n_trials", 0)),
@@ -443,6 +447,21 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
         return out
 
     plots_json = dict(spec_json.get("plots") or {})
+
+    # If optimization run and user asked for top artifacts, default-enable plot artifact return.
+    top_n_artifacts = int(optimization_json.get("top_n_artifacts", 0) or 0)
+    if top_n_artifacts > 0:
+        plots_json.setdefault("enabled", True)
+        plots_json.setdefault("return_plot_artifacts", True)
+        plots_json.setdefault("kinds", [
+            "price_indicators_trades",
+            "drawdown",
+            "cumreturn_vs_benchmark",
+            "monthly_heatmap",
+            "yearly_return_barplot",
+        ])
+        # If not provided, default to current symbols
+        plots_json.setdefault("symbols", symbols)
     plot_kinds = {str(k).strip().lower() for k in (plots_json.get("kinds") or [])}
 
     def _plot_enabled(plot_kind: str) -> bool:
@@ -503,6 +522,42 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
             return []
         out = _normalize_record_frame(out[cols])
         return out.to_dict("records")
+
+    def _normalize_trade_ledger_records(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if not rows:
+            return []
+
+        alias_map: dict[str, tuple[str, ...]] = {
+            "side": ("trade_side", "direction"),
+            "prix_execution_open_jour": ("price", "prix_execution_open_du_jour"),
+            "quantite": ("qty", "quantity"),
+            "pnl_realise": ("pnl_realized", "pnl_realised"),
+            "close_du_jour": ("mark_price", "_mark"),
+            "cost": ("fees",),
+        }
+
+        out_rows: list[dict[str, Any]] = []
+        for row in rows:
+            normalized = dict(row or {})
+            for canonical, aliases in alias_map.items():
+                if canonical in normalized and normalized.get(canonical) is not None:
+                    continue
+                for alias in aliases:
+                    if alias in normalized and normalized.get(alias) is not None:
+                        normalized[canonical] = normalized.get(alias)
+                        break
+
+            # Keep UI "notional" populated when presentation rows only expose qty/price aliases.
+            if normalized.get("notional") is None:
+                try:
+                    qty = normalized.get("quantite")
+                    px = normalized.get("prix_execution_open_jour")
+                    if qty is not None and px is not None:
+                        normalized["notional"] = abs(float(qty)) * float(px)
+                except Exception:
+                    pass
+            out_rows.append(normalized)
+        return out_rows
 
     def _safe_metrics(metrics: dict[str, Any] | None) -> dict[str, Any]:
         out: dict[str, Any] = {}
@@ -762,9 +817,12 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                     indicator_cols=list(ind_df.columns) if isinstance(ind_df, pd.DataFrame) else None,
                     port_cfg=port_cfg,
                 )
-                out_symbols[sym] = fig.to_plotly_json()
+                out_symbols[sym] = json.loads(fig.to_json())
             except Exception:
-                out_symbols[sym] = {}
+                _pipeline_logger.warning(
+                    "plot_price_indicators_trades_line failed for symbol %s", sym, exc_info=True
+                )
+                # Do NOT store empty dict — frontend treats {} as a broken figure.
         return {"symbols": out_symbols}
 
     def _build_summary_plot_artifacts(bundle: Any) -> dict[str, Any]:
@@ -780,7 +838,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
             if _plot_enabled("drawdown"):
                 dd = report_plots.get("drawdown")
                 if isinstance(dd, pd.Series):
-                    out["drawdown"] = make_drawdown_plot(dd).to_plotly_json()
+                    out["drawdown"] = json.loads(make_drawdown_plot(dd).to_json())
         except Exception:
             pass
 
@@ -790,7 +848,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                 strat = cvb.get("strategy")
                 bench = cvb.get("benchmark")
                 if isinstance(strat, pd.Series):
-                    out["cumreturn_vs_benchmark"] = make_cumreturn_vs_benchmark_plot(strat, bench if isinstance(bench, pd.Series) else None).to_plotly_json()
+                    out["cumreturn_vs_benchmark"] = json.loads(make_cumreturn_vs_benchmark_plot(strat, bench if isinstance(bench, pd.Series) else None).to_json())
         except Exception:
             pass
 
@@ -798,7 +856,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
             if _plot_enabled("monthly_heatmap"):
                 monthly = report_plots.get("monthly_heatmap")
                 if isinstance(monthly, pd.DataFrame):
-                    out["monthly_heatmap"] = make_monthly_heatmap_plot(monthly).to_plotly_json()
+                    out["monthly_heatmap"] = json.loads(make_monthly_heatmap_plot(monthly).to_json())
         except Exception:
             pass
 
@@ -806,7 +864,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
             if _plot_enabled("yearly_return_barplot") or _plot_enabled("yearly_bar"):
                 yearly = report_plots.get("yearly_bar")
                 if isinstance(yearly, (pd.Series, pd.DataFrame)):
-                    out["yearly_return_barplot"] = make_yearly_return_bar_plot(yearly).to_plotly_json()
+                    out["yearly_return_barplot"] = json.loads(make_yearly_return_bar_plot(yearly).to_json())
         except Exception:
             pass
 
@@ -833,13 +891,19 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
         report_tables = dict(getattr(bundle.report, "tables", None) or {})
         symbols_in_bundle = [str(s) for s in list(getattr(bundle.md, "bars", {}).keys())]
         decision_stats = dict((getattr(bundle, "meta", None) or {}).get("decision_stats") or {})
+        per_fill_trade_ledger = _normalize_trade_ledger_records(
+            _table_to_records(report_tables.get("trades"))
+        )
+        fifo_trade_ledger = _table_to_records(report_tables.get("trades"))
         return {
             "strategy_kind": kind,
             "best_strategy_params": dict(best_params or {}),
             "symbols": symbols_in_bundle,
             "metrics": _safe_metrics(getattr(bundle.report, "metrics", None) or {}),
-            # Canonical UI ledger: results._prepare_trades_table output.
-            "trade_ledger": _table_to_records(report_tables.get("trades")),
+            # Canonical UI ledger is the per-fill accounting table from results._prepare_trades_table.
+            "trade_ledger": per_fill_trade_ledger,
+            # Keep FIFO round-trips available for downstream consumers.
+            "fifo_trade_ledger": fifo_trade_ledger,
             "trade_performance": _table_to_metric_records(report_tables.get("trade_performance")),
             "opportunity_calibration": _table_to_records(report_tables.get("opportunity_calibration")),
             "confidence_calibration": _table_to_records(report_tables.get("confidence_calibration")),
@@ -883,7 +947,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
             decision_inputs = payload.get("decision_inputs")
             if not isinstance(decision_inputs, dict):
                 decision_inputs = {"symbols": {}, "returns": []}
-            trade_ledger = payload.get("trade_ledger")
+            trade_ledger = payload.get("trades")
             inputs_by_kind[kind] = {
                 "symbols": [str(s) for s in list(payload.get("symbols") or []) if str(s).strip()],
                 "decision_inputs": decision_inputs,
@@ -1087,6 +1151,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
         )
 
         per_horizon_outputs: dict[str, dict[str, Any]] = {}
+        _mh_perf: dict[str, Any] = {}
         for horizon in requested_horizons:
             horizon_spec = copy.deepcopy(spec_json)
             horizon_opt = dict(horizon_spec.get("optimization") or {})
@@ -1105,7 +1170,16 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
             horizon_opt["walk_forward"] = horizon_wf
             horizon_spec["optimization"] = horizon_opt
 
+            _t_h = time.perf_counter()
             per_horizon_outputs[horizon] = run_pipeline(horizon_spec)
+            _h_ms = round((time.perf_counter() - _t_h) * 1000.0, 2)
+            _h_inner = dict(per_horizon_outputs[horizon].get("_perf") or {})
+            _h_inner["horizon_ms"] = _h_ms
+            _mh_perf[horizon] = _h_inner
+            _pipeline_logger.info(
+                "[perf] horizon=%s %.0f ms folds=%d",
+                horizon, _h_ms, _h_inner.get("folds_count", 0),
+            )
 
         primary_output = (
             per_horizon_outputs.get(primary_horizon)
@@ -1232,6 +1306,11 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
             "fills": [r for r in list(primary_output.get("fills") or []) if isinstance(r, dict)],
             "position_ledger": [r for r in list(primary_output.get("position_ledger") or []) if isinstance(r, dict)],
             "artifacts": primary_artifacts,
+            "_perf": {
+                "mode": "multi_horizon",
+                "horizons": _mh_perf,
+                "total_horizons": len(requested_horizons),
+            },
         }
 
     batch_cfg = dict(optimization_json.get("batch_periods") or {})
@@ -1356,6 +1435,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
         batch_frames: list[pd.DataFrame] = []
         base_spec_by_kind: dict[str, EngineSpec] = {}
         wf_returns_by_kind: dict[str, list[pd.Series]] = {}
+        _fold_perf_by_kind: dict[str, list[dict]] = {}
 
         for kind_raw in opt_kinds:
             kind = str(kind_raw).strip().lower()
@@ -1370,7 +1450,11 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                 active_params = _params_from_catalog(kind)
                 rows: list[dict[str, Any]] = []
                 top_variants_per_fold = max(1, int(opt_cfg.top_k or 1))
-                for fold_idx, label in enumerate(selected_periods):
+                _fold_perf: list[dict] = []
+                def _eval_fold(fold_idx_label: tuple[int, str]):
+                    fold_idx, label = fold_idx_label
+                    _t_fold = time.perf_counter()
+                    _fp_opt_ms, _fp_n_trials = 0.0, 0
                     fold = period_rows_by_label[label]
                     test_start = str(fold.get("test_start") or fold["start"])
                     test_end = str(fold.get("test_end") or fold["end"])
@@ -1392,11 +1476,14 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                     if kind == "buy_hold" or not active_params:
                         train_candidates.append((1, train_spec, None))
                     else:
+                        _t_opt = time.perf_counter()
                         _, top_df_train, _, best_train_spec, ranked_df_train, _wfo_timing = run_optimization(
                             base_spec=train_spec,
                             active_params=active_params,
                             cfg=opt_cfg,
                         )
+                        _fp_opt_ms = round((time.perf_counter() - _t_opt) * 1000.0, 2)
+                        _fp_n_trials = _wfo_timing.n_trials_run
                         train_rank_source = ranked_df_train if isinstance(ranked_df_train, pd.DataFrame) else pd.DataFrame()
                         if train_rank_source.empty and isinstance(top_df_train, pd.DataFrame):
                             train_rank_source = top_df_train.copy()
@@ -1410,6 +1497,9 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                                 train_obj_val = None if pd.isna(train_metric) else float(train_metric)
                                 train_candidates.append((trial_rank, train_row_spec, train_obj_val))
 
+                    _t_bt = time.perf_counter()
+                    _fold_rows: list[dict[str, Any]] = []
+                    _fold_ret_series: list[pd.Series] = []
                     for trial_rank, train_candidate_spec, train_objective_value in train_candidates:
                         test_spec = replace(
                             train_candidate_spec,
@@ -1421,11 +1511,11 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                                 exclude_windows=None,
                             ),
                         )
-                        bundle = BacktestEngine(test_spec).run()
+                        bundle = BacktestEngine(test_spec).run(fast_mode=True)
                         if trial_rank == 1:
                             ret_series = dict(getattr(bundle.report, "series", None) or {}).get("returns")
                             if isinstance(ret_series, pd.Series):
-                                wf_returns_by_kind.setdefault(kind, []).append(pd.to_numeric(ret_series, errors="coerce").dropna())
+                                _fold_ret_series.append(pd.to_numeric(ret_series, errors="coerce").dropna())
                         metrics = dict(getattr(bundle.report, "metrics", None) or {})
                         signal_snapshot = _signal_snapshot_from_bundle(bundle, preferred_symbol=symbol_label)
                         row = {
@@ -1462,8 +1552,40 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                         }
                         for k_param, v_param in _best_params_from_spec(test_spec).items():
                             row[f"param.{k_param}"] = v_param
-                        rows.append(row)
+                        _fold_rows.append(row)
 
+                    _fp_bt_ms = round((time.perf_counter() - _t_bt) * 1000.0, 2)
+                    _fp_total_ms = round((time.perf_counter() - _t_fold) * 1000.0, 2)
+                    _fold_perf_item = {
+                        "idx": fold_idx, "label": label,
+                        "train_start": train_start, "test_start": test_start,
+                        "opt_ms": _fp_opt_ms, "n_trials": _fp_n_trials,
+                        "backtest_ms": _fp_bt_ms, "fold_ms": _fp_total_ms,
+                    }
+                    _pipeline_logger.info(
+                        "[perf] kind=%s fold %d/%d '%s' opt=%.0f ms bt=%.0f ms total=%.0f ms",
+                        kind, fold_idx + 1, len(selected_periods), label,
+                        _fp_opt_ms, _fp_bt_ms, _fp_total_ms,
+                    )
+                    return _fold_rows, _fold_ret_series, _fold_perf_item
+
+                _n_fold_workers = min(len(selected_periods), max(1, (os.cpu_count() or 4)))
+                with ThreadPoolExecutor(max_workers=_n_fold_workers) as _fold_pool:
+                    _fold_futures = [
+                        _fold_pool.submit(_eval_fold, (fi, lbl))
+                        for fi, lbl in enumerate(selected_periods)
+                    ]
+                    for _fut in as_completed(_fold_futures):
+                        try:
+                            _fold_rows, _fold_ret_series, _fold_perf_item = _fut.result()
+                            rows.extend(_fold_rows)
+                            for _rs in _fold_ret_series:
+                                wf_returns_by_kind.setdefault(kind, []).append(_rs)
+                            _fold_perf.append(_fold_perf_item)
+                        except Exception as _fold_exc:
+                            _pipeline_logger.error("[wfo] fold error: %s", _fold_exc, exc_info=True)
+
+                _fold_perf_by_kind[kind] = _fold_perf
                 if rows:
                     batch_frames.append(pd.DataFrame(rows))
                 continue
@@ -1476,7 +1598,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                         base_spec_k,
                         data=replace(base_spec_k.data, start=str(p_start), end=str(p_end), include_windows=None, exclude_windows=None),
                     )
-                    bundle = BacktestEngine(per_spec).run()
+                    bundle = BacktestEngine(per_spec).run(fast_mode=True)
                     metrics = dict(getattr(bundle.report, "metrics", None) or {})
                     row = {
                         "period": label,
@@ -1518,7 +1640,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                     base_spec_k,
                     data=replace(base_spec_k.data, start=str(p_start), end=str(p_end), include_windows=None, exclude_windows=None),
                 )
-                bundle = BacktestEngine(per_spec).run()
+                bundle = BacktestEngine(per_spec).run(fast_mode=True)
                 metrics = dict(getattr(bundle.report, "metrics", None) or {})
                 row = {
                     "period": label,
@@ -1712,7 +1834,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                 "objective": period_objective,
                 "optimize_within_each": period_optimize_within_each,
                 "results": _df_to_records(batch_df_global, ensure_timestamp=False),
-                "heatmap": batch_heatmap_fig.to_plotly_json(),
+                "heatmap": json.loads(batch_heatmap_fig.to_json()),
                 "winner": {
                     "strategy_kind": winner_kind,
                     "period": winner_row.get("period"),
@@ -1759,6 +1881,14 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                 "batch_period": batch_period_payload,
                 **_runtime_payload(primary_bundle),
                 "artifacts": artifacts_payload,
+                "_perf": {
+                    "mode": period_mode or "walk_forward",
+                    "folds_count": len(period_entries),
+                    "folds_by_kind": _fold_perf_by_kind,
+                    "folds_total_ms": round(
+                        sum(f.get("fold_ms", 0) for fl in _fold_perf_by_kind.values() for f in fl), 2
+                    ),
+                },
             }
 
     bundles_by_kind: Dict[str, Any] = {}
@@ -1904,4 +2034,8 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
             "best_strategy_params_by_kind": {k: _best_params_from_spec(v) for k, v in best_specs_by_kind.items()},
         },
         "optimization_timing": _timing_summary,
+        "_perf": {
+            "mode": "optimize",
+            "opt_timing": {k: v for k, v in _timing_summary.items() if k != "profile_text"},
+        },
     }

@@ -6,6 +6,7 @@ import csv
 from datetime import date, datetime, timezone
 import io
 import hashlib
+import logging
 import math
 from pathlib import Path
 import subprocess
@@ -23,8 +24,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from ..config import settings
-
+from sqlalchemy.exc import IntegrityError  # add near other imports at top if not present
 from ..db import get_db
+from ..json_sanitize import sanitize_json_compatible
 from ..services.hash_utils import json_hash
 from ..models import (
     Artifact,
@@ -61,11 +63,14 @@ from ..schemas.runs import (
 )
 from ..storage import presign_get, s3_client
 from core.quant_core.data import BMCEDataSource, ParquetDataSource, YahooFinanceDataSource
+from core.quant_core.s3_keys import build_dataset_object_key as _build_dataset_object_key
 from core.quant_core.wfo import resolve_wfo_start_end_dates
 
 
 
 
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 
@@ -97,15 +102,40 @@ def _infer_run_type(spec_json: dict) -> str:
     if bool(decision_cfg.get("enabled", False)):
         return "decision_backtest"
     optimization = dict(spec_json.get("optimization") or {})
+    walk_forward = dict(optimization.get("walk_forward") or {})
     n_trials = int(optimization.get("n_trials") or 0)
     kinds = list(optimization.get("kinds") or [])
-    return "optimization" if n_trials > 0 or len(kinds) > 0 else "backtest"
+    return "optimization" if n_trials > 0 or len(kinds) > 0 or bool(walk_forward.get("enabled", False)) else "backtest"
 
 
 def _infer_mode(spec_json: dict[str, Any]) -> str:
     optimization = dict(spec_json.get("optimization") or {})
     walk_forward = dict(optimization.get("walk_forward") or {})
     return "walk_forward" if bool(walk_forward.get("enabled", False)) else "single"
+
+
+def _assert_wfo_resolved_dates(spec_json: dict[str, Any], *, caller: str) -> None:
+    optimization = dict(spec_json.get("optimization") or {})
+    walk_forward = dict(optimization.get("walk_forward") or {})
+    if not bool(walk_forward.get("enabled", False)):
+        return
+
+    missing_fields: list[str] = []
+    for field in ("resolved_start_date", "resolved_end_date"):
+        if str(walk_forward.get(field) or "").strip():
+            continue
+        missing_fields.append(f"optimization.walk_forward.{field}")
+
+    if missing_fields:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"{caller}: walk_forward.enabled=true requires resolved date bounds before run_pipeline. "
+                f"Missing {', '.join(missing_fields)}. "
+                "These fields must be produced by core/quant_core/wfo/date_resolution.py "
+                "(resolve_wfo_start_end_dates)."
+            ),
+        )
 
 
 def _extract_seed(spec_json: dict[str, Any]) -> int | None:
@@ -591,6 +621,22 @@ def _resolve_walk_forward_dates_in_spec(
     except HTTPException:
         raise
     except Exception as exc:
+        logger.exception(
+            "walk-forward date resolution failed",
+            extra={
+                "dataset_id": str(dataset_id) if dataset_id is not None else None,
+                "symbol": symbol,
+                "wfo_end_date_policy": policy,
+                "requested_start": str(requested_start) if requested_start is not None else None,
+                "requested_end": str(requested_end) if requested_end is not None else None,
+                "source": source_norm,
+                "s3_bucket": settings.S3_BUCKET,
+            },
+        )
+        # Surface a compact, non-secret hint to the client.  FileNotFoundError
+        # is raised by _safe_get_object_bytes when NoSuchKey is received.
+        if isinstance(exc, FileNotFoundError):
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         raise HTTPException(status_code=400, detail=f"walk-forward date resolution failed: {exc}") from exc
     finally:
         for p in temp_files:
@@ -648,15 +694,73 @@ def _as_json_dict(raw: Any) -> dict[str, Any]:
     return {}
 
 
-def _build_dataset_object_key(filename: str, data_hash: str) -> str:
-    return f"datasets/{data_hash}/{filename}"
+def _safe_get_object_bytes(key: str, *, context: dict | None = None) -> bytes:
+    """Fetch *key* from the configured S3 bucket and return raw bytes.
+
+    Wraps ``NoSuchKey`` (botocore ClientError) with a :class:`FileNotFoundError`
+    that carries a compact, non-secret message suitable for returning to clients.
+    All other errors propagate unchanged.
+
+    Args:
+        key:     S3 object key to fetch.
+        context: Optional caller-supplied dict merged into the structured log
+                 ``extra`` on NoSuchKey (e.g. filename, data_hash, key_source).
+                 Must not contain secrets; bucket and key are already included.
+
+    # Sanity-check (no test runner needed):
+    #   python -m compileall services/api/app/routers/runs.py
+    # Reproduce + read logs:
+    #   docker compose logs -f api | grep "S3 object not found"
+    """
+    bucket = settings.S3_BUCKET
+    try:
+        return s3_client().get_object(Bucket=bucket, Key=key)["Body"].read()
+    except Exception as exc:
+        # Detect NoSuchKey without importing botocore at module level.
+        # Works for both real boto3 ClientError and moto/minio stubs.
+        response = getattr(exc, "response", None) or {}
+        code = response.get("Error", {}).get("Code", "") if isinstance(response, dict) else ""
+        if not code and "NoSuchKey" in str(exc):
+            code = "NoSuchKey"
+
+        if code == "NoSuchKey":
+            log_extra: dict = {"s3_key": key, "s3_bucket": bucket}
+            if context:
+                log_extra.update(context)
+            logger.error(
+                "S3 object not found: key=%r bucket=%r",
+                key,
+                bucket,
+                extra=log_extra,
+            )
+            raise FileNotFoundError(
+                f"Dataset object missing in storage: key={key!r} bucket={bucket!r}"
+            ) from exc
+        raise
 
 
 def _materialize_dataset_file(*, filename: str, data_hash: str, object_key: str | None = None) -> Path:
     # Prefer the stored object_key (guaranteed to match what was uploaded).
     # Fall back to reconstructing the key if it's missing (legacy records).
-    key = object_key or _build_dataset_object_key(filename=filename, data_hash=data_hash)
-    payload = s3_client().get_object(Bucket=settings.S3_BUCKET, Key=key)["Body"].read()
+    key_source = "db" if object_key else "derived"
+    key = object_key or _build_dataset_object_key(data_hash=data_hash, filename=filename)
+    logger.debug(
+        "materializing dataset file: key=%r key_source=%s filename=%r data_hash=%r db_object_key=%r",
+        key,
+        key_source,
+        filename,
+        data_hash,
+        object_key,
+    )
+    payload = _safe_get_object_bytes(
+        key,
+        context={
+            "filename": filename,
+            "data_hash": data_hash,
+            "key_source": key_source,
+            "db_object_key": object_key,
+        },
+    )
 
     suffix = Path(filename).suffix or ".bin"
     tmp = NamedTemporaryFile(delete=False, suffix=suffix)
@@ -679,7 +783,8 @@ def _store_key_for_symbol(*, db: Session, symbol: str, timeframe: str = "1D") ->
 
 
 def _materialize_store_parquet(*, object_key: str) -> Path:
-    payload = s3_client().get_object(Bucket=settings.S3_BUCKET, Key=object_key)["Body"].read()
+    logger.debug("materializing store parquet: key=%r", object_key)
+    payload = _safe_get_object_bytes(object_key)
     if not payload:
         raise HTTPException(status_code=500, detail=f"empty parquet object: {object_key}")
 
@@ -906,14 +1011,15 @@ def create_run(payload: RunCreateRequest, db: Session = Depends(get_db)):
             dataset_id=payload.dataset_id,
             spec_json=spec_json,
         )
+        _assert_wfo_resolved_dates(spec_json, caller="create_run")
 
     provided_spec_hash = str(payload.spec_hash or "").strip()
     computed_spec_hash = json_hash(spec_json)
     spec_hash = computed_spec_hash or provided_spec_hash
 
-    # Deterministic run_id is bound to (spec_hash, dataset_id), so changing
-    # dataset does not accidentally collide with a previous run.
-    run_id = _compute_run_id(spec_hash, payload.dataset_id)
+    # New runs get a random UUID to avoid collisions.
+    # We still keep deterministic IDs for legacy lookup (below).
+    run_id = uuid.uuid4()
 
     run_type = _infer_run_type(spec_json)
     run_mode = _infer_mode(spec_json)
@@ -928,7 +1034,7 @@ def create_run(payload: RunCreateRequest, db: Session = Depends(get_db)):
         if h and h not in hash_candidates:
             hash_candidates.append(h)
 
-    candidate_ids = [run_id]
+    candidate_ids: list[UUID] = []
     for h in hash_candidates:
         candidate_ids.append(_compute_run_id(h, payload.dataset_id))
         candidate_ids.extend(_legacy_run_id_candidates(h))
@@ -989,7 +1095,14 @@ def create_run(payload: RunCreateRequest, db: Session = Depends(get_db)):
         error_message=None,
     )
     db.add(run)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        # Extremely unlikely with uuid4, but prevents 500s if it happens.
+        run.id = uuid.uuid4()
+        db.add(run)
+        db.commit()
 
     return RunCreateResponse(run_id=run.id, status=run.status, run_type=run.run_type)
 
@@ -1067,8 +1180,22 @@ def start_run(run_id: UUID, db: Session = Depends(get_db)):
     if run is None:
         raise HTTPException(status_code=404, detail="run not found")
 
-    # idempotency: if already queued/running/done, just return current status
-    if run.status in {"queued", "running", "succeeded"}:
+    redis_conn = Redis.from_url(settings.REDIS_URL, decode_responses=False)
+
+    # If run is queued, ensure there is actually an RQ job behind it.
+    if run.status == "queued":
+        if run.rq_job_id:
+            job_key = f"rq:job:{run.rq_job_id}"
+            try:
+                if redis_conn.exists(job_key):
+                    return {"run_id": run.id, "status": run.status, "job_id": run.rq_job_id}
+            except Exception:
+                # if redis check fails, fall through and try to enqueue
+                pass
+        # queued but missing job -> fall through to enqueue
+
+    # idempotency: running/done stay idempotent
+    if run.status in {"running", "succeeded"}:
         return {"run_id": run.id, "status": run.status, "job_id": run.rq_job_id}
 
     retry_policy = None
@@ -1080,12 +1207,11 @@ def start_run(run_id: UUID, db: Session = Depends(get_db)):
 
     q = Queue(
         settings.RUNS_QUEUE_NAME,
-        connection=Redis.from_url(settings.REDIS_URL, decode_responses=False),
+        connection=redis_conn,
         default_timeout=int(settings.RUN_JOB_TIMEOUT_SECONDS),
     )
 
     try:
-        # enqueue by dotted path to avoid importing worker/quant_core in API process
         job = q.enqueue(
             "services.worker.tasks.execute_run.execute_run",
             str(run.id),
@@ -1101,7 +1227,6 @@ def start_run(run_id: UUID, db: Session = Depends(get_db)):
         db.commit()
         raise HTTPException(status_code=503, detail="failed to enqueue run") from exc
 
-    # Allow restart (failed/canceled/cancel_requested -> queued)
     run.status = "queued"
     run.started_at = None
     run.finished_at = None
@@ -1115,7 +1240,6 @@ def start_run(run_id: UUID, db: Session = Depends(get_db)):
     db.commit()
 
     return {"run_id": run.id, "status": run.status, "job_id": job.id}
-
 
 @router.get("/{run_id}")
 def get_run(run_id: UUID, db: Session = Depends(get_db)):
@@ -1524,13 +1648,19 @@ def list_position_ledger(
 def list_strategy_leaderboard(
     run_id: UUID,
     symbol: str | None = None,
-    best_only: bool = Query(default=True),
+    limit: int = Query(default=20, ge=1, le=500),
+    best_only: bool | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
+    run = db.get(Run, run_id)
+    spec_json = dict(run.spec_json or {}) if run is not None else {}
+    is_optimization_run = _infer_run_type(spec_json) == "optimization"
+    best_only_effective = bool(best_only) if best_only is not None else (False if is_optimization_run else True)
+
     q = db.query(StrategyLeaderboard).filter(StrategyLeaderboard.run_id == run_id)
     if symbol:
         q = q.filter(StrategyLeaderboard.symbol == symbol)
-    if best_only:
+    if best_only_effective:
         q = q.filter(StrategyLeaderboard.rank == 1)
 
     rows = q.order_by(
@@ -1538,15 +1668,34 @@ def list_strategy_leaderboard(
         StrategyLeaderboard.rank.asc(),
         StrategyLeaderboard.cagr.desc().nullslast(),
         StrategyLeaderboard.strategy_kind.asc(),
-    ).all()
+    ).limit(int(limit)).all()
 
     if not rows:
         return []
 
-    run = db.get(Run, run_id)
-    spec_json = dict(run.spec_json or {}) if run is not None else {}
     portfolio_json = dict(spec_json.get("portfolio") or {})
     initial_cash = _as_summary_float(portfolio_json.get("initial_cash")) or 100000.0
+
+    # Extract horizon from spec_json
+    opt_json = dict(spec_json.get("optimization") or {})
+    wf_json = dict(opt_json.get("walk_forward") or {})
+    run_horizon: str | None = str(wf_json.get("horizon") or "").strip().lower() or None
+
+    requested_ranks = sorted({int(r.rank) for r in rows if r.rank is not None})
+    decision_q = db.query(StrategyDecision).filter(StrategyDecision.run_id == run_id)
+    if symbol:
+        decision_q = decision_q.filter(sa.func.upper(StrategyDecision.symbol) == str(symbol).strip().upper())
+    if requested_ranks:
+        decision_q = decision_q.filter(StrategyDecision.rank.in_(requested_ranks))
+    decision_rows = decision_q.all()
+    decision_map: dict[tuple[str, str, int], tuple[float | None, float | None]] = {}
+    for dr in decision_rows:
+        rank_val = int(dr.rank) if dr.rank is not None else 0
+        key = (str(dr.symbol), str(dr.strategy_kind).lower(), rank_val)
+        decision_map[key] = (
+            float(dr.opportunity_score) if dr.opportunity_score is not None else None,
+            float(dr.confidence_score) if dr.confidence_score is not None else None,
+        )
 
     symbols = sorted({r.symbol for r in rows})
     metric_rows_q = db.query(RunMetric).filter(RunMetric.run_id == run_id)
@@ -1615,6 +1764,18 @@ def list_strategy_leaderboard(
             win_pct = _metric_lookup(metrics_by_symbol, row_symbol_key, ["Win Rate", "Trade Winning %"])
         win_pct = _normalize_win_pct(_as_summary_float(win_pct))
 
+        decision_key = (row_symbol, strategy_kind_key, int(row.rank))
+        opp_score, conf_score = decision_map.get(decision_key, (None, None))
+        row_horizon = (
+            str(
+                (best_params_json or {}).get("simple_wfo.horizon")
+                or (best_params_json or {}).get("walk_forward.horizon")
+                or run_horizon
+                or ""
+            ).strip().lower()
+            or None
+        )
+
         out.append(
             {
                 "run_id": row.run_id,
@@ -1629,6 +1790,9 @@ def list_strategy_leaderboard(
                 "win_pct": win_pct,
                 "efficiency": row.efficiency,
                 "n_fills": row.n_fills,
+                "confidence_score": conf_score,
+                "opportunity_score": opp_score,
+                "horizon": row_horizon,
                 "signal_label": row.signal_label,
                 "signal_today": row.signal_today,
                 "signal_date": row.signal_date,
@@ -2228,6 +2392,7 @@ def get_strategy_decision_dashboard(
             )
             from core.quant_core.pipeline import run_pipeline
 
+            _assert_wfo_resolved_dates(spec_json, caller="strategy_decision_detail")
             out_raw = run_pipeline(spec_json)
             if isinstance(out_raw, dict):
                 out = out_raw
@@ -2597,6 +2762,7 @@ def materialize_strategy_details(
 
         from core.quant_core.pipeline import run_pipeline  # local import keeps API startup light
 
+        _assert_wfo_resolved_dates(spec_json, caller="materialize_strategy_details")
         out = run_pipeline(spec_json)
         strategy_results = dict(out.get("strategy_results") or {})
         strategy_payload = strategy_results.get(strategy_kind)
@@ -2656,7 +2822,7 @@ def materialize_strategy_details(
         )
         metrics = dict(strategy_payload.get("metrics") or {})
 
-        return {
+        response_payload = {
             "run_id": run.id,
             "symbol": symbol,
             "strategy_kind": strategy_kind,
@@ -2668,6 +2834,7 @@ def materialize_strategy_details(
             "signal_today": signal_today,
             "signal_date": signal_date,
         }
+        return sanitize_json_compatible(response_payload)
     finally:
         for p in temp_files:
             try:
