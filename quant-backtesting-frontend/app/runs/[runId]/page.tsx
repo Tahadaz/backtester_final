@@ -623,7 +623,7 @@ export default function RunDetailPage() {
     { best_only: decisionBestOnly }
   )
   const { data: integrity } = useRunIntegrity(runReady ? runId : null)
-  const { data: walkForward } = useRunWalkForward(runReady && !isSimpleWfoOptimization ? runId : null)
+  const { data: walkForward } = useRunWalkForward(runReady ? runId : null)
   const { data: significance } = useRunSignificance(runReady ? runId : null)
   const { data: risk } = useRunRisk(runReady ? runId : null)
   const { data: meanReversion } = useRunMeanReversion(runReady ? runId : null)
@@ -935,6 +935,17 @@ export default function RunDetailPage() {
     if (!selectedDetailRowKey) return null
     return selectedSymbolAllRows.find((row) => rowKey(row) === selectedDetailRowKey) ?? null
   }, [selectedDetailRowKey, selectedSymbolAllRows])
+
+  const selectedSymbolBatchPeriodRows = useMemo(() => {
+    if (!selectedSymbol) {
+      return batchPeriodRowsBySymbol["__ALL__"] ?? []
+    }
+    return (
+      batchPeriodRowsBySymbol[selectedSymbol] ??
+      batchPeriodRowsBySymbol["__ALL__"] ??
+      []
+    )
+  }, [batchPeriodRowsBySymbol, selectedSymbol])
 
   const detailGroupedParams = useMemo(() => {
     if (!selectedDetailRow) {
@@ -1870,10 +1881,20 @@ export default function RunDetailPage() {
                           runSpec={run.spec_json}
                           metrics={detailMetricsRows}
                           metricsLoading={metricsLoading}
-                          showDecisionTab={!isSimpleWfoOptimization}
+                          showDecisionTab={
+                            isSimpleWfoOptimization
+                              ? String(selectedDetailRow.strategy_kind ?? "").trim().toLowerCase() === "sma_price"
+                              : true
+                          }
                           forcedStrategy={selectedDetailRow.strategy_kind}
                           strategyParamsOverride={detailGroupedParams.strategy}
                           portfolioConfigOverride={detailGroupedParams.portfolio}
+                          decisionBatchRows={selectedSymbolBatchPeriodRows}
+                          decisionSelectedHorizon={selectedHorizon}
+                          decisionSelectedBestParamsRaw={selectedDetailRow.best_params_json}
+                          decisionSameStrategyRows={selectedSymbolAllRows.filter(
+                            (row) => row.strategy_kind === selectedDetailRow.strategy_kind
+                          )}
                           metricOverrides={{
                             cagr: selectedDetailRow.cagr,
                             pnl: selectedDetailRow.pnl,

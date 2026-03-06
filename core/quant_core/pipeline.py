@@ -9,7 +9,7 @@ import os
 import time
 import numpy as np
 import pandas as pd
-
+import json
 _pipeline_logger = logging.getLogger(__name__)
 from .engine import BacktestEngine, DataConfig, IndicatorsConfig, StrategyConfig, EngineSpec
 from .research.horizon import get_horizon_config
@@ -224,7 +224,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
         comm_bourse_bps=float(portfolio_json.get("cost_model", {}).get("comm_bourse_bps", 0.1)),
         reg_liv_bps=float(portfolio_json.get("cost_model", {}).get("reg_liv_bps", 0.0)),
         slippage_bps=float(portfolio_json.get("cost_model", {}).get("slippage_bps", 0.0)),
-        tva_rate=float(portfolio_json.get("cost_model", {}).get("tva_rate", 0.000300000142168438)),
+        tva_rate=float(portfolio_json.get("cost_model", {}).get("tva_rate", 0.1)),
     )
 
     portfolio_cfg = PortfolioConfig(
@@ -270,7 +270,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
         yf_period=data_cfg.yf_period,
         yf_interval=data_cfg.yf_interval,
         yf_auto_adjust=data_cfg.yf_auto_adjust,
-        rank_metric=str(optimization_json.get("rank_metric", "sharpe")),
+        rank_metric=str(optimization_json.get("rank_metric", "pnl")),
         lb_opt_kinds=list(optimization_json.get("kinds") or []),
         opt_method=str(optimization_json.get("method", "random")),
         n_trials=int(optimization_json.get("n_trials", 0)),
@@ -447,6 +447,21 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
         return out
 
     plots_json = dict(spec_json.get("plots") or {})
+
+    # If optimization run and user asked for top artifacts, default-enable plot artifact return.
+    top_n_artifacts = int(optimization_json.get("top_n_artifacts", 0) or 0)
+    if top_n_artifacts > 0:
+        plots_json.setdefault("enabled", True)
+        plots_json.setdefault("return_plot_artifacts", True)
+        plots_json.setdefault("kinds", [
+            "price_indicators_trades",
+            "drawdown",
+            "cumreturn_vs_benchmark",
+            "monthly_heatmap",
+            "yearly_return_barplot",
+        ])
+        # If not provided, default to current symbols
+        plots_json.setdefault("symbols", symbols)
     plot_kinds = {str(k).strip().lower() for k in (plots_json.get("kinds") or [])}
 
     def _plot_enabled(plot_kind: str) -> bool:
@@ -802,7 +817,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                     indicator_cols=list(ind_df.columns) if isinstance(ind_df, pd.DataFrame) else None,
                     port_cfg=port_cfg,
                 )
-                out_symbols[sym] = fig.to_plotly_json()
+                out_symbols[sym] = json.loads(fig.to_json())
             except Exception:
                 _pipeline_logger.warning(
                     "plot_price_indicators_trades_line failed for symbol %s", sym, exc_info=True
@@ -823,7 +838,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
             if _plot_enabled("drawdown"):
                 dd = report_plots.get("drawdown")
                 if isinstance(dd, pd.Series):
-                    out["drawdown"] = make_drawdown_plot(dd).to_plotly_json()
+                    out["drawdown"] = json.loads(make_drawdown_plot(dd).to_json())
         except Exception:
             pass
 
@@ -833,7 +848,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                 strat = cvb.get("strategy")
                 bench = cvb.get("benchmark")
                 if isinstance(strat, pd.Series):
-                    out["cumreturn_vs_benchmark"] = make_cumreturn_vs_benchmark_plot(strat, bench if isinstance(bench, pd.Series) else None).to_plotly_json()
+                    out["cumreturn_vs_benchmark"] = json.loads(make_cumreturn_vs_benchmark_plot(strat, bench if isinstance(bench, pd.Series) else None).to_json())
         except Exception:
             pass
 
@@ -841,7 +856,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
             if _plot_enabled("monthly_heatmap"):
                 monthly = report_plots.get("monthly_heatmap")
                 if isinstance(monthly, pd.DataFrame):
-                    out["monthly_heatmap"] = make_monthly_heatmap_plot(monthly).to_plotly_json()
+                    out["monthly_heatmap"] = json.loads(make_monthly_heatmap_plot(monthly).to_json())
         except Exception:
             pass
 
@@ -849,7 +864,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
             if _plot_enabled("yearly_return_barplot") or _plot_enabled("yearly_bar"):
                 yearly = report_plots.get("yearly_bar")
                 if isinstance(yearly, (pd.Series, pd.DataFrame)):
-                    out["yearly_return_barplot"] = make_yearly_return_bar_plot(yearly).to_plotly_json()
+                    out["yearly_return_barplot"] = json.loads(make_yearly_return_bar_plot(yearly).to_json())
         except Exception:
             pass
 
@@ -879,7 +894,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
         per_fill_trade_ledger = _normalize_trade_ledger_records(
             _table_to_records(report_tables.get("trades"))
         )
-        fifo_trade_ledger = _table_to_records(report_tables.get("trade_ledger"))
+        fifo_trade_ledger = _table_to_records(report_tables.get("trades"))
         return {
             "strategy_kind": kind,
             "best_strategy_params": dict(best_params or {}),
@@ -932,7 +947,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
             decision_inputs = payload.get("decision_inputs")
             if not isinstance(decision_inputs, dict):
                 decision_inputs = {"symbols": {}, "returns": []}
-            trade_ledger = payload.get("trade_ledger")
+            trade_ledger = payload.get("trades")
             inputs_by_kind[kind] = {
                 "symbols": [str(s) for s in list(payload.get("symbols") or []) if str(s).strip()],
                 "decision_inputs": decision_inputs,
@@ -1819,7 +1834,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                 "objective": period_objective,
                 "optimize_within_each": period_optimize_within_each,
                 "results": _df_to_records(batch_df_global, ensure_timestamp=False),
-                "heatmap": batch_heatmap_fig.to_plotly_json(),
+                "heatmap": json.loads(batch_heatmap_fig.to_json()),
                 "winner": {
                     "strategy_kind": winner_kind,
                     "period": winner_row.get("period"),

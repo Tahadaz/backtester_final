@@ -40,6 +40,7 @@ import { cn } from "@/lib/utils"
 import { STRAT_PARAM_KEYS, PORTF_KEYS } from "@/lib/strategy-registry"
 type RunMode = "single" | "optimize"
 type EndDatePolicy = "latest" | "fixed"
+type RankMetric = "pnl" | "cagr" | "sharpe"
 
 const initialParamUI: Record<string, ParamUI> = {}
 for (const [k, v] of Object.entries(PARAM_DEFAULTS)) {
@@ -139,7 +140,7 @@ interface WizardState {
   optimizePortfolio: boolean
   optMethod: "random" | "grid"
   nTrials: number
-  topK: number
+  rankMetric: RankMetric
   seed: number
   paramUI: Record<string, ParamUI>
   singleStartDate: string
@@ -436,7 +437,7 @@ export default function NewRunPage() {
     optimizePortfolio: true,
     optMethod: "random",
     nTrials: 50,
-    topK: 1,
+    rankMetric: "pnl",
     seed: 42,
     paramUI: initialParamUI,
     singleStartDate: "",
@@ -673,11 +674,12 @@ export default function NewRunPage() {
 
         // OPTIMIZATION: backend expects optimization block
         optimization: {
-          rank_metric: "pnl",
+          rank_metric: state.mode === "optimize" ? state.rankMetric : "pnl",
           kinds: state.mode === "optimize" ? state.strategies.map(s => s.toLowerCase()) : [],
           method: state.optMethod,
           n_trials: state.mode === "optimize" ? state.nTrials : 0,
-          top_k: state.mode === "optimize" ? state.topK : 1,
+          top_k: state.mode === "optimize" ? 20 : 1,
+          top_n_artifacts: state.mode === "optimize" ? 3 : 1,
           seed: state.seed,
           batch_per_symbol: state.mode === "optimize",
           domains_by_kind: domainsByKind,
@@ -1042,6 +1044,21 @@ export default function NewRunPage() {
                   disabled={state.mode !== "optimize"}
                 />
               </div>
+
+              {state.mode === "optimize" ? (
+                <div>
+                  <Label className="text-xs text-muted-foreground">Rank metric</Label>
+                  <select
+                    className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
+                    value={state.rankMetric}
+                    onChange={(e) => update("rankMetric", e.target.value as RankMetric)}
+                  >
+                    <option value="pnl">PnL</option>
+                    <option value="cagr">CAGR</option>
+                    <option value="sharpe">Sharpe</option>
+                  </select>
+                </div>
+              ) : null}
 
               {state.mode !== "optimize" ? (
                 <div className="grid gap-3 sm:grid-cols-2">

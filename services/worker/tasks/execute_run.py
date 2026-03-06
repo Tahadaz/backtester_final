@@ -47,6 +47,8 @@ from core.quant_core.decision import (
     deterministic_seed_from_key,
 )
 
+TOP_N_DECISION_DETAILS = 3
+
 
 def _utcnow():
     return datetime.now(timezone.utc)
@@ -1270,6 +1272,135 @@ def _walk_forward_oos_summary_by_kind(out: dict[str, Any]) -> dict[str, dict[str
     return out_summary
 
 
+def _decode_storage_rank(rank: Any) -> tuple[int | None, int | None]:
+    rank_int = _as_int(rank)
+    if rank_int is None or rank_int <= 0:
+        return None, None
+    if rank_int <= 1000:
+        return 0, int(rank_int)
+    return int(rank_int // 1000), int(rank_int % 1000 or 1000)
+
+
+def _extract_horizon_and_local_rank(row: dict[str, Any]) -> tuple[str | None, int | None, int | None]:
+    params = _as_dict(row.get("params_json"))
+    horizon = str(
+        params.get("simple_wfo.horizon")
+        or params.get("walk_forward.horizon")
+        or ""
+    ).strip().lower() or None
+    local_rank = _as_int(params.get("simple_wfo.rank"))
+    horizon_index = None
+    if local_rank is None:
+        horizon_index, local_rank = _decode_storage_rank(row.get("rank"))
+    else:
+        horizon_index, _ = _decode_storage_rank(row.get("rank"))
+    return horizon, local_rank, horizon_index
+
+
+def _slice_bars_to_last_oos_window(
+    bars: pd.DataFrame,
+    *,
+    last_test_start: Any,
+    last_test_end: Any,
+) -> tuple[pd.DataFrame, str, list[str]]:
+    warnings: list[str] = []
+    if bars is None or bars.empty:
+        return pd.DataFrame(), "empty_bars", ["bars are empty; cannot slice last OOS window."]
+
+    start_raw = str(last_test_start or "").strip()
+    end_raw = str(last_test_end or "").strip()
+    if not start_raw or not end_raw:
+        return bars, "full_bars", warnings
+
+    start_ts = pd.to_datetime(start_raw, errors="coerce", utc=True)
+    end_ts = pd.to_datetime(end_raw, errors="coerce", utc=True)
+    if pd.isna(start_ts) or pd.isna(end_ts):
+        warnings.append("invalid last_test_start/end; using full bars for opportunity.")
+        return bars, "full_bars_fallback_invalid_bounds", warnings
+
+    idx_utc = pd.to_datetime(pd.Series(bars.index), errors="coerce", utc=True)
+    mask = idx_utc.notna() & (idx_utc >= start_ts) & (idx_utc <= (end_ts + pd.Timedelta(days=1) - pd.Timedelta(nanoseconds=1)))
+    sliced = bars.loc[mask.to_numpy()]
+    if sliced.empty:
+        warnings.append("last_test_start/end produced empty slice; using full bars for opportunity.")
+        return bars, "full_bars_fallback_empty_slice", warnings
+    return sliced, "last_oos_window", warnings
+
+
+def _wf_summary_from_best_params_summary(summary: dict[str, Any]) -> dict[str, Any]:
+    payload = _as_dict(summary)
+    out = {
+        "n_folds": _as_int(payload.get("n_folds")),
+        "objective_mean": _as_float(payload.get("objective_mean"), _as_float(payload.get("mean"), _as_float(payload.get("selection_score")))),
+        "objective_median": _as_float(payload.get("objective_median"), _as_float(payload.get("median"))),
+        "positive_ratio": _as_float(payload.get("positive_ratio")),
+        "is_oos_gap_median": _as_float(payload.get("is_oos_gap_median")),
+        "cagr": _as_float(payload.get("cagr")),
+        "sharpe": _as_float(payload.get("sharpe")),
+    }
+    cleaned: dict[str, Any] = {}
+    for key, value in out.items():
+        if value is None:
+            continue
+        cleaned[key] = value
+    return cleaned
+
+
+def _value_matches(lhs: Any, rhs: Any) -> bool:
+    lf = _as_float(lhs)
+    rf = _as_float(rhs)
+    if lf is not None and rf is not None:
+        return abs(lf - rf) <= 1e-12
+    return str(lhs) == str(rhs)
+
+
+def _match_run_fold_rows_for_candidate(
+    fold_rows: list[dict[str, Any]],
+    *,
+    strategy_kind: str,
+    horizon: str | None,
+    params_json: dict[str, Any],
+) -> list[dict[str, Any]]:
+    strategy_kind_norm = _normalize_strategy_kind(strategy_kind)
+    expected_params = {
+        str(k): v
+        for k, v in _as_dict(params_json).items()
+        if str(k).startswith("strategy.") or str(k).startswith("portfolio.")
+    }
+
+    out: list[dict[str, Any]] = []
+    for fold in fold_rows:
+        if _normalize_strategy_kind(fold.get("strategy_kind")) != strategy_kind_norm:
+            continue
+
+        fold_horizon = str(
+            fold.get("horizon")
+            or _as_dict(fold.get("_fold_artifacts")).get("horizon")
+            or ""
+        ).strip().lower() or None
+        if horizon and fold_horizon and fold_horizon != horizon:
+            continue
+
+        matched_params = 0
+        mismatched = False
+        for key, expected_val in expected_params.items():
+            actual_val = fold.get(f"param.{key}")
+            if actual_val is None:
+                actual_val = fold.get(key)
+            if actual_val is None:
+                continue
+            matched_params += 1
+            if not _value_matches(actual_val, expected_val):
+                mismatched = True
+                break
+        if mismatched:
+            continue
+        if expected_params and matched_params == 0:
+            continue
+        out.append(fold)
+    return out
+
+
 def _insert_artifact_row(
     *,
     db: Session,
@@ -1514,9 +1645,154 @@ def _persist_walk_forward_folds(
     out: dict[str, Any],
     default_symbol: str,
 ) -> None:
+    can_persist_run_fold = _has_table(db, "run_fold")
+    artifacts = _as_dict(out.get("artifacts"))
     simple_wfo = out.get("simple_wfo_multi_horizon")
+    if not isinstance(simple_wfo, dict):
+        simple_wfo = artifacts.get("simple_wfo_multi_horizon")
     if isinstance(simple_wfo, dict) and _as_bool(simple_wfo.get("enabled"), False):
-        # Simplified WFO mode intentionally hides fold-by-fold persistence/details.
+        simple_payload = dict(simple_wfo or {})
+        rows_by_horizon_raw = simple_payload.get("fold_rows_by_horizon")
+        rows_by_horizon = rows_by_horizon_raw if isinstance(rows_by_horizon_raw, dict) else {}
+        summary_by_horizon_raw = simple_payload.get("summary_by_horizon")
+        summary_by_horizon = summary_by_horizon_raw if isinstance(summary_by_horizon_raw, dict) else {}
+
+        horizons: list[str] = []
+        for item in list(simple_payload.get("horizons") or []):
+            token = str(item or "").strip().lower()
+            if token and token not in horizons:
+                horizons.append(token)
+        for item in list(rows_by_horizon.keys()):
+            token = str(item or "").strip().lower()
+            if token and token not in horizons:
+                horizons.append(token)
+        for item in list(summary_by_horizon.keys()):
+            token = str(item or "").strip().lower()
+            if token and token not in horizons:
+                horizons.append(token)
+
+        if not horizons:
+            return
+
+        for horizon_index, horizon in enumerate(horizons):
+            rows = [
+                dict(r)
+                for r in list(rows_by_horizon.get(horizon) or [])
+                if isinstance(r, dict)
+            ]
+
+            if rows and can_persist_run_fold:
+                for i, row in enumerate(rows):
+                    local_fold = _as_int(row.get("fold_index"))
+                    if local_fold is None:
+                        period_label = str(row.get("period") or row.get("label") or "")
+                        if period_label.lower().startswith("fold"):
+                            try:
+                                local_fold = int(period_label.split()[-1]) - 1
+                            except Exception:
+                                local_fold = i
+                        else:
+                            local_fold = i
+                    trial_rank = _as_int(row.get("trial_rank"), 1) or 1
+                    fold_index = horizon_index * 1_000_000 + int(local_fold) * 1000 + int(trial_rank)
+
+                    db.execute(
+                        text(
+                            """
+                            insert into run_fold(
+                                run_id, fold_index, train_start, train_end, test_start, test_end, fold_metrics_json, fold_artifacts, created_at
+                            ) values (
+                                :run_id, :fold_index, :train_start, :train_end, :test_start, :test_end,
+                                cast(:fold_metrics_json as jsonb), cast(:fold_artifacts as jsonb), :created_at
+                            )
+                            on conflict (run_id, fold_index)
+                            do update set
+                                train_start = excluded.train_start,
+                                train_end = excluded.train_end,
+                                test_start = excluded.test_start,
+                                test_end = excluded.test_end,
+                                fold_metrics_json = excluded.fold_metrics_json,
+                                fold_artifacts = excluded.fold_artifacts,
+                                created_at = excluded.created_at
+                            """
+                        ),
+                        {
+                            "run_id": rid,
+                            "fold_index": int(fold_index),
+                            "train_start": _to_pg_ts(row.get("train_start")),
+                            "train_end": _to_pg_ts(row.get("train_end")),
+                            "test_start": _to_pg_ts(row.get("test_start") or row.get("start")),
+                            "test_end": _to_pg_ts(row.get("test_end") or row.get("end")),
+                            "fold_metrics_json": _json_dumps_pg(row),
+                            "fold_artifacts": _json_dumps_pg(
+                                {
+                                    "symbol": default_symbol,
+                                    "horizon": horizon,
+                                    "horizon_label": row.get("horizon_label"),
+                                    "local_fold_index": int(local_fold),
+                                    "trial_rank": int(trial_rank),
+                                }
+                            ),
+                            "created_at": _utcnow(),
+                        },
+                    )
+
+            folds_object_key = f"runs/{rid}/wfo/{default_symbol}/{horizon}/folds.json"
+            size_bytes, sha256, effective_key = _upload_json(folds_object_key, rows, db=db)
+            _insert_artifact_row(
+                db=db,
+                rid=rid,
+                symbol=str(default_symbol or "__ALL__"),
+                artifact_type="walk_forward_json",
+                name="walk_forward.folds",
+                object_key=effective_key,
+                content_type="application/json",
+                size_bytes=size_bytes,
+                sha256=sha256,
+            )
+
+            summary_payload = _as_dict(summary_by_horizon.get(horizon))
+            if not summary_payload:
+                oos_vals = pd.to_numeric(pd.Series([r.get("objective_value") for r in rows]), errors="coerce").dropna()
+                positives = float((oos_vals > 0).mean()) if not oos_vals.empty else None
+                last_test_start = None
+                last_test_end = None
+                if rows:
+                    sorted_rows = sorted(
+                        rows,
+                        key=lambda r: pd.to_datetime(r.get("test_end") or r.get("end"), errors="coerce"),
+                    )
+                    last_row = sorted_rows[-1]
+                    last_start_ts = pd.to_datetime(last_row.get("test_start") or last_row.get("start"), errors="coerce")
+                    last_end_ts = pd.to_datetime(last_row.get("test_end") or last_row.get("end"), errors="coerce")
+                    if pd.notna(last_start_ts):
+                        last_test_start = pd.Timestamp(last_start_ts).date().isoformat()
+                    if pd.notna(last_end_ts):
+                        last_test_end = pd.Timestamp(last_end_ts).date().isoformat()
+                summary_payload = {
+                    "n_folds": int(len(oos_vals)),
+                    "mean": float(oos_vals.mean()) if not oos_vals.empty else None,
+                    "median": float(oos_vals.median()) if not oos_vals.empty else None,
+                    "std": float(oos_vals.std(ddof=0)) if not oos_vals.empty else None,
+                    "positive_ratio": positives,
+                    "last_test_start": last_test_start,
+                    "last_test_end": last_test_end,
+                }
+            summary_payload["horizon"] = horizon
+
+            summary_object_key = f"runs/{rid}/wfo/{default_symbol}/{horizon}/summary.json"
+            size_bytes, sha256, effective_key = _upload_json(summary_object_key, summary_payload, db=db)
+            _insert_artifact_row(
+                db=db,
+                rid=rid,
+                symbol=str(default_symbol or "__ALL__"),
+                artifact_type="walk_forward_json",
+                name="walk_forward.summary",
+                object_key=effective_key,
+                content_type="application/json",
+                size_bytes=size_bytes,
+                sha256=sha256,
+            )
         return
 
     rows = _walk_forward_rows(out)
@@ -1536,63 +1812,66 @@ def _persist_walk_forward_folds(
     date_resolution = dict(wfo_meta.get("date_resolution") or {})
 
     for i, row in enumerate(rows):
-        fold_index = _as_int(row.get("fold_index"))
-        if fold_index is None:
+        local_fold_index = _as_int(row.get("fold_index"))
+        if local_fold_index is None:
             period_label = str(row.get("period") or row.get("label") or "")
             if period_label.lower().startswith("fold"):
                 try:
-                    fold_index = int(period_label.split()[-1]) - 1
+                    local_fold_index = int(period_label.split()[-1]) - 1
                 except Exception:
-                    fold_index = i
+                    local_fold_index = i
             else:
-                fold_index = i
+                local_fold_index = i
+        trial_rank = _as_int(row.get("trial_rank"), 1) or 1
+        fold_index = int(local_fold_index) * 1000 + int(trial_rank)
 
-        db.execute(
-            text(
-                """
-                insert into run_fold(
-                    run_id, fold_index, train_start, train_end, test_start, test_end, fold_metrics_json, fold_artifacts, created_at
-                ) values (
-                    :run_id, :fold_index, :train_start, :train_end, :test_start, :test_end,
-                    cast(:fold_metrics_json as jsonb), cast(:fold_artifacts as jsonb), :created_at
-                )
-                on conflict (run_id, fold_index)
-                do update set
-                    train_start = excluded.train_start,
-                    train_end = excluded.train_end,
-                    test_start = excluded.test_start,
-                    test_end = excluded.test_end,
-                    fold_metrics_json = excluded.fold_metrics_json,
-                    fold_artifacts = excluded.fold_artifacts,
-                    created_at = excluded.created_at
-                """
-            ),
-            {
-                "run_id": rid,
-                "fold_index": int(fold_index),
-                "train_start": _to_pg_ts(row.get("train_start")),
-                "train_end": _to_pg_ts(row.get("train_end")),
-                "test_start": _to_pg_ts(row.get("test_start") or row.get("start")),
-                "test_end": _to_pg_ts(row.get("test_end") or row.get("end")),
-                "fold_metrics_json": _json_dumps_pg(row),
-                "fold_artifacts": _json_dumps_pg(
-                    {
-                        "symbol": default_symbol,
-                        "horizon": horizon,
-                        "horizon_label": horizon_label,
-                        "horizon_cfg": horizon_cfg,
-                        "train": wfo_train,
-                        "test": wfo_test,
-                        "step": wfo_step,
-                        "resolved_start_date": resolved_start_date,
-                        "resolved_end_date": resolved_end_date,
-                        "end_date_policy": end_date_policy,
-                        "date_resolution": date_resolution,
-                    }
+        if can_persist_run_fold:
+            db.execute(
+                text(
+                    """
+                    insert into run_fold(
+                        run_id, fold_index, train_start, train_end, test_start, test_end, fold_metrics_json, fold_artifacts, created_at
+                    ) values (
+                        :run_id, :fold_index, :train_start, :train_end, :test_start, :test_end,
+                        cast(:fold_metrics_json as jsonb), cast(:fold_artifacts as jsonb), :created_at
+                    )
+                    on conflict (run_id, fold_index)
+                    do update set
+                        train_start = excluded.train_start,
+                        train_end = excluded.train_end,
+                        test_start = excluded.test_start,
+                        test_end = excluded.test_end,
+                        fold_metrics_json = excluded.fold_metrics_json,
+                        fold_artifacts = excluded.fold_artifacts,
+                        created_at = excluded.created_at
+                    """
                 ),
-                "created_at": _utcnow(),
-            },
-        )
+                {
+                    "run_id": rid,
+                    "fold_index": int(fold_index),
+                    "train_start": _to_pg_ts(row.get("train_start")),
+                    "train_end": _to_pg_ts(row.get("train_end")),
+                    "test_start": _to_pg_ts(row.get("test_start") or row.get("start")),
+                    "test_end": _to_pg_ts(row.get("test_end") or row.get("end")),
+                    "fold_metrics_json": _json_dumps_pg(row),
+                    "fold_artifacts": _json_dumps_pg(
+                        {
+                            "symbol": default_symbol,
+                            "horizon": horizon,
+                            "horizon_label": horizon_label,
+                            "horizon_cfg": horizon_cfg,
+                            "train": wfo_train,
+                            "test": wfo_test,
+                            "step": wfo_step,
+                            "resolved_start_date": resolved_start_date,
+                            "resolved_end_date": resolved_end_date,
+                            "end_date_policy": end_date_policy,
+                            "date_resolution": date_resolution,
+                        }
+                    ),
+                    "created_at": _utcnow(),
+                },
+            )
 
     object_key = f"runs/{rid}/wfo/{default_symbol}/{horizon}/folds.json"
     size_bytes, sha256, effective_key = _upload_json(object_key, rows, db=db)
@@ -1862,12 +2141,29 @@ def _persist_decisions(
     decision_source_by_kind = _decision_source_by_kind(out)
     leaderboard_rows = [r for r in list(out.get("leaderboard") or []) if isinstance(r, dict)]
     top_k = max(1, int(settings.TOP_K_DECISIONS or 1))
+    simple_wfo = out.get("simple_wfo_multi_horizon")
+    simple_wfo_enabled = isinstance(simple_wfo, dict) and _as_bool(simple_wfo.get("enabled"), False)
     bars_by_symbol = _decision_bars_by_symbol(decision_source_by_kind)
     signals_by_kind_symbol = _decision_signals_by_kind_symbol(decision_source_by_kind)
     returns_by_kind = _decision_returns_by_kind(decision_source_by_kind)
     ledger_by_kind = _decision_trade_ledger_by_kind(decision_source_by_kind)
     wf_rows = _walk_forward_rows(out)
     wf_oos_summary_by_kind = _walk_forward_oos_summary_by_kind(out)
+    run_fold_rows: list[dict[str, Any]] = []
+    if _has_table(db, "run_fold"):
+        try:
+            fold_db_rows = db.execute(
+                text("select fold_metrics_json, fold_artifacts from run_fold where run_id = :run_id"),
+                {"run_id": rid},
+            ).mappings().all()
+            for fold_db_row in fold_db_rows:
+                fold_metrics = _as_dict(fold_db_row.get("fold_metrics_json"))
+                if not fold_metrics:
+                    continue
+                fold_metrics["_fold_artifacts"] = _as_dict(fold_db_row.get("fold_artifacts"))
+                run_fold_rows.append(fold_metrics)
+        except Exception:
+            run_fold_rows = []
 
     normalized_rows: list[dict[str, Any]] = []
     if leaderboard_rows:
@@ -1929,20 +2225,33 @@ def _persist_decisions(
     if not normalized_rows:
         return
 
-    by_symbol_rows: dict[str, list[dict[str, Any]]] = {}
-    for row in normalized_rows:
-        by_symbol_rows.setdefault(_normalize_symbol(row.get("symbol")), []).append(row)
-
     candidates: list[dict[str, Any]] = []
-    for symbol, rows in by_symbol_rows.items():
-        ranked = sorted(
-            rows,
+    if simple_wfo_enabled:
+        ranked_rows = sorted(
+            normalized_rows,
             key=lambda r: (
                 int(r.get("rank") or 999999),
                 -float(r.get("cagr") if r.get("cagr") is not None else -999999.0),
             ),
         )
-        candidates.extend(ranked[:top_k])
+        for row in ranked_rows:
+            _, local_rank, _ = _extract_horizon_and_local_rank(row)
+            if local_rank is None or int(local_rank) > int(TOP_N_DECISION_DETAILS):
+                continue
+            candidates.append(row)
+    else:
+        by_symbol_rows: dict[str, list[dict[str, Any]]] = {}
+        for row in normalized_rows:
+            by_symbol_rows.setdefault(_normalize_symbol(row.get("symbol")), []).append(row)
+        for symbol, rows in by_symbol_rows.items():
+            ranked = sorted(
+                rows,
+                key=lambda r: (
+                    int(r.get("rank") or 999999),
+                    -float(r.get("cagr") if r.get("cagr") is not None else -999999.0),
+                ),
+            )
+            candidates.extend(ranked[:top_k])
 
     by_symbol_kind_rows: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for row in normalized_rows:
@@ -1970,7 +2279,17 @@ def _persist_decisions(
         )
         direction = 1 if signal_today > 0 else -1 if signal_today < 0 else 0
 
-        levels = compute_levels_support_resistance(bars, direction=direction)
+        last_test_start = params_json.get("last_test_start")
+        last_test_end = params_json.get("last_test_end")
+        bars_for_opportunity, opportunity_source, opportunity_warnings = _slice_bars_to_last_oos_window(
+            bars,
+            last_test_start=last_test_start,
+            last_test_end=last_test_end,
+        )
+        if bars_for_opportunity is None or bars_for_opportunity.empty:
+            bars_for_opportunity = bars
+
+        levels = compute_levels_support_resistance(bars_for_opportunity, direction=direction)
         risk_payload = compute_rr_and_invalidation(
             direction=direction,
             entry=_as_float(levels.get("entry")),
@@ -1978,13 +2297,14 @@ def _persist_decisions(
             target=_as_float(levels.get("target")),
         )
         opportunity = compute_opportunity_score(
-            bars=bars,
+            bars=bars_for_opportunity,
             strategy_direction=direction,
             strategy_kind=strategy_kind,
             levels_payload=levels,
         )
 
         summary = _as_dict(params_json.get("_summary"))
+        horizon, _, _ = _extract_horizon_and_local_rank(row)
         row_for_confidence = {
             "strategy_kind": strategy_kind,
             "best_params_json": params_json,
@@ -1998,12 +2318,30 @@ def _persist_decisions(
         same_rows = by_symbol_kind_rows.get((symbol, strategy_kind), [])
         returns = returns_by_kind.get(strategy_kind, [])
         trade_ledger = ledger_by_kind.get(strategy_kind, [])
+        matched_run_fold_rows = _match_run_fold_rows_for_candidate(
+            run_fold_rows,
+            strategy_kind=strategy_kind,
+            horizon=horizon,
+            params_json=params_json,
+        )
+        confidence_rows = matched_run_fold_rows if matched_run_fold_rows else wf_rows
+        confidence_summary = None
+        confidence_source = "run_fold" if matched_run_fold_rows else "decision_support"
+        if not matched_run_fold_rows:
+            fallback_summary = _wf_summary_from_best_params_summary(summary)
+            if fallback_summary:
+                confidence_summary = fallback_summary
+                confidence_source = "best_params_summary_fallback"
+            else:
+                confidence_summary = wf_oos_summary_by_kind.get(strategy_kind)
+                confidence_source = "decision_support"
+
         seed_key = f"{rid}:{symbol}:{strategy_kind}:{trial_id}"
         confidence = compute_confidence_score(
             row=row_for_confidence,
             same_strategy_rows=same_rows,
-            walk_forward_rows=wf_rows,
-            walk_forward_summary=wf_oos_summary_by_kind.get(strategy_kind),
+            walk_forward_rows=confidence_rows,
+            walk_forward_summary=confidence_summary,
             trade_ledger=trade_ledger,
             returns=returns,
             mc_paths=int(settings.MC_NUM_PATHS),
@@ -2011,8 +2349,8 @@ def _persist_decisions(
         )
         as_of_date = None
         try:
-            if len(bars.index) > 0:
-                as_of_ts = pd.to_datetime(bars.index[-1], errors="coerce")
+            if len(bars_for_opportunity.index) > 0:
+                as_of_ts = pd.to_datetime(bars_for_opportunity.index[-1], errors="coerce")
                 if pd.notna(as_of_ts):
                     as_of_date = as_of_ts.date().isoformat()
         except Exception:
@@ -2031,6 +2369,12 @@ def _persist_decisions(
                 "params_hash": params_hash,
                 "signal_today": signal_today,
                 "source": "post_run_worker",
+                "opportunity_source": opportunity_source,
+                "opportunity_last_test_start": last_test_start,
+                "opportunity_last_test_end": last_test_end,
+                "opportunity_warnings": opportunity_warnings,
+                "confidence_source": confidence_source,
+                "confidence_n_rows": len(confidence_rows),
             },
             as_of_date=as_of_date,
         )
@@ -2447,18 +2791,18 @@ def _persist_pipeline_output(
             "max_drawdown": _as_float(row.get("max_drawdown")),
             "sharpe": _as_float(row.get("sharpe")),
         }
-        if rank == 1:
-            strategy_summary = strategy_summary_map.get((symbol_key, strategy_kind), {})
-            merged_summary: dict[str, float] = {}
-            for metric_key in ("total_return", "win_pct", "max_drawdown", "sharpe"):
-                value = row_summary.get(metric_key)
-                if value is None:
-                    value = _as_float(strategy_summary.get(metric_key))
-                if value is None:
-                    continue
-                merged_summary[metric_key] = float(value)
-            if merged_summary:
-                best_params_json["_summary"] = merged_summary
+        existing_summary = _as_dict(best_params_json.get("_summary"))
+        merged_summary: dict[str, Any] = dict(existing_summary)
+        strategy_summary = strategy_summary_map.get((symbol_key, strategy_kind), {}) if rank == 1 else {}
+        for metric_key in ("total_return", "win_pct", "max_drawdown", "sharpe"):
+            value = row_summary.get(metric_key)
+            if value is None and rank == 1:
+                value = _as_float(strategy_summary.get(metric_key))
+            if value is None:
+                continue
+            merged_summary[metric_key] = float(value)
+        if merged_summary:
+            best_params_json["_summary"] = merged_summary
 
         best_params_clean: dict[str, Any] = {}
         for k, v in best_params_json.items():
@@ -2682,17 +3026,16 @@ def _persist_pipeline_output(
         except Exception:
             pass
 
-    if _has_table(db, "run_fold"):
-        try:
-            with db.begin_nested():
-                _persist_walk_forward_folds(
-                    db=db,
-                    rid=rid,
-                    out=out,
-                    default_symbol=default_symbol,
-                )
-        except Exception:
-            pass
+    try:
+        with db.begin_nested():
+            _persist_walk_forward_folds(
+                db=db,
+                rid=rid,
+                out=out,
+                default_symbol=default_symbol,
+            )
+    except Exception:
+        pass
 
     if _has_table(db, "run_significance"):
         try:
@@ -2737,9 +3080,7 @@ def _persist_pipeline_output(
 
     # Decisions are best-effort and should never invalidate persisted run outputs.
     # Use a savepoint so missing/partial decision schema doesn't abort the main tx.
-    simple_wfo = out.get("simple_wfo_multi_horizon")
-    simple_wfo_enabled = isinstance(simple_wfo, dict) and _as_bool(simple_wfo.get("enabled"), False)
-    if _has_table(db, "strategy_decision") and not simple_wfo_enabled:
+    if _has_table(db, "strategy_decision"):
         try:
             with db.begin_nested():
                 _persist_decisions(

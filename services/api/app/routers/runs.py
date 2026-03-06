@@ -102,9 +102,10 @@ def _infer_run_type(spec_json: dict) -> str:
     if bool(decision_cfg.get("enabled", False)):
         return "decision_backtest"
     optimization = dict(spec_json.get("optimization") or {})
+    walk_forward = dict(optimization.get("walk_forward") or {})
     n_trials = int(optimization.get("n_trials") or 0)
     kinds = list(optimization.get("kinds") or [])
-    return "optimization" if n_trials > 0 or len(kinds) > 0 else "backtest"
+    return "optimization" if n_trials > 0 or len(kinds) > 0 or bool(walk_forward.get("enabled", False)) else "backtest"
 
 
 def _infer_mode(spec_json: dict[str, Any]) -> str:
@@ -1179,8 +1180,22 @@ def start_run(run_id: UUID, db: Session = Depends(get_db)):
     if run is None:
         raise HTTPException(status_code=404, detail="run not found")
 
-    # idempotency: if already queued/running/done, just return current status
-    if run.status in {"queued", "running", "succeeded"}:
+    redis_conn = Redis.from_url(settings.REDIS_URL, decode_responses=False)
+
+    # If run is queued, ensure there is actually an RQ job behind it.
+    if run.status == "queued":
+        if run.rq_job_id:
+            job_key = f"rq:job:{run.rq_job_id}"
+            try:
+                if redis_conn.exists(job_key):
+                    return {"run_id": run.id, "status": run.status, "job_id": run.rq_job_id}
+            except Exception:
+                # if redis check fails, fall through and try to enqueue
+                pass
+        # queued but missing job -> fall through to enqueue
+
+    # idempotency: running/done stay idempotent
+    if run.status in {"running", "succeeded"}:
         return {"run_id": run.id, "status": run.status, "job_id": run.rq_job_id}
 
     retry_policy = None
@@ -1192,12 +1207,11 @@ def start_run(run_id: UUID, db: Session = Depends(get_db)):
 
     q = Queue(
         settings.RUNS_QUEUE_NAME,
-        connection=Redis.from_url(settings.REDIS_URL, decode_responses=False),
+        connection=redis_conn,
         default_timeout=int(settings.RUN_JOB_TIMEOUT_SECONDS),
     )
 
     try:
-        # enqueue by dotted path to avoid importing worker/quant_core in API process
         job = q.enqueue(
             "services.worker.tasks.execute_run.execute_run",
             str(run.id),
@@ -1213,7 +1227,6 @@ def start_run(run_id: UUID, db: Session = Depends(get_db)):
         db.commit()
         raise HTTPException(status_code=503, detail="failed to enqueue run") from exc
 
-    # Allow restart (failed/canceled/cancel_requested -> queued)
     run.status = "queued"
     run.started_at = None
     run.finished_at = None
@@ -1227,7 +1240,6 @@ def start_run(run_id: UUID, db: Session = Depends(get_db)):
     db.commit()
 
     return {"run_id": run.id, "status": run.status, "job_id": job.id}
-
 
 @router.get("/{run_id}")
 def get_run(run_id: UUID, db: Session = Depends(get_db)):
@@ -1636,13 +1648,19 @@ def list_position_ledger(
 def list_strategy_leaderboard(
     run_id: UUID,
     symbol: str | None = None,
-    best_only: bool = Query(default=True),
+    limit: int = Query(default=20, ge=1, le=500),
+    best_only: bool | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
+    run = db.get(Run, run_id)
+    spec_json = dict(run.spec_json or {}) if run is not None else {}
+    is_optimization_run = _infer_run_type(spec_json) == "optimization"
+    best_only_effective = bool(best_only) if best_only is not None else (False if is_optimization_run else True)
+
     q = db.query(StrategyLeaderboard).filter(StrategyLeaderboard.run_id == run_id)
     if symbol:
         q = q.filter(StrategyLeaderboard.symbol == symbol)
-    if best_only:
+    if best_only_effective:
         q = q.filter(StrategyLeaderboard.rank == 1)
 
     rows = q.order_by(
@@ -1650,13 +1668,11 @@ def list_strategy_leaderboard(
         StrategyLeaderboard.rank.asc(),
         StrategyLeaderboard.cagr.desc().nullslast(),
         StrategyLeaderboard.strategy_kind.asc(),
-    ).all()
+    ).limit(int(limit)).all()
 
     if not rows:
         return []
 
-    run = db.get(Run, run_id)
-    spec_json = dict(run.spec_json or {}) if run is not None else {}
     portfolio_json = dict(spec_json.get("portfolio") or {})
     initial_cash = _as_summary_float(portfolio_json.get("initial_cash")) or 100000.0
 
@@ -1665,18 +1681,17 @@ def list_strategy_leaderboard(
     wf_json = dict(opt_json.get("walk_forward") or {})
     run_horizon: str | None = str(wf_json.get("horizon") or "").strip().lower() or None
 
-    # Fetch decision scores (best rank per symbol+kind) for this run
-    decision_rows = (
-        db.query(StrategyDecision)
-        .filter(
-            StrategyDecision.run_id == run_id,
-            StrategyDecision.rank == 1,
-        )
-        .all()
-    )
-    decision_map: dict[tuple[str, str], tuple[float | None, float | None]] = {}
+    requested_ranks = sorted({int(r.rank) for r in rows if r.rank is not None})
+    decision_q = db.query(StrategyDecision).filter(StrategyDecision.run_id == run_id)
+    if symbol:
+        decision_q = decision_q.filter(sa.func.upper(StrategyDecision.symbol) == str(symbol).strip().upper())
+    if requested_ranks:
+        decision_q = decision_q.filter(StrategyDecision.rank.in_(requested_ranks))
+    decision_rows = decision_q.all()
+    decision_map: dict[tuple[str, str, int], tuple[float | None, float | None]] = {}
     for dr in decision_rows:
-        key = (str(dr.symbol), str(dr.strategy_kind).lower())
+        rank_val = int(dr.rank) if dr.rank is not None else 0
+        key = (str(dr.symbol), str(dr.strategy_kind).lower(), rank_val)
         decision_map[key] = (
             float(dr.opportunity_score) if dr.opportunity_score is not None else None,
             float(dr.confidence_score) if dr.confidence_score is not None else None,
@@ -1749,8 +1764,17 @@ def list_strategy_leaderboard(
             win_pct = _metric_lookup(metrics_by_symbol, row_symbol_key, ["Win Rate", "Trade Winning %"])
         win_pct = _normalize_win_pct(_as_summary_float(win_pct))
 
-        decision_key = (row_symbol, strategy_kind_key)
+        decision_key = (row_symbol, strategy_kind_key, int(row.rank))
         opp_score, conf_score = decision_map.get(decision_key, (None, None))
+        row_horizon = (
+            str(
+                (best_params_json or {}).get("simple_wfo.horizon")
+                or (best_params_json or {}).get("walk_forward.horizon")
+                or run_horizon
+                or ""
+            ).strip().lower()
+            or None
+        )
 
         out.append(
             {
@@ -1768,7 +1792,7 @@ def list_strategy_leaderboard(
                 "n_fills": row.n_fills,
                 "confidence_score": conf_score,
                 "opportunity_score": opp_score,
-                "horizon": run_horizon,
+                "horizon": row_horizon,
                 "signal_label": row.signal_label,
                 "signal_today": row.signal_today,
                 "signal_date": row.signal_date,

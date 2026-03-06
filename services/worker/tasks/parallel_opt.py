@@ -71,7 +71,7 @@ def run_parallel_optimization(
     chunk_size = int(optimization_json.get("chunk_size", 100))
     max_in_flight = int(optimization_json.get("max_in_flight", 4))
     top_k = int(optimization_json.get("top_k", 20))
-    top_n_artifacts = int(optimization_json.get("top_n_artifacts", 1))
+    top_n_artifacts = int(optimization_json.get("top_n_artifacts", 3))
     rank_metric = str(optimization_json.get("rank_metric", "pnl"))
     n_trials = int(optimization_json.get("n_trials", 300))
     opt_method = str(optimization_json.get("method", "random")).lower()

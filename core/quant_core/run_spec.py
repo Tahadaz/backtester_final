@@ -38,11 +38,11 @@ def build_run_spec(
     lb_opt_kinds: List[str],
     opt_method: str,
     n_trials: int,
-    top_k: int,
+    top_k: int = 20,
     parallel: bool = False,
     chunk_size: int = 100,
     max_in_flight: int = 4,
-    top_n_artifacts: int = 1,
+    top_n_artifacts: int = 3,
     # portfolio-impacting params that MUST be part of the cache key:
     allow_short: bool,
     initial_cash: float,
