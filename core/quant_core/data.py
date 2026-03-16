@@ -594,6 +594,48 @@ def _parse_percent(x: object) -> float:
         return float("nan")
 
 
+def _normalize_bmce_column_label(value: object) -> str:
+    return " ".join(str(value).strip().lower().split())
+
+
+_BMCE_COLUMN_RENAMES: Dict[str, str] = {
+    "date": "Date",
+    "séance": "Date",
+    "seance": "Date",
+    "sã©ance": "Date",
+    "ouvt": "Open",
+    "ouverture": "Open",
+    "'+haut": "High",
+    "+haut": "High",
+    "+haut du jour": "High",
+    "plus haut": "High",
+    "'+bas": "Low",
+    "+bas": "Low",
+    "+bas du jour": "Low",
+    "plus bas": "Low",
+    "clôture": "Close",
+    "cloture": "Close",
+    "clã´ture": "Close",
+    "close": "Close",
+    "dernier cours": "Close",
+    "cours": "Close",
+    "volume": "Volume",
+    "volue": "Volume",
+    "nombre de titres échangés": "Volume",
+    "nombre de titres echanges": "Volume",
+    "nombre de titres ã©changã©s": "Volume",
+}
+
+
+def _rename_bmce_columns(df: pd.DataFrame) -> pd.DataFrame:
+    rename_map = {}
+    for col in df.columns:
+        canonical = _BMCE_COLUMN_RENAMES.get(_normalize_bmce_column_label(col))
+        if canonical is not None:
+            rename_map[col] = canonical
+    return df.rename(columns=rename_map)
+
+
 class BMCEDataSource(BaseDataSource):
     """
     CSV adapter for the given BMCE-like format.
@@ -717,7 +759,7 @@ class BMCEDataSource(BaseDataSource):
             "Clôture": "Close",
             "Volume": "Volume",
         }
-        df = df.rename(columns=rename)
+        df = _rename_bmce_columns(df)
 
         # 4) Parse Date and set index
         if "Date" not in df.columns:
@@ -744,6 +786,377 @@ class BMCEDataSource(BaseDataSource):
             raise ValueError(f"Missing required OHLC columns after rename: {missing}. Columns: {list(df.columns)}")
 
         return df[keep]
+
+
+# ----------------------------
+# Moroccan symbol normalization
+# ----------------------------
+import re as _re
+
+def normalize_symbol(raw: str) -> str:
+    """Normalize a raw ticker string to the internal canonical form.
+
+    Rules:
+    - Uppercase and strip whitespace
+    - Remove exchange suffixes: .CS, .MA, .BVC, :BVC, :MA
+    - Remove parenthetical suffixes: "ATW (ATIJARI)" → "ATW"
+    """
+    s = str(raw or "").strip().upper()
+    # Remove parenthetical suffix
+    s = _re.sub(r"\s*\(.*\)$", "", s)
+    # Remove known exchange suffixes
+    s = _re.sub(r"\.(CS|MA|BVC)$", "", s, flags=_re.IGNORECASE)
+    s = _re.sub(r":(BVC|MA)$", "", s, flags=_re.IGNORECASE)
+    return s.strip()
+
+
+# ----------------------------
+# Layer 3c: Bourse de Casablanca HTTP adapter
+# ----------------------------
+class BourseDirectAdapter(BaseDataSource):
+    """
+    Adapter that fetches OHLCV data from the Bourse de Casablanca public
+    download endpoint.
+
+    IMPORTANT: The exact URL template must be verified against the live
+    Bourse de Casablanca website before use. Set the environment variable
+    BOURSE_DIRECT_URL_TEMPLATE to the correct endpoint, e.g.:
+      https://www.casablanca-bourse.com/bourseweb/cours-historiques-download?valeur={symbol}&...
+
+    The response is expected to be an Excel file in BMCE column format
+    (same column mapping as BMCEDataSource). If the endpoint returns CSV,
+    set BOURSE_DIRECT_RESPONSE_FORMAT=csv.
+
+    Per-symbol HTTP errors are caught and returned as empty DataFrames so
+    that a bulk refresh can continue with remaining symbols.
+    """
+
+    def __init__(
+        self,
+        timezone: str = "UTC",
+        cache_dir: Optional[Union[str, Path]] = None,
+        use_cache: bool = False,
+        url_template: Optional[str] = None,
+        response_format: str = "excel",
+        rate_limit_delay_s: float = 0.5,
+    ) -> None:
+        import os
+        super().__init__(timezone=timezone, cache_dir=cache_dir, use_cache=use_cache)
+        self.url_template: str = (
+            url_template
+            or os.environ.get("BOURSE_DIRECT_URL_TEMPLATE", "")
+        )
+        self.response_format: str = (
+            os.environ.get("BOURSE_DIRECT_RESPONSE_FORMAT", response_format)
+        )
+        self.rate_limit_delay_s = float(rate_limit_delay_s)
+
+    def _load_impl(
+        self,
+        symbols: Sequence[str],
+        start: Optional[str],
+        end: Optional[str],
+        interval: str,
+        **kwargs,
+    ) -> Dict[str, pd.DataFrame]:
+        import time
+        import io
+
+        try:
+            import requests as _requests
+        except ImportError as e:
+            raise ImportError(
+                "requests is required for BourseDirectAdapter. `pip install requests`"
+            ) from e
+
+        if not self.url_template:
+            raise ValueError(
+                "BourseDirectAdapter: url_template is not configured. "
+                "Set the BOURSE_DIRECT_URL_TEMPLATE environment variable."
+            )
+
+        # Reuse the BMCE column rename logic already in BMCEDataSource
+        _bmce_rename = {
+            "Ouvt": "Open",
+            "'+Haut": "High",
+            "'+Bas": "Low",
+            "Clôture": "Close",
+            "Volume": "Volume",
+        }
+
+        session = _requests.Session()
+        out: Dict[str, pd.DataFrame] = {}
+
+        for i, sym in enumerate(symbols):
+            if i > 0:
+                time.sleep(self.rate_limit_delay_s)
+            try:
+                url = self.url_template.format(
+                    symbol=sym,
+                    start=start or "",
+                    end=end or "",
+                )
+                resp = session.get(url, timeout=30)
+                resp.raise_for_status()
+
+                raw = io.BytesIO(resp.content)
+                if self.response_format == "excel":
+                    df = pd.read_excel(raw, engine="openpyxl")
+                else:
+                    df = pd.read_csv(raw, encoding="utf-8-sig", sep=None, engine="python")
+
+                df.columns = df.columns.astype(str).str.strip()
+                df = _rename_bmce_columns(df)
+
+                # Parse date column
+                date_col = next(
+                    (c for c in ("Date", "date", "Timestamp", "timestamp") if c in df.columns),
+                    None,
+                )
+                if date_col is None:
+                    raise ValueError(f"No date column found for {sym}. Columns: {list(df.columns)}")
+                df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+                df = df.dropna(subset=[date_col]).set_index(date_col)
+
+                # Coerce numeric OHLCV
+                for c in ["Open", "High", "Low", "Close", "Volume"]:
+                    if c in df.columns and df[c].dtype == object:
+                        df[c] = (
+                            df[c].astype(str)
+                            .str.replace(" ", "", regex=False)
+                            .str.replace(",", ".", regex=False)
+                        )
+                    if c in df.columns:
+                        df[c] = pd.to_numeric(df[c], errors="coerce")
+
+                keep = [c for c in ["Open", "High", "Low", "Close", "Volume"] if c in df.columns]
+                out[sym] = df[keep]
+
+            except Exception as exc:
+                import warnings
+                warnings.warn(
+                    f"BourseDirectAdapter: failed to fetch {sym}: {type(exc).__name__}: {exc}",
+                    stacklevel=2,
+                )
+                # Return empty DataFrame for this symbol so bulk refresh can continue
+                out[sym] = pd.DataFrame(columns=["Open", "High", "Low", "Close", "Volume"])
+
+        return out
+
+
+# ----------------------------
+# Layer 3d: Yahoo Finance Morocco adapter
+# ----------------------------
+class YFinanceMoroccoAdapter(YahooFinanceDataSource):
+    """
+    Thin wrapper on YahooFinanceDataSource for Moroccan stocks.
+
+    Automatically appends the `.CS` suffix when fetching from Yahoo Finance
+    and strips it from the returned symbol keys so callers always see the
+    internal canonical symbol (e.g. "ATW", not "ATW.CS").
+
+    Symbol mapping can be overridden via the ``provider_map`` dict:
+      {internal_symbol: yahoo_ticker}
+    """
+
+    YAHOO_SUFFIX = ".CS"
+
+    def __init__(
+        self,
+        timezone: str = "UTC",
+        cache_dir: Optional[Union[str, Path]] = None,
+        use_cache: bool = False,
+        provider_map: Optional[Dict[str, str]] = None,
+    ) -> None:
+        super().__init__(timezone=timezone, cache_dir=cache_dir, use_cache=use_cache)
+        # {internal_symbol → yahoo_ticker}; if not provided, auto-append .CS
+        self.provider_map: Dict[str, str] = provider_map or {}
+
+    def _yahoo_ticker(self, symbol: str) -> str:
+        return self.provider_map.get(symbol, f"{symbol}{self.YAHOO_SUFFIX}")
+
+    def _load_impl(
+        self,
+        symbols: Sequence[str],
+        start: Optional[str],
+        end: Optional[str],
+        interval: str,
+        **kwargs,
+    ) -> Dict[str, pd.DataFrame]:
+        yahoo_symbols = [self._yahoo_ticker(s) for s in symbols]
+        raw = super()._load_impl(yahoo_symbols, start, end, interval, **kwargs)
+
+        # Remap keys back to internal symbols
+        out: Dict[str, pd.DataFrame] = {}
+        for internal_sym, yahoo_sym in zip(symbols, yahoo_symbols):
+            if yahoo_sym in raw:
+                out[internal_sym] = raw[yahoo_sym]
+        return out
+
+
+class BDCSessionAdapter(BaseDataSource):
+    """
+    Scrapes the current trading session OHLCV (Données de la séance) from the
+    public Bourse de Casablanca instrument page.
+
+    URL pattern:
+        https://www.casablanca-bourse.com/fr/live-market/instruments/{SYMBOL}?pwa=1
+
+    The page is server-side rendered; no XHR or headless browser is needed.
+    Verified field mapping (from the live BCP page, 2026-03-06):
+
+        Page label       OHLCV column
+        Cours (MAD)   -> Close
+        Ouverture     -> Open
+        Plus haut     -> High
+        Plus bas      -> Low
+        Volume en titre -> Volume
+
+    Session date is parsed from the "vendredi 6 mars 2026" header embedded in the HTML.
+    Falls back to today (Africa/Casablanca = UTC+1) only when no date is found.
+
+    The ``start``/``end`` parameters from the base-class ``load()`` call are ignored
+    because this adapter always returns only the current/last session row.  The
+    base-class ``slice_date_range`` step will drop it if it pre-dates ``start``,
+    which is the correct behaviour (nothing new to merge).
+
+    Numbers use French formatting (comma decimal, space thousands) and are
+    converted to float before returning.
+    """
+
+    _BASE_URL = (
+        "https://www.casablanca-bourse.com/fr/live-market/instruments/{symbol}?pwa=1"
+    )
+    # (th-label prefix, canonical OHLCV column).
+    # Prefix for "Cours" because the live label is "Cours (MAD)".
+    _FIELDS: List[Tuple[str, str]] = [
+        ("Cours",            "Close"),
+        ("Ouverture",        "Open"),
+        ("Plus haut",        "High"),
+        ("Plus bas",         "Low"),
+        ("Volume en titre",  "Volume"),
+    ]
+    _MONTH_MAP: Dict[str, int] = {
+        "janvier": 1,
+        "fevrier": 2, "février": 2,
+        "mars": 3,
+        "avril": 4,
+        "mai": 5,
+        "juin": 6,
+        "juillet": 7,
+        "aout": 8, "août": 8,
+        "septembre": 9,
+        "octobre": 10,
+        "novembre": 11,
+        "decembre": 12, "décembre": 12,
+    }
+    _USER_AGENT = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    )
+
+    def _load_impl(
+        self,
+        symbols: Sequence[str],
+        start: Optional[str],
+        end: Optional[str],
+        interval: str,
+        **kwargs,
+    ) -> Dict[str, pd.DataFrame]:
+        import re
+        import datetime
+        import warnings
+        import requests
+
+        http = requests.Session()
+        http.headers["User-Agent"] = self._USER_AGENT
+
+        results: Dict[str, pd.DataFrame] = {}
+
+        for symbol in symbols:
+            url = self._BASE_URL.format(symbol=symbol)
+            try:
+                resp = http.get(url, timeout=30, verify=False)
+                resp.raise_for_status()
+                html = resp.text
+            except Exception as exc:
+                warnings.warn(f"BDCSessionAdapter: HTTP error for {symbol}: {exc}")
+                results[symbol] = pd.DataFrame()
+                continue
+
+            # --- Session date from "vendredi 6 mars 2026" header ---------------
+            date_m = re.search(
+                r"(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)"
+                r"\s+(\d{1,2})\s+"
+                r"(janvier|f[eé]vrier|mars|avril|mai|juin|juillet|ao[uû]t"
+                r"|septembre|octobre|novembre|d[eé]cembre)\s+(\d{4})",
+                html,
+                re.IGNORECASE,
+            )
+            if date_m:
+                day = int(date_m.group(1))
+                raw_month = date_m.group(2).lower()
+                month = self._MONTH_MAP.get(raw_month)
+                if month is None:
+                    raise ValueError(
+                        f"BDCSessionAdapter: unrecognized month '{raw_month}' "
+                        f"on page for symbol '{symbol}'"
+                    )
+                year = int(date_m.group(3))
+                session_date: datetime.date = datetime.date(year, month, day)
+            else:
+                warnings.warn(
+                    f"BDCSessionAdapter: no session date found for {symbol}; "
+                    "falling back to today (Africa/Casablanca)"
+                )
+                try:
+                    import zoneinfo
+                    session_date = datetime.datetime.now(
+                        zoneinfo.ZoneInfo("Africa/Casablanca")
+                    ).date()
+                except Exception:
+                    session_date = datetime.datetime.utcnow().date()
+
+            # --- Parse each OHLCV field ----------------------------------------
+            # Server-rendered HTML structure:
+            #   <th ...>Cours (MAD)</th><td ...>...<span dir="ltr">255,00</span></td>
+            row: Dict[str, float] = {}
+            for label_prefix, col in self._FIELDS:
+                pattern = (
+                    r"<th[^>]*>\s*"
+                    + re.escape(label_prefix)
+                    + r"[^<]*</th>\s*<td[^>]*>.*?<span\s+dir=[\"']ltr[\"']>([^<]+)</span>"
+                )
+                m = re.search(pattern, html, re.DOTALL)
+                if not m:
+                    raise KeyError(
+                        f"BDCSessionAdapter: required field '{label_prefix}' not found "
+                        f"on the BDC page for symbol '{symbol}' (url={url}). "
+                        "The page layout may have changed — "
+                        "do NOT invent a fallback value."
+                    )
+                raw_val = m.group(1).strip()
+                # French number format: "261,00" -> 261.0  |  "77 180" -> 77180.0
+                normalized = (
+                    raw_val.replace("\u00a0", "").replace(" ", "").replace(",", ".")
+                )
+                try:
+                    row[col] = float(normalized)
+                except ValueError:
+                    raise ValueError(
+                        f"BDCSessionAdapter: cannot parse value '{raw_val}' for "
+                        f"field '{label_prefix}' (symbol={symbol})"
+                    )
+
+            # --- Build single-row DataFrame ------------------------------------
+            # Naive timestamp; base-class load() calls _standardize_ohlcv which
+            # tz-localizes to self.timezone (UTC by default).
+            ts = pd.Timestamp(session_date)
+            df = pd.DataFrame([row], index=pd.DatetimeIndex([ts], name="Date"))
+            results[symbol] = df
+
+        return results
 
 
 class ParquetDataSource(BaseDataSource):

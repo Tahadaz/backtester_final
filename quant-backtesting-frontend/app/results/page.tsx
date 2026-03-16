@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, Fragment } from "react"
 import { toast } from "sonner"
 import {
   Search, ChevronDown, ChevronRight, BarChart2, TrendingUp, TrendingDown, Minus,
@@ -400,9 +400,8 @@ function SymbolLeaderboard({
                 const key = rowKey(entry)
                 const isExpanded = expandedKey === key
                 return (
-                  <>
+                  <Fragment key={key}>
                     <tr
-                      key={key}
                       className={cn(
                         "border-b border-border/50 transition-colors cursor-pointer",
                         isExpanded ? "bg-primary/5" : "hover:bg-secondary/40",
@@ -467,7 +466,7 @@ function SymbolLeaderboard({
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 )
               })}
             </tbody>

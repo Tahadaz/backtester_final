@@ -1,21 +1,37 @@
 from __future__ import annotations
 
+import datetime
 import json
 from io import BytesIO
 from pathlib import Path
-from typing import Any
-from uuid import UUID
+from typing import Any, Optional
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, Query
 import pandas as pd
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from .. import models
 from ..config import settings
 from ..db import get_db
-from ..queue import get_queue
+from ..queue import get_queue, get_market_refresh_queue
 from ..storage import put_bytes, presign_get, s3_client
+from ..schemas.market_data import (
+    BourseStockLookupOut,
+    MarketCatalogRowOut,
+    StockMasterCreate,
+    StockMasterOut,
+    StockMasterUpdate,
+    ProviderSymbolMapOut,
+    ProviderSymbolMapUpdate,
+    MarketRefreshTriggerRequest,
+    MarketRefreshRunOut,
+    MarketHealthOut,
+    OhlcvBarOut,
+    OhlcvPreviewOut,
+)
 
 router = APIRouter(prefix="/market-data", tags=["market-data"])
 _DEFAULT_SMA_WINDOWS = [5, 10, 14, 20, 30, 50, 100, 200]
@@ -461,6 +477,7 @@ def list_symbols(
             "end_ts": r.end_ts,
             "row_count": r.row_count,
             "updated_at": r.updated_at,
+            "source_provider": r.source_provider,
         }
         for r in rows
     ]
@@ -478,3 +495,626 @@ def get_ingest_report_url(
         "url": presign_get(object_key, expires_seconds=expires_seconds),
         "expires_seconds": int(expires_seconds),
     }
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+def _today_utc() -> datetime.date:
+    return datetime.datetime.now(datetime.timezone.utc).date()
+
+
+def _business_days_ago(d: datetime.date, n: int) -> datetime.date:
+    """Return the date n business days before d (Mon–Fri only)."""
+    count = 0
+    current = d
+    while count < n:
+        current -= datetime.timedelta(days=1)
+        if current.weekday() < 5:  # Monday=0, Friday=4
+            count += 1
+    return current
+
+
+def _is_stale(data_as_of: datetime.date | None) -> bool:
+    if data_as_of is None:
+        return True
+    return data_as_of < _business_days_ago(_today_utc(), 2)
+
+
+def _stock_to_out(
+    stock: models.StockMaster,
+    store: models.MarketDataStore | None,
+) -> StockMasterOut:
+    return StockMasterOut(
+        symbol=stock.symbol,
+        display_name=stock.display_name,
+        isin=stock.isin,
+        sector=stock.sector,
+        market_cap_class=stock.market_cap_class,
+        is_active=stock.is_active,
+        track_source=stock.track_source,
+        bourse_url=stock.bourse_url,
+        notes=stock.notes,
+        created_at=stock.created_at,
+        updated_at=stock.updated_at,
+        start_ts=store.start_ts if store else None,
+        end_ts=store.end_ts if store else None,
+        row_count=store.row_count if store else None,
+        store_updated_at=store.updated_at if store else None,
+        source_provider=store.source_provider if store else None,
+        data_as_of=store.data_as_of if store else None,
+        is_stale=_is_stale(store.data_as_of if store else None),
+    )
+
+
+def _refresh_run_to_out(run: models.MarketRefreshRun) -> MarketRefreshRunOut:
+    return MarketRefreshRunOut.model_validate(run)
+
+
+# ── Stock Registry Endpoints ─────────────────────────────────────────────────
+
+@router.get("/stocks")
+def list_tracked_stocks(
+    is_active: bool = Query(default=True),
+    db: Session = Depends(get_db),
+) -> list[StockMasterOut]:
+    stocks = (
+        db.query(models.StockMaster)
+        .filter(models.StockMaster.is_active == is_active)
+        .order_by(models.StockMaster.symbol.asc())
+        .all()
+    )
+    result = []
+    for stock in stocks:
+        store = (
+            db.query(models.MarketDataStore)
+            .filter(
+                models.MarketDataStore.symbol == stock.symbol,
+                models.MarketDataStore.timeframe == "1D",
+            )
+            .one_or_none()
+        )
+        result.append(_stock_to_out(stock, store))
+    return result
+
+
+@router.post("/stocks", status_code=201)
+def add_tracked_stock(
+    body: StockMasterCreate,
+    db: Session = Depends(get_db),
+) -> StockMasterOut:
+    symbol = str(body.symbol or "").strip().upper()
+    if not symbol:
+        raise HTTPException(status_code=400, detail="symbol is required")
+
+    existing = db.query(models.StockMaster).filter(models.StockMaster.symbol == symbol).one_or_none()
+    if existing:
+        raise HTTPException(status_code=409, detail=f"Stock '{symbol}' already tracked")
+
+    stock = models.StockMaster(
+        symbol=symbol,
+        display_name=body.display_name,
+        isin=body.isin,
+        sector=body.sector,
+        market_cap_class=body.market_cap_class,
+        is_active=True,
+        track_source=body.track_source or "bourse_direct",
+        bourse_url=body.bourse_url,
+        notes=body.notes,
+    )
+    db.add(stock)
+    db.flush()  # persist stock_master row so FK constraint is satisfied before inserting provider maps
+
+    # Auto-create Yahoo provider mapping at confidence=0.9
+    yahoo_map = models.ProviderSymbolMap(
+        symbol=symbol,
+        provider="yahoo",
+        provider_symbol=f"{symbol}.CS",
+        confidence=0.9,
+        is_verified=False,
+    )
+    db.add(yahoo_map)
+
+    # Auto-create bourse_direct mapping at confidence=1.0
+    bourse_map = models.ProviderSymbolMap(
+        symbol=symbol,
+        provider="bourse_direct",
+        provider_symbol=symbol,
+        confidence=1.0,
+        is_verified=False,
+    )
+    db.add(bourse_map)
+
+    db.commit()
+    db.refresh(stock)
+    return _stock_to_out(stock, None)
+
+
+@router.patch("/stocks/{symbol}")
+def update_tracked_stock(
+    symbol: str,
+    body: StockMasterUpdate,
+    db: Session = Depends(get_db),
+) -> StockMasterOut:
+    symbol = symbol.strip().upper()
+    stock = db.query(models.StockMaster).filter(models.StockMaster.symbol == symbol).one_or_none()
+    if not stock:
+        raise HTTPException(status_code=404, detail=f"Stock '{symbol}' not found")
+
+    if body.display_name is not None:
+        stock.display_name = body.display_name
+    if body.isin is not None:
+        stock.isin = body.isin
+    if body.sector is not None:
+        stock.sector = body.sector
+    if body.market_cap_class is not None:
+        stock.market_cap_class = body.market_cap_class
+    if body.is_active is not None:
+        stock.is_active = body.is_active
+    if body.track_source is not None:
+        stock.track_source = body.track_source
+    if body.bourse_url is not None:
+        stock.bourse_url = body.bourse_url
+    if body.notes is not None:
+        stock.notes = body.notes
+
+    db.commit()
+    db.refresh(stock)
+    store = (
+        db.query(models.MarketDataStore)
+        .filter(
+            models.MarketDataStore.symbol == symbol,
+            models.MarketDataStore.timeframe == "1D",
+        )
+        .one_or_none()
+    )
+    return _stock_to_out(stock, store)
+
+
+# ── Symbol Mapping Endpoints ──────────────────────────────────────────────────
+
+@router.get("/stocks/{symbol}/mappings")
+def list_stock_mappings(
+    symbol: str,
+    db: Session = Depends(get_db),
+) -> list[ProviderSymbolMapOut]:
+    symbol = symbol.strip().upper()
+    rows = (
+        db.query(models.ProviderSymbolMap)
+        .filter(models.ProviderSymbolMap.symbol == symbol)
+        .order_by(models.ProviderSymbolMap.provider.asc())
+        .all()
+    )
+    return [ProviderSymbolMapOut.model_validate(r) for r in rows]
+
+
+@router.patch("/stocks/{symbol}/mappings/{provider}")
+def update_stock_mapping(
+    symbol: str,
+    provider: str,
+    body: ProviderSymbolMapUpdate,
+    db: Session = Depends(get_db),
+) -> ProviderSymbolMapOut:
+    symbol = symbol.strip().upper()
+    provider = provider.strip().lower()
+    row = (
+        db.query(models.ProviderSymbolMap)
+        .filter(
+            models.ProviderSymbolMap.symbol == symbol,
+            models.ProviderSymbolMap.provider == provider,
+        )
+        .one_or_none()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Mapping for {symbol}/{provider} not found")
+
+    row.provider_symbol = body.provider_symbol
+    row.is_verified = body.is_verified
+    if body.override_reason is not None:
+        row.override_reason = body.override_reason
+    row.confidence = 1.0 if body.is_verified else row.confidence
+
+    db.commit()
+    db.refresh(row)
+    return ProviderSymbolMapOut.model_validate(row)
+
+
+# ── Bourse de Casablanca Lookup ───────────────────────────────────────────────
+
+def _bourse_lookup(symbol: str) -> BourseStockLookupOut:
+    """
+    Attempt to find a stock on the Bourse de Casablanca website by ticker.
+    Constructs the instrument page URL and scrapes basic metadata (name, sector, ISIN).
+    Returns whatever it can find; always returns a URL even if scraping fails.
+    """
+    import re as _re
+    try:
+        import requests as _requests
+    except ImportError:
+        raise HTTPException(status_code=500, detail="requests package not installed")
+
+    import os as _os
+    # The Bourse de Casablanca uses `valeur` parameter for ticker lookup.
+    # URL template is configurable via BOURSE_STOCK_PAGE_URL env var.
+    url_template = _os.environ.get(
+        "BOURSE_STOCK_PAGE_URL",
+        "https://www.casablanca-bourse.com/bourseweb/Detail-Valeur.aspx?Cat=3&valeur={symbol}",
+    )
+    bourse_url = url_template.format(symbol=symbol)
+
+    display_name: Optional[str] = None
+    sector: Optional[str] = None
+    isin: Optional[str] = None
+
+    try:
+        resp = _requests.get(
+            bourse_url,
+            timeout=10,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; QuantBot/1.0)"},
+            allow_redirects=True,
+        )
+        if resp.status_code == 200:
+            html = resp.text
+            # Try to extract company name (typically in <title> or a heading element)
+            title_match = _re.search(r"<title[^>]*>([^<]+)</title>", html, _re.IGNORECASE)
+            if title_match:
+                raw_title = title_match.group(1).strip()
+                # Strip site name suffix like " - Bourse de Casablanca"
+                name_part = _re.sub(r"\s*[-|–]\s*Bourse.*$", "", raw_title, flags=_re.IGNORECASE).strip()
+                if name_part and name_part.upper() != symbol:
+                    display_name = name_part
+
+            # Try to extract ISIN (12-char alphanumeric starting with MA)
+            isin_match = _re.search(r"\b(MA[A-Z0-9]{10})\b", html)
+            if isin_match:
+                isin = isin_match.group(1)
+
+            # Try to extract sector from common patterns
+            sector_match = _re.search(
+                r"[Ss]ecteur[^:]*:\s*<[^>]+>([^<]+)<", html
+            ) or _re.search(r"[Ss]ecteur[^:]*:\s*([^<\n]{3,50})", html)
+            if sector_match:
+                sector = sector_match.group(1).strip()
+
+    except Exception:
+        pass  # URL is still valid; return it even if scraping failed
+
+    return BourseStockLookupOut(
+        symbol=symbol,
+        bourse_url=bourse_url,
+        display_name=display_name or None,
+        sector=sector or None,
+        isin=isin or None,
+        found=True,
+    )
+
+
+@router.get("/stocks/{symbol}/bourse-lookup")
+def bourse_lookup_stock(symbol: str) -> BourseStockLookupOut:
+    """
+    Look up a stock on the Bourse de Casablanca website by ticker symbol.
+    Returns the direct page URL and any metadata that can be scraped (name, sector, ISIN).
+    Also persists the URL into stock_master if the stock is already tracked.
+    """
+    symbol = symbol.strip().upper()
+    result = _bourse_lookup(symbol)
+    return result
+
+
+# ── OHLCV Preview ─────────────────────────────────────────────────────────────
+
+@router.get("/stocks/{symbol}/ohlcv-preview")
+def get_stock_ohlcv_preview(
+    symbol: str,
+    timeframe: str = Query(default="1D"),
+    limit: int = Query(default=30, ge=1, le=500),
+    db: Session = Depends(get_db),
+) -> OhlcvPreviewOut:
+    symbol = symbol.strip().upper()
+    store = (
+        db.query(models.MarketDataStore)
+        .filter(
+            models.MarketDataStore.symbol == symbol,
+            models.MarketDataStore.timeframe == timeframe,
+        )
+        .one_or_none()
+    )
+    if not store:
+        raise HTTPException(status_code=404, detail=f"No market data for {symbol}/{timeframe}")
+
+    try:
+        payload = s3_client().get_object(Bucket=settings.S3_BUCKET, Key=store.object_key)["Body"].read()
+        frame = pd.read_parquet(BytesIO(payload))
+        if not isinstance(frame.index, pd.DatetimeIndex):
+            for ts_col in ("timestamp", "Timestamp", "date", "Date"):
+                if ts_col in frame.columns:
+                    frame[ts_col] = pd.to_datetime(frame[ts_col], errors="coerce")
+                    frame = frame.dropna(subset=[ts_col]).set_index(ts_col)
+                    break
+        frame = frame.sort_index()
+        tail = frame.tail(limit)
+        bars = []
+        for ts, row in tail.iterrows():
+            bars.append(OhlcvBarOut(
+                date=ts.strftime("%Y-%m-%d"),
+                open=float(row["Open"]) if "Open" in row and pd.notna(row["Open"]) else None,
+                high=float(row["High"]) if "High" in row and pd.notna(row["High"]) else None,
+                low=float(row["Low"]) if "Low" in row and pd.notna(row["Low"]) else None,
+                close=float(row["Close"]) if "Close" in row and pd.notna(row["Close"]) else None,
+                volume=float(row["Volume"]) if "Volume" in row and pd.notna(row["Volume"]) else None,
+            ))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to load OHLCV: {exc}") from exc
+
+    return OhlcvPreviewOut(
+        symbol=symbol,
+        timeframe=timeframe,
+        bars=bars,
+        source_provider=store.source_provider,
+        data_as_of=store.data_as_of,
+        row_count=store.row_count,
+    )
+
+
+# ── Refresh Trigger Endpoints ─────────────────────────────────────────────────
+
+@router.post("/refresh", status_code=202)
+def trigger_refresh_all(
+    body: MarketRefreshTriggerRequest = MarketRefreshTriggerRequest(),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    active_count = db.query(models.StockMaster).filter(models.StockMaster.is_active == True).count()
+
+    run = models.MarketRefreshRun(
+        id=uuid4(),
+        trigger_source="manual",
+        scope="all",
+        symbol=None,
+        timeframe=body.timeframe,
+        status="queued",
+        symbols_total=active_count,
+        symbols_done=0,
+        symbols_failed=0,
+        meta_json={"source_override": body.source_override, "include_unverified": body.include_unverified},
+    )
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+
+    q = get_market_refresh_queue()
+    job = q.enqueue(
+        "services.worker.tasks.refresh_market_data.refresh_all_tracked_symbols",
+        str(run.id),
+        body.timeframe,
+        body.source_override,
+        body.include_unverified,
+    )
+    run.rq_job_id = job.id
+    db.commit()
+
+    return {
+        "refresh_run_id": str(run.id),
+        "status": "queued",
+        "symbols_total": active_count,
+        "job_id": job.id,
+    }
+
+
+@router.post("/stocks/{symbol}/refresh", status_code=202)
+def trigger_refresh_single(
+    symbol: str,
+    body: MarketRefreshTriggerRequest = MarketRefreshTriggerRequest(),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    symbol = symbol.strip().upper()
+    stock = db.query(models.StockMaster).filter(models.StockMaster.symbol == symbol).one_or_none()
+    if not stock:
+        raise HTTPException(status_code=404, detail=f"Stock '{symbol}' not tracked")
+
+    run = models.MarketRefreshRun(
+        id=uuid4(),
+        trigger_source="manual",
+        scope="single",
+        symbol=symbol,
+        timeframe=body.timeframe,
+        status="queued",
+        symbols_total=1,
+        symbols_done=0,
+        symbols_failed=0,
+        meta_json={"source_override": body.source_override},
+    )
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+
+    source = body.source_override or stock.track_source
+    q = get_market_refresh_queue()
+    job = q.enqueue(
+        "services.worker.tasks.refresh_market_data.refresh_single_symbol",
+        str(run.id),
+        symbol,
+        body.timeframe,
+        source,
+    )
+    run.rq_job_id = job.id
+    db.commit()
+
+    return {
+        "refresh_run_id": str(run.id),
+        "status": "queued",
+        "job_id": job.id,
+    }
+
+
+# ── Refresh Run Status Endpoints ──────────────────────────────────────────────
+
+@router.get("/refresh")
+def list_refresh_runs(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+) -> list[MarketRefreshRunOut]:
+    runs = (
+        db.query(models.MarketRefreshRun)
+        .order_by(models.MarketRefreshRun.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return [_refresh_run_to_out(r) for r in runs]
+
+
+@router.get("/refresh/{refresh_run_id}")
+def get_refresh_run(
+    refresh_run_id: UUID,
+    db: Session = Depends(get_db),
+) -> MarketRefreshRunOut:
+    run = db.query(models.MarketRefreshRun).filter(models.MarketRefreshRun.id == refresh_run_id).one_or_none()
+    if not run:
+        raise HTTPException(status_code=404, detail="Refresh run not found")
+    return _refresh_run_to_out(run)
+
+
+# ── Market Health ─────────────────────────────────────────────────────────────
+
+@router.get("/catalog")
+def get_market_catalog(db: Session = Depends(get_db)) -> list[MarketCatalogRowOut]:
+    """
+    Unified canonical market universe for the /data page.
+
+    Returns every symbol that has canonical data in market_data_store (timeframe=1D),
+    plus any tracked symbols in stock_master that have no market_data_store row yet.
+
+    Full-outer-join semantics expressed as two UNION arms:
+      Arm 1: market_data_store LEFT JOIN stock_master  — all symbols with data
+      Arm 2: stock_master WHERE NOT EXISTS market_data_store row — tracked, no data yet
+    """
+    rows = db.execute(
+        text("""
+            SELECT
+                mds.symbol,
+                sm.display_name,
+                sm.isin,
+                sm.sector,
+                sm.is_active,
+                sm.track_source,
+                sm.bourse_url,
+                sm.notes,
+                mds.start_ts,
+                mds.end_ts,
+                mds.row_count,
+                mds.source_provider,
+                mds.data_as_of,
+                (sm.symbol IS NOT NULL) AS is_tracked,
+                TRUE               AS has_canonical_data
+            FROM market_data_store mds
+            LEFT JOIN stock_master sm ON sm.symbol = mds.symbol
+            WHERE mds.timeframe = '1D'
+
+            UNION ALL
+
+            SELECT
+                sm.symbol,
+                sm.display_name,
+                sm.isin,
+                sm.sector,
+                sm.is_active,
+                sm.track_source,
+                sm.bourse_url,
+                sm.notes,
+                NULL AS start_ts,
+                NULL AS end_ts,
+                NULL AS row_count,
+                NULL AS source_provider,
+                NULL AS data_as_of,
+                TRUE AS is_tracked,
+                FALSE AS has_canonical_data
+            FROM stock_master sm
+            WHERE NOT EXISTS (
+                SELECT 1 FROM market_data_store mds2
+                WHERE mds2.symbol = sm.symbol AND mds2.timeframe = '1D'
+            )
+
+            ORDER BY symbol ASC
+        """)
+    ).mappings().all()
+
+    result = []
+    for r in rows:
+        data_as_of: datetime.date | None = r["data_as_of"]
+        if isinstance(data_as_of, datetime.datetime):
+            data_as_of = data_as_of.date()
+        result.append(
+            MarketCatalogRowOut(
+                symbol=r["symbol"],
+                display_name=r["display_name"],
+                isin=r["isin"],
+                sector=r["sector"],
+                is_active=r["is_active"],
+                track_source=r["track_source"],
+                bourse_url=r["bourse_url"],
+                notes=r["notes"],
+                start_ts=r["start_ts"],
+                end_ts=r["end_ts"],
+                row_count=r["row_count"],
+                source_provider=r["source_provider"],
+                data_as_of=data_as_of,
+                is_stale=_is_stale(data_as_of),
+                is_tracked=bool(r["is_tracked"]),
+                has_canonical_data=bool(r["has_canonical_data"]),
+            )
+        )
+    return result
+
+
+@router.get("/health")
+def get_market_health(db: Session = Depends(get_db)) -> MarketHealthOut:
+    today = _today_utc()
+    threshold_stale = _business_days_ago(today, 2)         # older than 2 biz days
+    threshold_very_stale = today - datetime.timedelta(days=7)
+
+    stocks = db.query(models.StockMaster).filter(models.StockMaster.is_active == True).all()
+    total_tracked = len(stocks)
+    up_to_date = 0
+    stale = 0
+    very_stale = 0
+    never_ingested = 0
+
+    for stock in stocks:
+        store = (
+            db.query(models.MarketDataStore)
+            .filter(
+                models.MarketDataStore.symbol == stock.symbol,
+                models.MarketDataStore.timeframe == "1D",
+            )
+            .one_or_none()
+        )
+        if store is None or store.data_as_of is None:
+            never_ingested += 1
+        elif store.data_as_of < threshold_very_stale:
+            very_stale += 1
+        elif store.data_as_of < threshold_stale:
+            stale += 1
+        else:
+            up_to_date += 1
+
+    last_run = (
+        db.query(models.MarketRefreshRun)
+        .order_by(models.MarketRefreshRun.created_at.desc())
+        .first()
+    )
+    last_successful = (
+        db.query(models.MarketRefreshRun)
+        .filter(models.MarketRefreshRun.status.in_(["succeeded", "partial"]))
+        .order_by(models.MarketRefreshRun.finished_at.desc())
+        .first()
+    )
+
+    return MarketHealthOut(
+        total_tracked=total_tracked,
+        up_to_date=up_to_date,
+        stale=stale,
+        very_stale=very_stale,
+        never_ingested=never_ingested,
+        last_refresh_run=_refresh_run_to_out(last_run) if last_run else None,
+        last_successful_refresh=last_successful.finished_at if last_successful else None,
+    )

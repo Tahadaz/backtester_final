@@ -3,16 +3,23 @@
 import useSWR from "swr"
 import type {
   Artifact,
+  Dataset,
   FillRow,
   LeaderboardRow,
+  MarketCatalogRow,
+  MarketHealth,
+  MarketRefreshRun,
+  MarketSymbolRow,
   MeanReversionReport,
   MetricRow,
+  OhlcvPreview,
   PositionRow,
   Run,
   RunIntegrity,
   RunRisk,
   RunSignificanceRow,
   RunWalkForward,
+  StockMaster,
   StrategyDecision,
 } from "@/lib/api"
 
@@ -187,6 +194,78 @@ export function useRunRisk(runId: string | null) {
 export function useRunMeanReversion(runId: string | null) {
   return useSWR<MeanReversionReport>(
     runId ? `/runs/${runId}/mean-reversion` : null,
+    apiFetcher
+  )
+}
+
+export function useDatasets() {
+  return useSWR<Dataset[]>("/datasets", apiFetcher, {
+    refreshInterval: 15000,
+    revalidateOnFocus: true,
+  })
+}
+
+export function useMarketCatalog() {
+  return useSWR<MarketCatalogRow[]>(
+    "/market-data/catalog",
+    apiFetcher,
+    { refreshInterval: 30000, revalidateOnFocus: true }
+  )
+}
+
+export function useMarketSymbols(params?: { timeframe?: string }) {
+  const qs = new URLSearchParams()
+  if (params?.timeframe) qs.set("timeframe", params.timeframe)
+  const q = qs.toString()
+
+  return useSWR<MarketSymbolRow[]>(
+    `/market-data/symbols${q ? `?${q}` : ""}`,
+    apiFetcher,
+    { refreshInterval: 30000, revalidateOnFocus: true }
+  )
+}
+
+export function useTrackedStocks(params?: { is_active?: boolean }) {
+  const qs = new URLSearchParams()
+  if (params?.is_active !== undefined) qs.set("is_active", String(params.is_active))
+  const q = qs.toString()
+
+  return useSWR<StockMaster[]>(
+    `/market-data/stocks${q ? `?${q}` : ""}`,
+    apiFetcher,
+    { refreshInterval: 60000, revalidateOnFocus: true }
+  )
+}
+
+export function useRefreshRun(refreshRunId: string | null) {
+  const shouldPoll = (data: MarketRefreshRun | undefined) => {
+    if (!data) return 2000
+    if (data.status === "queued" || data.status === "running") return 2000
+    return 0
+  }
+
+  return useSWR<MarketRefreshRun>(
+    refreshRunId ? `/market-data/refresh/${refreshRunId}` : null,
+    apiFetcher,
+    { refreshInterval: shouldPoll, revalidateOnFocus: true }
+  )
+}
+
+export function useMarketHealth() {
+  return useSWR<MarketHealth>(
+    "/market-data/health",
+    apiFetcher,
+    { refreshInterval: 30000, revalidateOnFocus: true }
+  )
+}
+
+export function useStockOhlcvPreview(symbol: string | null, params?: { limit?: number }) {
+  const qs = new URLSearchParams()
+  if (params?.limit) qs.set("limit", String(params.limit))
+  const q = qs.toString()
+
+  return useSWR<OhlcvPreview>(
+    symbol ? `/market-data/stocks/${symbol}/ohlcv-preview${q ? `?${q}` : ""}` : null,
     apiFetcher
   )
 }

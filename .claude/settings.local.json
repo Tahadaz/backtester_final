@@ -7,7 +7,9 @@
       "Bash(grep:*)",
       "Bash(python:*)",
       "Bash(ls:*)",
-      "Bash(.venv/Scripts/python.exe:*)"
+      "Bash(.venv/Scripts/python.exe:*)",
+      "Bash(git checkout:*)",
+      "Bash(find /c/Users/taha/Downloads/backtester_final -path \"*/.venv\" -prune -o -name \"*.py\" -type f -exec grep -l \"train_start.*train_end\" {} \\\\; | head -10)"
     ]
   }
 }

@@ -1888,6 +1888,171 @@ def _persist_walk_forward_folds(
     )
 
 
+def _persist_wfo_periods(
+    *,
+    db: Session,
+    rid: UUID,
+    out: dict[str, Any],
+    default_symbol: str,
+) -> None:
+    """Persist classical WFO per-fold local winners to run_wfo_period table."""
+    from collections import defaultdict
+
+    def _winner_rows_from_list(rows: list[dict], horizon_val: str | None) -> list[dict]:
+        """Return rank-1 rows (fold-local IS winners) enriched with computed trial_id."""
+        result = []
+        for row in rows:
+            tr = _as_int(row.get("trial_rank"), 1) or 1
+            if tr != 1:
+                continue
+            sk = str(row.get("strategy_kind") or "").strip().lower()
+            params = {k[len("param."):]: v for k, v in row.items() if k.startswith("param.")}
+            tid = str(row.get("trial_id") or compute_trial_id(sk, params) or "")
+            local_fold = _as_int(row.get("fold_index"), 0) or 0
+            result.append({
+                "fold_no": local_fold + 1,
+                "strategy_kind": sk,
+                "horizon": horizon_val,
+                "train_start": row.get("train_start"),
+                "train_end": row.get("train_end"),
+                "test_start": row.get("test_start") or row.get("start"),
+                "test_end": row.get("test_end") or row.get("end"),
+                "winning_trial_id": tid,
+                "optimal_params": params,
+                "is_objective_name": str(row.get("objective") or "") or None,
+                "is_objective_value": _as_float(row.get("train_objective_value")),
+                "oos_pnl": _as_float(row.get("stat.pnl")),
+                "oos_cagr": _as_float(row.get("stat.cagr")),
+                "oos_sharpe": _as_float(row.get("stat.sharpe") or (
+                    row.get("objective_value") if str(row.get("objective") or "").lower() == "sharpe" else None
+                )),
+                "oos_max_drawdown": _as_float(row.get("stat.max_drawdown")),
+                "oos_win_pct": _as_float(row.get("stat.win_pct")),
+                "oos_n_fills": _as_int(row.get("stat.n_fills")),
+                "is_holdout": False,
+            })
+        return result
+
+    all_period_rows: list[dict] = []
+
+    # Path A: simple_wfo_multi_horizon
+    artifacts = _as_dict(out.get("artifacts"))
+    simple_wfo = out.get("simple_wfo_multi_horizon")
+    if not isinstance(simple_wfo, dict):
+        simple_wfo = artifacts.get("simple_wfo_multi_horizon")
+    if isinstance(simple_wfo, dict) and _as_bool(simple_wfo.get("enabled"), False):
+        rows_by_horizon_raw = simple_wfo.get("fold_rows_by_horizon") or {}
+        if isinstance(rows_by_horizon_raw, dict):
+            for hz, hz_rows in rows_by_horizon_raw.items():
+                if isinstance(hz_rows, list):
+                    all_period_rows.extend(_winner_rows_from_list(
+                        [dict(r) for r in hz_rows if isinstance(r, dict)],
+                        str(hz).strip().lower() or None,
+                    ))
+    else:
+        # Path B: regular WFO
+        raw_rows = _walk_forward_rows(out)
+        if raw_rows:
+            wfo_meta = _as_dict((_as_dict(out.get("artifacts"))).get("walk_forward"))
+            hz = str(wfo_meta.get("horizon") or "").strip().lower() or None
+            all_period_rows.extend(_winner_rows_from_list(raw_rows, hz))
+
+    if not all_period_rows:
+        return
+
+    # Compute cumulative_oos_pnl per (strategy_kind, horizon) group
+    groups: dict[tuple, list] = defaultdict(list)
+    for r in sorted(all_period_rows, key=lambda x: (
+        str(x.get("strategy_kind") or ""),
+        str(x.get("horizon") or ""),
+        int(x.get("fold_no") or 0),
+    )):
+        key = (str(r.get("strategy_kind") or ""), str(r.get("horizon") or ""))
+        groups[key].append(r)
+
+    cum_map: dict[int, float | None] = {}
+    for grp_rows in groups.values():
+        running = 0.0
+        has_any = False
+        for r in grp_rows:
+            pnl = r.get("oos_pnl")
+            if pnl is not None:
+                running += float(pnl)
+                cum_map[id(r)] = running
+                has_any = True
+            else:
+                cum_map[id(r)] = None
+
+    for row in all_period_rows:
+        _sk = str(row.get("strategy_kind") or "")
+        _hz = str(row.get("horizon") or "") or None
+        _fold_no = int(row.get("fold_no") or 0)
+        _cum = cum_map.get(id(row))
+        db.execute(
+            text(
+                """
+                insert into run_wfo_period(
+                    run_id, symbol, strategy_kind, horizon, fold_no,
+                    train_start, train_end, test_start, test_end,
+                    winning_trial_id, optimal_params_json,
+                    is_objective_name, is_objective_value,
+                    oos_pnl, oos_return, oos_cagr, oos_sharpe,
+                    oos_max_drawdown, oos_win_pct, oos_n_fills,
+                    cumulative_oos_pnl, is_holdout, created_at
+                ) values (
+                    :run_id, :symbol, :strategy_kind, :horizon, :fold_no,
+                    :train_start, :train_end, :test_start, :test_end,
+                    :winning_trial_id, cast(:optimal_params_json as jsonb),
+                    :is_objective_name, :is_objective_value,
+                    :oos_pnl, null, :oos_cagr, :oos_sharpe,
+                    :oos_max_drawdown, :oos_win_pct, :oos_n_fills,
+                    :cumulative_oos_pnl, :is_holdout, :created_at
+                )
+                on conflict (run_id, symbol, strategy_kind, horizon, fold_no)
+                do update set
+                    winning_trial_id    = excluded.winning_trial_id,
+                    optimal_params_json = excluded.optimal_params_json,
+                    is_objective_name   = excluded.is_objective_name,
+                    is_objective_value  = excluded.is_objective_value,
+                    oos_pnl             = excluded.oos_pnl,
+                    oos_cagr            = excluded.oos_cagr,
+                    oos_sharpe          = excluded.oos_sharpe,
+                    oos_max_drawdown    = excluded.oos_max_drawdown,
+                    oos_win_pct         = excluded.oos_win_pct,
+                    oos_n_fills         = excluded.oos_n_fills,
+                    cumulative_oos_pnl  = excluded.cumulative_oos_pnl,
+                    is_holdout          = excluded.is_holdout,
+                    created_at          = excluded.created_at
+                """
+            ),
+            {
+                "run_id": rid,
+                "symbol": default_symbol,
+                "strategy_kind": _sk,
+                "horizon": _hz,
+                "fold_no": _fold_no,
+                "train_start": _to_pg_ts(row.get("train_start")),
+                "train_end": _to_pg_ts(row.get("train_end")),
+                "test_start": _to_pg_ts(row.get("test_start")),
+                "test_end": _to_pg_ts(row.get("test_end")),
+                "winning_trial_id": str(row.get("winning_trial_id") or ""),
+                "optimal_params_json": _json_dumps_pg(row.get("optimal_params") or {}),
+                "is_objective_name": row.get("is_objective_name"),
+                "is_objective_value": row.get("is_objective_value"),
+                "oos_pnl": row.get("oos_pnl"),
+                "oos_cagr": row.get("oos_cagr"),
+                "oos_sharpe": row.get("oos_sharpe"),
+                "oos_max_drawdown": row.get("oos_max_drawdown"),
+                "oos_win_pct": row.get("oos_win_pct"),
+                "oos_n_fills": row.get("oos_n_fills"),
+                "cumulative_oos_pnl": _cum,
+                "is_holdout": False,
+                "created_at": _utcnow(),
+            },
+        )
+    logger.info("[wfo] persisted %d wfo_period rows for run=%s", len(all_period_rows), rid)
+
+
 def _persist_significance(
     *,
     db: Session,
@@ -3037,6 +3202,18 @@ def _persist_pipeline_output(
     except Exception:
         pass
 
+    if _has_table(db, "run_wfo_period"):
+        try:
+            with db.begin_nested():
+                _persist_wfo_periods(
+                    db=db,
+                    rid=rid,
+                    out=out,
+                    default_symbol=default_symbol,
+                )
+        except Exception as _wfop_exc:
+            logger.error("[wfo] _persist_wfo_periods failed for run %s: %s", rid, _wfop_exc, exc_info=True)
+
     if _has_table(db, "run_significance"):
         try:
             with db.begin_nested():
@@ -3276,6 +3453,8 @@ def execute_run(run_id: str) -> dict:
             db.execute(text("delete from run_integrity_check where run_id = :id"), {"id": rid})
         if _has_table(db, "run_fold"):
             db.execute(text("delete from run_fold where run_id = :id"), {"id": rid})
+        if _has_table(db, "run_wfo_period"):
+            db.execute(text("delete from run_wfo_period where run_id = :id"), {"id": rid})
         if _has_table(db, "run_significance"):
             db.execute(text("delete from run_significance where run_id = :id"), {"id": rid})
         if _has_table(db, "run_risk"):

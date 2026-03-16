@@ -1,6 +1,6 @@
 import uuid
 from sqlalchemy import (
-    Column, String, DateTime, ForeignKey, Text, BigInteger, Float, UniqueConstraint, Index, Integer, Boolean
+    Column, String, DateTime, Date, ForeignKey, Text, BigInteger, Float, UniqueConstraint, Index, Integer, Boolean
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.sql import func
@@ -37,6 +37,8 @@ class MarketDataStore(Base):
     end_ts = Column(DateTime(timezone=True))
     row_count = Column(Integer)
     last_dataset_id = Column(ForeignKey("dataset.id"))
+    source_provider = Column(String, nullable=True)   # "bourse_direct"|"yahoo"|"bmce_excel"
+    data_as_of = Column(Date, nullable=True)           # last bar date (denormalized for freshness display)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -198,6 +200,7 @@ class RunFold(Base):
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     run_id = Column(UUID(as_uuid=True), ForeignKey("run.id"), nullable=False, index=True)
     fold_index = Column(Integer, nullable=False)
+    strategy_kind = Column(String(128), nullable=False, default="")
     train_start = Column(DateTime(timezone=True), nullable=True)
     train_end = Column(DateTime(timezone=True), nullable=True)
     test_start = Column(DateTime(timezone=True), nullable=True)
@@ -207,7 +210,40 @@ class RunFold(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     __table_args__ = (
-        UniqueConstraint("run_id", "fold_index", name="uq_run_fold_run_index"),
+        UniqueConstraint("run_id", "strategy_kind", "fold_index", name="uq_run_fold_run_sk_index"),
+    )
+
+
+class RunWfoPeriod(Base):
+    __tablename__ = "run_wfo_period"
+    id               = Column(BigInteger, primary_key=True, autoincrement=True)
+    run_id           = Column(UUID(as_uuid=True), ForeignKey("run.id"), nullable=False)
+    symbol           = Column(String, nullable=False)
+    strategy_kind    = Column(String(128), nullable=False)
+    horizon          = Column(String(32), nullable=True)
+    fold_no          = Column(Integer, nullable=False)
+    train_start      = Column(DateTime(timezone=True), nullable=True)
+    train_end        = Column(DateTime(timezone=True), nullable=True)
+    test_start       = Column(DateTime(timezone=True), nullable=False)
+    test_end         = Column(DateTime(timezone=True), nullable=False)
+    winning_trial_id    = Column(String, nullable=False)
+    optimal_params_json = Column(JSONB, nullable=False, default=dict)
+    is_objective_name   = Column(String, nullable=True)
+    is_objective_value  = Column(Float, nullable=True)
+    oos_pnl          = Column(Float, nullable=True)
+    oos_return       = Column(Float, nullable=True)
+    oos_cagr         = Column(Float, nullable=True)
+    oos_sharpe       = Column(Float, nullable=True)
+    oos_max_drawdown = Column(Float, nullable=True)
+    oos_win_pct      = Column(Float, nullable=True)
+    oos_n_fills      = Column(Integer, nullable=True)
+    cumulative_oos_pnl = Column(Float, nullable=True)
+    is_holdout       = Column(Boolean, nullable=False, default=False)
+    created_at       = Column(DateTime(timezone=True), server_default=func.now())
+    __table_args__ = (
+        UniqueConstraint("run_id","symbol","strategy_kind","horizon","fold_no",
+                         name="uq_run_wfo_period_run_sk_horizon_fold"),
+        Index("ix_run_wfo_period_run_id", "run_id"),
     )
 
 
@@ -338,10 +374,95 @@ class OptResult(Base):
     run_id = Column(UUID(as_uuid=True), ForeignKey("run.id"), nullable=False)
     fold_id = Column(String, nullable=False)
     chunk_id = Column(Integer, nullable=False)
-    
+
     topk_json = Column(JSONB, nullable=False, default=list) # array length <= K
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     __table_args__ = (
         UniqueConstraint("run_id", "fold_id", "chunk_id", name="uq_opt_result_run_fold_chunk"),
+    )
+
+
+class StockMaster(Base):
+    """Canonical registry of tracked Moroccan stocks."""
+    __tablename__ = "stock_master"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    symbol = Column(String, nullable=False, unique=True)       # e.g. "ATW"
+    display_name = Column(String, nullable=True)               # e.g. "Attijariwafa Bank"
+    isin = Column(String, nullable=True)                       # e.g. "MA0000011926"
+    sector = Column(String, nullable=True)                     # e.g. "Banques"
+    market_cap_class = Column(String, nullable=True)           # "large"|"mid"|"small"
+    is_active = Column(Boolean, nullable=False, default=True)
+    track_source = Column(String, nullable=False, default="bourse_direct")
+    bourse_url = Column(String, nullable=True)              # direct link to Bourse de Casablanca stock page
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_stock_master_is_active", "is_active"),
+    )
+
+
+class ProviderSymbolMap(Base):
+    """Maps internal canonical symbol to provider-specific ticker."""
+    __tablename__ = "provider_symbol_map"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    symbol = Column(String, ForeignKey("stock_master.symbol"), nullable=False)
+    provider = Column(String, nullable=False)                  # "yahoo"|"bourse_direct"|"bmce_excel"
+    provider_symbol = Column(String, nullable=False)           # e.g. "ATW.CS" for Yahoo
+    confidence = Column(Float, nullable=False, default=1.0)   # 0.0–1.0
+    is_verified = Column(Boolean, nullable=False, default=False)
+    override_reason = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("symbol", "provider", name="uq_provider_symbol_map_symbol_provider"),
+    )
+
+
+class MarketRefreshRun(Base):
+    """Tracks each bulk or single-symbol market data refresh job."""
+    __tablename__ = "market_refresh_run"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    trigger_source = Column(String, nullable=False, default="manual")  # "manual"|"scheduled"|"api"
+    scope = Column(String, nullable=False, default="all")              # "all"|"single"
+    symbol = Column(String, nullable=True)                             # NULL if scope="all"
+    timeframe = Column(String, nullable=False, default="1D")
+    status = Column(String, nullable=False, default="queued")          # "queued"|"running"|"succeeded"|"partial"|"failed"
+    rq_job_id = Column(String, nullable=True)
+    symbols_total = Column(Integer, nullable=True)
+    symbols_done = Column(Integer, nullable=True)
+    symbols_failed = Column(Integer, nullable=True)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    error_message = Column(Text, nullable=True)
+    meta_json = Column(JSONB, nullable=False, default=dict)
+
+    __table_args__ = (
+        Index("ix_market_refresh_run_status", "status"),
+        Index("ix_market_refresh_run_created_at", "created_at"),
+    )
+
+
+class MarketRefreshError(Base):
+    """Per-symbol error log within a refresh run."""
+    __tablename__ = "market_refresh_error"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    refresh_run_id = Column(UUID(as_uuid=True), ForeignKey("market_refresh_run.id", ondelete="CASCADE"), nullable=False)
+    symbol = Column(String, nullable=False)
+    provider = Column(String, nullable=False, default="bourse_direct")
+    error_type = Column(String, nullable=True)    # "not_found"|"parse_error"|"network_error"|"validation_error"
+    error_message = Column(Text, nullable=True)
+    raw_response = Column(Text, nullable=True)    # first 2000 chars of raw response for debugging
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_market_refresh_error_run", "refresh_run_id"),
+        Index("ix_market_refresh_error_symbol", "symbol"),
     )

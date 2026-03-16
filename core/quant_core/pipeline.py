@@ -25,6 +25,7 @@ from .optimize import (
 from .portfolio import CostModel, PortfolioConfig
 from .run_spec import build_run_spec
 from .decision import simulate_decision_policy
+from .wfo_utils import compute_trial_id
 
 from .plots import (
     make_batch_period_heatmap_plot,
@@ -1218,7 +1219,6 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                 reverse=True,
             )
 
-            horizon_rows_for_ui: list[dict[str, Any]] = []
             for local_rank, row in enumerate(ranked_rows, start=1):
                 strategy_kind = str(row.get("strategy_kind") or "").strip().lower()
                 if not strategy_kind:
@@ -1254,21 +1254,34 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                     }
                 )
 
-                horizon_rows_for_ui.append(
-                    {
-                        "strategy_kind": strategy_kind,
-                        "rank": int(local_rank),
-                        "objective": objective_name,
-                        "objective_value": objective_value,
-                        "pnl": _safe_float_scalar(row.get("stat.pnl") if "stat.pnl" in row else row.get("pnl")),
-                        "cagr": _safe_float_scalar(row.get("stat.cagr") if "stat.cagr" in row else row.get("cagr")),
-                        "period": row.get("period"),
-                        "start": row.get("start"),
-                        "end": row.get("end"),
-                    }
-                )
+            # ALL variants for persistence — includes param fields for stable trial_id computation
+            all_variants_for_horizon: list[dict[str, Any]] = []
+            for v_rank, row in enumerate(rows_raw, start=1):
+                sk = str(row.get("strategy_kind") or "").strip().lower()
+                if not sk:
+                    continue
+                variant_entry: dict[str, Any] = {
+                    "strategy_kind": sk,
+                    "trial_rank": v_rank,
+                    "objective": objective_name,
+                    "objective_value": _safe_float_scalar(row.get("objective_value")),
+                    "pnl": _safe_float_scalar(row.get("stat.pnl") if "stat.pnl" in row else row.get("pnl")),
+                    "cagr": _safe_float_scalar(row.get("stat.cagr") if "stat.cagr" in row else row.get("cagr")),
+                    "sharpe": _safe_float_scalar(row.get("stat.sharpe") if "stat.sharpe" in row else row.get("sharpe")),
+                    "max_drawdown": _safe_float_scalar(row.get("stat.max_drawdown") if "stat.max_drawdown" in row else row.get("max_drawdown")),
+                    "win_pct": _safe_float_scalar(row.get("stat.win_pct") if "stat.win_pct" in row else row.get("win_pct")),
+                    "n_fills": _safe_int_scalar(row.get("stat.n_fills") if "stat.n_fills" in row else row.get("n_fills")),
+                    "period": row.get("period"),
+                    "start": row.get("start"),
+                    "end": row.get("end"),
+                }
+                # Carry param fields so execute_run.py can compute a stable trial_id
+                for k, v in row.items():
+                    if k.startswith("param.strategy.") or k.startswith("param.portfolio."):
+                        variant_entry[k] = v
+                all_variants_for_horizon.append(variant_entry)
 
-            rows_by_horizon[horizon] = horizon_rows_for_ui
+            rows_by_horizon[horizon] = all_variants_for_horizon
 
         combined_leaderboard.sort(
             key=lambda row: (
@@ -1277,18 +1290,31 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
             )
         )
 
+        # Collect per-horizon WFO summaries from inner recursive run_pipeline outputs.
+        # These carry pre-computed candidate_summaries / selected_winner per strategy_kind.
+        wfo_summary_by_horizon: dict[str, Any] = {}
+        for h in requested_horizons:
+            h_output = dict(per_horizon_outputs.get(h) or {})
+            h_batch = dict(h_output.get("batch_period") or {})
+            h_wfo = dict(h_batch.get("_wfo_summary") or {})
+            if h_wfo:
+                wfo_summary_by_horizon[h] = h_wfo
+
+        _simple_wfo_payload: dict[str, Any] = {
+            "enabled": True,
+            "horizons": requested_horizons,
+            "primary_horizon": primary_horizon,
+            "rows_by_horizon": rows_by_horizon,
+            "wfo_summary_by_horizon": wfo_summary_by_horizon,
+        }
+
         primary_strategy_results = dict(primary_output.get("strategy_results") or {})
         primary_decision_support = primary_output.get("decision_support")
         if not isinstance(primary_decision_support, dict):
             primary_decision_support = _build_decision_support(primary_strategy_results)
 
         primary_artifacts = dict(primary_output.get("artifacts") or {})
-        primary_artifacts["simple_wfo_multi_horizon"] = {
-            "enabled": True,
-            "horizons": requested_horizons,
-            "primary_horizon": primary_horizon,
-            "rows_by_horizon": rows_by_horizon,
-        }
+        primary_artifacts["simple_wfo_multi_horizon"] = _simple_wfo_payload
 
         return {
             "leaderboard": combined_leaderboard,
@@ -1296,12 +1322,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
             "strategy_results": primary_strategy_results,
             "decision_support": primary_decision_support,
             "batch_period": dict(primary_output.get("batch_period") or {}),
-            "simple_wfo_multi_horizon": {
-                "enabled": True,
-                "horizons": requested_horizons,
-                "primary_horizon": primary_horizon,
-                "rows_by_horizon": rows_by_horizon,
-            },
+            "simple_wfo_multi_horizon": _simple_wfo_payload,
             "metrics": dict(primary_output.get("metrics") or {}),
             "fills": [r for r in list(primary_output.get("fills") or []) if isinstance(r, dict)],
             "position_ledger": [r for r in list(primary_output.get("position_ledger") or []) if isinstance(r, dict)],
@@ -1431,6 +1452,13 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
         }
         period_rows_by_label: dict[str, dict[str, str]] = {str(p["label"]): dict(p) for p in period_entries}
         selected_periods = list(periods_map.keys())
+        if period_mode == "walk_forward" and len(selected_periods) >= 2:
+            _selection_periods = selected_periods[:-1]
+            _holdout_label: str | None = selected_periods[-1]
+        else:
+            _selection_periods = list(selected_periods)
+            _holdout_label = None
+        n_selection_folds = len(_selection_periods)
 
         batch_frames: list[pd.DataFrame] = []
         base_spec_by_kind: dict[str, EngineSpec] = {}
@@ -1519,7 +1547,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                         metrics = dict(getattr(bundle.report, "metrics", None) or {})
                         signal_snapshot = _signal_snapshot_from_bundle(bundle, preferred_symbol=symbol_label)
                         row = {
-                            "fold_index": int(fold_idx),
+                            "fold_index": fold_idx * 1000 + trial_rank,
                             "period": label,
                             "start": str(test_start),
                             "end": str(test_end),
@@ -1546,12 +1574,19 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                             "stat.cagr": _metric_from_report(metrics, "cagr"),
                             "stat.efficiency": _metric_from_report(metrics, "efficiency"),
                             "stat.n_fills": _metric_from_report(metrics, "n_fills"),
+                            "stat.sharpe": _metric_from_report(metrics, "sharpe"),
+                            "stat.max_drawdown": _metric_from_report(metrics, "max_drawdown"),
+                            "stat.win_pct": _metric_from_report(metrics, "win_pct"),
+                            "is_holdout": False,
+                            "n_selection_folds": n_selection_folds,
                             "signal_today": signal_snapshot.get("signal_today"),
                             "signal_label": signal_snapshot.get("signal_label"),
                             "signal_date": signal_snapshot.get("signal_date"),
                         }
                         for k_param, v_param in _best_params_from_spec(test_spec).items():
                             row[f"param.{k_param}"] = v_param
+                        _fold_params_for_id = {k[len("param."):]: v for k, v in row.items() if k.startswith("param.")}
+                        row["trial_id"] = compute_trial_id(kind, _fold_params_for_id)
                         _fold_rows.append(row)
 
                     _fp_bt_ms = round((time.perf_counter() - _t_bt) * 1000.0, 2)
@@ -1564,16 +1599,16 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                     }
                     _pipeline_logger.info(
                         "[perf] kind=%s fold %d/%d '%s' opt=%.0f ms bt=%.0f ms total=%.0f ms",
-                        kind, fold_idx + 1, len(selected_periods), label,
+                        kind, fold_idx + 1, len(_selection_periods), label,
                         _fp_opt_ms, _fp_bt_ms, _fp_total_ms,
                     )
                     return _fold_rows, _fold_ret_series, _fold_perf_item
 
-                _n_fold_workers = min(len(selected_periods), max(1, (os.cpu_count() or 4)))
+                _n_fold_workers = min(len(_selection_periods), max(1, (os.cpu_count() or 4)))
                 with ThreadPoolExecutor(max_workers=_n_fold_workers) as _fold_pool:
                     _fold_futures = [
                         _fold_pool.submit(_eval_fold, (fi, lbl))
-                        for fi, lbl in enumerate(selected_periods)
+                        for fi, lbl in enumerate(_selection_periods)
                     ]
                     for _fut in as_completed(_fold_futures):
                         try:
@@ -1672,6 +1707,80 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
             ).reset_index(drop=True)
             batch_df["rank"] = batch_df.groupby("strategy_kind").cumcount() + 1
 
+            # ── Per-kind candidate aggregation (WFO only) ─────────────────────
+            import math as _math
+            _by_kind: dict[str, dict] = {}
+            if period_mode == "walk_forward" and "trial_id" in batch_df.columns:
+                _sel_df = batch_df.copy()
+                _sel_df["_logical_fold"] = pd.to_numeric(_sel_df.get("fold_index"), errors="coerce").fillna(0).astype(int) // 1000
+                # Dedup: for (strategy_kind, trial_id, logical_fold) keep max objective_value
+                _sel_df = _sel_df.sort_values("objective_value", ascending=False, na_position="last")
+                _sel_df = _sel_df.drop_duplicates(subset=["strategy_kind", "trial_id", "_logical_fold"], keep="first")
+
+                _agg_entries: dict[str, list] = {}
+                for (_sk, _tid), _grp in _sel_df.groupby(["strategy_kind", "trial_id"]):
+                    _logical_folds = set(_grp["_logical_fold"].tolist())
+                    _fc = len(_logical_folds)
+                    _obj = pd.to_numeric(_grp["objective_value"], errors="coerce").dropna()
+                    _pnl = pd.to_numeric(_grp.get("stat.pnl", pd.Series(dtype=float)), errors="coerce").dropna()
+                    _sh = pd.to_numeric(_grp.get("stat.sharpe", pd.Series(dtype=float)), errors="coerce").dropna()
+                    _dd = pd.to_numeric(_grp.get("stat.max_drawdown", pd.Series(dtype=float)), errors="coerce").dropna()
+                    _wp = pd.to_numeric(_grp.get("stat.win_pct", pd.Series(dtype=float)), errors="coerce").dropna()
+                    _rk = pd.to_numeric(_grp.get("trial_rank", pd.Series(dtype=float)), errors="coerce").dropna()
+                    _r1 = _grp[pd.to_numeric(_grp.get("trial_rank", pd.Series(0, index=_grp.index)), errors="coerce").fillna(0) == 1]
+                    if _r1.empty:
+                        _r1 = _grp
+                    _param_cols = [c for c in _r1.columns if c.startswith("param.")]
+                    _params = {c[len("param."):]: _r1.iloc[0][c] for c in _param_cols}
+                    _entry = {
+                        "trial_id": _tid,
+                        "params": _params,
+                        "fold_count": _fc,
+                        "fold_coverage": _fc / n_selection_folds if n_selection_folds > 0 else 0.0,
+                        "objective_mean": float(_obj.mean()) if not _obj.empty else None,
+                        "objective_std": float(_obj.std()) if len(_obj) > 1 else 0.0,
+                        "pnl_mean": float(_pnl.mean()) if not _pnl.empty else None,
+                        "sharpe_mean": float(_sh.mean()) if not _sh.empty else None,
+                        "max_drawdown_mean": float(_dd.mean()) if not _dd.empty else None,
+                        "win_pct_mean": float(_wp.mean()) if not _wp.empty else None,
+                        "rank_mean": float(_rk.mean()) if not _rk.empty else None,
+                        "is_winner": False,
+                    }
+                    _agg_entries.setdefault(_sk, []).append(_entry)
+
+                _coverage_threshold = _math.ceil(n_selection_folds / 2) if n_selection_folds > 0 else 1
+                for _sk, _candidates in _agg_entries.items():
+                    _eligible = [c for c in _candidates if c["fold_count"] >= _coverage_threshold]
+                    if not _eligible:
+                        _pipeline_logger.warning(
+                            "[wfo] no eligible candidates for kind=%s (threshold=%d), using all %d",
+                            _sk, _coverage_threshold, len(_candidates),
+                        )
+                        _eligible = list(_candidates)
+                    _eligible.sort(key=lambda c: (
+                        -(c["objective_mean"] or 0.0),
+                        (c["objective_std"] or 0.0),
+                        -c["fold_count"],
+                        (c["rank_mean"] or 0.0),
+                        c["trial_id"],
+                    ))
+                    _eligible[0]["is_winner"] = True
+                    _winner_e = _eligible[0]
+                    _by_kind[_sk] = {
+                        "candidate_summaries": _eligible,
+                        "selected_winner": {
+                            "trial_id": _winner_e["trial_id"],
+                            "fold_count": _winner_e["fold_count"],
+                            "fold_coverage": _winner_e["fold_coverage"],
+                            "objective_mean": _winner_e["objective_mean"],
+                            "objective_std": _winner_e["objective_std"],
+                            "rank_mean": _winner_e["rank_mean"],
+                            "n_selection_folds": n_selection_folds,
+                            "selection_reason": "max_objective_mean_coverage",
+                        },
+                        "final_holdout": None,
+                    }
+
             batch_df_global = batch_df.sort_values("objective_value", ascending=False, na_position="last").reset_index(drop=True)
             winner_row = batch_df_global.iloc[0]
             winner_kind = str(winner_row.get("strategy_kind") or opt_kinds[0]).strip().lower()
@@ -1728,6 +1837,152 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
 
             primary_bundle = bundles_by_kind[winner_kind]
 
+            # ── Per-kind holdout evaluation (WFO only) ────────────────────────
+            _holdout_fold_rows_by_kind: dict[str, dict] = {}
+            if period_mode == "walk_forward" and _holdout_label is not None and _by_kind:
+                _h_period = period_rows_by_label[_holdout_label]
+                _h_test_start = str(_h_period.get("test_start") or _h_period["start"])
+                _h_test_end = str(_h_period.get("test_end") or _h_period["end"])
+                _h_logical_fold = n_selection_folds  # first fold index after selection folds
+
+                for _h_sk, _h_kind_data in _by_kind.items():
+                    _h_winner_tid = _h_kind_data["selected_winner"]["trial_id"]
+                    _h_rows_df = batch_df[
+                        (batch_df["strategy_kind"] == _h_sk)
+                        & (batch_df.get("trial_id", pd.Series("", index=batch_df.index)) == _h_winner_tid)
+                    ]
+                    if _h_rows_df.empty:
+                        _pipeline_logger.warning("[wfo] no fold rows found for holdout winner kind=%s tid=%s", _h_sk, _h_winner_tid)
+                        continue
+                    _h_r1 = _h_rows_df[pd.to_numeric(_h_rows_df.get("trial_rank", pd.Series(0, index=_h_rows_df.index)), errors="coerce").fillna(0) == 1]
+                    _h_spec_row = (_h_r1 if not _h_r1.empty else _h_rows_df).sort_values("objective_value", ascending=False, na_position="last").iloc[0]
+                    _h_base_spec = base_spec_by_kind.get(
+                        _h_sk,
+                        replace(engine_spec, strategy=StrategyConfig(kind=_h_sk, params={})),
+                    )
+                    _h_built = build_spec_from_result_row(_h_base_spec, _h_spec_row)
+                    _h_spec = replace(
+                        _h_built,
+                        data=replace(
+                            _h_built.data,
+                            start=_h_test_start,
+                            end=_h_test_end,
+                            include_windows=None,
+                            exclude_windows=None,
+                        ),
+                    )
+                    try:
+                        _h_bundle = BacktestEngine(_h_spec).run(fast_mode=True)
+                        _h_metrics = dict(getattr(_h_bundle.report, "metrics", None) or {})
+                    except Exception as _h_exc:
+                        _pipeline_logger.warning("[wfo] holdout eval failed kind=%s: %s", _h_sk, _h_exc)
+                        _h_metrics = {}
+                    _h_params = {k[len("param."):]: _h_spec_row[k] for k in _h_spec_row.index if k.startswith("param.")}
+                    _h_trial_id = compute_trial_id(_h_sk, _h_params)
+                    _h_summary = {
+                        "fold_index": _h_logical_fold,
+                        "test_start": _h_test_start,
+                        "test_end": _h_test_end,
+                        "strategy_kind": _h_sk,
+                        "trial_id": _h_trial_id,
+                        "objective_value": _metric_from_report(_h_metrics, period_objective),
+                        "pnl": _metric_from_report(_h_metrics, "pnl"),
+                        "cagr": _metric_from_report(_h_metrics, "cagr"),
+                        "sharpe": _metric_from_report(_h_metrics, "sharpe"),
+                        "max_drawdown": _metric_from_report(_h_metrics, "max_drawdown"),
+                        "win_pct": _metric_from_report(_h_metrics, "win_pct"),
+                        "n_fills": _metric_from_report(_h_metrics, "n_fills"),
+                    }
+                    _h_kind_data["final_holdout"] = _h_summary
+                    _h_fold_row: dict[str, Any] = {
+                        "fold_index": _h_logical_fold,
+                        "strategy_kind": _h_sk,
+                        "trial_id": _h_trial_id,
+                        "is_holdout": True,
+                        "n_selection_folds": n_selection_folds,
+                        "start": _h_test_start,
+                        "end": _h_test_end,
+                        "test_start": _h_test_start,
+                        "test_end": _h_test_end,
+                        "objective": period_objective,
+                        "objective_value": _h_summary["objective_value"],
+                        "stat.pnl": _h_summary["pnl"],
+                        "stat.cagr": _h_summary["cagr"],
+                        "stat.sharpe": _h_summary["sharpe"],
+                        "stat.max_drawdown": _h_summary["max_drawdown"],
+                        "stat.win_pct": _h_summary["win_pct"],
+                        "stat.n_fills": _h_summary["n_fills"],
+                        "period": _holdout_label,
+                        "horizon": str((walk_forward_meta or {}).get("horizon")) if isinstance(walk_forward_meta, dict) else None,
+                        "horizon_label": str((walk_forward_meta or {}).get("horizon_label")) if isinstance(walk_forward_meta, dict) else None,
+                    }
+                    for _hpk, _hpv in _h_params.items():
+                        _h_fold_row[f"param.{_hpk}"] = _hpv
+                    _holdout_fold_rows_by_kind[_h_sk] = _h_fold_row
+
+            _wfo_summary: dict[str, Any] = {}
+            if period_mode == "walk_forward" and _by_kind:
+                _wfo_summary = {
+                    "n_selection_folds": n_selection_folds,
+                    "strategy_kinds": sorted(_by_kind.keys()),
+                    "by_strategy_kind": _by_kind,
+                }
+
+            # ── Per-fold local winners (classical WFO story) ──────────────
+            _per_fold_winners: list[dict] = []
+            if period_mode == "walk_forward" and "trial_id" in batch_df.columns:
+                _wdf = batch_df.copy()
+                _tr_num = pd.to_numeric(_wdf.get("trial_rank", 0), errors="coerce").fillna(0)
+                _winner_df = _wdf[_tr_num == 1].copy()
+                _winner_df["_lf"] = (
+                    pd.to_numeric(_winner_df["fold_index"], errors="coerce").fillna(0).astype(int) // 1000
+                )
+                for _, _r in _winner_df.sort_values(["strategy_kind", "_lf"]).iterrows():
+                    _params = {k[len("param."):]: _r[k] for k in _r.index if k.startswith("param.")}
+                    _per_fold_winners.append({
+                        "fold_no":            int(_r["_lf"]) + 1,
+                        "strategy_kind":      str(_r.get("strategy_kind") or ""),
+                        "horizon":            str(_r.get("horizon") or "") or None,
+                        "train_start":        str(_r.get("train_start") or ""),
+                        "train_end":          str(_r.get("train_end") or ""),
+                        "test_start":         str(_r.get("test_start") or ""),
+                        "test_end":           str(_r.get("test_end") or ""),
+                        "winning_trial_id":   str(_r.get("trial_id") or ""),
+                        "optimal_params":     _params,
+                        "is_objective_name":  str(_r.get("objective") or "") or None,
+                        "is_objective_value": _safe_float_scalar(_r.get("train_objective_value")),
+                        "oos_pnl":            _safe_float_scalar(_r.get("stat.pnl")),
+                        "oos_cagr":           _safe_float_scalar(_r.get("stat.cagr")),
+                        "oos_sharpe":         _safe_float_scalar(_r.get("stat.sharpe")),
+                        "oos_max_drawdown":   _safe_float_scalar(_r.get("stat.max_drawdown")),
+                        "oos_win_pct":        _safe_float_scalar(_r.get("stat.win_pct")),
+                        "oos_n_fills":        _safe_int_scalar(_r.get("stat.n_fills")),
+                        "is_holdout":         False,
+                    })
+                # Append holdout rows
+                for _h_sk, _h_row in _holdout_fold_rows_by_kind.items():
+                    _h_params = {k[len("param."):]: _h_row[k] for k in _h_row if k.startswith("param.")}
+                    _per_fold_winners.append({
+                        "fold_no":            n_selection_folds + 1,
+                        "strategy_kind":      str(_h_row.get("strategy_kind") or _h_sk),
+                        "horizon":            str(_h_row.get("horizon") or "") or None,
+                        "train_start":        None,
+                        "train_end":          None,
+                        "test_start":         str(_h_row.get("test_start") or ""),
+                        "test_end":           str(_h_row.get("test_end") or ""),
+                        "winning_trial_id":   str(_h_row.get("trial_id") or ""),
+                        "optimal_params":     _h_params,
+                        "is_objective_name":  str(_h_row.get("objective") or "") or None,
+                        "is_objective_value": None,
+                        "oos_pnl":            _safe_float_scalar(_h_row.get("stat.pnl")),
+                        "oos_cagr":           _safe_float_scalar(_h_row.get("stat.cagr")),
+                        "oos_sharpe":         _safe_float_scalar(_h_row.get("stat.sharpe")),
+                        "oos_max_drawdown":   _safe_float_scalar(_h_row.get("stat.max_drawdown")),
+                        "oos_win_pct":        _safe_float_scalar(_h_row.get("stat.win_pct")),
+                        "oos_n_fills":        _safe_int_scalar(_h_row.get("stat.n_fills")),
+                        "is_holdout":         True,
+                    })
+
             heatmap_df = (
                 batch_df.pivot_table(index="period", columns="strategy_kind", values="objective_value", aggfunc="max")
                 if not batch_df.empty
@@ -1736,7 +1991,8 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
             if not heatmap_df.empty:
                 ordered_cols = [str(k).strip().lower() for k in opt_kinds if str(k).strip().lower() in heatmap_df.columns]
                 remaining_cols = [c for c in heatmap_df.columns if c not in ordered_cols]
-                heatmap_df = heatmap_df.reindex(index=selected_periods, columns=ordered_cols + remaining_cols)
+                _heatmap_index = _selection_periods if period_mode == "walk_forward" else selected_periods
+                heatmap_df = heatmap_df.reindex(index=_heatmap_index, columns=ordered_cols + remaining_cols)
 
             leaderboard_df = batch_df.copy()
             leaderboard_df["Strategy"] = leaderboard_df["strategy_kind"]
@@ -1846,6 +2102,10 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
             if period_mode == "walk_forward":
                 batch_period_payload["walk_forward"] = walk_forward_meta
                 batch_period_payload["oos_summary_by_kind"] = walk_forward_oos_summary_by_kind
+                batch_period_payload["holdout_fold_rows_by_kind"] = _holdout_fold_rows_by_kind
+                batch_period_payload["_wfo_summary"] = _wfo_summary
+                batch_period_payload["n_selection_folds"] = n_selection_folds
+                batch_period_payload["per_fold_winners"] = _per_fold_winners
 
             artifacts_payload: dict[str, Any] = {
                 "run_spec": run_spec,

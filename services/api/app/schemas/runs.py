@@ -67,6 +67,49 @@ class RunFoldOut(BaseModel):
     created_at: datetime
 
 
+class WfoPeriodOut(BaseModel):
+    fold_no: int
+    symbol: str = ""
+    strategy_kind: str = ""
+    horizon: Optional[str] = None
+    train_start: Optional[datetime] = None
+    train_end: Optional[datetime] = None
+    test_start: datetime
+    test_end: datetime
+    winning_trial_id: str = ""
+    optimal_params: Dict[str, Any] = Field(default_factory=dict)
+    is_objective_name: Optional[str] = None
+    is_objective_value: Optional[float] = None
+    oos_pnl: Optional[float] = None
+    oos_return: Optional[float] = None
+    oos_cagr: Optional[float] = None
+    oos_sharpe: Optional[float] = None
+    oos_max_drawdown: Optional[float] = None
+    oos_win_pct: Optional[float] = None
+    oos_n_fills: Optional[int] = None
+    cumulative_oos_pnl: Optional[float] = None
+    is_holdout: bool = False
+
+
+class StitchedOosSummary(BaseModel):
+    total_oos_pnl: Optional[float] = None
+    mean_oos_sharpe: Optional[float] = None
+    median_oos_sharpe: Optional[float] = None
+    worst_fold_drawdown: Optional[float] = None
+    profitable_folds: int = 0
+    total_folds: int = 0
+    profitable_pct: Optional[float] = None
+
+
+class ClassicalWfoReport(BaseModel):
+    periods: list[WfoPeriodOut] = Field(default_factory=list)
+    stitched_oos_summary: StitchedOosSummary = Field(default_factory=StitchedOosSummary)
+    current_live_params: Optional[Dict[str, Any]] = None
+    current_live_trial_id: Optional[str] = None
+    final_holdout_summary: Optional[WfoPeriodOut] = None
+    data_source: str = "run_wfo_period"
+
+
 class RunSignificanceOut(BaseModel):
     method: str
     pvalue: Optional[float] = None

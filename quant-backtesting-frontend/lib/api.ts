@@ -58,6 +58,11 @@ export type RunIntegrity = z.infer<typeof RunIntegritySchema>
 
 const RunFoldSchema = z.object({
   fold_index: z.number(),
+  fold_logical: z.number().default(0),
+  trial_rank: z.number().default(1),
+  strategy_kind: z.string().default(""),
+  is_holdout: z.boolean().default(false),
+  trial_id: z.string().default(""),
   train_start: z.string().nullable().optional(),
   train_end: z.string().nullable().optional(),
   test_start: z.string().nullable().optional(),
@@ -66,6 +71,116 @@ const RunFoldSchema = z.object({
   fold_artifacts: z.record(z.unknown()).default({}),
   created_at: z.string(),
 })
+
+const WfoPeriodOutSchema = z.object({
+  fold_no: z.number(),
+  symbol: z.string().default(""),
+  strategy_kind: z.string().default(""),
+  horizon: z.string().nullable().optional(),
+  train_start: z.string().nullable().optional(),
+  train_end: z.string().nullable().optional(),
+  test_start: z.string(),
+  test_end: z.string(),
+  winning_trial_id: z.string().default(""),
+  optimal_params: z.record(z.unknown()).default({}),
+  is_objective_name: z.string().nullable().optional(),
+  is_objective_value: z.number().nullable().optional(),
+  oos_pnl: z.number().nullable().optional(),
+  oos_return: z.number().nullable().optional(),
+  oos_cagr: z.number().nullable().optional(),
+  oos_sharpe: z.number().nullable().optional(),
+  oos_max_drawdown: z.number().nullable().optional(),
+  oos_win_pct: z.number().nullable().optional(),
+  oos_n_fills: z.number().nullable().optional(),
+  cumulative_oos_pnl: z.number().nullable().optional(),
+  is_holdout: z.boolean().default(false),
+})
+export type WfoPeriodOut = z.infer<typeof WfoPeriodOutSchema>
+
+const StitchedOosSummarySchema = z.object({
+  total_oos_pnl: z.number().nullable().optional(),
+  mean_oos_sharpe: z.number().nullable().optional(),
+  median_oos_sharpe: z.number().nullable().optional(),
+  worst_fold_drawdown: z.number().nullable().optional(),
+  profitable_folds: z.number().default(0),
+  total_folds: z.number().default(0),
+  profitable_pct: z.number().nullable().optional(),
+})
+export type StitchedOosSummary = z.infer<typeof StitchedOosSummarySchema>
+
+const ClassicalWfoReportSchema = z.object({
+  periods: z.array(WfoPeriodOutSchema).default([]),
+  stitched_oos_summary: StitchedOosSummarySchema.default({}),
+  current_live_params: z.record(z.unknown()).nullable().optional(),
+  current_live_trial_id: z.string().nullable().optional(),
+  final_holdout_summary: WfoPeriodOutSchema.nullable().optional(),
+  data_source: z.string().default("run_wfo_period"),
+})
+export type ClassicalWfoReport = z.infer<typeof ClassicalWfoReportSchema>
+
+const WfoCandidateSummarySchema = z.object({
+  trial_id: z.string(),
+  params: z.record(z.unknown()).optional(),
+  fold_count: z.number().default(0),
+  fold_coverage: z.number().nullable().optional(),
+  objective_mean: z.number().nullable().optional(),
+  objective_std: z.number().nullable().optional(),
+  pnl_mean: z.number().nullable().optional(),
+  sharpe_mean: z.number().nullable().optional(),
+  max_drawdown_mean: z.number().nullable().optional(),
+  win_pct_mean: z.number().nullable().optional(),
+  rank_mean: z.number().nullable().optional(),
+  is_winner: z.boolean().default(false),
+})
+export type WfoCandidateSummary = z.infer<typeof WfoCandidateSummarySchema>
+
+const WfoFinalHoldoutSchema = z.object({
+  fold_index: z.number().optional(),
+  test_start: z.string().nullable().optional(),
+  test_end: z.string().nullable().optional(),
+  strategy_kind: z.string().default(""),
+  trial_id: z.string().default(""),
+  objective_value: z.number().nullable().optional(),
+  pnl: z.number().nullable().optional(),
+  cagr: z.number().nullable().optional(),
+  sharpe: z.number().nullable().optional(),
+  max_drawdown: z.number().nullable().optional(),
+  win_pct: z.number().nullable().optional(),
+  n_fills: z.number().nullable().optional(),
+})
+export type WfoFinalHoldout = z.infer<typeof WfoFinalHoldoutSchema>
+
+const WfoSelectedWinnerSchema = z.object({
+  trial_id: z.string(),
+  fold_count: z.number().default(0),
+  fold_coverage: z.number().nullable().optional(),
+  objective_mean: z.number().nullable().optional(),
+  objective_std: z.number().nullable().optional(),
+  rank_mean: z.number().nullable().optional(),
+  n_selection_folds: z.number().default(0),
+  selection_reason: z.string().nullable().optional(),
+})
+export type WfoSelectedWinner = z.infer<typeof WfoSelectedWinnerSchema>
+
+// Per-horizon data block used when is_multi_horizon=true (simple_wfo_multi_horizon runs).
+// Horizons are kept separate; never merged across short/medium/long.
+const WfoHorizonDataSchema = z.object({
+  candidate_summaries: z.array(WfoCandidateSummarySchema).default([]),
+  selected_winner: WfoSelectedWinnerSchema.nullable().optional(),
+  final_holdout: WfoFinalHoldoutSchema.nullable().optional(),
+})
+export type WfoHorizonData = z.infer<typeof WfoHorizonDataSchema>
+
+const WfoStrategyKindSummarySchema = z.object({
+  // Standard WFO (single horizon): flat structure
+  candidate_summaries: z.array(WfoCandidateSummarySchema).default([]),
+  selected_winner: WfoSelectedWinnerSchema.nullable().optional(),
+  final_holdout: WfoFinalHoldoutSchema.nullable().optional(),
+  // Multi-horizon (simple_wfo_multi_horizon): nested by_horizon
+  // When present, the flat fields above will be empty — use by_horizon instead
+  by_horizon: z.record(z.string(), WfoHorizonDataSchema).optional(),
+})
+export type WfoStrategyKindSummary = z.infer<typeof WfoStrategyKindSummarySchema>
 
 const RunWalkForwardSchema = z.object({
   run_id: z.string(),
@@ -89,10 +204,16 @@ const RunWalkForwardSchema = z.object({
   aggregate: z
     .object({
       fold_count: z.number().default(0),
+      n_selection_folds: z.number().default(0),
       objective_mean: z.number().nullable().optional(),
     })
-    .default({ fold_count: 0, objective_mean: null }),
+    .default({ fold_count: 0, n_selection_folds: 0, objective_mean: null }),
+  n_selection_folds: z.number().default(0),
+  strategy_kinds: z.array(z.string()).default([]),
+  by_strategy_kind: z.record(z.string(), WfoStrategyKindSummarySchema).default({}),
+  legacy_aggregation: z.boolean().default(false),
   folds: z.array(RunFoldSchema).default([]),
+  classical_wfo_report: ClassicalWfoReportSchema.nullable().optional(),
 })
 export type RunWalkForward = z.infer<typeof RunWalkForwardSchema>
 
@@ -174,6 +295,7 @@ export const LeaderboardRowSchema = z.object({
   signal_label: z.string().nullable().optional(),
   signal_today: NumericLike,
   signal_date: z.string().nullable().optional(),
+  trial_id: z.string().nullable().optional(),
   best_params_json: z.unknown().optional(),
   plot_url: z.string().url().nullable().optional(),
   ledger_url: z.string().url().nullable().optional(),
@@ -1057,6 +1179,7 @@ const MarketSymbolRowSchema = z.object({
   end_ts: z.string().nullable().optional(),
   row_count: z.number().nullable().optional(),
   updated_at: z.string().nullable().optional(),
+  source_provider: z.string().nullable().optional(),
 })
 
 export type MarketSymbolRow = z.infer<typeof MarketSymbolRowSchema>
@@ -1068,6 +1191,20 @@ export async function listMarketSymbols(params?: { timeframe?: string }): Promis
 
   const rows = await request<unknown[]>(`/market-data/symbols${q ? `?${q}` : ""}`)
   return z.array(MarketSymbolRowSchema).parse(rows)
+}
+
+export async function uploadExcelFile(file: File): Promise<{ dataset_id: string; job_id: string }> {
+  const form = new FormData()
+  form.append("file", file)
+  const res = await fetch(`${API_BASE}/market-data/excel`, {
+    method: "POST",
+    body: form,
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => "Upload failed")
+    throw new Error(`${res.status}: ${text}`)
+  }
+  return res.json()
 }
 
 const SmaTechnicalVariationSchema = z.object({
@@ -1168,4 +1305,265 @@ export async function uploadDataset(
 
   const payload = (await res.json()) as unknown
   return UploadDatasetResponseSchema.parse(payload)
+}
+
+// ── Moroccan Market Data — Stock Registry & Refresh ──────────────────────────
+
+export const StockMasterSchema = z.object({
+  symbol: z.string(),
+  display_name: z.string().nullable().optional(),
+  isin: z.string().nullable().optional(),
+  sector: z.string().nullable().optional(),
+  market_cap_class: z.string().nullable().optional(),
+  is_active: z.boolean(),
+  track_source: z.string(),
+  bourse_url: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
+  created_at: z.string().nullable().optional(),
+  updated_at: z.string().nullable().optional(),
+  // Freshness (joined from market_data_store)
+  start_ts: z.string().nullable().optional(),
+  end_ts: z.string().nullable().optional(),
+  row_count: z.number().nullable().optional(),
+  store_updated_at: z.string().nullable().optional(),
+  source_provider: z.string().nullable().optional(),
+  data_as_of: z.string().nullable().optional(),
+  is_stale: z.boolean().default(false),
+})
+export type StockMaster = z.infer<typeof StockMasterSchema>
+
+export const BourseStockLookupSchema = z.object({
+  symbol: z.string(),
+  bourse_url: z.string(),
+  display_name: z.string().nullable().optional(),
+  sector: z.string().nullable().optional(),
+  isin: z.string().nullable().optional(),
+  found: z.boolean(),
+})
+export type BourseStockLookup = z.infer<typeof BourseStockLookupSchema>
+
+export const ProviderSymbolMapSchema = z.object({
+  id: z.number(),
+  symbol: z.string(),
+  provider: z.string(),
+  provider_symbol: z.string(),
+  confidence: z.number(),
+  is_verified: z.boolean(),
+  override_reason: z.string().nullable().optional(),
+  created_at: z.string().nullable().optional(),
+})
+export type ProviderSymbolMap = z.infer<typeof ProviderSymbolMapSchema>
+
+export const MarketRefreshRunSchema = z.object({
+  id: z.string(),
+  trigger_source: z.string(),
+  scope: z.string(),
+  symbol: z.string().nullable().optional(),
+  timeframe: z.string(),
+  status: z.string(),
+  rq_job_id: z.string().nullable().optional(),
+  symbols_total: z.number().nullable().optional(),
+  symbols_done: z.number().nullable().optional(),
+  symbols_failed: z.number().nullable().optional(),
+  started_at: z.string().nullable().optional(),
+  finished_at: z.string().nullable().optional(),
+  created_at: z.string(),
+  error_message: z.string().nullable().optional(),
+  meta_json: z.record(z.unknown()).default({}),
+})
+export type MarketRefreshRun = z.infer<typeof MarketRefreshRunSchema>
+
+export const MarketHealthSchema = z.object({
+  total_tracked: z.number(),
+  up_to_date: z.number(),
+  stale: z.number(),
+  very_stale: z.number(),
+  never_ingested: z.number(),
+  last_refresh_run: MarketRefreshRunSchema.nullable().optional(),
+  last_successful_refresh: z.string().nullable().optional(),
+})
+export type MarketHealth = z.infer<typeof MarketHealthSchema>
+
+export const OhlcvBarSchema = z.object({
+  date: z.string(),
+  open: z.number().nullable().optional(),
+  high: z.number().nullable().optional(),
+  low: z.number().nullable().optional(),
+  close: z.number().nullable().optional(),
+  volume: z.number().nullable().optional(),
+})
+
+export const OhlcvPreviewSchema = z.object({
+  symbol: z.string(),
+  timeframe: z.string(),
+  bars: z.array(OhlcvBarSchema),
+  source_provider: z.string().nullable().optional(),
+  data_as_of: z.string().nullable().optional(),
+  row_count: z.number().nullable().optional(),
+})
+export type OhlcvBar = z.infer<typeof OhlcvBarSchema>
+export type OhlcvPreview = z.infer<typeof OhlcvPreviewSchema>
+
+// ── Market Catalog (unified /data-page view) ──────────────────────────────────
+
+export const MarketCatalogRowSchema = z.object({
+  symbol: z.string(),
+  // From stock_master (null if symbol exists only in market_data_store)
+  display_name: z.string().nullable().optional(),
+  isin: z.string().nullable().optional(),
+  sector: z.string().nullable().optional(),
+  is_active: z.boolean().nullable().optional(),
+  track_source: z.string().nullable().optional(),
+  bourse_url: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
+  // From market_data_store (null if tracked but not yet ingested)
+  start_ts: z.string().nullable().optional(),
+  end_ts: z.string().nullable().optional(),
+  row_count: z.number().nullable().optional(),
+  source_provider: z.string().nullable().optional(),
+  data_as_of: z.string().nullable().optional(),
+  is_stale: z.boolean().default(false),
+  // Derived flags
+  is_tracked: z.boolean().default(false),
+  has_canonical_data: z.boolean().default(false),
+})
+export type MarketCatalogRow = z.infer<typeof MarketCatalogRowSchema>
+
+export async function listMarketCatalog(): Promise<MarketCatalogRow[]> {
+  const rows = await request<unknown[]>("/market-data/catalog")
+  return z.array(MarketCatalogRowSchema).parse(rows)
+}
+
+// ── Stock Registry API functions ──────────────────────────────────────────────
+
+export async function listTrackedStocks(params?: { is_active?: boolean }): Promise<StockMaster[]> {
+  const qs = new URLSearchParams()
+  if (params?.is_active !== undefined) qs.set("is_active", String(params.is_active))
+  const q = qs.toString()
+  const rows = await request<unknown[]>(`/market-data/stocks${q ? `?${q}` : ""}`)
+  return z.array(StockMasterSchema).parse(rows)
+}
+
+export async function addTrackedStock(body: {
+  symbol: string
+  display_name?: string
+  isin?: string
+  sector?: string
+  market_cap_class?: string
+  track_source?: string
+  bourse_url?: string
+  notes?: string
+}): Promise<StockMaster> {
+  const row = await request<unknown>("/market-data/stocks", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+  return StockMasterSchema.parse(row)
+}
+
+export async function updateTrackedStock(
+  symbol: string,
+  body: {
+    display_name?: string
+    isin?: string
+    sector?: string
+    market_cap_class?: string
+    is_active?: boolean
+    track_source?: string
+    bourse_url?: string
+    notes?: string
+  }
+): Promise<StockMaster> {
+  const row = await request<unknown>(`/market-data/stocks/${encodeURIComponent(symbol)}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  })
+  return StockMasterSchema.parse(row)
+}
+
+export async function bourseLookupStock(symbol: string): Promise<BourseStockLookup> {
+  const row = await request<unknown>(
+    `/market-data/stocks/${encodeURIComponent(symbol)}/bourse-lookup`
+  )
+  return BourseStockLookupSchema.parse(row)
+}
+
+export async function listStockMappings(symbol: string): Promise<ProviderSymbolMap[]> {
+  const rows = await request<unknown[]>(
+    `/market-data/stocks/${encodeURIComponent(symbol)}/mappings`
+  )
+  return z.array(ProviderSymbolMapSchema).parse(rows)
+}
+
+export async function updateStockMapping(
+  symbol: string,
+  provider: string,
+  body: { provider_symbol: string; is_verified?: boolean; override_reason?: string }
+): Promise<ProviderSymbolMap> {
+  const row = await request<unknown>(
+    `/market-data/stocks/${encodeURIComponent(symbol)}/mappings/${encodeURIComponent(provider)}`,
+    { method: "PATCH", body: JSON.stringify(body) }
+  )
+  return ProviderSymbolMapSchema.parse(row)
+}
+
+export async function getStockOhlcvPreview(
+  symbol: string,
+  params?: { timeframe?: string; limit?: number }
+): Promise<OhlcvPreview> {
+  const qs = new URLSearchParams()
+  if (params?.timeframe) qs.set("timeframe", params.timeframe)
+  if (params?.limit !== undefined) qs.set("limit", String(params.limit))
+  const q = qs.toString()
+  const row = await request<unknown>(
+    `/market-data/stocks/${encodeURIComponent(symbol)}/ohlcv-preview${q ? `?${q}` : ""}`
+  )
+  return OhlcvPreviewSchema.parse(row)
+}
+
+// ── Refresh API functions ─────────────────────────────────────────────────────
+
+export async function refreshAllStocks(body?: {
+  timeframe?: string
+  source_override?: string
+  include_unverified?: boolean
+}): Promise<{ refresh_run_id: string; status: string; symbols_total: number; job_id?: string }> {
+  const payload = await request<unknown>("/market-data/refresh", {
+    method: "POST",
+    body: JSON.stringify(body ?? {}),
+  })
+  return payload as { refresh_run_id: string; status: string; symbols_total: number; job_id?: string }
+}
+
+export async function refreshSingleStock(
+  symbol: string,
+  body?: { timeframe?: string; source_override?: string }
+): Promise<{ refresh_run_id: string; status: string; job_id?: string }> {
+  const payload = await request<unknown>(
+    `/market-data/stocks/${encodeURIComponent(symbol)}/refresh`,
+    { method: "POST", body: JSON.stringify(body ?? {}) }
+  )
+  return payload as { refresh_run_id: string; status: string; job_id?: string }
+}
+
+export async function getRefreshRun(refreshRunId: string): Promise<MarketRefreshRun> {
+  const row = await request<unknown>(`/market-data/refresh/${refreshRunId}`)
+  return MarketRefreshRunSchema.parse(row)
+}
+
+export async function listRefreshRuns(params?: {
+  limit?: number
+  offset?: number
+}): Promise<MarketRefreshRun[]> {
+  const qs = new URLSearchParams()
+  if (params?.limit !== undefined) qs.set("limit", String(params.limit))
+  if (params?.offset !== undefined) qs.set("offset", String(params.offset))
+  const q = qs.toString()
+  const rows = await request<unknown[]>(`/market-data/refresh${q ? `?${q}` : ""}`)
+  return z.array(MarketRefreshRunSchema).parse(rows)
+}
+
+export async function getMarketHealth(): Promise<MarketHealth> {
+  const row = await request<unknown>("/market-data/health")
+  return MarketHealthSchema.parse(row)
 }

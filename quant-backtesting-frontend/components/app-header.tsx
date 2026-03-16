@@ -11,6 +11,7 @@ import {
   Layers3,
   Activity,
   SlidersHorizontal,
+  Database,
 } from "lucide-react"
 
 const navItems = [
@@ -19,6 +20,7 @@ const navItems = [
   { href: "/results", label: "Global Results", icon: Layers3 },
   { href: "/defaults-discovery", label: "Defaults Discovery", icon: SlidersHorizontal },
   { href: "/technical-study", label: "Technical Study", icon: Activity },
+  { href: "/data", label: "Données", icon: Database },
   { href: "/glossary", label: "Glossary", icon: BookOpen },
 ]
 

@@ -38,6 +38,7 @@ from ..models import (
     RunMetric,
     RunRisk,
     RunSignificance,
+    RunWfoPeriod,
     StrategyDecision,
     StrategyLeaderboard,
 )
@@ -1306,6 +1307,108 @@ def get_run_integrity(run_id: UUID, db: Session = Depends(get_db)):
             for row in checks
         ],
         "report_url": presign_get(report.object_key, expires_seconds=300) if report else None,
+    }
+
+
+# ── Classical WFO report helpers ────────────────────────────────────────────
+
+def _orm_wfo_period_to_dict(r: Any) -> dict:
+    return {
+        "fold_no": r.fold_no,
+        "symbol": r.symbol,
+        "strategy_kind": r.strategy_kind,
+        "horizon": r.horizon,
+        "train_start": r.train_start,
+        "train_end": r.train_end,
+        "test_start": r.test_start,
+        "test_end": r.test_end,
+        "winning_trial_id": r.winning_trial_id,
+        "optimal_params": dict(r.optimal_params_json or {}),
+        "is_objective_name": r.is_objective_name,
+        "is_objective_value": r.is_objective_value,
+        "oos_pnl": r.oos_pnl,
+        "oos_return": r.oos_return,
+        "oos_cagr": r.oos_cagr,
+        "oos_sharpe": r.oos_sharpe,
+        "oos_max_drawdown": r.oos_max_drawdown,
+        "oos_win_pct": r.oos_win_pct,
+        "oos_n_fills": r.oos_n_fills,
+        "cumulative_oos_pnl": r.cumulative_oos_pnl,
+        "is_holdout": bool(r.is_holdout),
+    }
+
+
+def _fold_to_wfo_period(f: dict) -> dict:
+    fm = dict(f.get("fold_metrics_json") or {})
+    fa = dict(f.get("fold_artifacts") or {})
+    params = {k[len("param."):]: v for k, v in fm.items() if k.startswith("param.")}
+    if not params:
+        params = dict(fa.get("params") or {})
+    return {
+        "fold_no": int(f.get("fold_logical") or f.get("fold_index") or 0) + 1,
+        "symbol": str(fa.get("symbol") or ""),
+        "strategy_kind": str(f.get("strategy_kind") or ""),
+        "horizon": str(fa.get("horizon") or "") or None,
+        "train_start": f.get("train_start"),
+        "train_end": f.get("train_end"),
+        "test_start": f.get("test_start"),
+        "test_end": f.get("test_end"),
+        "winning_trial_id": str(f.get("trial_id") or ""),
+        "optimal_params": params,
+        "is_objective_name": str(fm.get("objective") or "") or None,
+        "is_objective_value": _as_summary_float(fm.get("train_objective_value")),
+        "oos_pnl": _as_summary_float(fm.get("stat.pnl")),
+        "oos_return": None,
+        "oos_cagr": _as_summary_float(fm.get("stat.cagr")),
+        "oos_sharpe": _as_summary_float(
+            fm.get("stat.sharpe") or (
+                fm.get("objective_value")
+                if str(fm.get("objective") or "").lower() == "sharpe"
+                else None
+            )
+        ),
+        "oos_max_drawdown": _as_summary_float(fm.get("stat.max_drawdown")),
+        "oos_win_pct": _as_summary_float(fm.get("stat.win_pct")),
+        "oos_n_fills": None,
+        "cumulative_oos_pnl": None,
+        "is_holdout": bool(f.get("is_holdout", False)),
+    }
+
+
+def _build_classical_wfo_report(periods: list[dict], data_source: str) -> dict:
+    selection = [p for p in periods if not p.get("is_holdout")]
+    holdout   = [p for p in periods if p.get("is_holdout")]
+    pnls    = [p["oos_pnl"] for p in selection if p.get("oos_pnl") is not None]
+    sharpes = [p["oos_sharpe"] for p in selection if p.get("oos_sharpe") is not None]
+    dds     = [p["oos_max_drawdown"] for p in selection if p.get("oos_max_drawdown") is not None]
+    profitable = sum(1 for p in pnls if p > 0)
+    total      = len(selection)
+    sorted_sharpes = sorted(sharpes) if sharpes else []
+    stitched: dict = {
+        "total_oos_pnl": float(sum(pnls)) if pnls else None,
+        "mean_oos_sharpe": float(sum(sharpes) / len(sharpes)) if sharpes else None,
+        "median_oos_sharpe": float(sorted_sharpes[len(sorted_sharpes) // 2]) if sorted_sharpes else None,
+        "worst_fold_drawdown": float(min(dds)) if dds else None,
+        "profitable_folds": profitable,
+        "total_folds": total,
+        "profitable_pct": round(profitable / total * 100, 1) if total > 0 else None,
+    }
+    current_live_params = None
+    current_live_trial_id = None
+    if selection:
+        most_recent = max(selection, key=lambda p: (
+            str(p.get("strategy_kind") or ""),
+            int(p.get("fold_no") or 0),
+        ))
+        current_live_params = dict(most_recent.get("optimal_params") or {})
+        current_live_trial_id = str(most_recent.get("winning_trial_id") or "") or None
+    return {
+        "periods": periods,
+        "stitched_oos_summary": stitched,
+        "current_live_params": current_live_params,
+        "current_live_trial_id": current_live_trial_id,
+        "final_holdout_summary": holdout[0] if holdout else None,
+        "data_source": data_source,
     }
 
 

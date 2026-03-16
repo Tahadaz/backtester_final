@@ -29,9 +29,9 @@ def _parse_queue_list(raw: str | None, *, default: tuple[str, ...]) -> tuple[str
 def _default_worker_queues() -> tuple[str, ...]:
     runs = os.getenv("RUNS_QUEUE_NAME", "runs").strip() or "runs"
     defaults = os.getenv("DEFAULTS_DISCOVERY_QUEUE_NAME", "defaults_discovery").strip() or "defaults_discovery"
-    if runs == defaults:
-        return (runs,)
-    return (runs, defaults)
+    market_refresh = os.getenv("MARKET_REFRESH_QUEUE_NAME", "market_refresh").strip() or "market_refresh"
+    # Use dict.fromkeys to preserve order and deduplicate
+    return tuple(dict.fromkeys([runs, defaults, market_refresh]))
 
 
 class Settings(BaseModel):

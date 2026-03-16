@@ -30,6 +30,10 @@ class Settings(BaseModel):
     DEFAULTS_DISCOVERY_QUEUE_NAME: str = (
         os.getenv("DEFAULTS_DISCOVERY_QUEUE_NAME", "defaults_discovery").strip() or "defaults_discovery"
     )
+    MARKET_REFRESH_QUEUE_NAME: str = (
+        os.getenv("MARKET_REFRESH_QUEUE_NAME", "market_refresh").strip() or "market_refresh"
+    )
+    MARKET_REFRESH_JOB_TIMEOUT_SECONDS: int = int(os.getenv("MARKET_REFRESH_JOB_TIMEOUT_SECONDS", "3600"))
 
     # Support both *_URL/_ID naming and docker-compose short names.
     S3_ENDPOINT_URL: str = _getenv_any("S3_ENDPOINT_URL", "S3_ENDPOINT", default="http://localhost:9000")
