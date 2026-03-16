@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 
 from . import auth
-from .routers import datasets, results, runs, market_data, data, leaderboard, trials, snapshot, defaults
+from .routers import datasets, results, runs, market_data, data, leaderboard, trials, snapshot, defaults, strategy_signals
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Quant API", version="0.1.0")
@@ -27,6 +27,7 @@ def create_app() -> FastAPI:
     app.include_router(leaderboard.router)
     app.include_router(trials.router)
     app.include_router(snapshot.router)
+    app.include_router(strategy_signals.router)
 
 
     @app.get("/health")
