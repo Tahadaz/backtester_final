@@ -78,137 +78,14 @@ def _normalize_windows(raw_windows: list[int]) -> list[int]:
     return sorted(out)
 
 
-def _load_close_series_from_store(*, object_key: str) -> pd.Series:
-    payload = s3_client().get_object(Bucket=settings.S3_BUCKET, Key=object_key)["Body"].read()
-    if not payload:
-        raise ValueError(f"empty market-data object: {object_key}")
-
-    frame = pd.read_parquet(BytesIO(payload))
-    if not isinstance(frame.index, pd.DatetimeIndex):
-        ts_col = None
-        for candidate in ("timestamp", "Timestamp", "date", "Date", "datetime", "Datetime"):
-            if candidate in frame.columns:
-                ts_col = candidate
-                break
-        if ts_col is None:
-            raise ValueError("parquet payload has no DatetimeIndex or timestamp column")
-        frame[ts_col] = pd.to_datetime(frame[ts_col], errors="coerce")
-        frame = frame.dropna(subset=[ts_col]).set_index(ts_col)
-
-    close_col = None
-    for candidate in ("Close", "close"):
-        if candidate in frame.columns:
-            close_col = candidate
-            break
-    if close_col is None:
-        raise ValueError("parquet payload is missing Close column")
-
-    close = pd.to_numeric(frame[close_col], errors="coerce").dropna()
-    close = close.sort_index()
-    close = close[~close.index.duplicated(keep="last")]
-    if close.empty:
-        raise ValueError("close series is empty after normalization")
-    return close
-
-
-def _dataset_has_symbol(dataset_row: models.Dataset, symbol: str) -> bool:
-    target = str(symbol or "").strip().upper()
-    if not target:
-        return False
-
-    if str(getattr(dataset_row, "symbol", "") or "").strip().upper() == target:
-        return True
-
-    meta = dataset_row.meta_json if isinstance(dataset_row.meta_json, dict) else {}
-    detected = _normalize_symbols(list(meta.get("detected_symbols") or []))
-    return target in set(detected)
-
-
-def _find_latest_dataset_for_symbol(*, db: Session, symbol: str) -> models.Dataset | None:
-    rows = (
-        db.query(models.Dataset)
-        .order_by(models.Dataset.created_at.desc())
-        .limit(250)
-        .all()
-    )
-    for row in rows:
-        if _dataset_has_symbol(row, symbol):
-            return row
-    return None
-
-
-def _dataset_object_key(dataset_row: models.Dataset) -> str:
-    object_key = str(dataset_row.object_key or "").strip()
-    if object_key:
-        return object_key
-
-    filename = str(dataset_row.filename or "").strip()
-    data_hash = str(dataset_row.data_hash or "").strip()
-    if filename and data_hash:
-        return f"datasets/{data_hash}/{filename}"
-    raise ValueError("dataset row is missing object_key and (data_hash, filename)")
-
-
-def _load_close_series_from_dataset(*, dataset_row: models.Dataset, symbol: str) -> pd.Series:
-    object_key = _dataset_object_key(dataset_row)
-    payload = s3_client().get_object(Bucket=settings.S3_BUCKET, Key=object_key)["Body"].read()
-    if not payload:
-        raise ValueError(f"empty dataset object: {object_key}")
-
-    filename = str(dataset_row.filename or "").strip()
-    ext = Path(filename).suffix.lower()
-    symbol_upper = str(symbol or "").strip().upper()
-
-    if ext in {".xlsx", ".xls"}:
-        with pd.ExcelFile(BytesIO(payload)) as xls:
-            sheet_map = {str(name).strip().upper(): str(name) for name in xls.sheet_names}
-            sheet_name = sheet_map.get(symbol_upper)
-            if sheet_name is None and xls.sheet_names:
-                sheet_name = str(xls.sheet_names[0])
-            if not sheet_name:
-                raise ValueError("dataset workbook has no sheets")
-            frame = pd.read_excel(xls, sheet_name=sheet_name, engine="openpyxl")
-    elif ext == ".csv":
-        frame = pd.read_csv(BytesIO(payload))
-    else:
-        raise ValueError(f"unsupported dataset extension for technical study: {ext or '<none>'}")
-
-    frame.columns = frame.columns.astype(str).str.strip()
-    ts_col = None
-    for candidate in ("Date", "date", "timestamp", "Timestamp", "datetime", "Datetime"):
-        if candidate in frame.columns:
-            ts_col = candidate
-            break
-    if ts_col is None:
-        raise ValueError("dataset payload has no date/timestamp column")
-
-    frame[ts_col] = pd.to_datetime(frame[ts_col], errors="coerce")
-    frame = frame.dropna(subset=[ts_col]).set_index(ts_col)
-
-    close_col = None
-    for candidate in (
-        "Close",
-        "close",
-        "Clôture",
-        "Cloture",
-        "CLOTURE",
-        "ClÃ´ture",
-        "Adj Close",
-        "AdjClose",
-        "adj_close",
-    ):
-        if candidate in frame.columns:
-            close_col = candidate
-            break
-    if close_col is None:
-        raise ValueError("dataset payload is missing Close column")
-
-    close = pd.to_numeric(frame[close_col], errors="coerce").dropna()
-    close = close.sort_index()
-    close = close[~close.index.duplicated(keep="last")]
-    if close.empty:
-        raise ValueError("close series is empty after dataset normalization")
-    return close
+# Data-loading helpers — delegated to market_data_loader (shared public module)
+from ..market_data_loader import (
+    load_close_series_from_store as _load_close_series_from_store,
+    dataset_has_symbol as _dataset_has_symbol,
+    find_latest_dataset_for_symbol as _find_latest_dataset_for_symbol,
+    dataset_object_key as _dataset_object_key,
+    load_close_series_from_dataset as _load_close_series_from_dataset,
+)
 
 
 @router.post("/technical-study/sma")
