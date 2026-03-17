@@ -33,6 +33,7 @@ pnpm-debug.log*
 # ---- Data / Artifacts (VERY IMPORTANT) ----
 data/
 !quant-backtesting-frontend/app/data/
+!quant-backtesting-frontend/components/data/
 datasets/
 artifacts/
 *.csv

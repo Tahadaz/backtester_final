@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Toaster } from '@/components/ui/sonner'
-import { AppHeader } from '@/components/app-header'
+import { DynamicHeader } from '@/components/dynamic-header'
 import './globals.css'
 
 const _geist = Geist({ subsets: ["latin"] });
@@ -43,7 +43,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="font-sans antialiased min-h-screen bg-background text-foreground">
-        <AppHeader />
+        <DynamicHeader />
         <main className="mx-auto max-w-7xl px-4 py-6">
           {children}
         </main>

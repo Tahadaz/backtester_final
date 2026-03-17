@@ -1567,3 +1567,52 @@ export async function getMarketHealth(): Promise<MarketHealth> {
   const row = await request<unknown>("/market-data/health")
   return MarketHealthSchema.parse(row)
 }
+
+// ── Signal Engine — SMA Ensemble ──────────────────────────────────────────────
+
+export const SignalRepresentativeSchema = z.object({
+  variant_id: z.string(),
+  signal: z.number(),
+  signal_label: z.string(),
+  reliability_weight: z.number(),
+  normalized_weight: z.number(),
+  contribution: z.number(),
+  current_close: z.number(),
+  indicator_value: z.number().nullable(),
+  explanation: z.string(),
+})
+export type SignalRepresentative = z.infer<typeof SignalRepresentativeSchema>
+
+export const FamilyCombinedSignalSchema = z.object({
+  family: z.string(),
+  symbol: z.string(),
+  horizon: z.string(),
+  timeframe: z.string(),
+  family_score_pct: z.number(),
+  family_signal_label: z.string(),
+  tested_count: z.number(),
+  viable_count: z.number(),
+  competitive_count: z.number(),
+  representative_count: z.number(),
+  representatives: z.array(SignalRepresentativeSchema),
+  score_explanation: z.string(),
+  methodology_status: z.string(),
+  as_of: z.string(),
+})
+export type FamilyCombinedSignal = z.infer<typeof FamilyCombinedSignalSchema>
+
+export async function fetchSmaEnsemble(body: {
+  symbol: string
+  horizon: string
+  timeframe?: string
+}): Promise<FamilyCombinedSignal> {
+  const raw = await request<unknown>("/strategy/signal/sma-ensemble", {
+    method: "POST",
+    body: JSON.stringify({
+      symbol: body.symbol,
+      horizon: body.horizon,
+      timeframe: body.timeframe ?? "1D",
+    }),
+  })
+  return FamilyCombinedSignalSchema.parse(raw)
+}

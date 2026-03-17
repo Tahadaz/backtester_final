@@ -4,6 +4,7 @@ import useSWR from "swr"
 import type {
   Artifact,
   Dataset,
+  FamilyCombinedSignal,
   FillRow,
   LeaderboardRow,
   MarketCatalogRow,
@@ -22,6 +23,7 @@ import type {
   StockMaster,
   StrategyDecision,
 } from "@/lib/api"
+import { fetchSmaEnsemble } from "@/lib/api"
 
 const API_BASE = "/api"
 
@@ -267,5 +269,17 @@ export function useStockOhlcvPreview(symbol: string | null, params?: { limit?: n
   return useSWR<OhlcvPreview>(
     symbol ? `/market-data/stocks/${symbol}/ohlcv-preview${q ? `?${q}` : ""}` : null,
     apiFetcher
+  )
+}
+
+export function useSmaEnsemble(symbol: string | null, horizon: string | null) {
+  const key =
+    symbol && horizon
+      ? `/strategy/signal/sma-ensemble?s=${symbol}&h=${horizon}`
+      : null
+  return useSWR<FamilyCombinedSignal>(
+    key,
+    () => fetchSmaEnsemble({ symbol: symbol!, horizon: horizon! }),
+    { revalidateOnFocus: false }
   )
 }
