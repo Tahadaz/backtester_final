@@ -189,6 +189,8 @@ def _do_refresh_symbol(
     provider_symbol = _resolve_provider_symbol(db, symbol, source)
 
     # Pick adapter
+    use_session_adapter = False
+
     if source == "yahoo":
         adapter = YFinanceMoroccoAdapter(timezone="UTC", use_cache=False)
         # Pass the provider_symbol directly via map so YFinanceMoroccoAdapter uses it
@@ -202,6 +204,7 @@ def _do_refresh_symbol(
             adapter = BourseDirectAdapter(timezone="UTC", use_cache=False)
         else:
             adapter = BDCSessionAdapter(timezone="UTC", use_cache=False)
+            use_session_adapter = True
 
     # Determine fetch start: use existing end_ts to do incremental fetch
     existing_end_ts_row = db.execute(
@@ -211,9 +214,16 @@ def _do_refresh_symbol(
 
     fetch_start: Optional[str] = None
     if existing_end_ts_row and existing_end_ts_row["end_ts"]:
-        # Start from one day after last known bar to avoid re-fetching everything
+        # The live Bourse session scraper returns only the current/last trading day.
+        # Re-fetch the last stored day so an in-flight session bar can be overwritten
+        # when the exchange page updates intraday.
         last_dt: datetime.datetime = existing_end_ts_row["end_ts"]
-        fetch_start = (last_dt + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+        if use_session_adapter:
+            fetch_start = last_dt.strftime("%Y-%m-%d")
+        else:
+            # Historical adapters can safely start from the next day to avoid
+            # re-fetching the full already-materialized range.
+            fetch_start = (last_dt + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
 
     # Load data from adapter
     market_data = adapter.load(

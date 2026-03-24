@@ -138,6 +138,7 @@ def load_close_series_from_dataset(*, dataset_row: models.Dataset, symbol: str) 
     for candidate in (
         "Close", "close", "Clôture", "Cloture", "CLOTURE",
         "ClÃ´ture", "Adj Close", "AdjClose", "adj_close",
+        "Price", "price",
     ):
         if candidate in frame.columns:
             close_col = candidate
@@ -188,9 +189,111 @@ def load_close_for_symbol(db: Session, symbol: str, timeframe: str = "1D") -> np
     raise ValueError(f"No market data found for symbol {symbol_upper!r} (timeframe={timeframe_upper})")
 
 
+def load_ohlcv_from_store(*, object_key: str) -> pd.DataFrame:
+    """Load a full OHLCV DataFrame from a market_data_store parquet in S3."""
+    payload = s3_client().get_object(Bucket=settings.S3_BUCKET, Key=object_key)["Body"].read()
+    if not payload:
+        raise ValueError(f"empty market-data object: {object_key}")
+
+    frame = pd.read_parquet(BytesIO(payload))
+    if not isinstance(frame.index, pd.DatetimeIndex):
+        ts_col = None
+        for candidate in ("timestamp", "Timestamp", "date", "Date", "datetime", "Datetime"):
+            if candidate in frame.columns:
+                ts_col = candidate
+                break
+        if ts_col is None:
+            raise ValueError("parquet payload has no DatetimeIndex or timestamp column")
+        frame[ts_col] = pd.to_datetime(frame[ts_col], errors="coerce")
+        frame = frame.dropna(subset=[ts_col]).set_index(ts_col)
+
+    # Standardize OHLCV column names
+    col_map: dict[str, str] = {}
+    for target, candidates in [
+        ("Open", ["Open", "open"]),
+        ("High", ["High", "high"]),
+        ("Low", ["Low", "low"]),
+        ("Close", ["Close", "close"]),
+        ("Volume", ["Volume", "volume", "Vol", "vol"]),
+    ]:
+        for c in candidates:
+            if c in frame.columns:
+                col_map[c] = target
+                break
+
+    if col_map:
+        frame = frame.rename(columns=col_map)
+
+    frame = frame.sort_index()
+    frame = frame[~frame.index.duplicated(keep="last")]
+    if frame.empty:
+        raise ValueError("OHLCV frame is empty after normalization")
+    return frame
+
+
+def load_ohlcv_for_symbol(db: Session, symbol: str, timeframe: str = "1D") -> pd.DataFrame:
+    """Load OHLCV data for *symbol* as a pandas DataFrame.
+
+    Tries market_data_store first, then falls back to the latest dataset (parquet only).
+    Raises ValueError on failure.
+    """
+    symbol_upper = symbol.strip().upper()
+    timeframe_upper = timeframe.strip().upper()
+
+    # Try market_data_store
+    row = (
+        db.query(models.MarketDataStore)
+        .filter(
+            models.MarketDataStore.symbol == symbol_upper,
+            models.MarketDataStore.timeframe == timeframe_upper,
+        )
+        .first()
+    )
+    if row and row.object_key:
+        return load_ohlcv_from_store(object_key=row.object_key)
+
+    # Fallback to dataset (download parquet from S3)
+    ds = find_latest_dataset_for_symbol(db=db, symbol=symbol_upper)
+    if ds is not None:
+        obj_key = dataset_object_key(ds)
+        filename = str(ds.filename or "").strip()
+        ext = Path(filename).suffix.lower()
+        if ext == ".parquet":
+            return load_ohlcv_from_store(object_key=obj_key)
+        # For non-parquet datasets we cannot reliably extract full OHLCV
+        raise ValueError(
+            f"Dataset for {symbol_upper!r} is {ext} — full OHLCV requires parquet format"
+        )
+
+    raise ValueError(f"No market data found for symbol {symbol_upper!r} (timeframe={timeframe_upper})")
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
 def _normalize_symbols(raw: list) -> list[str]:
     return [str(s).strip().upper() for s in raw if s]
+
+
+# ---------------------------------------------------------------------------
+# Parquet load-modify-save
+# ---------------------------------------------------------------------------
+
+from typing import Callable
+
+from .storage import put_bytes
+
+
+def load_modify_save_ohlcv(
+    object_key: str,
+    modify_fn: Callable[[pd.DataFrame], pd.DataFrame],
+) -> pd.DataFrame:
+    """Load parquet from S3, apply *modify_fn*, save back, return modified frame."""
+    frame = load_ohlcv_from_store(object_key=object_key)
+    modified = modify_fn(frame)
+    buf = BytesIO()
+    modified.to_parquet(buf, index=True)
+    buf.seek(0)
+    put_bytes(object_key, buf.getvalue(), "application/octet-stream")
+    return modified

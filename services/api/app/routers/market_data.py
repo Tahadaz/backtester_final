@@ -16,21 +16,31 @@ from sqlalchemy import text
 from .. import models
 from ..config import settings
 from ..db import get_db
+from ..market_data_formats import build_upload_format_reference
+from ..market_holidays import get_holiday_info
+from ..masi_tickers import is_masi_ticker, get_masi_info, all_masi_tickers
 from ..queue import get_queue, get_market_refresh_queue
-from ..storage import put_bytes, presign_get, s3_client
+from ..storage import delete_object, put_bytes, presign_get, s3_client
 from ..schemas.market_data import (
+    AvailabilityCalendarDayOut,
+    AvailabilityCalendarOut,
     BourseStockLookupOut,
     MarketCatalogRowOut,
+    MarketHealthOut,
+    OhlcvBarOut,
+    OhlcvHistoryOut,
+    OhlcvMutationResult,
+    OhlcvPreviewOut,
+    OhlcvRowDeleteRequest,
+    OhlcvRowUpsert,
+    MarketRefreshTriggerRequest,
+    MarketRefreshRunOut,
+    ProviderSymbolMapOut,
+    ProviderSymbolMapUpdate,
     StockMasterCreate,
     StockMasterOut,
     StockMasterUpdate,
-    ProviderSymbolMapOut,
-    ProviderSymbolMapUpdate,
-    MarketRefreshTriggerRequest,
-    MarketRefreshRunOut,
-    MarketHealthOut,
-    OhlcvBarOut,
-    OhlcvPreviewOut,
+    UploadFormatReferenceOut,
 )
 
 router = APIRouter(prefix="/market-data", tags=["market-data"])
@@ -80,6 +90,8 @@ def _normalize_windows(raw_windows: list[int]) -> list[int]:
 
 # Data-loading helpers — delegated to market_data_loader (shared public module)
 from ..market_data_loader import (
+    load_modify_save_ohlcv,
+    load_ohlcv_for_symbol,
     load_close_series_from_store as _load_close_series_from_store,
     dataset_has_symbol as _dataset_has_symbol,
     find_latest_dataset_for_symbol as _find_latest_dataset_for_symbol,
@@ -298,7 +310,27 @@ def upload_excel_and_ingest(
     # Store raw upload (preserve forever)
     put_bytes(object_key=object_key, data=data, content_type=content_type)
 
-    meta: dict[str, Any] = {"filename": filename, "content_type": content_type, "size_bytes": len(data)}
+    # Detect symbols from sheet names, filtering out generic names
+    _GENERIC_SHEETS = {"FEUIL1", "FEUIL2", "FEUIL3", "SHEET1", "SHEET2", "SHEET3", "DONNÉES", "DATA"}
+    try:
+        with pd.ExcelFile(BytesIO(data)) as xls:
+            raw_sheets = xls.sheet_names
+        detected_symbols = [
+            s.strip().upper()
+            for s in raw_sheets
+            if s.strip() and s.strip().upper() not in _GENERIC_SHEETS
+        ]
+    except Exception:
+        raw_sheets = []
+        detected_symbols = []
+
+    meta: dict[str, Any] = {
+        "filename": filename,
+        "content_type": content_type,
+        "size_bytes": len(data),
+        "sheet_names": raw_sheets,
+        "detected_symbols": detected_symbols,
+    }
     if metadata_json:
         try:
             parsed = json.loads(metadata_json)
@@ -374,7 +406,28 @@ def get_ingest_report_url(
     }
 
 
+@router.get("/uploads/{dataset_id}/status")
+def get_ingest_status(dataset_id: UUID) -> dict[str, Any]:
+    """Poll-friendly endpoint: returns the ingest report inline if ready, else {"status": "processing"}."""
+    object_key = f"market_data/uploads/{dataset_id}/ingest_report.json"
+    s3 = s3_client()
+    try:
+        obj = s3.get_object(Bucket=settings.S3_BUCKET, Key=object_key)
+        report = json.loads(obj["Body"].read())
+        return {"status": "done", "report": report}
+    except s3.exceptions.NoSuchKey:
+        return {"status": "processing"}
+    except Exception:
+        # Bucket/auth issues — treat as still processing to avoid false errors
+        return {"status": "processing"}
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
+@router.get("/upload-format-reference")
+def get_upload_format_reference() -> UploadFormatReferenceOut:
+    return UploadFormatReferenceOut.model_validate(build_upload_format_reference())
+
 
 def _today_utc() -> datetime.date:
     return datetime.datetime.now(datetime.timezone.utc).date()
@@ -427,6 +480,61 @@ def _refresh_run_to_out(run: models.MarketRefreshRun) -> MarketRefreshRunOut:
     return MarketRefreshRunOut.model_validate(run)
 
 
+def _get_market_store_or_404(db: Session, symbol: str, timeframe: str) -> models.MarketDataStore:
+    store = (
+        db.query(models.MarketDataStore)
+        .filter(
+            models.MarketDataStore.symbol == symbol,
+            models.MarketDataStore.timeframe == timeframe,
+        )
+        .one_or_none()
+    )
+    if not store:
+        raise HTTPException(status_code=404, detail=f"No market data for {symbol}/{timeframe}")
+    return store
+
+
+def _frame_to_ohlcv_bars(frame: pd.DataFrame) -> list[OhlcvBarOut]:
+    bars: list[OhlcvBarOut] = []
+    for ts, row in frame.iterrows():
+        bars.append(
+            OhlcvBarOut(
+                date=ts.strftime("%Y-%m-%d"),
+                open=float(row["Open"]) if "Open" in row and pd.notna(row["Open"]) else None,
+                high=float(row["High"]) if "High" in row and pd.notna(row["High"]) else None,
+                low=float(row["Low"]) if "Low" in row and pd.notna(row["Low"]) else None,
+                close=float(row["Close"]) if "Close" in row and pd.notna(row["Close"]) else None,
+                volume=float(row["Volume"]) if "Volume" in row and pd.notna(row["Volume"]) else None,
+            )
+        )
+    return bars
+
+
+def _calendar_day_state(
+    day: datetime.date,
+    *,
+    symbol: str,
+    first_date: datetime.date,
+    last_date: datetime.date,
+    present_dates: set[datetime.date],
+) -> tuple[str, dict[str, Any] | None]:
+    if day in present_dates:
+        return "present_data", get_holiday_info(day, symbol=symbol)
+    if day < first_date or day > last_date:
+        return "outside_series_range", None
+    if day.weekday() >= 5:
+        return "weekend", None
+
+    holiday = get_holiday_info(day, symbol=symbol)
+    if holiday:
+        certainty = str(holiday.get("certainty") or "tentative")
+        if certainty == "confirmed":
+            return "market_holiday", holiday
+        return "tentative_market_holiday", holiday
+
+    return "missing_expected_day", None
+
+
 # ── Stock Registry Endpoints ─────────────────────────────────────────────────
 
 @router.get("/stocks")
@@ -467,11 +575,16 @@ def add_tracked_stock(
     if existing:
         raise HTTPException(status_code=409, detail=f"Stock '{symbol}' already tracked")
 
+    # MASI symbols use registry-owned names; other symbols may still provide a display name.
+    masi_info = get_masi_info(symbol)
+    display_name = masi_info["display_name"] if masi_info else body.display_name
+    sector = body.sector or (masi_info["sector"] if masi_info else None)
+
     stock = models.StockMaster(
         symbol=symbol,
-        display_name=body.display_name,
+        display_name=display_name,
         isin=body.isin,
-        sector=body.sector,
+        sector=sector,
         market_cap_class=body.market_cap_class,
         is_active=True,
         track_source=body.track_source or "bourse_direct",
@@ -517,8 +630,6 @@ def update_tracked_stock(
     if not stock:
         raise HTTPException(status_code=404, detail=f"Stock '{symbol}' not found")
 
-    if body.display_name is not None:
-        stock.display_name = body.display_name
     if body.isin is not None:
         stock.isin = body.isin
     if body.sector is not None:
@@ -545,6 +656,63 @@ def update_tracked_stock(
         .one_or_none()
     )
     return _stock_to_out(stock, store)
+
+
+@router.delete("/symbols/{symbol}")
+def delete_market_symbol(
+    symbol: str,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    symbol = symbol.strip().upper()
+    if not symbol:
+        raise HTTPException(status_code=400, detail="symbol is required")
+
+    store = (
+        db.query(models.MarketDataStore)
+        .filter(
+            models.MarketDataStore.symbol == symbol,
+            models.MarketDataStore.timeframe == "1D",
+        )
+        .one_or_none()
+    )
+    stock = db.query(models.StockMaster).filter(models.StockMaster.symbol == symbol).one_or_none()
+
+    if store is None and stock is None:
+        raise HTTPException(status_code=404, detail=f"Symbol '{symbol}' not found")
+
+    deleted_object_key = str(store.object_key) if store and store.object_key else None
+    deleted_canonical_data = store is not None
+    deleted_tracked_stock = stock is not None
+
+    try:
+        if store is not None:
+            db.delete(store)
+
+        db.query(models.ProviderSymbolMap).filter(
+            models.ProviderSymbolMap.symbol == symbol
+        ).delete(synchronize_session=False)
+
+        if stock is not None:
+            db.delete(stock)
+
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    if deleted_object_key:
+        try:
+            delete_object(deleted_object_key)
+        except Exception:
+            # The catalog row is already deleted from Postgres. S3 cleanup is best-effort.
+            pass
+
+    return {
+        "symbol": symbol,
+        "deleted_tracked_stock": deleted_tracked_stock,
+        "deleted_canonical_data": deleted_canonical_data,
+        "deleted_object_key": deleted_object_key,
+    }
 
 
 # ── Symbol Mapping Endpoints ──────────────────────────────────────────────────
@@ -687,38 +855,12 @@ def get_stock_ohlcv_preview(
     db: Session = Depends(get_db),
 ) -> OhlcvPreviewOut:
     symbol = symbol.strip().upper()
-    store = (
-        db.query(models.MarketDataStore)
-        .filter(
-            models.MarketDataStore.symbol == symbol,
-            models.MarketDataStore.timeframe == timeframe,
-        )
-        .one_or_none()
-    )
-    if not store:
-        raise HTTPException(status_code=404, detail=f"No market data for {symbol}/{timeframe}")
+    store = _get_market_store_or_404(db, symbol, timeframe)
 
     try:
-        payload = s3_client().get_object(Bucket=settings.S3_BUCKET, Key=store.object_key)["Body"].read()
-        frame = pd.read_parquet(BytesIO(payload))
-        if not isinstance(frame.index, pd.DatetimeIndex):
-            for ts_col in ("timestamp", "Timestamp", "date", "Date"):
-                if ts_col in frame.columns:
-                    frame[ts_col] = pd.to_datetime(frame[ts_col], errors="coerce")
-                    frame = frame.dropna(subset=[ts_col]).set_index(ts_col)
-                    break
-        frame = frame.sort_index()
+        frame = load_ohlcv_for_symbol(db, symbol, timeframe)
         tail = frame.tail(limit)
-        bars = []
-        for ts, row in tail.iterrows():
-            bars.append(OhlcvBarOut(
-                date=ts.strftime("%Y-%m-%d"),
-                open=float(row["Open"]) if "Open" in row and pd.notna(row["Open"]) else None,
-                high=float(row["High"]) if "High" in row and pd.notna(row["High"]) else None,
-                low=float(row["Low"]) if "Low" in row and pd.notna(row["Low"]) else None,
-                close=float(row["Close"]) if "Close" in row and pd.notna(row["Close"]) else None,
-                volume=float(row["Volume"]) if "Volume" in row and pd.notna(row["Volume"]) else None,
-            ))
+        bars = _frame_to_ohlcv_bars(tail)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to load OHLCV: {exc}") from exc
 
@@ -729,6 +871,201 @@ def get_stock_ohlcv_preview(
         source_provider=store.source_provider,
         data_as_of=store.data_as_of,
         row_count=store.row_count,
+    )
+
+
+@router.get("/stocks/{symbol}/ohlcv-history")
+def get_stock_ohlcv_history(
+    symbol: str,
+    timeframe: str = Query(default="1D"),
+    db: Session = Depends(get_db),
+) -> OhlcvHistoryOut:
+    symbol = symbol.strip().upper()
+    store = _get_market_store_or_404(db, symbol, timeframe)
+
+    try:
+        frame = load_ohlcv_for_symbol(db, symbol, timeframe)
+        bars = _frame_to_ohlcv_bars(frame)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to load OHLCV history: {exc}") from exc
+
+    return OhlcvHistoryOut(
+        symbol=symbol,
+        timeframe=timeframe,
+        bars=bars,
+        source_provider=store.source_provider,
+        data_as_of=store.data_as_of,
+        row_count=store.row_count,
+    )
+
+
+@router.get("/stocks/{symbol}/availability-calendar")
+def get_stock_availability_calendar(
+    symbol: str,
+    timeframe: str = Query(default="1D"),
+    db: Session = Depends(get_db),
+) -> AvailabilityCalendarOut:
+    symbol = symbol.strip().upper()
+    _store = _get_market_store_or_404(db, symbol, timeframe)
+
+    try:
+        frame = load_ohlcv_for_symbol(db, symbol, timeframe).sort_index()
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to load availability calendar: {exc}") from exc
+
+    if frame.empty:
+        raise HTTPException(status_code=404, detail=f"No market data for {symbol}/{timeframe}")
+
+    first_date = frame.index.min().date()
+    last_date = frame.index.max().date()
+    present_dates = {ts.date() for ts in frame.index}
+
+    # Build per-date missing-fields lookup for partial data detection
+    ohlcv_cols = ["Open", "High", "Low", "Close", "Volume"]
+    available_cols = [c for c in ohlcv_cols if c in frame.columns]
+    missing_fields_by_date: dict[datetime.date, list[str]] = {}
+    if available_cols:
+        for ts, row_data in frame[available_cols].iterrows():
+            missing = [c for c in available_cols if pd.isna(row_data[c])]
+            if missing:
+                missing_fields_by_date[ts.date()] = [c.lower() for c in missing]
+    # Also flag columns entirely absent from the frame
+    absent_cols = [c.lower() for c in ohlcv_cols if c not in frame.columns]
+
+    days: list[AvailabilityCalendarDayOut] = []
+    counts = {
+        "present_data": 0,
+        "missing_expected_day": 0,
+        "weekend": 0,
+        "market_holiday": 0,
+        "tentative_market_holiday": 0,
+    }
+    partial_count = 0
+
+    cursor = first_date
+    while cursor <= last_date:
+        state, holiday = _calendar_day_state(
+            cursor,
+            symbol=symbol,
+            first_date=first_date,
+            last_date=last_date,
+            present_dates=present_dates,
+        )
+        if state in counts:
+            counts[state] += 1
+
+        day_missing: list[str] = []
+        if cursor in present_dates:
+            day_missing = missing_fields_by_date.get(cursor, []) + absent_cols
+            if day_missing:
+                partial_count += 1
+
+        days.append(
+            AvailabilityCalendarDayOut(
+                date=cursor.isoformat(),
+                state=state,
+                has_data=cursor in present_dates,
+                holiday_name=str(holiday.get("name")) if holiday else None,
+                holiday_certainty=str(holiday.get("certainty")) if holiday else None,
+                missing_fields=day_missing,
+            )
+        )
+        cursor += datetime.timedelta(days=1)
+
+    default_month_anchor = last_date - datetime.timedelta(days=365)
+    default_month = max(default_month_anchor, first_date).replace(day=1)
+
+    return AvailabilityCalendarOut(
+        symbol=symbol,
+        timeframe=timeframe,
+        first_date=first_date.isoformat(),
+        last_date=last_date.isoformat(),
+        default_month=default_month.isoformat(),
+        days=days,
+        present_days=counts["present_data"],
+        missing_expected_days=counts["missing_expected_day"],
+        weekend_days=counts["weekend"],
+        market_holiday_days=counts["market_holiday"],
+        tentative_market_holiday_days=counts["tentative_market_holiday"],
+        partial_days=partial_count,
+    )
+
+
+# ── OHLCV Row Mutation Endpoints ──────────────────────────────────────────────
+
+
+def _update_store_metadata(db: Session, store: models.MarketDataStore, frame: pd.DataFrame) -> None:
+    """Sync market_data_store row with the current state of the parquet frame."""
+    store.row_count = int(len(frame))
+    store.start_ts = frame.index.min().to_pydatetime() if not frame.empty else None
+    store.end_ts = frame.index.max().to_pydatetime() if not frame.empty else None
+    store.updated_at = datetime.datetime.now(datetime.timezone.utc)
+    db.commit()
+
+
+@router.patch("/stocks/{symbol}/ohlcv-rows", response_model=OhlcvMutationResult)
+def upsert_ohlcv_row(
+    symbol: str,
+    body: OhlcvRowUpsert,
+    db: Session = Depends(get_db),
+    timeframe: str = Query("1D"),
+) -> OhlcvMutationResult:
+    """Insert or update a single OHLCV row. Only non-None fields are written."""
+    store = _get_market_store_or_404(db, symbol, timeframe)
+    ts = pd.Timestamp(body.date, tz="UTC")
+
+    def _apply(frame: pd.DataFrame) -> pd.DataFrame:
+        if ts not in frame.index:
+            # Insert new row with NaNs, then fill provided fields
+            frame.loc[ts] = [float("nan")] * len(frame.columns)
+        for field, value in [
+            ("Open", body.open), ("High", body.high), ("Low", body.low),
+            ("Close", body.close), ("Volume", body.volume),
+        ]:
+            if value is not None and field in frame.columns:
+                frame.at[ts, field] = value
+        return frame.sort_index()
+
+    modified = load_modify_save_ohlcv(store.object_key, _apply)
+    _update_store_metadata(db, store, modified)
+
+    return OhlcvMutationResult(
+        symbol=symbol,
+        timeframe=timeframe,
+        action="upserted",
+        affected_dates=[body.date],
+        new_row_count=int(len(modified)),
+    )
+
+
+@router.delete("/stocks/{symbol}/ohlcv-rows", response_model=OhlcvMutationResult)
+def delete_ohlcv_rows(
+    symbol: str,
+    body: OhlcvRowDeleteRequest,
+    db: Session = Depends(get_db),
+    timeframe: str = Query("1D"),
+) -> OhlcvMutationResult:
+    """Delete one or more OHLCV rows by date."""
+    store = _get_market_store_or_404(db, symbol, timeframe)
+    timestamps = [pd.Timestamp(d, tz="UTC") for d in body.dates]
+
+    def _apply(frame: pd.DataFrame) -> pd.DataFrame:
+        to_drop = frame.index.intersection(pd.DatetimeIndex(timestamps))
+        return frame.drop(to_drop).sort_index()
+
+    modified = load_modify_save_ohlcv(store.object_key, _apply)
+    _update_store_metadata(db, store, modified)
+
+    return OhlcvMutationResult(
+        symbol=symbol,
+        timeframe=timeframe,
+        action="deleted",
+        affected_dates=body.dates,
+        new_row_count=int(len(modified)),
     )
 
 
@@ -938,9 +1275,16 @@ def get_market_catalog(db: Session = Depends(get_db)) -> list[MarketCatalogRowOu
                 is_stale=_is_stale(data_as_of),
                 is_tracked=bool(r["is_tracked"]),
                 has_canonical_data=bool(r["has_canonical_data"]),
+                market="masi" if is_masi_ticker(r["symbol"]) else "other",
             )
         )
     return result
+
+
+@router.get("/masi-tickers")
+def list_masi_tickers() -> list[dict[str, str]]:
+    """Return the canonical MASI ticker registry for frontend autocomplete."""
+    return all_masi_tickers()
 
 
 @router.get("/health")

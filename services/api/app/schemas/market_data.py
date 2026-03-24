@@ -21,7 +21,6 @@ class StockMasterCreate(BaseModel):
 
 
 class StockMasterUpdate(BaseModel):
-    display_name: Optional[str] = None
     isin: Optional[str] = None
     sector: Optional[str] = None
     market_cap_class: Optional[str] = None
@@ -156,6 +155,7 @@ class MarketCatalogRowOut(BaseModel):
     # Derived flags
     is_tracked: bool = False
     has_canonical_data: bool = False
+    market: str = "masi"
 
 
 # ── OHLCV Preview ─────────────────────────────────────────────────────────────
@@ -176,3 +176,86 @@ class OhlcvPreviewOut(BaseModel):
     source_provider: Optional[str] = None
     data_as_of: Optional[datetime.date] = None
     row_count: Optional[int] = None
+
+
+class UploadFormatFieldAliasOut(BaseModel):
+    input_column: str
+    matched_alias: str
+
+
+class UploadFormatDefinitionOut(BaseModel):
+    format_id: str
+    label: str
+    aliases: dict[str, list[str]]
+    numeric_examples: list[str]
+    volume_suffixes: list[str]
+    notes: list[str] = Field(default_factory=list)
+
+
+class UploadValidationSummaryOut(BaseModel):
+    required_fields: list[str]
+    note: str
+
+
+class UploadFormatReferenceOut(BaseModel):
+    canonical_fields: list[str]
+    formats: list[UploadFormatDefinitionOut]
+    validation: UploadValidationSummaryOut
+
+
+class OhlcvHistoryOut(BaseModel):
+    symbol: str
+    timeframe: str
+    bars: list[OhlcvBarOut]
+    source_provider: Optional[str] = None
+    data_as_of: Optional[datetime.date] = None
+    row_count: Optional[int] = None
+
+
+class AvailabilityCalendarDayOut(BaseModel):
+    date: str
+    state: str
+    has_data: bool = False
+    holiday_name: Optional[str] = None
+    holiday_certainty: Optional[str] = None
+    missing_fields: list[str] = Field(default_factory=list)
+
+
+# ── OHLCV Row Mutations ──────────────────────────────────────────────────────
+
+class OhlcvRowUpsert(BaseModel):
+    """Upsert a single OHLCV row. Only non-None fields are written."""
+    date: str = Field(..., description="ISO date YYYY-MM-DD")
+    open: Optional[float] = None
+    high: Optional[float] = None
+    low: Optional[float] = None
+    close: Optional[float] = None
+    volume: Optional[float] = None
+
+
+class OhlcvRowDeleteRequest(BaseModel):
+    """Delete one or more rows by date."""
+    dates: list[str] = Field(..., description="List of ISO dates YYYY-MM-DD")
+
+
+class OhlcvMutationResult(BaseModel):
+    symbol: str
+    timeframe: str
+    action: str  # "upserted" | "deleted"
+    affected_dates: list[str]
+    new_row_count: int
+
+
+class AvailabilityCalendarOut(BaseModel):
+    symbol: str
+    timeframe: str
+    first_date: Optional[str] = None
+    last_date: Optional[str] = None
+    default_month: Optional[str] = None
+    days: list[AvailabilityCalendarDayOut]
+    present_days: int = 0
+    missing_expected_days: int = 0
+    weekend_days: int = 0
+    market_holiday_days: int = 0
+    tentative_market_holiday_days: int = 0
+    partial_days: int = 0
