@@ -3,6 +3,18 @@
 **Route**: `/data`
 **Purpose**: Manage Moroccan market OHLCV data — view all symbols, upload Excel files, trigger Bourse de Casablanca refresh, and edit per-stock metadata.
 
+## March 2026 Update
+
+The live `/data` implementation now includes:
+
+- `GET /market-data/upload-format-reference` for the parser-backed alias registry shown in the Excel upload dialog
+- `GET /market-data/stocks/{symbol}/ohlcv-history` for full-history candle data
+- `GET /market-data/stocks/{symbol}/availability-calendar` for day-by-day data coverage diagnostics
+
+Upload parsing now supports interchangeable aliases for `Date`, `Open`, `High`, `Low`, `Close`, and `Volume`, with format-aware numeric parsing for French-style numbers, English-style numbers, and volume suffixes like `K` and `M`.
+
+Valid uploaded bars now require all OHLCV fields, and future-dated rows are filtered out before merge so malformed date parsing cannot silently pollute canonical history.
+
 ---
 
 ## Table of Contents
@@ -541,14 +553,14 @@ On `open + row` change → calls `listTrackedStocks()` (direct function call, no
 
 If `stockMaster` exists → calls `updateTrackedStock(symbol, payload)` (PATCH)
 If not → calls `addTrackedStock({symbol, ...payload, track_source:"bourse_direct"})` (POST)
-Payload: `{display_name, sector, isin, bourse_url}` (undefined if empty string, so it doesn't overwrite with blanks)
+Payload: `{sector, isin, bourse_url}` (undefined if empty string, so it doesn't overwrite with blanks)
 On success: toast + calls `onSaved()`
 
 ### `handleBourseLookup()`
 
 Calls `bourseLookupStock(row.symbol)` → auto-fills:
 - `bourse_url` — always set (overwrite)
-- `display_name` — only if currently empty
+- `display_name` — shown as canonical metadata, not user-editable
 - `sector` — only if currently empty
 - `isin` — only if currently empty
 
@@ -653,7 +665,7 @@ Props: `{ open: boolean, onClose: () => void, onAdded: (stock: StockMaster) => v
 
 Fields:
 - **Ticker** (required): uppercased as you type, sent as `symbol.trim().toUpperCase()`
-- **Nom d'affichage**: optional
+- **Nom d'affichage**: canonical metadata, read-only in the current UI
 - **Secteur**: dropdown (see Sector List)
 - **Source**: "Bourse de Casablanca" (`bourse_direct`) or "Yahoo Finance" (`yahoo`)
 

@@ -1,181 +1,240 @@
-# Data Layer — Frontend Architecture
+# 07 — Frontend Architecture
 
 ---
 
 ## Page: `/data`
 
-**File:** `quant-backtesting-frontend/app/data/page.tsx`
-**Client component** (`"use client"`)
-**Nav link:** "Données" in `components/app-header.tsx`
+**File**: `quant-backtesting-frontend/app/data/page.tsx` (596 lines)
+**Component**: `DataPage()` — client component
 
-### State
+### Layout
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Header: "Données de marché"                        │
+│  [Ajouter un titre] [Importer Excel] [MAJ Bourse]  │
+├─────────────────────────────────────────────────────┤
+│  RefreshStatusBar (conditional)                     │
+├─────────────────────────────────────────────────────┤
+│  Help text / legend (3 icons explaining actions)    │
+├──────────────┬──────────────────────────────────────┤
+│  MASI (N)    │  Autres (N)     ← market tabs        │
+├──────────────┴──────────────────────────────────────┤
+│  Data Table                                         │
+│  ┌──────────────────────────────────────────────┐   │
+│  │ Ticker│Nom│Début│Fin│Barres│Source│Fraîcheur │   │
+│  │       │   │     │   │      │      │Bourse│Suivi│  │
+│  │ [row actions: Graphique│Importer│MAJ│Supprimer] │
+│  └──────────────────────────────────────────────┘   │
+├─────────────────────────────────────────────────────┤
+│  StockDetailPanel (modal, conditional)              │
+│  ExcelUploadDialog (modal, conditional)             │
+│  AddStockDialog (modal, conditional)                │
+│  Delete AlertDialog (conditional)                   │
+└─────────────────────────────────────────────────────┘
+```
+
+### State Management (11 useState hooks)
 
 | State | Type | Purpose |
 |-------|------|---------|
-| `selectedSymbol` | `string \| null` | Which stock has the detail panel open |
-| `uploadOpen` | `boolean` | Excel upload dialog visibility |
-| `activeRefreshId` | `string \| null` | Refresh run being polled (drives RefreshStatusBar) |
-| `refreshingAll` | `boolean` | "Refresh All" button spinner |
-| `refreshingSymbol` | `string \| null` | Per-row refresh spinner (which symbol) |
+| `marketTab` | `"masi" \| "other"` | Filters catalog between MASI and non-MASI |
+| `selectedSymbol` | `string \| null` | Triggers StockDetailPanel |
+| `uploadOpen` | `boolean` | ExcelUploadDialog visibility |
+| `addStockOpen` | `boolean` | AddStockDialog visibility |
+| `activeRefreshId` | `string \| null` | Tracks current refresh run for status bar |
+| `refreshingAll` | `boolean` | Loading state for "MAJ Bourse" button |
+| `refreshingSymbol` | `string \| null` | Loading state for per-row refresh |
+| `deletingSymbol` | `string \| null` | Loading state for delete |
+| `deleteTarget` | `MarketCatalogRow \| null` | Confirmation dialog target |
 
-### Data Sources
+### SWR Hooks
 
-| Hook | Endpoint | Refresh | Returns |
-|------|----------|---------|---------|
-| `useMarketCatalog()` | `GET /market-data/catalog` | 30s | `MarketCatalogRow[]` |
-| `useTrackedStocks()` | `GET /market-data/stocks` | 60s | `StockMaster[]` (used for `trackedSet`) |
+| Hook | Endpoint | Refresh |
+|------|----------|---------|
+| `useMarketCatalog()` | `GET /market-data/catalog` | 30s interval, revalidate on focus |
+| `useTrackedStocks()` | `GET /market-data/stocks` | 60s interval, revalidate on focus |
+| `useMasiTickers()` | `GET /market-data/masi-tickers` | Cached, no focus revalidation |
 
-### Key Handlers
+### Derived State (useMemo)
 
-- **`handleRefreshAll()`** — calls `refreshAllStocks()` → sets `activeRefreshId` → shows toast
-- **`handleBourseRefresh(symbol)`**:
-  1. If symbol not in `trackedSet` → auto-calls `addTrackedStock({symbol, track_source:"bourse_direct"})` → ignores 409
-  2. Calls `refreshSingleStock(symbol)` → sets `activeRefreshId`
-- **`mutateAll()`** — invalidates both SWR caches (catalog + tracked stocks)
+- `trackedSet`: Set of `is_tracked` symbols (for checkmark column)
+- `masiRows`: filter by `market === "masi"`
+- `otherRows`: filter by `market !== "masi"`
+- `rows`: selected based on active tab
 
-### Table Columns
+### Table Columns (9, responsive)
 
-| Column | Responsive | Source |
-|--------|-----------|--------|
-| Ticker | always | `row.symbol` (monospace bold) |
-| Nom | sm+ | `row.display_name` |
-| Début | always | `row.start_ts?.slice(0, 10)` |
-| Fin | always | `row.end_ts?.slice(0, 10)` |
-| Barres | md+ | `row.row_count?.toLocaleString()` |
-| Source | md+ | Badge: Excel (green) or source_provider (blue) |
-| Fraîcheur | always | `FreshnessBadge` or "Non ingéré" badge |
-| Bourse | lg+ | External link to `row.bourse_url` |
-| Suivi | lg+ | CheckCircle2 (tracked) or Circle (not tracked) |
-| Actions | always | Eye (detail), FileSpreadsheet (upload), RefreshCw (refresh) |
+| Column | Visibility | Content |
+|--------|------------|---------|
+| Ticker | Always | Monospace bold |
+| Nom | Hidden sm | display_name |
+| Début | Always | start_ts (YYYY-MM-DD) |
+| Fin | Always | end_ts (YYYY-MM-DD) |
+| Barres | Hidden md | row_count (locale formatted) |
+| Source | Hidden md | Badge: FileSpreadsheet (green) for Excel, RefreshCw (blue) for provider |
+| Fraîcheur | Always | FreshnessBadge component |
+| Bourse | Hidden lg | External link to bourse_url |
+| Suivi | Hidden lg | CheckCircle2 (tracked) or Circle |
+| Actions | Always | 4 icon buttons (w-[220px]) |
 
----
+### Row Actions
 
-## Components (`components/data/`)
-
-### StockDetailPanel (`stock-detail-panel.tsx`)
-Sheet (slide-out from right, `sm:max-w-lg`).
-
-**Props:** `{ row: MarketCatalogRow | null, open: boolean, onClose, onSaved }`
-
-**Sections:**
-1. Header: symbol + FreshnessBadge
-2. Data summary: Début / Fin / Barres
-3. OHLCV chart: `OhlcvMiniChart` with last 60 bars via `useStockOhlcvPreview`
-4. Editable fields: display_name, ISIN, sector, bourse_url
-5. "Auto-remplir depuis Bourse" button → calls `bourseLookupStock(symbol)` → auto-fills empty fields
-6. Save button → `addTrackedStock()` (new) or `updateTrackedStock()` (existing)
-
-**Data loading:** On open, calls `listTrackedStocks()` → finds matching symbol → populates form state.
-
-### ExcelUploadDialog (`excel-upload-dialog.tsx`)
-**Props:** `{ open: boolean, onClose, onUploaded }`
-
-- Drag-drop zone accepting `.xlsx` / `.xls`
-- Calls `uploadExcelFile(file)` → `POST /market-data/excel`
-- On success: `onUploaded()` → parent mutates catalog after 4s delay
-
-### FreshnessBadge (`freshness-badge.tsx`)
-**Props:** `{ dataAsOf: string | null, isStale?: boolean, className?: string }`
-
-| Days ago (calendar) | Label | Color |
-|---------------------|-------|-------|
-| null | "Jamais ingéré" | gray outline |
-| 0–1 | "À jour · J-0/J-1" | green (bg-green-600) |
-| 2–7 | "Périmé · J-N" | amber (bg-amber-500) |
-| 8+ | "Très périmé · J-N" | red (bg-red-600) |
-
-Note: uses **calendar days**, not business days. Backend `is_stale` uses business days — they can disagree on weekends.
-
-### RefreshStatusBar (`refresh-status-bar.tsx`)
-**Props:** `{ refreshRunId: string | null }`
-
-Uses `useRefreshRun(refreshRunId)` internally. Shows progress bar: `pct = (done + failed) / total * 100`.
-
-Status labels: queued → "En file", running → "En cours…", succeeded → "Terminé", partial → "Partiel", failed → "Échec".
-
-### HealthCards (`health-cards.tsx`)
-**Props:** `{ health: MarketHealth }`
-
-4 summary cards: Suivis, À jour, Périmés, Jamais ingérés. **Not currently imported by the page** — ready to add.
-
-### OhlcvMiniChart (`ohlcv-mini-chart.tsx`)
-**Props:** `{ bars: OhlcvBar[] }`
-
-Recharts LineChart, height 120px. Plots Close prices only. Y-axis: tight fit with 0.2% padding.
-
-### AddStockDialog (`add-stock-dialog.tsx`)
-**Props:** `{ open: boolean, onClose, onAdded }`
-
-Fields: Ticker (required, uppercased), Nom, Secteur (dropdown), Source (bourse_direct/yahoo). **Not currently imported by the page** — ready to add.
-
-### StockTable (`stock-table.tsx`)
-Reusable table component. **Not imported by the page** — the page inlines its own table. Available for future refactoring.
+| Button | Icon | Color | Handler |
+|--------|------|-------|---------|
+| Graphique | Eye | Green outline | Opens StockDetailPanel |
+| Importer | FileSpreadsheet | Green ghost | Opens ExcelUploadDialog |
+| Mettre à jour | RefreshCw | Blue ghost | `refreshSingleStock(symbol)` → auto-adds to tracked if needed |
+| Supprimer | Trash2 | Red ghost | Opens delete confirmation AlertDialog |
 
 ---
 
-## SWR Hooks (`hooks/use-api.ts`)
+## Components
 
-| Hook | Endpoint | Refresh | Notes |
-|------|----------|---------|-------|
-| `useMarketCatalog()` | `/market-data/catalog` | 30s | revalidateOnFocus |
-| `useMarketSymbols(params?)` | `/market-data/symbols` | 30s | revalidateOnFocus |
-| `useDatasets()` | `/datasets` | 15s | revalidateOnFocus |
-| `useTrackedStocks(params?)` | `/market-data/stocks` | 60s | revalidateOnFocus |
-| `useRefreshRun(id)` | `/market-data/refresh/{id}` | 2s while active | Smart poll: stops when terminal status |
-| `useMarketHealth()` | `/market-data/health` | 30s | revalidateOnFocus |
-| `useStockOhlcvPreview(symbol, params?)` | `/market-data/stocks/{symbol}/ohlcv-preview` | 0 | On-demand; null key when symbol is null |
+### FreshnessBadge (`components/data/freshness-badge.tsx`, 34 lines)
+
+Color-coded data freshness indicator based on calendar days since `dataAsOf`:
+
+| Days | Badge | Color |
+|------|-------|-------|
+| ≤1 | "À jour" | Green (text-green-700, bg-green-50) |
+| 2–7 | "{n}j" | Yellow (text-yellow-700, bg-yellow-50) |
+| >7 | "{n}j — obsolète" | Red (text-red-700, bg-red-50) |
+
+### RefreshStatusBar (`components/data/refresh-status-bar.tsx`, 43 lines)
+
+Real-time progress during market refresh.
+
+- **Hook**: `useRefreshRun(refreshRunId)` — adaptive polling: 2s while running/queued, stops when done
+- **Running**: spinning RefreshCw icon + "Mise à jour en cours… {done}/{total}" + progress bar
+- **Done**: CheckCircle2 + "Mise à jour terminée"
+- **Failed**: AlertCircle + error_message
+
+### ExcelUploadDialog (`components/data/excel-upload-dialog.tsx`, 242 lines)
+
+Step-by-step Excel import with format reference.
+
+**Phases**: idle → uploading → processing → done
+
+**Flow**:
+1. Display format reference (from `useUploadFormatReference()`) showing accepted aliases, numeric examples, volume suffixes
+2. User clicks "Choisir un fichier" → file input
+3. `uploadExcelFile(file)` → returns dataset_id
+4. Poll via `waitForIngestCompletion(dataset_id)` (1.5s interval, 30s timeout)
+5. Display per-symbol results: SymbolResultRow with CheckCircle2 (success) or XCircle (error)
+
+**Toast feedback**:
+- All success: "{N} symbole(s) importés avec succès"
+- Mixed: "{N} importés, {M} en erreur"
+- All error: "Aucun symbole importé — voir les détails"
+
+### StockDetailPanel (`components/data/stock-detail-panel.tsx`, 854 lines)
+
+Full OHLCV detail modal with chart, calendar, and diagnostics.
+
+**Hooks** (conditional on panel being open):
+- `useStockOhlcvPreview(symbol, limit=10)` — last 10 bars
+- `useStockOhlcvHistory(symbol)` — full history for chart
+- `useStockAvailabilityCalendar(symbol)` — per-day coverage
+
+**Sections** (top to bottom):
+
+#### 1. Header (bg-slate-50/80)
+- Symbol (text-2xl), badges (Tracked, source_provider)
+- Metadata: "Dernière barre" date, "Historique" row count
+
+#### 2. QuickFacts
+Card with 4 columns: Début, Fin, Barres, Source
+
+#### 3. Candlestick Chart (Plotly)
+- **Type**: Candlestick + volume bar (secondary y-axis)
+- **Colors**: Increasing = teal (#14b8a6), Decreasing = red (#ef4444)
+- **Volume**: Slate bars (#94a3b8), opacity 0.6
+- **Holiday breaks**: rangebreaks with weekend bounds + holiday values (removes gaps from chart)
+- **Initial range**: 12 months from last date
+- **Height**: 520px, dragmode: pan
+
+#### 4. Year Strip Overview
+- Year buttons for navigation
+- Month grid (sm:3 cols, xl:6 cols) with color tones:
+  - Amber: missing days > 0
+  - Sky: holidays/tentative > 0
+  - Emerald: present days > 0
+- Click month → selects it in calendar below
+
+#### 5. Availability Calendar Grid
+- Month navigation with chevrons + fr-MA locale label
+- Summary stats (6 boxes): OHLCV, Partiels, Manquants, Weekend, Fériés, Tentatifs
+- **7-column grid** (Lun–Dim):
+  - Each cell: day number, state color, GAP badge (amber) if missing, ! badge if partial
+  - Colors: emerald (present), amber (missing), sky (holiday), fuchsia (tentative), slate (weekend), dashed (outside range)
+  - Out-of-month days shown at 55% opacity
+- Legend: 7-item with colored boxes
+
+#### 6. Data Quality Report
+- Green "Aucun problème détecté" if clean
+- Amber expandable section if issues:
+  - **Partial days table**: field, count, dates (truncated at 12 with "… et N autres")
+  - **Missing days**: count + date list
+
+#### 7. Last 10 OHLCV Bars
+Table: Date, O, H, L, C, Vol (right-aligned, 2-decimal prices, locale-formatted volume)
+
+### AddStockDialog (inline in page.tsx, lines 517–595)
+
+- Search input filters MASI tickers by symbol/display_name/sector
+- Scrollable list (max-h-80) with per-ticker buttons
+- Already-existing symbols shown with green checkmark (disabled)
+- On select: `addTrackedStock(ticker)` → mutates catalog + tracked
 
 ---
 
-## API Client Functions (`lib/api.ts`)
+## API Client (`lib/api.ts`)
 
-### Zod Schemas (types)
-- `MarketSymbolRowSchema` / `MarketSymbolRow`
-- `StockMasterSchema` / `StockMaster`
-- `BourseStockLookupSchema` / `BourseStockLookup`
-- `ProviderSymbolMapSchema` / `ProviderSymbolMap`
-- `MarketRefreshRunSchema` / `MarketRefreshRun`
-- `MarketHealthSchema` / `MarketHealth`
-- `OhlcvBarSchema` / `OhlcvPreviewSchema` / `OhlcvBar` / `OhlcvPreview`
-- `MarketCatalogRowSchema` / `MarketCatalogRow`
+### Key Types
 
-### Functions
+| Type | Fields |
+|------|--------|
+| `MarketCatalogRow` | symbol, display_name, sector, start_ts, end_ts, row_count, source_provider, data_as_of, is_stale, is_tracked, has_canonical_data, market |
+| `OhlcvHistory` | symbol, timeframe, bars[], source_provider, data_as_of, row_count |
+| `OhlcvBar` | date, open?, high?, low?, close?, volume? |
+| `AvailabilityCalendar` | symbol, days[], counts per state, default_month |
+| `AvailabilityCalendarDay` | date, state, has_data, holiday_name, holiday_certainty, missing_fields[] |
+| `MasiTicker` | symbol, display_name, sector |
+| `MarketRefreshRun` | id, status, symbols_total/done/failed, timestamps, error_message |
+| `UploadFormatReference` | canonical_fields, formats[], validation |
+
+### API Functions
+
 | Function | Method | Endpoint |
 |----------|--------|----------|
-| `listMarketCatalog()` | GET | `/market-data/catalog` |
-| `listMarketSymbols(params?)` | GET | `/market-data/symbols` |
-| `listTrackedStocks(params?)` | GET | `/market-data/stocks` |
+| `listMarketCatalog()` | POST | `/market-data/catalog` |
+| `fetchMasiTickers()` | GET | `/market-data/masi-tickers` |
+| `listTrackedStocks()` | GET | `/market-data/stocks` |
 | `addTrackedStock(body)` | POST | `/market-data/stocks` |
 | `updateTrackedStock(symbol, body)` | PATCH | `/market-data/stocks/{symbol}` |
-| `bourseLookupStock(symbol)` | GET | `/market-data/stocks/{symbol}/bourse-lookup` |
-| `getStockOhlcvPreview(symbol, params?)` | GET | `/market-data/stocks/{symbol}/ohlcv-preview` |
-| `listStockMappings(symbol)` | GET | `/market-data/stocks/{symbol}/mappings` |
-| `updateStockMapping(symbol, provider, body)` | PATCH | `/market-data/stocks/{symbol}/mappings/{provider}` |
-| `uploadExcelFile(file)` | POST | `/market-data/excel` |
-| `refreshAllStocks(body?)` | POST | `/market-data/refresh` |
-| `refreshSingleStock(symbol, body?)` | POST | `/market-data/stocks/{symbol}/refresh` |
+| `deleteMarketSymbol(symbol)` | DELETE | `/market-data/symbols/{symbol}` |
+| `uploadExcelFile(file)` | POST | `/market-data/excel` (multipart) |
+| `pollIngestStatus(datasetId)` | GET | `/market-data/uploads/{id}/status` |
+| `waitForIngestCompletion(id)` | — | Polls pollIngestStatus (1.5s, 30s timeout) |
+| `refreshAllStocks()` | POST | `/market-data/refresh` |
+| `refreshSingleStock(symbol)` | POST | `/market-data/stocks/{symbol}/refresh` |
 | `getRefreshRun(id)` | GET | `/market-data/refresh/{id}` |
-| `listRefreshRuns(params?)` | GET | `/market-data/refresh` |
-| `getMarketHealth()` | GET | `/market-data/health` |
+| `getStockOhlcvPreview(symbol)` | GET | `/market-data/stocks/{symbol}/ohlcv-preview` |
+| `getStockOhlcvHistory(symbol)` | GET | `/market-data/stocks/{symbol}/ohlcv-history` |
+| `getStockAvailabilityCalendar(symbol)` | GET | `/market-data/stocks/{symbol}/availability-calendar` |
+| `getUploadFormatReference()` | GET | `/market-data/upload-format-reference` |
 
 ---
 
-## Next.js Proxy (`app/api/[...path]/route.ts`)
+## User Interactions Summary
 
-All `/api/*` requests → upstream at `http://127.0.0.1:8000`.
-
-- Injects `x-api-key` header from env `API_KEY`
-- Pure pass-through: all methods, body, query params, response verbatim
-- Offline fallback (dev only): returns `[]` for GET `/runs`, `/datasets`, `/market-data/symbols`
-- Market data endpoints (`/stocks`, `/refresh`, `/health`) are NOT in the fallback list — they 503 if backend is down
-
----
-
-## Sector List (hardcoded in two components)
-
-Used in `stock-detail-panel.tsx` and `add-stock-dialog.tsx`:
-
-```
-Banques, Assurances, Télécommunications, Immobilier, Energie,
-Distribution, BTP, Mines, Agroalimentaire, Transport, Autre
-```
+| Action | French Label | Toast |
+|--------|-------------|-------|
+| Add stock | "Ajouter un titre" | "{symbol} — {name} ajouté" |
+| Import Excel | "Importer Excel" | "{N} symbole(s) importés avec succès" |
+| Refresh all | "Mettre à jour via Bourse" | "Mise à jour Bourse lancée pour tous les titres suivis" |
+| Refresh single | Per-row RefreshCw | "Mise à jour Bourse lancée pour {symbol}" |
+| View chart | Per-row Eye | Opens StockDetailPanel |
+| Delete | Per-row Trash2 | "{symbol} supprimé du catalogue" |
+| Save name | "Enregistrer" in detail panel | "{symbol} mis à jour" |

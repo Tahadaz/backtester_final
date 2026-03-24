@@ -1,94 +1,90 @@
-# Data Layer — Storage & Key Structure
+# 06 — Storage & Key Structure
 
-**S3-compatible storage:** MinIO (local dev) or AWS S3 (production)
-**Bucket:** `quant-artifacts` (env `S3_BUCKET`)
-
----
-
-## S3 Bucket Layout
-
-```
-quant-artifacts/
-├── datasets/
-│   └── {sha256_hash}/
-│       └── {original_filename}       ← raw uploaded Excel/CSV (preserved forever)
-│
-├── market_data/
-│   ├── {SYMBOL}/
-│   │   └── 1D.parquet               ← canonical daily OHLCV (updated by ingestion & refresh)
-│   └── uploads/
-│       └── {dataset_id}/
-│           └── ingest_report.json    ← per-symbol ingestion results
-│
-└── runs/
-    └── {run_id}/
-        ├── artifacts/                ← backtest artifacts (plots, ledger, etc.)
-        └── _debug/
-            └── profile.txt           ← cProfile output (if enabled)
-```
+**S3-compatible storage**: MinIO (local dev) or AWS S3 (production)
+**Bucket**: `quant-artifacts` (env `S3_BUCKET`)
 
 ---
 
-## Key Construction Functions
+## Object Key Patterns
 
-**File:** `core/quant_core/s3_keys.py`
+### Market Data Store (canonical OHLCV)
+```
+market_data_store/{SYMBOL}/1D
+```
+Example: `market_data_store/ATW/1D`
 
-### `build_dataset_object_key(data_hash, filename) -> str`
+One file per (symbol, timeframe). Contains the complete OHLCV history in parquet format. This is the **single source of truth** for all downstream consumers (signal engine, backtest engine, frontend charts).
+
+### Uploaded Datasets
+```
+datasets/{sha256_hash}/{original_filename}
+```
+Example: `datasets/a1b2c3d4.../ATW_historique.xlsx`
+
+The hash ensures deduplication: re-uploading the same file produces the same key. The original filename is preserved for diagnostic purposes.
+
+### Ingest Reports
+```
+market_data/uploads/{dataset_id}/ingest_report.json
+```
+Written by the ingestion worker after processing an Excel upload. Contains per-symbol status, row counts, detected format, matched aliases, and error details. Polled by the frontend via `GET /market-data/uploads/{dataset_id}/status`.
+
+---
+
+## Parquet Format
+
+All canonical OHLCV files use the following schema:
+
+| Column | Type | Notes |
+|--------|------|-------|
+| (index) | DatetimeIndex | UTC timezone, sorted ascending, deduplicated by last |
+| Open | float64 | Opening price |
+| High | float64 | High price |
+| Low | float64 | Low price |
+| Close | float64 | Closing price |
+| Volume | float64 | Trading volume (may be NaN for partial days) |
+
+### Invariants
+
+1. **DatetimeIndex**: Always sorted ascending, no duplicate timestamps
+2. **Deduplication**: On timestamp collision during merge, last value wins
+3. **No future dates**: Rows with dates >= market_today_local are dropped
+4. **Column naming**: Always uppercase first letter (Open, not open)
+
+---
+
+## Key Construction
+
+### Market Data Store Key
+Built by the worker during ingestion/refresh:
 ```python
-# Returns: "datasets/{data_hash}/{filename}"
-# Used: when dataset.object_key is NULL (legacy rows)
-# New rows: object_key is set at upload time and stored in DB
+object_key = f"market_data_store/{symbol.upper()}/{timeframe}"
 ```
 
-### `build_market_store_object_key(symbol, timeframe) -> str`
+### Dataset Key
+Built by the API during upload:
 ```python
-# Returns: "market_data/{symbol}/{timeframe}.parquet"
-# Used: by worker tasks when creating/updating canonical parquet
-# Example: "market_data/ATW/1D.parquet"
+data_hash = hashlib.sha256(file_content).hexdigest()
+object_key = f"datasets/{data_hash}/{filename}"
 ```
 
----
-
-## Parquet File Format
-
-Each `market_data/{SYMBOL}/1D.parquet` file:
-
-- **Index:** `DatetimeIndex` (UTC-aware or naive, normalized by `_standardize_ohlcv`)
-- **Columns:** `Open`, `High`, `Low`, `Close`, `Volume` (all float64, Volume may be int)
-- **Sorted by:** date ascending
-- **Deduplicated:** by index (keep='last' during merge)
+### Key stored in DB
+The `market_data_store.object_key` column stores the canonical key. This is the **only** reference used by loaders — no reconstruction from symbol/timeframe is needed.
 
 ---
 
-## Key Invariants
+## Loader Hierarchy
 
-1. **`dataset.object_key` is canonical** — never recomputed unless NULL (legacy row)
-2. **Fallback:** `build_dataset_object_key(data_hash, filename)` — always identical to what `datasets.py` wrote at upload time
-3. **`market_data_store.object_key`** always matches `build_market_store_object_key(symbol, timeframe)`
-4. **Raw uploads are never modified** — `datasets/{hash}/{filename}` is immutable
-5. **Canonical parquets are overwritten in-place** — `market_data/{symbol}/1D.parquet` is replaced on each merge
+The `market_data_loader.py` module provides shared loading functions:
 
----
+### load_ohlcv_for_symbol(db, symbol, timeframe="1D")
+1. Query market_data_store for object_key
+2. If found: `load_ohlcv_from_store(object_key)` — reads parquet from S3
+3. If not found: fall back to latest dataset (parquet only; XLSX/CSV cannot provide full OHLCV via this path)
 
-## S3 Client Configuration
+### load_close_for_symbol(db, symbol, timeframe="1D")
+Same hierarchy but returns numpy float64 array of Close prices only. Falls back to dataset if no store entry, including XLSX/CSV parsing with column alias detection.
 
-**File:** `services/api/app/config.py`
-
-| Env Variable | Default | Purpose |
-|-------------|---------|---------|
-| `S3_ENDPOINT_URL` / `S3_ENDPOINT` | `http://localhost:9000` | MinIO endpoint |
-| `S3_ACCESS_KEY_ID` / `S3_ACCESS_KEY` | `minio` | MinIO root user |
-| `S3_SECRET_ACCESS_KEY` / `S3_SECRET_KEY` | `minio12345` | MinIO root password |
-| `S3_BUCKET` | `quant-artifacts` | Default bucket name |
-| `S3_REGION` | `us-east-1` | AWS region (ignored by MinIO) |
-| `S3_USE_SSL` | `false` | HTTPS for S3 connections |
-
----
-
-## Presigned URLs
-
-**Endpoint:** `GET /market-data/uploads/{dataset_id}/report-url`
-
-- Generates a presigned GET URL for `market_data/uploads/{dataset_id}/ingest_report.json`
-- Default expiry: 300 seconds (configurable via `expires_seconds` param, range 30–3600)
-- Used by frontend to download ingestion report without exposing S3 credentials
+### Column Alias Detection (for dataset fallback)
+Close column candidates: `Close`, `close`, `Clôture`, `Cloture`, `CLOTURE`, `ClÃ´ture`, `Adj Close`, `AdjClose`, `adj_close`
+Date column candidates: `Date`, `date`, `timestamp`, `Timestamp`, `datetime`, `Datetime`
