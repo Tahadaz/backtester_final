@@ -1207,6 +1207,44 @@ export async function uploadExcelFile(file: File): Promise<{ dataset_id: string;
   return res.json()
 }
 
+export interface IngestSymbolResult {
+  canonical_symbol: string | null
+  status: "created" | "updated" | "unchanged" | "error"
+  error?: string
+  row_count?: number
+  is_new_ticker?: boolean
+}
+
+export interface IngestStatusResponse {
+  status: "processing" | "done"
+  report?: {
+    dataset_id: string
+    symbols: Record<string, IngestSymbolResult>
+    errors: string[]
+  }
+}
+
+export async function pollIngestStatus(datasetId: string): Promise<IngestStatusResponse> {
+  return request<IngestStatusResponse>(`/market-data/uploads/${datasetId}/status`)
+}
+
+/**
+ * Poll until the ingest worker finishes (or timeout).
+ * Returns the final report, or null if timed out.
+ */
+export async function waitForIngestCompletion(
+  datasetId: string,
+  { intervalMs = 1500, timeoutMs = 30_000 } = {},
+): Promise<IngestStatusResponse> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const resp = await pollIngestStatus(datasetId)
+    if (resp.status === "done") return resp
+    await new Promise((r) => setTimeout(r, intervalMs))
+  }
+  return { status: "processing" }
+}
+
 const SmaTechnicalVariationSchema = z.object({
   window: z.number(),
   sma_value: z.number().nullable().optional(),
@@ -1401,8 +1439,60 @@ export const OhlcvPreviewSchema = z.object({
   data_as_of: z.string().nullable().optional(),
   row_count: z.number().nullable().optional(),
 })
+export const OhlcvHistorySchema = z.object({
+  symbol: z.string(),
+  timeframe: z.string(),
+  bars: z.array(OhlcvBarSchema),
+  source_provider: z.string().nullable().optional(),
+  data_as_of: z.string().nullable().optional(),
+  row_count: z.number().nullable().optional(),
+})
 export type OhlcvBar = z.infer<typeof OhlcvBarSchema>
 export type OhlcvPreview = z.infer<typeof OhlcvPreviewSchema>
+export type OhlcvHistory = z.infer<typeof OhlcvHistorySchema>
+
+export const UploadFormatDefinitionSchema = z.object({
+  format_id: z.string(),
+  label: z.string(),
+  aliases: z.record(z.array(z.string())),
+  numeric_examples: z.array(z.string()),
+  volume_suffixes: z.array(z.string()),
+  notes: z.array(z.string()).default([]),
+})
+export const UploadFormatReferenceSchema = z.object({
+  canonical_fields: z.array(z.string()),
+  formats: z.array(UploadFormatDefinitionSchema),
+  validation: z.object({
+    required_fields: z.array(z.string()),
+    note: z.string(),
+  }),
+})
+export type UploadFormatReference = z.infer<typeof UploadFormatReferenceSchema>
+
+export const AvailabilityCalendarDaySchema = z.object({
+  date: z.string(),
+  state: z.string(),
+  has_data: z.boolean().default(false),
+  holiday_name: z.string().nullable().optional(),
+  holiday_certainty: z.string().nullable().optional(),
+  missing_fields: z.array(z.string()).default([]),
+})
+export const AvailabilityCalendarSchema = z.object({
+  symbol: z.string(),
+  timeframe: z.string(),
+  first_date: z.string().nullable().optional(),
+  last_date: z.string().nullable().optional(),
+  default_month: z.string().nullable().optional(),
+  days: z.array(AvailabilityCalendarDaySchema),
+  present_days: z.number().default(0),
+  missing_expected_days: z.number().default(0),
+  weekend_days: z.number().default(0),
+  market_holiday_days: z.number().default(0),
+  tentative_market_holiday_days: z.number().default(0),
+  partial_days: z.number().default(0),
+})
+export type AvailabilityCalendarDay = z.infer<typeof AvailabilityCalendarDaySchema>
+export type AvailabilityCalendar = z.infer<typeof AvailabilityCalendarSchema>
 
 // ── Market Catalog (unified /data-page view) ──────────────────────────────────
 
@@ -1426,12 +1516,27 @@ export const MarketCatalogRowSchema = z.object({
   // Derived flags
   is_tracked: z.boolean().default(false),
   has_canonical_data: z.boolean().default(false),
+  market: z.string().default("masi"),
 })
 export type MarketCatalogRow = z.infer<typeof MarketCatalogRowSchema>
 
 export async function listMarketCatalog(): Promise<MarketCatalogRow[]> {
   const rows = await request<unknown[]>("/market-data/catalog")
   return z.array(MarketCatalogRowSchema).parse(rows)
+}
+
+// ── MASI Ticker Registry ─────────────────────────────────────────────────────
+
+export const MasiTickerSchema = z.object({
+  symbol: z.string(),
+  display_name: z.string(),
+  sector: z.string(),
+})
+export type MasiTicker = z.infer<typeof MasiTickerSchema>
+
+export async function fetchMasiTickers(): Promise<MasiTicker[]> {
+  const rows = await request<unknown[]>("/market-data/masi-tickers")
+  return z.array(MasiTickerSchema).parse(rows)
 }
 
 // ── Stock Registry API functions ──────────────────────────────────────────────
@@ -1446,7 +1551,6 @@ export async function listTrackedStocks(params?: { is_active?: boolean }): Promi
 
 export async function addTrackedStock(body: {
   symbol: string
-  display_name?: string
   isin?: string
   sector?: string
   market_cap_class?: string
@@ -1464,7 +1568,6 @@ export async function addTrackedStock(body: {
 export async function updateTrackedStock(
   symbol: string,
   body: {
-    display_name?: string
     isin?: string
     sector?: string
     market_cap_class?: string
@@ -1479,6 +1582,23 @@ export async function updateTrackedStock(
     body: JSON.stringify(body),
   })
   return StockMasterSchema.parse(row)
+}
+
+export async function deleteMarketSymbol(symbol: string): Promise<{
+  symbol: string
+  deleted_tracked_stock: boolean
+  deleted_canonical_data: boolean
+  deleted_object_key?: string | null
+}> {
+  const row = await request<unknown>(`/market-data/symbols/${encodeURIComponent(symbol)}`, {
+    method: "DELETE",
+  })
+  return row as {
+    symbol: string
+    deleted_tracked_stock: boolean
+    deleted_canonical_data: boolean
+    deleted_object_key?: string | null
+  }
 }
 
 export async function bourseLookupStock(symbol: string): Promise<BourseStockLookup> {
@@ -1519,6 +1639,74 @@ export async function getStockOhlcvPreview(
     `/market-data/stocks/${encodeURIComponent(symbol)}/ohlcv-preview${q ? `?${q}` : ""}`
   )
   return OhlcvPreviewSchema.parse(row)
+}
+
+export async function getUploadFormatReference(): Promise<UploadFormatReference> {
+  const row = await request<unknown>("/market-data/upload-format-reference")
+  return UploadFormatReferenceSchema.parse(row)
+}
+
+export async function getStockOhlcvHistory(
+  symbol: string,
+  params?: { timeframe?: string }
+): Promise<OhlcvHistory> {
+  const qs = new URLSearchParams()
+  if (params?.timeframe) qs.set("timeframe", params.timeframe)
+  const q = qs.toString()
+  const row = await request<unknown>(
+    `/market-data/stocks/${encodeURIComponent(symbol)}/ohlcv-history${q ? `?${q}` : ""}`
+  )
+  return OhlcvHistorySchema.parse(row)
+}
+
+export async function getStockAvailabilityCalendar(
+  symbol: string,
+  params?: { timeframe?: string }
+): Promise<AvailabilityCalendar> {
+  const qs = new URLSearchParams()
+  if (params?.timeframe) qs.set("timeframe", params.timeframe)
+  const q = qs.toString()
+  const row = await request<unknown>(
+    `/market-data/stocks/${encodeURIComponent(symbol)}/availability-calendar${q ? `?${q}` : ""}`
+  )
+  return AvailabilityCalendarSchema.parse(row)
+}
+
+// ── OHLCV Row Mutations ──────────────────────────────────────────────────────
+
+export interface OhlcvMutationResult {
+  symbol: string
+  timeframe: string
+  action: string
+  affected_dates: string[]
+  new_row_count: number
+}
+
+export async function upsertOhlcvRow(
+  symbol: string,
+  body: {
+    date: string
+    open?: number | null
+    high?: number | null
+    low?: number | null
+    close?: number | null
+    volume?: number | null
+  },
+): Promise<OhlcvMutationResult> {
+  return (await request<OhlcvMutationResult>(
+    `/market-data/stocks/${encodeURIComponent(symbol)}/ohlcv-rows`,
+    { method: "PATCH", body: JSON.stringify(body) },
+  ))
+}
+
+export async function deleteOhlcvRows(
+  symbol: string,
+  dates: string[],
+): Promise<OhlcvMutationResult> {
+  return (await request<OhlcvMutationResult>(
+    `/market-data/stocks/${encodeURIComponent(symbol)}/ohlcv-rows`,
+    { method: "DELETE", body: JSON.stringify({ dates }) },
+  ))
 }
 
 // ── Refresh API functions ─────────────────────────────────────────────────────
@@ -1580,8 +1768,29 @@ export const SignalRepresentativeSchema = z.object({
   current_close: z.number(),
   indicator_value: z.number().nullable(),
   explanation: z.string(),
+  params: z.record(z.unknown()).default({}),
+  archetype: z.string().default(""),
+  selection_status: z.string().optional(),
 })
 export type SignalRepresentative = z.infer<typeof SignalRepresentativeSchema>
+
+export const MethodologyWindowSchema = z.object({
+  train: z.number(),
+  test: z.number(),
+  step: z.number(),
+  target_windows: z.number().default(0),
+})
+export type MethodologyWindow = z.infer<typeof MethodologyWindowSchema>
+
+export const MethodologyContextSchema = z.object({
+  methodology_mode: z.string(),
+  available_bars: z.number(),
+  nominal_window: MethodologyWindowSchema,
+  effective_window: MethodologyWindowSchema,
+  warning_message: z.string().default(""),
+  is_provisional: z.boolean().default(false),
+})
+export type MethodologyContext = z.infer<typeof MethodologyContextSchema>
 
 export const FamilyCombinedSignalSchema = z.object({
   family: z.string(),
@@ -1595,9 +1804,17 @@ export const FamilyCombinedSignalSchema = z.object({
   competitive_count: z.number(),
   representative_count: z.number(),
   representatives: z.array(SignalRepresentativeSchema),
+  fallback_variants: z.array(SignalRepresentativeSchema).default([]),
   score_explanation: z.string(),
   methodology_status: z.string(),
+  methodology_mode: z.string().default("robust_oos_ensemble"),
+  available_bars: z.number().default(0),
+  nominal_window: MethodologyWindowSchema.default({ train: 0, test: 0, step: 0, target_windows: 0 }),
+  effective_window: MethodologyWindowSchema.default({ train: 0, test: 0, step: 0, target_windows: 0 }),
+  warning_message: z.string().default(""),
+  is_provisional: z.boolean().default(false),
   as_of: z.string(),
+  best_variant_id: z.string().default(""),
 })
 export type FamilyCombinedSignal = z.infer<typeof FamilyCombinedSignalSchema>
 
@@ -1605,14 +1822,229 @@ export async function fetchSmaEnsemble(body: {
   symbol: string
   horizon: string
   timeframe?: string
+  cost_bps?: number
 }): Promise<FamilyCombinedSignal> {
+  const payload: Record<string, unknown> = {
+    symbol: body.symbol,
+    horizon: body.horizon,
+    timeframe: body.timeframe ?? "1D",
+  }
+  if (body.cost_bps != null) payload.cost_bps = body.cost_bps
   const raw = await request<unknown>("/strategy/signal/sma-ensemble", {
     method: "POST",
-    body: JSON.stringify({
-      symbol: body.symbol,
-      horizon: body.horizon,
-      timeframe: body.timeframe ?? "1D",
-    }),
+    body: JSON.stringify(payload),
   })
   return FamilyCombinedSignalSchema.parse(raw)
+}
+
+export async function fetchFamilyEnsemble(body: {
+  family: string
+  symbol: string
+  horizon: string
+  timeframe?: string
+  cost_bps?: number
+  cooldown_bars?: number
+}): Promise<FamilyCombinedSignal> {
+  const payload: Record<string, unknown> = {
+    family: body.family,
+    symbol: body.symbol,
+    horizon: body.horizon,
+    timeframe: body.timeframe ?? "1D",
+  }
+  if (body.cost_bps != null) payload.cost_bps = body.cost_bps
+  if (body.cooldown_bars != null) payload.cooldown_bars = body.cooldown_bars
+  const raw = await request<unknown>("/strategy/signal/family-ensemble", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+  return FamilyCombinedSignalSchema.parse(raw)
+}
+
+// ── Signal Engine — Variant Detail ──────────────────────────────────────────
+
+export const VariantRobustnessSchema = z.object({
+  mean_sharpe: z.number(),
+  std_sharpe: z.number(),
+  median_sharpe: z.number(),
+  fraction_positive_windows: z.number(),
+  mean_max_drawdown: z.number(),
+  reliability_score: z.number(),
+  is_viable: z.boolean(),
+  sharpe_score: z.number(),
+  stability_score: z.number(),
+  consistency_score: z.number(),
+  drawdown_score: z.number(),
+})
+export type VariantRobustness = z.infer<typeof VariantRobustnessSchema>
+
+export const OOSWindowSchema = z.object({
+  window_index: z.number(),
+  train_start: z.number(),
+  train_end: z.number(),
+  test_start: z.number(),
+  test_end: z.number(),
+  test_start_date: z.string().optional(),
+  test_end_date: z.string().optional(),
+  n_trades: z.number(),
+  mean_return_net: z.number(),
+  sharpe: z.number(),
+  max_drawdown: z.number(),
+  fraction_positive_bars: z.number(),
+  n_bars: z.number(),
+  is_valid: z.boolean(),
+})
+export type OOSWindow = z.infer<typeof OOSWindowSchema>
+
+export const VariantSummarySchema = z.object({
+  variant_id: z.string(),
+  archetype: z.string(),
+  params: z.record(z.unknown()),
+  description: z.string(),
+  reliability_score: z.number(),
+  is_viable: z.boolean(),
+  is_survivor: z.boolean(),
+  is_representative: z.boolean(),
+  elimination_reason: z.string(),
+  mean_sharpe: z.number().default(0),
+  mean_max_drawdown: z.number().default(0),
+  fraction_positive_windows: z.number().default(0),
+  cagr: z.number().default(0),
+  total_pnl: z.number().default(0),
+  signal_value: z.number().default(0),
+  signal_label: z.string().optional(),
+  correlated_with: z.string().nullable().optional(),
+  correlated_with_label: z.string().nullable().optional(),
+  correlation: z.number().nullable().optional(),
+  threshold_score: z.number().nullable().optional(),
+  viability_detail: z.string().nullable().optional(),
+  selection_status: z.string().optional(),
+})
+export type VariantSummary = z.infer<typeof VariantSummarySchema>
+
+export const FunnelSchema = z.object({
+  tested: z.number(),
+  viable: z.number(),
+  competitive: z.number(),
+  representative: z.number(),
+})
+
+export const VariantDetailSchema = z.object({
+  variant_id: z.string(),
+  archetype: z.string(),
+  params: z.record(z.unknown()),
+  description: z.string(),
+  signal: z.number(),
+  signal_label: z.string(),
+  selection_status: z.string().default("not_viable"),
+  robustness: VariantRobustnessSchema,
+  oos_windows: z.array(OOSWindowSchema),
+  all_variants: z.array(VariantSummarySchema),
+  fallback_variants: z.array(SignalRepresentativeSchema).default([]),
+  funnel: FunnelSchema,
+  correlation_matrix: z.unknown().optional(),
+  methodology_context: MethodologyContextSchema,
+})
+export type VariantDetail = z.infer<typeof VariantDetailSchema>
+
+export async function fetchVariantDetail(body: {
+  symbol: string
+  horizon: string
+  timeframe?: string
+  variant_id: string
+  cost_bps?: number
+  cooldown_bars?: number
+}): Promise<VariantDetail> {
+  const payload: Record<string, unknown> = {
+    symbol: body.symbol,
+    horizon: body.horizon,
+    timeframe: body.timeframe ?? "1D",
+    variant_id: body.variant_id,
+  }
+  if (body.cost_bps != null) payload.cost_bps = body.cost_bps
+  if (body.cooldown_bars != null) payload.cooldown_bars = body.cooldown_bars
+  const raw = await request<unknown>("/strategy/signal/variant-detail", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+  return VariantDetailSchema.parse(raw)
+}
+
+// Per-window detail (for OOS drill-down)
+export const PerWindowDetailSchema = z.object({
+  window_index: z.number(),
+  start_date: z.string(),
+  end_date: z.string(),
+  sharpe: z.number(),
+  pnl: z.number(),
+  n_trades: z.number(),
+  is_valid: z.boolean(),
+  plot: PlotlyFigureSchema,
+  equity_plot: PlotlyFigureSchema.optional(),
+  drawdown_plot: PlotlyFigureSchema.optional(),
+  trades: z.array(z.record(z.unknown())),
+})
+export type PerWindowDetail = z.infer<typeof PerWindowDetailSchema>
+
+// Variant backtest types
+export const VariantBacktestSchema = z.object({
+  variant_id: z.string(),
+  description: z.string(),
+  metrics: z.record(z.unknown()).default({}),
+  trade_performance: z.array(z.record(z.unknown())).default([]),
+  trade_ledger: z.array(z.record(z.unknown())).default([]),
+  plots: z.record(PlotlyFigureSchema).default({}),
+  per_window: z.array(PerWindowDetailSchema).default([]),
+  methodology_context: MethodologyContextSchema.optional(),
+  warning_message: z.string().default(""),
+})
+export type VariantBacktest = z.infer<typeof VariantBacktestSchema>
+
+export async function fetchVariantBacktest(body: {
+  symbol: string
+  variant_id: string
+  horizon?: string
+  timeframe?: string
+  cost_bps?: number
+  cooldown_bars?: number
+}): Promise<VariantBacktest> {
+  const payload: Record<string, unknown> = {
+    symbol: body.symbol,
+    variant_id: body.variant_id,
+    horizon: body.horizon ?? "medium",
+    timeframe: body.timeframe ?? "1D",
+  }
+  if (body.cost_bps != null) payload.cost_bps = body.cost_bps
+  if (body.cooldown_bars != null) payload.cooldown_bars = body.cooldown_bars
+  const raw = await request<unknown>("/strategy/signal/variant-backtest", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+  return VariantBacktestSchema.parse(raw)
+}
+
+// ── Signal Engine — Batch Scores ────────────────────────────────────────────
+
+export const BatchScoreSchema = z.object({
+  symbol: z.string(),
+  aggregate_score_pct: z.number().nullable(),
+  aggregate_signal_label: z.string().nullable(),
+})
+export type BatchScore = z.infer<typeof BatchScoreSchema>
+
+export async function fetchBatchScores(body: {
+  symbols: string[]
+  horizon: string
+  cost_bps?: number
+  cooldown_bars?: number
+}): Promise<BatchScore[]> {
+  const raw = await request<unknown[]>("/strategy/signal/batch-scores", {
+    method: "POST",
+    body: JSON.stringify({
+      symbols: body.symbols,
+      horizon: body.horizon,
+      cost_bps: body.cost_bps ?? 10,
+      cooldown_bars: body.cooldown_bars ?? 0,
+    }),
+  })
+  return z.array(BatchScoreSchema).parse(raw)
 }

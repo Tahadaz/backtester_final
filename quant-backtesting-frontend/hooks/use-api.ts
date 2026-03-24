@@ -2,7 +2,9 @@
 
 import useSWR from "swr"
 import type {
+  AvailabilityCalendar,
   Artifact,
+  BatchScore,
   Dataset,
   FamilyCombinedSignal,
   FillRow,
@@ -13,6 +15,7 @@ import type {
   MarketSymbolRow,
   MeanReversionReport,
   MetricRow,
+  OhlcvHistory,
   OhlcvPreview,
   PositionRow,
   Run,
@@ -22,8 +25,19 @@ import type {
   RunWalkForward,
   StockMaster,
   StrategyDecision,
+  UploadFormatReference,
+  VariantBacktest,
+  VariantDetail,
 } from "@/lib/api"
-import { fetchSmaEnsemble } from "@/lib/api"
+import {
+  fetchBatchScores,
+  fetchFamilyEnsemble,
+  fetchMasiTickers,
+  fetchSmaEnsemble,
+  fetchVariantBacktest,
+  fetchVariantDetail,
+} from "@/lib/api"
+import type { MasiTicker } from "@/lib/api"
 
 const API_BASE = "/api"
 
@@ -207,6 +221,14 @@ export function useDatasets() {
   })
 }
 
+export function useMasiTickers() {
+  return useSWR<MasiTicker[]>(
+    "/market-data/masi-tickers",
+    () => fetchMasiTickers(),
+    { revalidateOnFocus: false }
+  )
+}
+
 export function useMarketCatalog() {
   return useSWR<MarketCatalogRow[]>(
     "/market-data/catalog",
@@ -272,14 +294,118 @@ export function useStockOhlcvPreview(symbol: string | null, params?: { limit?: n
   )
 }
 
-export function useSmaEnsemble(symbol: string | null, horizon: string | null) {
+export function useUploadFormatReference() {
+  return useSWR<UploadFormatReference>(
+    "/market-data/upload-format-reference",
+    apiFetcher,
+    { revalidateOnFocus: false }
+  )
+}
+
+export function useStockOhlcvHistory(symbol: string | null, params?: { timeframe?: string }) {
+  const qs = new URLSearchParams()
+  if (params?.timeframe) qs.set("timeframe", params.timeframe)
+  const q = qs.toString()
+
+  return useSWR<OhlcvHistory>(
+    symbol ? `/market-data/stocks/${symbol}/ohlcv-history${q ? `?${q}` : ""}` : null,
+    apiFetcher
+  )
+}
+
+export function useStockAvailabilityCalendar(symbol: string | null, params?: { timeframe?: string }) {
+  const qs = new URLSearchParams()
+  if (params?.timeframe) qs.set("timeframe", params.timeframe)
+  const q = qs.toString()
+
+  return useSWR<AvailabilityCalendar>(
+    symbol ? `/market-data/stocks/${symbol}/availability-calendar${q ? `?${q}` : ""}` : null,
+    apiFetcher
+  )
+}
+
+export function useSmaEnsemble(symbol: string | null, horizon: string | null, costBps?: number) {
   const key =
     symbol && horizon
-      ? `/strategy/signal/sma-ensemble?s=${symbol}&h=${horizon}`
+      ? `/strategy/signal/sma-ensemble?s=${symbol}&h=${horizon}&c=${costBps ?? ""}`
       : null
   return useSWR<FamilyCombinedSignal>(
     key,
-    () => fetchSmaEnsemble({ symbol: symbol!, horizon: horizon! }),
+    () => fetchSmaEnsemble({ symbol: symbol!, horizon: horizon!, cost_bps: costBps }),
+    { revalidateOnFocus: false }
+  )
+}
+
+export function useFamilyEnsemble(family: string | null, symbol: string | null, horizon: string | null, costBps?: number, cooldownBars?: number) {
+  const key =
+    family && symbol && horizon
+      ? `/strategy/signal/family-ensemble?f=${family}&s=${symbol}&h=${horizon}&c=${costBps ?? ""}&cd=${cooldownBars ?? ""}`
+      : null
+  return useSWR<FamilyCombinedSignal>(
+    key,
+    () => fetchFamilyEnsemble({ family: family!, symbol: symbol!, horizon: horizon!, cost_bps: costBps, cooldown_bars: cooldownBars }),
+    { revalidateOnFocus: false }
+  )
+}
+
+export function useVariantBacktest(
+  variantId: string | null,
+  symbol: string | null,
+  horizon: string | null,
+  costBps?: number,
+  cooldownBars?: number,
+) {
+  const key =
+    variantId && symbol && horizon
+      ? `/strategy/signal/variant-backtest?v=${variantId}&s=${symbol}&h=${horizon}&c=${costBps ?? ""}&cd=${cooldownBars ?? ""}`
+      : null
+  return useSWR<VariantBacktest>(
+    key,
+    () =>
+      fetchVariantBacktest({
+        symbol: symbol!,
+        variant_id: variantId!,
+        horizon: horizon!,
+        cost_bps: costBps,
+        cooldown_bars: cooldownBars,
+      }),
+    { revalidateOnFocus: false }
+  )
+}
+
+export function useVariantDetail(
+  variantId: string | null,
+  symbol: string | null,
+  horizon: string | null,
+  costBps?: number,
+  cooldownBars?: number,
+) {
+  const key =
+    variantId && symbol && horizon
+      ? `/strategy/signal/variant-detail?v=${variantId}&s=${symbol}&h=${horizon}&c=${costBps ?? ""}&cd=${cooldownBars ?? ""}`
+      : null
+  return useSWR<VariantDetail>(
+    key,
+    () =>
+      fetchVariantDetail({
+        symbol: symbol!,
+        horizon: horizon!,
+        variant_id: variantId!,
+        cost_bps: costBps,
+        cooldown_bars: cooldownBars,
+      }),
+    { revalidateOnFocus: false }
+  )
+}
+
+export function useBatchScores(symbols: string[], horizon: string, cooldownBars?: number) {
+  const key =
+    symbols.length > 0
+      ? `/strategy/signal/batch-scores?h=${horizon}&n=${symbols.length}&cd=${cooldownBars ?? ""}`
+      : null
+  return useSWR<BatchScore[]>(
+    key,
+    () => fetchBatchScores({ symbols, horizon, cooldown_bars: cooldownBars }),
     { revalidateOnFocus: false }
   )
 }
