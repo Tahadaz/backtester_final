@@ -37,26 +37,41 @@ def generate_candidates(family: str, horizon: str) -> list[VariantDef]:
     return gen(horizon)
 
 
+def variant_min_history(variant: VariantDef) -> int:
+    """Minimum bars needed before a variant's signal is reasonably warmed."""
+    p = variant.params
+    arch = variant.archetype
+
+    if arch == "price_vs_sma":
+        return int(p["window"])
+    if arch == "sma_cross":
+        return int(p["slow"])
+    if arch == "slope_confirmed":
+        return int(p["window"]) + int(p.get("slope_lookback", 1))
+    if arch == "rsi_level":
+        return int(p["period"]) + 1
+    if arch == "macd_cross":
+        return int(p["slow"]) + int(p["signal"])
+    if arch == "obv_trend":
+        return int(p["ema_period"])
+    return 1
+
+
+def filter_candidates_for_history(candidates: list[VariantDef], max_history: int) -> list[VariantDef]:
+    """Keep candidates whose warmup fits inside the provided bar budget."""
+    if max_history <= 0:
+        return []
+    return [c for c in candidates if variant_min_history(c) <= max_history]
+
+
 # ---------------------------------------------------------------------------
-# SMA family — 3 archetypes × horizon-scaled parameter neighborhoods
+# SMA family — price vs SMA
 # ---------------------------------------------------------------------------
 
 _SMA_PRICE_VS_SMA: dict[str, list[int]] = {
-    "short":  [5, 10, 15, 20],
-    "medium": [20, 30, 50, 75],
-    "long":   [50, 100, 150, 200],
-}
-
-_SMA_CROSS: dict[str, list[tuple[int, int]]] = {
-    "short":  [(5, 20), (10, 30)],
-    "medium": [(10, 50), (20, 100)],
-    "long":   [(50, 150), (100, 250)],
-}
-
-_SMA_SLOPE_CONFIRMED: dict[str, list[tuple[int, int]]] = {
-    "short":  [(10, 3), (20, 5)],
-    "medium": [(30, 7), (50, 10)],
-    "long":   [(100, 20), (150, 30)],
+    "short":  [3, 5, 7, 8, 10, 12, 13, 15, 17, 18, 20, 22, 25, 28, 30, 33, 35, 38, 40, 42, 45, 48, 50, 55, 60, 65, 70, 75, 80, 90],
+    "medium": [10, 15, 18, 20, 25, 28, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 90, 100, 110, 120, 130, 140, 150, 160, 175, 190, 200, 225, 250],
+    "long":   [20, 30, 40, 50, 60, 75, 85, 100, 110, 120, 125, 130, 140, 150, 160, 170, 175, 190, 200, 210, 225, 240, 250, 270, 280, 300, 325, 350, 375, 400],
 }
 
 
@@ -67,10 +82,12 @@ def _make_variant(family: str, archetype: str, params: dict, horizon: str) -> Va
     desc_parts = []
     if archetype == "price_vs_sma":
         desc_parts.append(f"SMA-{params['window']} Price-Level")
-    elif archetype == "sma_cross":
-        desc_parts.append(f"SMA({params['fast']},{params['slow']}) Cross")
-    elif archetype == "slope_confirmed":
-        desc_parts.append(f"SMA-{params['window']} Slope-Confirmed(k={params['slope_lookback']})")
+    elif archetype == "rsi_level":
+        desc_parts.append(f"RSI-{params['period']} ({params['oversold']}/{params['overbought']})")
+    elif archetype == "macd_cross":
+        desc_parts.append(f"MACD({params['fast']},{params['slow']},{params['signal']})")
+    elif archetype == "obv_trend":
+        desc_parts.append(f"OBV-EMA-{params['ema_period']}")
     desc_parts.append(f"({horizon})")
     return VariantDef(
         variant_id=variant_id,
@@ -83,16 +100,78 @@ def _make_variant(family: str, archetype: str, params: dict, horizon: str) -> Va
 
 @register_family("sma")
 def generate_sma_candidates(horizon: str) -> list[VariantDef]:
-    """Return 8-12 SMA candidates for the given horizon."""
+    """Return 30 SMA price-level candidates for the given horizon."""
     candidates: list[VariantDef] = []
 
     for w in _SMA_PRICE_VS_SMA[horizon]:
         candidates.append(_make_variant("sma", "price_vs_sma", {"window": w}, horizon))
 
-    for fast, slow in _SMA_CROSS[horizon]:
-        candidates.append(_make_variant("sma", "sma_cross", {"fast": fast, "slow": slow}, horizon))
-
-    for w, k in _SMA_SLOPE_CONFIRMED[horizon]:
-        candidates.append(_make_variant("sma", "slope_confirmed", {"window": w, "slope_lookback": k}, horizon))
-
     return candidates
+
+
+# ---------------------------------------------------------------------------
+# RSI family — RSI level (mean-reversion)
+# ---------------------------------------------------------------------------
+
+_RSI_PERIODS: dict[str, list[int]] = {
+    "short":  [5, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    "medium": [7, 9, 10, 12, 14, 17, 20, 21, 25, 30],
+    "long":   [10, 14, 17, 20, 21, 25, 28, 30, 35, 40],
+}
+_RSI_THRESHOLDS: list[tuple[int, int]] = [(30, 70), (25, 75), (20, 80)]
+
+
+@register_family("rsi")
+def generate_rsi_candidates(horizon: str) -> list[VariantDef]:
+    """Return 30 RSI level candidates for the given horizon (10 periods × 3 thresholds)."""
+    candidates: list[VariantDef] = []
+    for period in _RSI_PERIODS[horizon]:
+        for oversold, overbought in _RSI_THRESHOLDS:
+            candidates.append(_make_variant("rsi", "rsi_level", {
+                "period": period, "oversold": oversold, "overbought": overbought,
+            }, horizon))
+    return candidates
+
+
+# ---------------------------------------------------------------------------
+# MACD family — MACD line vs signal line crossover
+# ---------------------------------------------------------------------------
+
+_MACD_PARAMS: dict[str, dict[str, list[int]]] = {
+    "short":  {"fast": [6, 8, 10, 12, 15], "slow": [16, 20, 26], "signal": [7, 9]},
+    "medium": {"fast": [8, 10, 12, 15, 18], "slow": [20, 26, 30], "signal": [7, 9]},
+    "long":   {"fast": [10, 12, 15, 18, 20], "slow": [26, 30, 35], "signal": [9, 12]},
+}
+
+
+@register_family("macd")
+def generate_macd_candidates(horizon: str) -> list[VariantDef]:
+    """Return 30 MACD crossover candidates for the given horizon."""
+    candidates: list[VariantDef] = []
+    mp = _MACD_PARAMS[horizon]
+    for fast in mp["fast"]:
+        for slow in mp["slow"]:
+            for sig in mp["signal"]:
+                if fast < slow:
+                    candidates.append(_make_variant("macd", "macd_cross", {
+                        "fast": fast, "slow": slow, "signal": sig,
+                    }, horizon))
+    return candidates
+
+
+# ---------------------------------------------------------------------------
+# OBV family — OBV vs EMA(OBV) trend
+# ---------------------------------------------------------------------------
+
+_OBV_EMA_PERIODS: dict[str, list[int]] = {
+    "short":  [3, 5, 7, 8, 10, 12, 13, 15, 17, 18, 20, 22, 25, 28, 30, 33, 35, 38, 40, 42, 45, 48, 50, 55, 60, 65, 70, 75, 80, 90],
+    "medium": [10, 15, 18, 20, 25, 28, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 90, 100, 110, 120, 130, 140, 150, 160, 175, 190, 200, 225, 250],
+    "long":   [20, 30, 40, 50, 60, 75, 85, 100, 110, 120, 125, 130, 140, 150, 160, 170, 175, 190, 200, 210, 225, 240, 250, 270, 280, 300, 325, 350, 375, 400],
+}
+
+
+@register_family("obv")
+def generate_obv_candidates(horizon: str) -> list[VariantDef]:
+    """Return 30 OBV-EMA trend candidates for the given horizon."""
+    return [_make_variant("obv", "obv_trend", {"ema_period": p}, horizon)
+            for p in _OBV_EMA_PERIODS[horizon]]

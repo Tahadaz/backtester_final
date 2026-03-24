@@ -36,6 +36,8 @@ def score_variant_robustness(
             mean_max_drawdown=0.0,
             reliability_score=0.0,
             is_viable=False,
+            cagr=0.0,
+            total_pnl=0.0,
         )
 
     sharpes = [w.sharpe for w in valid]
@@ -46,6 +48,8 @@ def score_variant_robustness(
     median_sharpe = statistics.median(sharpes)
     frac_positive = sum(1 for s in sharpes if s > 0) / n_valid
     mean_mdd = statistics.mean(drawdowns)
+    cagr = statistics.mean(w.cagr for w in valid)
+    total_pnl = statistics.mean(w.pnl for w in valid)
 
     # Viability gate
     is_viable = (n_valid >= min_windows) and (frac_positive >= 0.40)
@@ -62,6 +66,8 @@ def score_variant_robustness(
             mean_max_drawdown=mean_mdd,
             reliability_score=0.0,
             is_viable=False,
+            cagr=cagr,
+            total_pnl=total_pnl,
         )
 
     # Component scores — each in [0, 1]
@@ -88,4 +94,10 @@ def score_variant_robustness(
         mean_max_drawdown=mean_mdd,
         reliability_score=reliability,
         is_viable=True,
+        sharpe_score=sharpe_score,
+        stability_score=stability_score,
+        consistency_score=consistency_score,
+        drawdown_score=drawdown_score,
+        cagr=cagr,
+        total_pnl=total_pnl,
     )
