@@ -13,4 +13,4 @@ def test_get_horizon_config_short_defaults() -> None:
     assert cfg.name.value == "short"
     assert cfg.train_window == 252
     assert cfg.test_window == 63
-    assert cfg.step_size == 21
+    assert cfg.step_size == 63

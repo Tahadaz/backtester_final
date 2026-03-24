@@ -17,3 +17,4 @@ python-dotenv
 psycopg2-binary>=2.9
 python-multipart
 numba
+apscheduler>=3.10

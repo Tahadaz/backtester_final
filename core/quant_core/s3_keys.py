@@ -23,3 +23,14 @@ def build_dataset_object_key(data_hash: str, filename: str) -> str:
     time using this same formula, so reads should always prefer the DB column.
     """
     return f"datasets/{data_hash}/{filename}"
+
+
+def build_market_store_object_key(symbol: str, timeframe: str) -> str:
+    """Return the canonical S3 key for a symbol's OHLCV parquet in market_data_store.
+
+    Format: ``market_data/symbols/{symbol}/ohlcv.parquet``
+
+    The timeframe parameter is accepted for future multi-timeframe support
+    but currently all data is stored at the symbol level as ``ohlcv.parquet``.
+    """
+    return f"market_data/symbols/{symbol}/ohlcv.parquet"

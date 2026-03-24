@@ -93,7 +93,7 @@ services:
       DATABASE_URL: postgresql+psycopg2://app:app@quant_postgres:5432/quant
       RUNS_QUEUE_NAME: runs
       DEFAULTS_DISCOVERY_QUEUE_NAME: defaults_discovery
-      WORKER_QUEUES: runs
+      WORKER_QUEUES: runs,market_refresh
       RUN_HEARTBEAT_INTERVAL_SECONDS: "15"
       RUN_ORPHAN_STALE_SECONDS: "600"
       S3_ENDPOINT: http://minio:9000
@@ -119,6 +119,7 @@ services:
         condition: service_completed_successfully
     volumes:
       - featurecache:/app/.cache
+      - ../services/api:/repo/services/api
       - ../services/worker:/repo/services/worker
       - ../core:/repo/core
     healthcheck:

@@ -294,6 +294,7 @@ def obv_array(close: np.ndarray, vol: np.ndarray) -> np.ndarray:
     dc = np.diff(c)
     sign = np.sign(dc)  # +1,0,-1
     inc = sign * v[1:]
+    inc = np.where(np.isnan(inc), 0.0, inc)  # NaN volume = no activity
     out[1:] = np.cumsum(inc)
     return out
 

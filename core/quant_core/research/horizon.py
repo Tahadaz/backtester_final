@@ -26,7 +26,7 @@ PRESETS: dict[TradingHorizon, HorizonConfig] = {
         name=TradingHorizon.SHORT,
         train_window=252,   # ~1 an
         test_window=63,     # ~3 mois
-        step_size=21,       # ~1 mois
+        step_size=63,       # ~1 mois
         use_test_window=True,
         label="Court terme (~1 an train, 5 ans)",
     ),
@@ -34,7 +34,7 @@ PRESETS: dict[TradingHorizon, HorizonConfig] = {
         name=TradingHorizon.MEDIUM,
         train_window=504,   # ~2 ans
         test_window=126,    # ~6 mois
-        step_size=21,       # ~1 mois
+        step_size=126,       # ~1 mois
         use_test_window=True,
         label="Moyen terme (~2 ans train, 10 ans)",
     ),
@@ -42,7 +42,7 @@ PRESETS: dict[TradingHorizon, HorizonConfig] = {
         name=TradingHorizon.LONG,
         train_window=756,   # ~3 ans
         test_window=252,    # ~1 an
-        step_size=21,       # ~1 mois
+        step_size=252,       # ~1 mois
         use_test_window=True,
         label="Long terme (~3 ans train, 20 ans)",
     ),

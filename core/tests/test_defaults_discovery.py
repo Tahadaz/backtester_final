@@ -112,7 +112,7 @@ def test_discover_sma_defaults_horizon_short_sets_meta_windows() -> None:
     assert meta.get("horizon") == "short"
     assert int(meta.get("train_window") or 0) == 252
     assert int(meta.get("test_window") or 0) == 63
-    assert int(meta.get("step_size") or 0) == 21
+    assert int(meta.get("step_size") or 0) == 63
 
 
 def test_discover_sma_defaults_explicit_windows_override_horizon_defaults() -> None:
