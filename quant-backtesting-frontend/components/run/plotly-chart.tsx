@@ -54,7 +54,7 @@ export function PlotlyChart({ figure, data }: PlotlyChartProps) {
         size: 11,
         color: "oklch(0.50 0.01 250)",
       },
-      margin: { l: 50, r: 20, t: 40, b: 40 },
+      margin: { l: 50, r: 20, t: 40, b: 40, ...((base.margin ?? {}) as Record<string, number>) },
       xaxis: {
         ...baseXAxis,
         gridcolor: "oklch(0.91 0.005 250)",

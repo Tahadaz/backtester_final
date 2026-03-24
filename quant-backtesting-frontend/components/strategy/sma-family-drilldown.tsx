@@ -1,21 +1,74 @@
 "use client"
 
+import { useRouter } from "next/navigation"
 import type { FamilyCombinedSignal, SignalRepresentative } from "@/lib/api"
-import { Speedometer } from "./speedometer"
+import { SignalBadge } from "@/components/signal-badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
 
+function repLabel(rep: SignalRepresentative): string {
+  const p = rep.params as Record<string, unknown>
+  // SMA
+  if (p?.window) return `SMA-${p.window}`
+  if (p?.fast && p?.slow && !p?.signal) return `SMA(${p.fast},${p.slow})`
+  // RSI
+  if (p?.period && p?.oversold != null) return `RSI-${p.period} (${p.oversold}/${p.overbought})`
+  // MACD
+  if (p?.fast && p?.slow && p?.signal) return `MACD(${p.fast},${p.slow},${p.signal})`
+  // OBV
+  if (p?.ema_period) return `OBV-EMA-${p.ema_period}`
+  // Fallback: extract from explanation
+  const m = rep.explanation.match(/(?:SMA|RSI|MACD|OBV)[-_(][\d,/)+]+/)
+  if (m) return m[0]
+  return rep.variant_id.slice(0, 12)
+}
+
 export function SmaFamilyDrilldown({
   data,
+  family,
+  cooldownBars,
   onBack,
-  onSelectVariant,
 }: {
   data: FamilyCombinedSignal
+  family?: string
+  cooldownBars?: number
   onBack: () => void
-  onSelectVariant: (v: SignalRepresentative) => void
 }) {
+  const router = useRouter()
+  const familyLabel = (family ?? data.family ?? "sma").toUpperCase()
+  const renderVariantGrid = (variants: SignalRepresentative[]) => (
+    <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+      {variants.map((rep) => (
+        <Card
+          key={rep.variant_id}
+          className="cursor-pointer hover:border-primary/50 transition-colors"
+          onClick={() =>
+            router.push(
+              `/signals/variant/${rep.variant_id}?symbol=${encodeURIComponent(data.symbol)}&horizon=${data.horizon}&cooldown=${cooldownBars ?? 0}`
+            )
+          }
+        >
+          <CardContent className="p-3 flex flex-col items-center gap-1.5">
+            <SignalBadge value={rep.signal} size="sm" />
+            <div className="text-xs font-mono font-bold">
+              {repLabel(rep)}
+            </div>
+            <div className="text-[10px] text-muted-foreground capitalize text-center">
+              {(rep.archetype || "").replace(/_/g, " ")}
+            </div>
+            {rep.selection_status && rep.selection_status !== "selected" && (
+              <Badge variant="outline" className="text-[9px]">
+                Provisoire
+              </Badge>
+            )}
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  )
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -24,25 +77,25 @@ export function SmaFamilyDrilldown({
           <ArrowLeft className="h-3.5 w-3.5" />
           Retour
         </Button>
-        <h3 className="text-sm font-bold">Famille SMA — Détail</h3>
+        <h3 className="text-sm font-bold">Famille {familyLabel} — Detail</h3>
       </div>
 
       {/* Funnel stats */}
       <Card>
         <CardHeader className="pb-2 pt-3 px-4">
-          <CardTitle className="text-xs font-semibold">Entonnoir de sélection</CardTitle>
+          <CardTitle className="text-xs font-semibold">Entonnoir de selection</CardTitle>
         </CardHeader>
         <CardContent className="px-4 pb-4">
           <div className="flex items-center gap-4 text-center">
             {[
-              { label: "Testées", value: data.tested_count },
+              { label: "Testees", value: data.tested_count },
               { label: "Viables", value: data.viable_count },
-              { label: "Compétitives", value: data.competitive_count },
-              { label: "Représentatives", value: data.representative_count },
+              { label: "Competitives", value: data.competitive_count },
+              { label: "Representatives", value: data.representative_count },
             ].map((step, i) => (
               <div key={step.label} className="flex items-center gap-2">
                 {i > 0 && (
-                  <span className="text-muted-foreground/40 text-lg">→</span>
+                  <span className="text-muted-foreground/40 text-lg">{"\u2192"}</span>
                 )}
                 <div>
                   <div className="text-lg font-bold">{step.value}</div>
@@ -61,53 +114,64 @@ export function SmaFamilyDrilldown({
         {data.score_explanation}
       </div>
 
+      {data.is_provisional && data.warning_message && (
+        <Card className="border-amber-300 bg-amber-50/60">
+          <CardContent className="py-3 text-xs text-amber-900">
+            <div className="font-semibold mb-1">Signal provisoire</div>
+            <p>{data.warning_message}</p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Representatives grid */}
       <div>
         <h4 className="text-xs font-semibold mb-3">
-          Variantes représentatives
+          Variantes representatives
           <Badge variant="outline" className="ml-2 text-[10px]">
             {data.representative_count}
           </Badge>
         </h4>
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-          {data.representatives.map((rep) => {
-            const pct =
-              rep.signal > 0
-                ? 50 + rep.contribution * 50
-                : rep.signal < 0
-                  ? 50 - rep.contribution * 50
-                  : 50
-            return (
-              <Card
-                key={rep.variant_id}
-                className="cursor-pointer hover:border-primary/50 transition-colors"
-                onClick={() => onSelectVariant(rep)}
-              >
-                <CardContent className="p-3 flex flex-col items-center gap-2">
-                  <Speedometer value={pct} size="sm" />
-                  <div className="text-center">
-                    <div className="text-[10px] font-mono font-semibold truncate max-w-[120px]">
-                      {rep.variant_id}
-                    </div>
-                    <Badge
-                      variant="outline"
-                      className={`text-[9px] mt-1 ${
-                        rep.signal > 0
-                          ? "text-green-700 border-green-300"
-                          : rep.signal < 0
-                            ? "text-red-700 border-red-300"
-                            : "text-muted-foreground"
-                      }`}
-                    >
-                      {rep.signal_label}
-                    </Badge>
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
+        {data.representative_count === 0 && data.fallback_variants.length === 0 ? (
+          <Card>
+            <CardContent className="py-6 text-center space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Aucune variante representative stricte apres filtrage.
+              </p>
+              <p className="text-xs text-muted-foreground">{data.score_explanation}</p>
+              {data.best_variant_id && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    router.push(
+                      `/signals/variant/${data.best_variant_id}?symbol=${encodeURIComponent(data.symbol)}&horizon=${data.horizon}&cooldown=${cooldownBars ?? 0}`
+                    )
+                  }
+                >
+                  Voir toutes les variantes
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        ) : data.representative_count > 0 ? (
+          renderVariantGrid(data.representatives)
+        ) : null}
       </div>
+
+      {data.fallback_variants.length > 0 && (
+        <div>
+          <h4 className="text-xs font-semibold mb-3">
+            Variantes provisoires
+            <Badge variant="outline" className="ml-2 text-[10px] border-amber-300 text-amber-800">
+              {data.fallback_variants.length}
+            </Badge>
+          </h4>
+          <div className="text-[11px] text-muted-foreground mb-3">
+            Ces variantes sont affichees avec les donnees disponibles, mais elles ne doivent pas etre traitees comme des representants robustes.
+          </div>
+          {renderVariantGrid(data.fallback_variants)}
+        </div>
+      )}
     </div>
   )
 }

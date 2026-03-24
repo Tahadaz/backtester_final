@@ -9,13 +9,15 @@ const signalStyles = {
 
 export function SignalBadge({
   value,
+  label: labelProp,
   size = "sm",
 }: {
   value: number | null | undefined
+  label?: string
   size?: "sm" | "md" | "lg"
 }) {
   const type = signalType(value)
-  const label = signalLabel(value)
+  const label = labelProp ?? signalLabel(value)
 
   const sizeClasses = {
     sm: "px-2 py-0.5 text-xs",

@@ -1,38 +1,97 @@
 "use client"
 
 import { useState } from "react"
-import { useSmaEnsemble } from "@/hooks/use-api"
-import type { SignalRepresentative } from "@/lib/api"
-import { Speedometer } from "./speedometer"
+import { useFamilyEnsemble } from "@/hooks/use-api"
+import type { FamilyCombinedSignal } from "@/lib/api"
+import { SignalScoreBar } from "./signal-score-bar"
 import { SmaFamilyDrilldown } from "./sma-family-drilldown"
-import { VariantDetailSheet } from "./variant-detail-sheet"
 import { MethodologyModal } from "./methodology-modal"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Info } from "lucide-react"
-import { toast } from "sonner"
+import { Info, TrendingUp, Activity, BarChart3 } from "lucide-react"
 
-const FAMILIES = [
-  { id: "sma", label: "SMA", live: true },
-  { id: "rsi", label: "RSI", live: false },
-  { id: "macd", label: "MACD", live: false },
-  { id: "obv", label: "OBV", live: false },
+// Category structure (Murphy 1999, Elder 1993 Triple Screen)
+const CATEGORIES = [
+  {
+    id: "tendance",
+    label: "Tendance",
+    description: "Direction du marche",
+    icon: TrendingUp,
+    families: [
+      { id: "sma", label: "SMA" },
+      { id: "macd", label: "MACD" },
+    ],
+  },
+  {
+    id: "oscillation",
+    label: "Oscillation",
+    description: "Conditions de marche",
+    icon: Activity,
+    families: [
+      { id: "rsi", label: "RSI" },
+    ],
+  },
+  {
+    id: "volume",
+    label: "Volume",
+    description: "Confirmation par le volume",
+    icon: BarChart3,
+    families: [
+      { id: "obv", label: "OBV" },
+    ],
+  },
 ]
+
+// Flat list for loading/error checks
+const ALL_FAMILIES = CATEGORIES.flatMap((c) => c.families)
+
+// Label → badge color mapping (type-specific labels)
+function labelBadgeClass(label: string): string {
+  const l = label.toLowerCase()
+  // Positive signals (bullish trend, oversold oscillator, accumulation volume)
+  if (
+    l.includes("haussier") ||
+    l.includes("survendu") ||
+    l.includes("accumulation") ||
+    l.includes("achat")
+  ) {
+    return "text-green-700 border-green-300"
+  }
+  // Negative signals (bearish trend, overbought oscillator, distribution volume)
+  if (
+    l.includes("baissier") ||
+    l.includes("surachet") ||
+    l.includes("distribution") ||
+    l.includes("vente")
+  ) {
+    return "text-red-700 border-red-300"
+  }
+  return "text-muted-foreground"
+}
 
 export function TechnicalAnalysisPanel({
   symbol,
   horizon,
+  cooldownBars,
 }: {
   symbol: string
   horizon: string
+  cooldownBars?: number
 }) {
-  const { data: smaData, isLoading, error } = useSmaEnsemble(symbol, horizon)
+  const sma = useFamilyEnsemble("sma", symbol, horizon, undefined, cooldownBars)
+  const rsi = useFamilyEnsemble("rsi", symbol, horizon, undefined, cooldownBars)
+  const macd = useFamilyEnsemble("macd", symbol, horizon, undefined, cooldownBars)
+  const obv = useFamilyEnsemble("obv", symbol, horizon, undefined, cooldownBars)
 
-  // Drill-down state: 0=overview, 1=families, 2=sma-drilldown, 3=variant
+  const familyData: Record<string, { data?: FamilyCombinedSignal; isLoading: boolean; error: unknown }> = {
+    sma, rsi, macd, obv,
+  }
+
+  // Drill-down state: 0=overview, 1=categories, 2=family-drilldown
   const [level, setLevel] = useState(0)
-  const [selectedVariant, setSelectedVariant] = useState<SignalRepresentative | null>(null)
+  const [selectedFamily, setSelectedFamily] = useState<string | null>(null)
   const [methodologyOpen, setMethodologyOpen] = useState(false)
 
   // Reset level when symbol/horizon changes
@@ -41,23 +100,27 @@ export function TechnicalAnalysisPanel({
   if (currentKey !== lastKey) {
     setLastKey(currentKey)
     setLevel(0)
-    setSelectedVariant(null)
+    setSelectedFamily(null)
   }
 
-  if (isLoading) {
+  const loadedFamilies = ALL_FAMILIES.filter((f) => familyData[f.id].data)
+  const anyLoading = ALL_FAMILIES.some((f) => familyData[f.id].isLoading)
+  const allError = ALL_FAMILIES.every((f) => familyData[f.id].error)
+
+  if (anyLoading && loadedFamilies.length === 0) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-40 w-full" />
-        <div className="grid grid-cols-2 gap-3">
-          {[...Array(4)].map((_, i) => (
-            <Skeleton key={i} className="h-24 w-full" />
+        <div className="space-y-3">
+          {[...Array(3)].map((_, i) => (
+            <Skeleton key={i} className="h-28 w-full" />
           ))}
         </div>
       </div>
     )
   }
 
-  if (error) {
+  if (allError) {
     return (
       <Card className="border-destructive/50">
         <CardContent className="py-8 text-center">
@@ -65,36 +128,29 @@ export function TechnicalAnalysisPanel({
             Erreur lors du chargement du signal
           </p>
           <p className="text-xs text-muted-foreground mt-1">
-            {error instanceof Error ? error.message : "Erreur inconnue"}
+            {sma.error instanceof Error ? sma.error.message : "Erreur inconnue"}
           </p>
         </CardContent>
       </Card>
     )
   }
 
-  const aggregateScore = smaData?.family_score_pct ?? null
+  const aggregateScore =
+    loadedFamilies.length > 0
+      ? loadedFamilies.reduce((sum, f) => sum + (familyData[f.id].data?.family_score_pct ?? 0), 0) /
+        loadedFamilies.length
+      : null
+  const aggregateIsProvisional = loadedFamilies.some((f) => familyData[f.id].data?.is_provisional)
 
-  // Levels 2-3: SMA family drill-down (+ variant sheet overlay)
-  if ((level === 2 || level === 3) && smaData) {
+  // Level 2: Family drill-down
+  if (level === 2 && selectedFamily && familyData[selectedFamily]?.data) {
     return (
-      <>
-        <SmaFamilyDrilldown
-          data={smaData}
-          onBack={() => setLevel(1)}
-          onSelectVariant={(v) => {
-            setSelectedVariant(v)
-            setLevel(3)
-          }}
-        />
-        <VariantDetailSheet
-          variant={selectedVariant}
-          open={level === 3}
-          onClose={() => {
-            setLevel(2)
-            setSelectedVariant(null)
-          }}
-        />
-      </>
+      <SmaFamilyDrilldown
+        data={familyData[selectedFamily].data!}
+        family={selectedFamily}
+        cooldownBars={cooldownBars}
+        onBack={() => setLevel(1)}
+      />
     )
   }
 
@@ -107,25 +163,30 @@ export function TechnicalAnalysisPanel({
           onClick={() => setLevel(1)}
         >
           <CardContent className="flex flex-col items-center py-6 gap-2">
-            <Speedometer value={aggregateScore} size="lg" label="Score agrégé — Analyse Technique" />
+            <SignalScoreBar value={aggregateScore} size="lg" label="Score agrege — Analyse Technique" className="w-full max-w-xs" />
             <div className="flex items-center gap-2 mt-2">
               <Badge variant="outline" className="text-[10px]">
-                SMA uniquement
+                {loadedFamilies.length}/{ALL_FAMILIES.length} familles
               </Badge>
-              {smaData && (
+              {aggregateIsProvisional && (
+                <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-800">
+                  Provisoire
+                </Badge>
+              )}
+              {sma.data && (
                 <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                  {smaData.as_of}
+                  {sma.data.as_of}
                 </Badge>
               )}
             </div>
             <p className="text-[10px] text-muted-foreground mt-1">
-              Cliquez pour voir le détail par famille
+              Cliquez pour voir le detail par categorie
             </p>
           </CardContent>
         </Card>
       )}
 
-      {/* Level 1: Family cards */}
+      {/* Level 1: Category sections (Tendance / Oscillation / Volume) */}
       {level === 1 && (
         <>
           <div className="flex items-center justify-between">
@@ -135,7 +196,7 @@ export function TechnicalAnalysisPanel({
               onClick={() => setLevel(0)}
               className="text-xs"
             >
-              ← Vue d&apos;ensemble
+              &larr; Vue d&apos;ensemble
             </Button>
             <Button
               variant="ghost"
@@ -144,65 +205,124 @@ export function TechnicalAnalysisPanel({
               className="gap-1 text-xs"
             >
               <Info className="h-3 w-3" />
-              Méthodologie
+              Methodologie
             </Button>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            {FAMILIES.map((fam) => {
-              if (fam.live && smaData) {
-                return (
-                  <Card
-                    key={fam.id}
-                    className="cursor-pointer hover:border-primary/50 transition-colors"
-                    onClick={() => setLevel(2)}
-                  >
-                    <CardHeader className="pb-1 pt-3 px-4">
-                      <CardTitle className="text-xs font-semibold flex items-center gap-2">
-                        {fam.label}
-                        <Badge
-                          variant="outline"
-                          className={`text-[9px] ${
-                            smaData.family_signal_label === "BUY"
-                              ? "text-green-700 border-green-300"
-                              : smaData.family_signal_label === "SELL"
-                                ? "text-red-700 border-red-300"
-                                : "text-muted-foreground"
-                          }`}
-                        >
-                          {smaData.family_signal_label}
-                        </Badge>
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="flex justify-center pb-3 px-4">
-                      <Speedometer value={smaData.family_score_pct} size="sm" />
-                    </CardContent>
-                  </Card>
-                )
-              }
+          <div className="space-y-4">
+            {CATEGORIES.map((cat) => {
+              const Icon = cat.icon
+              const catFamilyData = cat.families.map((f) => ({
+                ...f,
+                fd: familyData[f.id],
+              }))
+              const loadedCatFamilies = catFamilyData.filter((f) => f.fd.data)
+              const catScore =
+                loadedCatFamilies.length > 0
+                  ? loadedCatFamilies.reduce(
+                      (sum, f) => sum + (f.fd.data?.family_score_pct ?? 0),
+                      0,
+                    ) / loadedCatFamilies.length
+                  : null
+              const anyCatLoading = catFamilyData.some((f) => f.fd.isLoading)
+              const catIsProvisional = loadedCatFamilies.some((f) => f.fd.data?.is_provisional)
 
-              // Grayed-out placeholder for non-live families
               return (
-                <Card
-                  key={fam.id}
-                  className="opacity-50 cursor-not-allowed"
-                  onClick={() =>
-                    toast.info(`${fam.label} — Bientôt disponible`)
-                  }
-                >
-                  <CardHeader className="pb-1 pt-3 px-4">
-                    <CardTitle className="text-xs font-semibold flex items-center gap-2">
-                      {fam.label}
-                      <Badge
-                        variant="outline"
-                        className="text-[9px] text-muted-foreground"
-                      >
-                        N/A
-                      </Badge>
-                    </CardTitle>
+                <Card key={cat.id}>
+                  <CardHeader className="pb-2 pt-3 px-4">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
+                        <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                        {cat.label}
+                        <span className="text-[10px] font-normal text-muted-foreground ml-1">
+                          {cat.description}
+                        </span>
+                      </CardTitle>
+                      {catScore !== null && (
+                        <div className="flex items-center gap-2">
+                          {catIsProvisional && (
+                            <Badge variant="outline" className="text-[9px] border-amber-300 text-amber-800">
+                              Provisoire
+                            </Badge>
+                          )}
+                          <span className="text-xs font-mono font-medium">
+                            {catScore >= 0 ? "+" : ""}
+                            {catScore.toFixed(1)}%
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    {catScore !== null && (
+                      <SignalScoreBar value={catScore} size="sm" className="w-full mt-1" />
+                    )}
+                    {catScore === null && anyCatLoading && (
+                      <Skeleton className="h-6 w-full mt-1" />
+                    )}
                   </CardHeader>
-                  <CardContent className="flex justify-center pb-3 px-4">
-                    <Speedometer value={null} size="sm" />
+                  <CardContent className="pb-3 px-4 pt-0">
+                    <div className="space-y-1.5">
+                      {catFamilyData.map((fam) => {
+                        if (fam.fd.data) {
+                          return (
+                            <div
+                              key={fam.id}
+                              className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-muted/50 cursor-pointer transition-colors"
+                              onClick={() => {
+                                setSelectedFamily(fam.id)
+                                setLevel(2)
+                              }}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-medium w-12">
+                                  {fam.label}
+                                </span>
+                                <Badge
+                                  variant="outline"
+                                  className={`text-[9px] ${labelBadgeClass(
+                                    fam.fd.data.family_signal_label,
+                                  )}`}
+                                >
+                                  {fam.fd.data.family_signal_label}
+                                </Badge>
+                                {fam.fd.data.is_provisional && (
+                                  <Badge variant="outline" className="text-[9px] border-amber-300 text-amber-800">
+                                    Provisoire
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-mono text-muted-foreground">
+                                  {fam.fd.data.family_score_pct >= 0 ? "+" : ""}
+                                  {fam.fd.data.family_score_pct.toFixed(1)}%
+                                </span>
+                                <span className="text-[10px] text-muted-foreground">
+                                  &rarr;
+                                </span>
+                              </div>
+                            </div>
+                          )
+                        }
+
+                        // Loading or error
+                        return (
+                          <div
+                            key={fam.id}
+                            className="flex items-center justify-between py-1.5 px-2 opacity-50"
+                          >
+                            <span className="text-xs font-medium w-12">
+                              {fam.label}
+                            </span>
+                            {fam.fd.isLoading ? (
+                              <Skeleton className="h-4 w-20" />
+                            ) : (
+                              <span className="text-[10px] text-muted-foreground">
+                                N/A
+                              </span>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
                   </CardContent>
                 </Card>
               )

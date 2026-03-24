@@ -2,22 +2,53 @@
 
 import { cn } from "@/lib/utils"
 
+// Investing.com-style zones: filled wedge segments
 const ZONES = [
-  { max: 20, color: "#ef4444", label: "Vente forte" },
-  { max: 40, color: "#f97316", label: "Vente" },
-  { max: 60, color: "#eab308", label: "Neutre" },
-  { max: 80, color: "#22c55e", label: "Achat" },
-  { max: 100, color: "#16a34a", label: "Achat fort" },
+  { label: "Vente forte", color: "#de5029" },
+  { label: "Vente", color: "#ee7e31" },
+  { label: "Neutre", color: "#b5b5b5" },
+  { label: "Achat", color: "#4caf50" },
+  { label: "Achat fort", color: "#2e7d32" },
 ]
 
-function getZone(pct: number) {
-  return ZONES.find((z) => pct <= z.max) ?? ZONES[ZONES.length - 1]
-}
+const GAP_DEG = 1.5 // degrees gap between segments
+const SEGMENT_SPAN = (180 - GAP_DEG * (ZONES.length - 1)) / ZONES.length // ~34.8° each
 
 const SIZE_MAP = {
-  sm: { width: 120, height: 70, stroke: 10, fontSize: 14, labelSize: 9 },
-  md: { width: 180, height: 105, stroke: 14, fontSize: 22, labelSize: 11 },
-  lg: { width: 260, height: 150, stroke: 18, fontSize: 32, labelSize: 13 },
+  sm: { width: 120, height: 72, innerR: 0.38, outerR: 0.92, needleR: 0.78, pivotR: 3, needleW: 1.5, labelSize: 8.5, edgeSize: 0 },
+  md: { width: 180, height: 108, innerR: 0.38, outerR: 0.92, needleR: 0.78, pivotR: 4, needleW: 2, labelSize: 11, edgeSize: 8 },
+  lg: { width: 260, height: 156, innerR: 0.38, outerR: 0.92, needleR: 0.78, pivotR: 5, needleW: 2.5, labelSize: 14, edgeSize: 9 },
+}
+
+function degToRad(deg: number) {
+  return (deg * Math.PI) / 180
+}
+
+/** Build an SVG arc-wedge path (annular sector) from angle a1 to a2 (degrees, 0=right, CCW). */
+function wedgePath(cx: number, cy: number, rInner: number, rOuter: number, a1Deg: number, a2Deg: number) {
+  const a1 = degToRad(a1Deg)
+  const a2 = degToRad(a2Deg)
+  const large = Math.abs(a2Deg - a1Deg) > 180 ? 1 : 0
+
+  // Outer arc: a1 → a2 (counterclockwise in SVG = sweep 0)
+  const ox1 = cx + rOuter * Math.cos(a1)
+  const oy1 = cy - rOuter * Math.sin(a1)
+  const ox2 = cx + rOuter * Math.cos(a2)
+  const oy2 = cy - rOuter * Math.sin(a2)
+
+  // Inner arc: a2 → a1 (reverse)
+  const ix1 = cx + rInner * Math.cos(a2)
+  const iy1 = cy - rInner * Math.sin(a2)
+  const ix2 = cx + rInner * Math.cos(a1)
+  const iy2 = cy - rInner * Math.sin(a1)
+
+  return [
+    `M ${ox1} ${oy1}`,
+    `A ${rOuter} ${rOuter} 0 ${large} 0 ${ox2} ${oy2}`,
+    `L ${ix1} ${iy1}`,
+    `A ${rInner} ${rInner} 0 ${large} 1 ${ix2} ${iy2}`,
+    "Z",
+  ].join(" ")
 }
 
 export function Speedometer({
@@ -33,103 +64,96 @@ export function Speedometer({
 }) {
   const s = SIZE_MAP[size]
   const cx = s.width / 2
-  const cy = s.height - 4
-  const r = cx - s.stroke / 2 - 2
+  const cy = s.height - 2
+  const baseR = Math.min(cx, cy) - 2
+  const rOuter = baseR * s.outerR
+  const rInner = baseR * s.innerR
+  const rNeedle = baseR * s.needleR
 
-  const pct = value != null ? Math.max(0, Math.min(100, value)) : 50
-  const zone = getZone(pct)
+  // Map [-100, +100] → [0, 1] for needle position (0=left/sell, 1=right/buy)
+  const norm = value != null ? Math.max(0, Math.min(1, (value + 100) / 200)) : 0.5
 
-  // Arc: 180 degrees from left to right (π to 0)
-  const startAngle = Math.PI
-  const endAngle = 0
+  // Needle angle: 180° (left) to 0° (right)
+  const needleAngleDeg = 180 - norm * 180
+  const needleAngle = degToRad(needleAngleDeg)
+  const nx = cx + rNeedle * Math.cos(needleAngle)
+  const ny = cy - rNeedle * Math.sin(needleAngle)
 
-  function arcPath(startPct: number, endPct: number) {
-    const a1 = startAngle - (startPct / 100) * Math.PI
-    const a2 = startAngle - (endPct / 100) * Math.PI
-    const x1 = cx + r * Math.cos(a1)
-    const y1 = cy - r * Math.sin(a1)
-    const x2 = cx + r * Math.cos(a2)
-    const y2 = cy - r * Math.sin(a2)
-    const large = endPct - startPct > 50 ? 1 : 0
-    return `M ${x1} ${y1} A ${r} ${r} 0 ${large} 0 ${x2} ${y2}`
-  }
-
-  // Needle angle
-  const needleAngle = startAngle - (pct / 100) * Math.PI
-  const needleLen = r - s.stroke / 2 - 4
-  const nx = cx + needleLen * Math.cos(needleAngle)
-  const ny = cy - needleLen * Math.sin(needleAngle)
+  // Determine active zone for label
+  const zoneIndex = value != null
+    ? Math.max(0, Math.min(4, Math.floor(norm * 5 - 0.0001)))
+    : 2
+  const activeZone = ZONES[zoneIndex === 5 ? 4 : zoneIndex]
 
   return (
     <div className={cn("flex flex-col items-center", className)}>
       <svg width={s.width} height={s.height} viewBox={`0 0 ${s.width} ${s.height}`}>
-        {/* Background arc zones */}
-        {ZONES.map((z, i) => {
-          const from = i === 0 ? 0 : ZONES[i - 1].max
+        {/* Filled wedge segments */}
+        {ZONES.map((zone, i) => {
+          // Angles: segment 0 starts at 180° (left), goes right
+          const startDeg = 180 - i * (SEGMENT_SPAN + GAP_DEG)
+          const endDeg = startDeg - SEGMENT_SPAN
           return (
             <path
-              key={z.max}
-              d={arcPath(from, z.max)}
-              fill="none"
-              stroke={z.color}
-              strokeWidth={s.stroke}
-              strokeLinecap="round"
-              opacity={0.25}
+              key={i}
+              d={wedgePath(cx, cy, rInner, rOuter, endDeg, startDeg)}
+              fill={zone.color}
             />
           )
         })}
 
-        {/* Active arc up to value */}
-        {value != null && (
-          <path
-            d={arcPath(0, pct)}
-            fill="none"
-            stroke={zone.color}
-            strokeWidth={s.stroke}
-            strokeLinecap="round"
-          />
-        )}
-
         {/* Needle */}
         {value != null && (
           <>
+            {/* Needle triangle for a sharper look */}
             <line
               x1={cx}
               y1={cy}
               x2={nx}
               y2={ny}
-              stroke="currentColor"
-              strokeWidth={2}
-              className="text-foreground"
+              stroke="#374151"
+              strokeWidth={s.needleW}
+              strokeLinecap="round"
             />
-            <circle cx={cx} cy={cy} r={3} fill="currentColor" className="text-foreground" />
+            <circle cx={cx} cy={cy} r={s.pivotR} fill="#374151" />
           </>
         )}
 
-        {/* Value text */}
+        {/* Zone label below needle */}
         <text
           x={cx}
-          y={cy - needleLen * 0.35}
-          textAnchor="middle"
-          fontSize={s.fontSize}
-          fontWeight="bold"
-          fill="currentColor"
-          className="text-foreground"
-        >
-          {value != null ? `${Math.round(pct)}%` : "N/A"}
-        </text>
-
-        {/* Zone label */}
-        <text
-          x={cx}
-          y={cy - needleLen * 0.35 + s.fontSize + 2}
+          y={cy - rInner * 0.55}
           textAnchor="middle"
           fontSize={s.labelSize}
-          fill={zone.color}
-          fontWeight="600"
+          fontWeight="700"
+          fill={activeZone.color}
         >
-          {value != null ? zone.label : ""}
+          {value != null ? activeZone.label : ""}
         </text>
+
+        {/* Edge labels (md/lg only) */}
+        {s.edgeSize > 0 && (
+          <>
+            <text
+              x={cx - rOuter + 4}
+              y={cy + s.edgeSize + 4}
+              textAnchor="start"
+              fontSize={s.edgeSize}
+              fill="#9ca3af"
+            >
+              Vente forte
+            </text>
+            <text
+              x={cx + rOuter - 4}
+              y={cy + s.edgeSize + 4}
+              textAnchor="end"
+              fontSize={s.edgeSize}
+              fill="#9ca3af"
+            >
+              Achat fort
+            </text>
+          </>
+        )}
       </svg>
       {label && (
         <span className="text-xs text-muted-foreground mt-1 text-center">{label}</span>

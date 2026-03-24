@@ -1,35 +1,66 @@
 "use client"
 
-import { useState } from "react"
-import { useMarketCatalog } from "@/hooks/use-api"
+import { useState, useMemo } from "react"
+import { useMarketCatalog, useBatchScores } from "@/hooks/use-api"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import { Search } from "lucide-react"
+import type { BatchScore } from "@/lib/api"
+
+function signalLabel(score: number): { label: string; cls: string } {
+  if (score > 50) return { label: "ACHAT FORT", cls: "bg-emerald-100 text-emerald-700" }
+  if (score > 15) return { label: "ACHAT", cls: "bg-green-100 text-green-700" }
+  if (score >= -15) return { label: "NEUTRE", cls: "bg-gray-100 text-gray-600" }
+  if (score >= -50) return { label: "VENTE", cls: "bg-orange-100 text-orange-700" }
+  return { label: "VENTE FORTE", cls: "bg-red-100 text-red-700" }
+}
 
 export function StockSidebar({
   selectedSymbol,
   onSelect,
+  horizon,
+  cooldownBars,
   className,
 }: {
   selectedSymbol: string | null
   onSelect: (symbol: string) => void
+  horizon: string
+  cooldownBars?: number
   className?: string
 }) {
   const { data: catalog, isLoading } = useMarketCatalog()
   const [search, setSearch] = useState("")
 
-  const filtered = (catalog ?? [])
-    .filter((r) => r.has_canonical_data)
-    .filter((r) => {
-      if (!search) return true
-      const q = search.toLowerCase()
-      return (
-        r.symbol.toLowerCase().includes(q) ||
-        (r.display_name?.toLowerCase().includes(q) ?? false)
-      )
-    })
+  const canonicalStocks = useMemo(
+    () => (catalog ?? []).filter((r) => r.has_canonical_data),
+    [catalog],
+  )
+
+  const symbolList = useMemo(
+    () => canonicalStocks.map((r) => r.symbol),
+    [canonicalStocks],
+  )
+
+  const { data: batchScores, isLoading: scoresLoading } = useBatchScores(symbolList, horizon, cooldownBars)
+
+  const scoreMap = useMemo(() => {
+    const map: Record<string, BatchScore> = {}
+    if (batchScores) {
+      for (const s of batchScores) map[s.symbol] = s
+    }
+    return map
+  }, [batchScores])
+
+  const filtered = canonicalStocks.filter((r) => {
+    if (!search) return true
+    const q = search.toLowerCase()
+    return (
+      r.symbol.toLowerCase().includes(q) ||
+      (r.display_name?.toLowerCase().includes(q) ?? false)
+    )
+  })
 
   return (
     <div className={cn("flex flex-col border-r bg-card", className)}>
@@ -45,7 +76,7 @@ export function StockSidebar({
         </div>
       </div>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         {isLoading ? (
           <div className="p-3 space-y-2">
             {[...Array(12)].map((_, i) => (
@@ -63,18 +94,40 @@ export function StockSidebar({
                 key={row.symbol}
                 onClick={() => onSelect(row.symbol)}
                 className={cn(
-                  "w-full flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors",
+                  "w-full flex flex-col gap-0.5 rounded-md px-3 py-2 text-left transition-colors",
                   "hover:bg-accent hover:text-accent-foreground",
                   selectedSymbol === row.symbol &&
-                    "bg-accent text-accent-foreground font-semibold"
+                    "bg-accent text-accent-foreground"
                 )}
               >
-                <span className="font-mono text-xs font-bold min-w-[60px]">
-                  {row.symbol}
-                </span>
-                <span className="text-xs text-muted-foreground truncate">
-                  {row.display_name ?? ""}
-                </span>
+                {/* Line 1: symbol + signal badge */}
+                <div className="flex items-center justify-between w-full">
+                  <span className={cn(
+                    "font-mono text-xs font-bold",
+                    selectedSymbol === row.symbol && "text-foreground"
+                  )}>
+                    {row.symbol}
+                  </span>
+                  {scoreMap[row.symbol]?.aggregate_score_pct != null ? (() => {
+                    const info = signalLabel(scoreMap[row.symbol].aggregate_score_pct!)
+                    return (
+                      <span className={cn(
+                        "text-[9px] font-semibold px-1.5 py-0.5 rounded whitespace-nowrap",
+                        info.cls,
+                      )}>
+                        {info.label}
+                      </span>
+                    )
+                  })() : scoresLoading ? (
+                    <span className="text-[9px] text-muted-foreground animate-pulse">{"\u2022\u2022\u2022"}</span>
+                  ) : null}
+                </div>
+                {/* Line 2: display name */}
+                {row.display_name && (
+                  <span className="text-[10px] text-muted-foreground truncate w-full">
+                    {row.display_name}
+                  </span>
+                )}
               </button>
             ))}
           </div>
