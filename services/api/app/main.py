@@ -1,4 +1,6 @@
 from __future__ import annotations
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -6,8 +8,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from . import auth
 from .routers import datasets, results, runs, market_data, data, leaderboard, trials, snapshot, defaults, strategy_signals
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    from .scheduler import start_scheduler, stop_scheduler
+    start_scheduler()
+    yield
+    stop_scheduler()
+
+
 def create_app() -> FastAPI:
-    app = FastAPI(title="Quant API", version="0.1.0")
+    app = FastAPI(title="Quant API", version="0.1.0", lifespan=lifespan)
 
     app.add_middleware(
         CORSMiddleware,
