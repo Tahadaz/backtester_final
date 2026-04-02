@@ -1,12 +1,15 @@
 """Canonical MASI (Moroccan All Shares Index) ticker registry.
 
-Source: Bourse de Casablanca / stockanalysis.com / african-markets.com (cross-referenced).
-Last updated: 2026-03-19.
+Sector labels are progressively aligned to Bourse de Casablanca wording.
+Where we do not have a confident official match yet, we keep the prior label
+as a conservative fallback instead of inventing a category.
+
+Last updated: 2026-03-26.
 """
 
 from __future__ import annotations
 
-MASI_TICKERS: dict[str, dict[str, str]] = {
+_RAW_MASI_TICKERS: dict[str, dict[str, str]] = {
     "ADH": {"display_name": "Douja Promotion Groupe Addoha", "sector": "Immobilier"},
     "ADI": {"display_name": "Alliances", "sector": "Immobilier"},
     "AFI": {"display_name": "Afric Industries", "sector": "Distribution"},
@@ -90,6 +93,68 @@ MASI_TICKERS: dict[str, dict[str, str]] = {
     "VCN": {"display_name": "Vicenne", "sector": "Autre"},
     "WAA": {"display_name": "Wafa Assurance", "sector": "Assurances"},
     "ZDJ": {"display_name": "Zellidja", "sector": "Mines"},
+}
+
+_OFFICIAL_SECTOR_ALIASES: dict[str, str] = {
+    "Immobilier": "Immobilier",
+    "Distribution": "Distribution",
+    "Agroalimentaire": "Agroalimentaire",
+    "BTP": "BTP",
+    "Transport": "Transport",
+}
+
+_OFFICIAL_SECTOR_OVERRIDES: dict[str, str] = {
+    "AFI": "BTP",
+    "AKT": "Santé",
+    "ALM": "BTP",
+    "CAP": "Sociétés de financement",
+    "CMG": "Industrie",
+    "DIS": "Sociétés de financement",
+    "DLM": "Industrie",
+    "DWY": "Informatique",
+    "DYT": "Informatique",
+    "EQD": "Sociétés de financement",
+    "GAZ": "Énergie",
+    "HPS": "Informatique",
+    "IBC": "Informatique",
+    "INV": "Informatique",
+    "LYD": "Services publics",
+    "M2M": "Informatique",
+    "MAB": "Sociétés de financement",
+    "MIC": "Informatique",
+    "MLE": "Sociétés de financement",
+    "MOX": "Chimie",
+    "MSA": "Transport",
+    "NEX": "Industrie",
+    "PRO": "Santé",
+    "REB": "Mines",
+    "RIS": "Loisirs & Hôtels",
+    "SBM": "Boissons",
+    "SID": "BTP",
+    "SLF": "Sociétés de financement",
+    "SNA": "Distribution",
+    "SNP": "Chimie",
+    "SOT": "Santé",
+    "STR": "Industrie",
+    "TMA": "Énergie",
+    "TQM": "Électricité",
+    "VCN": "Santé",
+}
+
+
+def _official_sector(symbol: str, legacy_sector: str) -> str:
+    return _OFFICIAL_SECTOR_OVERRIDES.get(
+        symbol,
+        _OFFICIAL_SECTOR_ALIASES.get(legacy_sector, legacy_sector),
+    )
+
+
+MASI_TICKERS: dict[str, dict[str, str]] = {
+    symbol: {
+        "display_name": info["display_name"],
+        "sector": _official_sector(symbol, info["sector"]),
+    }
+    for symbol, info in _RAW_MASI_TICKERS.items()
 }
 
 

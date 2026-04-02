@@ -62,10 +62,11 @@ export function MethodologyModal({
           </section>
 
           <section>
-            <h4 className="font-semibold mb-1">5. Score agrégé global</h4>
+            <h4 className="font-semibold mb-1">5. Consensus des signaux</h4>
             <p className="text-muted-foreground">
-              Le speedomètre principal combine les scores de toutes les familles
-              actives. Actuellement, seule la famille SMA est opérationnelle.
+              Le speedomètre principal affiche le consensus des signaux en combinant
+              les scores de toutes les familles actives. Actuellement, seule la
+              famille SMA est opérationnelle.
             </p>
           </section>
 

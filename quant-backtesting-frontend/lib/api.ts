@@ -1814,6 +1814,7 @@ export const FamilyCombinedSignalSchema = z.object({
   warning_message: z.string().default(""),
   is_provisional: z.boolean().default(false),
   as_of: z.string(),
+  latest_close: z.number().nullable().optional(),
   best_variant_id: z.string().default(""),
 })
 export type FamilyCombinedSignal = z.infer<typeof FamilyCombinedSignalSchema>
@@ -1874,6 +1875,8 @@ export const VariantRobustnessSchema = z.object({
   stability_score: z.number(),
   consistency_score: z.number(),
   drawdown_score: z.number(),
+  total_pnl_100k: z.number().default(0),
+  total_pnl_realise_1u: z.number().default(0),
 })
 export type VariantRobustness = z.infer<typeof VariantRobustnessSchema>
 
@@ -1910,6 +1913,8 @@ export const VariantSummarySchema = z.object({
   fraction_positive_windows: z.number().default(0),
   cagr: z.number().default(0),
   total_pnl: z.number().default(0),
+  total_pnl_100k: z.number().default(0),
+  total_pnl_realise_1u: z.number().default(0),
   signal_value: z.number().default(0),
   signal_label: z.string().optional(),
   correlated_with: z.string().nullable().optional(),
@@ -2047,4 +2052,581 @@ export async function fetchBatchScores(body: {
     }),
   })
   return z.array(BatchScoreSchema).parse(raw)
+}
+
+// ── Signal Engine — Regime Consensus (Layer H) ──────────────────────────────
+
+export const RegimeWindowResultSchema = z.object({
+  train_start: z.number(),
+  train_end: z.number(),
+  test_start: z.number(),
+  test_end: z.number(),
+  train_start_date: z.string().optional(),
+  train_end_date: z.string().optional(),
+  test_start_date: z.string().optional(),
+  test_end_date: z.string().optional(),
+  er_low: z.number(),
+  er_high: z.number(),
+  regime_sharpe: z.number(),
+  equal_sharpe: z.number(),
+  delta: z.number(),
+  trending_weights: z.record(z.number()),
+  ranging_weights: z.record(z.number()),
+})
+export type RegimeWindowResult = z.infer<typeof RegimeWindowResultSchema>
+
+export const RegimeTopVariantSchema = z.object({
+  variant_id: z.string(),
+  archetype: z.string(),
+  params: z.record(z.unknown()),
+  reliability_score: z.number(),
+  label: z.string(),
+})
+export type RegimeTopVariant = z.infer<typeof RegimeTopVariantSchema>
+
+export const RegimeConsensusSchema = z.object({
+  symbol: z.string(),
+  final_consensus: z.number().nullable(),
+  family_weights: z.record(z.number()),
+  per_family: z.record(
+    z.object({ score_pct: z.number(), weight: z.number() })
+  ),
+  regime_active: z.boolean(),
+  regime_label: z.string(),
+  er_value: z.number().nullable(),
+  improvement: z.number(),
+  tercile_bounds: z.array(z.number()),
+  equal_consensus: z.number().nullable(),
+  n_families: z.number(),
+  window_results: z.array(RegimeWindowResultSchema),
+  n_folds: z.number(),
+  folds_regime_wins: z.number(),
+  top_variants: z.record(RegimeTopVariantSchema),
+})
+export type RegimeConsensus = z.infer<typeof RegimeConsensusSchema>
+
+export async function fetchRegimeConsensus(body: {
+  symbol: string
+  horizon: string
+  timeframe?: string
+  cost_bps?: number
+  cooldown_bars?: number
+}): Promise<RegimeConsensus> {
+  const raw = await request<unknown>("/strategy/signal/regime-consensus", {
+    method: "POST",
+    body: JSON.stringify({
+      symbol: body.symbol,
+      horizon: body.horizon,
+      timeframe: body.timeframe ?? "1D",
+      cost_bps: body.cost_bps ?? 10,
+      cooldown_bars: body.cooldown_bars ?? 0,
+    }),
+  })
+  return RegimeConsensusSchema.parse(raw)
+}
+
+// ── Strategy Plan — Universe ──────────────────────────────────────────────────
+
+export const UniverseStockSchema = z.object({
+  symbol: z.string(),
+  display_name: z.string().nullable().optional(),
+  sector: z.string().nullable().optional(),
+  market_cap_class: z.string().nullable().optional(),
+  row_count: z.number().nullable().optional(),
+  data_as_of: z.string().nullable().optional(),
+  adv20: z.number().nullable().optional(),
+  signal_score: z.number().nullable(),
+  signal_label: z.string().nullable().optional(),
+  per_family: z.record(z.unknown()).nullable().optional(),
+  eligible: z.boolean(),
+  exclusion_reason: z.string().nullable().optional(),
+})
+export type UniverseStock = z.infer<typeof UniverseStockSchema>
+
+export async function fetchUniverse(body: {
+  horizon: string
+  timeframe?: string
+  cost_bps?: number
+  cooldown_bars?: number
+  min_bars?: number
+  min_abs_signal?: number
+  min_adv20?: number
+  sector_filter?: string[]
+  sort_by?: "adv20" | "signal_score"
+  sort_dir?: "asc" | "desc"
+}): Promise<UniverseStock[]> {
+  const payload: Record<string, unknown> = {
+    horizon: body.horizon,
+  }
+  if (body.timeframe != null) payload.timeframe = body.timeframe
+  if (body.cost_bps != null) payload.cost_bps = body.cost_bps
+  if (body.cooldown_bars != null) payload.cooldown_bars = body.cooldown_bars
+  if (body.min_bars != null) payload.min_bars = body.min_bars
+  if (body.min_abs_signal != null) payload.min_abs_signal = body.min_abs_signal
+  if (body.min_adv20 != null) payload.min_adv20 = body.min_adv20
+  if (body.sector_filter != null) payload.sector_filter = body.sector_filter
+  if (body.sort_by != null) payload.sort_by = body.sort_by
+  if (body.sort_dir != null) payload.sort_dir = body.sort_dir
+
+  const raw = await request<unknown[]>("/strategy/plan/universe", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+  return z.array(UniverseStockSchema).parse(raw)
+}
+
+export const StrategyAllocationRowSchema = z.object({
+  symbol: z.string(),
+  source: z.string().default("hrp"),
+  hrp_weight_pct: z.number().default(0),
+  weight_pct: z.number().default(0),
+  capital_mad: z.number().default(0),
+})
+export type StrategyAllocationRow = z.infer<typeof StrategyAllocationRowSchema>
+
+export const StrategyAllocationSchema = z.object({
+  rows: z.array(StrategyAllocationRowSchema).default([]),
+  total_capital_mad: z.number().default(0),
+  allocated_capital_mad: z.number().default(0),
+  remaining_capital_mad: z.number().default(0),
+  explain: z.string().default(""),
+})
+export type StrategyAllocation = z.infer<typeof StrategyAllocationSchema>
+
+export async function fetchStrategyAllocation(body: {
+  symbols: string[]
+  total_capital_mad: number
+  method?: "hrp"
+  timeframe?: string
+  lookback_bars?: number
+  manual_overrides_by_symbol?: Record<string, number>
+}): Promise<StrategyAllocation> {
+  const raw = await request<unknown>("/strategy/plan/allocation", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+  return StrategyAllocationSchema.parse(raw)
+}
+
+// ── Strategy Plan — Levels (S/R + ATR + Pivot) ───────────────────────────────
+
+export const SRLevelSchema = z.object({
+  price: z.number(),
+  bar_index: z.number(),
+  date: z.string().nullable().optional(),
+  strength: z.number().default(0),
+})
+export type SRLevel = z.infer<typeof SRLevelSchema>
+
+export const PivotPointsSchema = z.object({
+  pp: z.number(),
+  s1: z.number(),
+  s2: z.number(),
+  r1: z.number(),
+  r2: z.number(),
+})
+export type PivotPoints = z.infer<typeof PivotPointsSchema>
+
+export const LevelsResultSchema = z.object({
+  symbol: z.string(),
+  current_close: z.number(),
+  atr_14: z.number().nullable().optional(),
+  atr_pct: z.number().nullable().optional(),
+  supports: z.array(SRLevelSchema).default([]),
+  resistances: z.array(SRLevelSchema).default([]),
+  nearest_support: z.number().nullable().optional(),
+  nearest_resistance: z.number().nullable().optional(),
+  pivot: PivotPointsSchema.nullable().optional(),
+  explain: z.string().default(""),
+})
+export type LevelsResult = z.infer<typeof LevelsResultSchema>
+
+export async function fetchLevels(body: {
+  symbol: string
+  horizon?: string
+  timeframe?: string
+  execution_holding_bars?: number
+  left_bars?: number
+  right_bars?: number
+  lookback?: number
+  max_levels?: number
+}): Promise<LevelsResult> {
+  const payload: Record<string, unknown> = {
+    symbol: body.symbol,
+  }
+  if (body.horizon != null) payload.horizon = body.horizon
+  if (body.timeframe != null) payload.timeframe = body.timeframe
+  if (body.execution_holding_bars != null) payload.execution_holding_bars = body.execution_holding_bars
+  if (body.left_bars != null) payload.left_bars = body.left_bars
+  if (body.right_bars != null) payload.right_bars = body.right_bars
+  if (body.lookback != null) payload.lookback = body.lookback
+  if (body.max_levels != null) payload.max_levels = body.max_levels
+
+  const raw = await request<unknown>("/strategy/plan/levels", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+  return LevelsResultSchema.parse(raw)
+}
+
+
+// ---------------------------------------------------------------------------
+// Saved Strategy CRUD
+// ---------------------------------------------------------------------------
+
+export const SavedStrategyListItemSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  status: z.string(),
+  side_policy: z.string(),
+  horizon: z.string(),
+  basket_count: z.number().default(0),
+  updated_at: z.string(),
+})
+export type SavedStrategyListItem = z.infer<typeof SavedStrategyListItemSchema>
+
+export const SavedStrategySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  note: z.string().nullable().optional(),
+  status: z.string(),
+  side_policy: z.string(),
+  horizon: z.string(),
+  config_json: z.record(z.unknown()).default({}),
+  created_at: z.string(),
+  updated_at: z.string(),
+})
+export type SavedStrategy = z.infer<typeof SavedStrategySchema>
+
+export async function fetchStrategies(status?: string): Promise<SavedStrategyListItem[]> {
+  const qs = status ? `?status=${status}` : ""
+  const raw = await request<unknown>(`/strategy/plan/strategies${qs}`)
+  return z.array(SavedStrategyListItemSchema).parse(raw)
+}
+
+export async function fetchStrategy(id: string): Promise<SavedStrategy> {
+  const raw = await request<unknown>(`/strategy/plan/strategies/${id}`)
+  return SavedStrategySchema.parse(raw)
+}
+
+export const StrategyBacktestMetricRowSchema = z.object({
+  metric: z.string(),
+  value: z.unknown(),
+})
+export type StrategyBacktestMetricRow = z.infer<typeof StrategyBacktestMetricRowSchema>
+
+export const StrategyBacktestCalibrationBucketRowSchema = z.object({
+  score_low: z.number(),
+  score_high: z.number(),
+  n_observations: z.number(),
+  avg_r_multiple: z.number(),
+  avg_net_return: z.number(),
+  win_rate: z.number(),
+  target_exposure_pct: z.number(),
+})
+export type StrategyBacktestCalibrationBucketRow = z.infer<typeof StrategyBacktestCalibrationBucketRowSchema>
+
+export const StrategyBacktestCalibrationSchema = z.object({
+  status: z.string().default("fallback"),
+  lookback_bars: z.number().default(0),
+  window_start: z.string().nullable().optional(),
+  window_end: z.string().nullable().optional(),
+  n_observations: z.number().default(0),
+  primary_metric: z.string().default("avg_r_multiple"),
+  bucket_rows: z.array(StrategyBacktestCalibrationBucketRowSchema).default([]),
+  ladder: z.array(z.record(z.unknown())).default([]),
+  plot: z.record(z.unknown()).default({}),
+  reason: z.string().nullable().optional(),
+})
+export type StrategyBacktestCalibration = z.infer<typeof StrategyBacktestCalibrationSchema>
+
+export const StrategyBacktestGeneralResultsSchema = z.object({
+  metrics: z.record(z.unknown()).default({}),
+  trade_performance: z.array(StrategyBacktestMetricRowSchema).default([]),
+  calibration: StrategyBacktestCalibrationSchema.default({
+    status: "fallback",
+    lookback_bars: 0,
+    n_observations: 0,
+    primary_metric: "avg_r_multiple",
+    bucket_rows: [],
+    ladder: [],
+    plot: {},
+  }),
+  plots: z.record(z.unknown()).default({}),
+})
+export type StrategyBacktestGeneralResults = z.infer<typeof StrategyBacktestGeneralResultsSchema>
+
+export const StrategyBacktestStockSchema = z.object({
+  symbol: z.string(),
+  allocation: z.record(z.unknown()).default({}),
+  summary_metrics: z.record(z.unknown()).default({}),
+  price_chart: z.record(z.unknown()).default({}),
+  trade_ledger: z.array(z.record(z.unknown())).default([]),
+  trade_performance: z.array(StrategyBacktestMetricRowSchema).default([]),
+})
+export type StrategyBacktestStock = z.infer<typeof StrategyBacktestStockSchema>
+
+export const StrategyBacktestResponseSchema = z.object({
+  strategy: z.record(z.unknown()).default({}),
+  assumptions: z.record(z.unknown()).default({}),
+  general_results: StrategyBacktestGeneralResultsSchema.default({
+    metrics: {},
+    trade_performance: [],
+    plots: {},
+  }),
+  stocks: z.array(StrategyBacktestStockSchema).default([]),
+})
+export type StrategyBacktestResponse = z.infer<typeof StrategyBacktestResponseSchema>
+
+export async function fetchStrategyBacktest(body: {
+  strategy_id: string
+  start_date: string
+  end_date: string
+  timeframe?: string
+  cost_model: {
+    brokerage_bps: number
+    comm_bourse_bps: number
+    reg_liv_bps: number
+    slippage_bps: number
+    tva_rate: number
+  }
+  volume_gate: {
+    enabled: boolean
+    kind: "min_abs" | "min_ratio_adv"
+    min_volume_abs: number
+    min_volume_ratio_adv: number
+    adv_window: number
+  }
+  cooldown_bars: number
+}): Promise<StrategyBacktestResponse> {
+  const raw = await request<unknown>("/strategy/plan/backtest", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+  return StrategyBacktestResponseSchema.parse(raw)
+}
+
+export async function createStrategy(body: {
+  name: string
+  note?: string
+  side_policy?: string
+  horizon?: string
+}): Promise<SavedStrategy> {
+  const raw = await request<unknown>("/strategy/plan/strategies", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+  return SavedStrategySchema.parse(raw)
+}
+
+export async function updateStrategy(
+  id: string,
+  body: {
+    name?: string
+    note?: string
+    side_policy?: string
+    horizon?: string
+    config_json?: Record<string, unknown>
+    status?: string
+  },
+): Promise<SavedStrategy> {
+  const raw = await request<unknown>(`/strategy/plan/strategies/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  })
+  return SavedStrategySchema.parse(raw)
+}
+
+export async function duplicateStrategy(id: string): Promise<SavedStrategy> {
+  const raw = await request<unknown>(`/strategy/plan/strategies/${id}/duplicate`, {
+    method: "POST",
+  })
+  return SavedStrategySchema.parse(raw)
+}
+
+export async function archiveStrategy(id: string): Promise<SavedStrategy> {
+  const raw = await request<unknown>(`/strategy/plan/strategies/${id}/archive`, {
+    method: "PATCH",
+  })
+  return SavedStrategySchema.parse(raw)
+}
+
+// ---------------------------------------------------------------------------
+// Signal Consensus
+// ---------------------------------------------------------------------------
+
+const FamilyScoreOutSchema = z.object({
+  score_pct: z.number(),
+  label: z.string(),
+  weight: z.number(),
+})
+
+export const SignalConsensusSchema = z.object({
+  symbol: z.string(),
+  final_consensus: z.number().nullable(),
+  final_consensus_label: z.string().nullable().optional(),
+  enabled_families: z.array(z.string()).default([]),
+  family_weights: z.record(z.number()).default({}),
+  per_family: z.record(FamilyScoreOutSchema).default({}),
+  explain: z.string().default(""),
+})
+export type SignalConsensus = z.infer<typeof SignalConsensusSchema>
+
+export async function fetchSignalConsensus(body: {
+  symbol: string
+  horizon: string
+  enabled_families: string[]
+  timeframe?: string
+  cost_bps?: number
+  cooldown_bars?: number
+}): Promise<SignalConsensus> {
+  const raw = await request<unknown>("/strategy/plan/signal-consensus", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+  return SignalConsensusSchema.parse(raw)
+}
+
+// ---------------------------------------------------------------------------
+// Signal Zone Chart
+// ---------------------------------------------------------------------------
+
+const ZoneRepSchema = z.object({
+  variant_id: z.string(),
+  weight: z.number(),
+  label: z.string(),
+  indicator: z.record(z.string(), z.any()).nullable().optional(),
+})
+
+const FamilyZoneSchema = z.object({
+  scores: z.array(z.number()),
+  representatives: z.array(ZoneRepSchema),
+  indicator: z.record(z.any()).nullable().optional(),
+})
+
+export const SignalZoneChartSchema = z.object({
+  symbol: z.string(),
+  horizon: z.string(),
+  bars: z.array(OhlcvBarSchema),
+  families: z.record(FamilyZoneSchema),
+})
+export type SignalZoneChart = z.infer<typeof SignalZoneChartSchema>
+
+export async function fetchSignalZoneChart(body: {
+  symbol: string
+  horizon: string
+  enabled_families: string[]
+  timeframe?: string
+  cost_bps?: number
+  cooldown_bars?: number
+}): Promise<SignalZoneChart> {
+  const raw = await request<unknown>("/strategy/signal/zone-chart", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+  return SignalZoneChartSchema.parse(raw)
+}
+
+// ---------------------------------------------------------------------------
+// Execution Plan
+// ---------------------------------------------------------------------------
+
+export const ExecutionPlanSchema = z.object({
+  symbol: z.string(),
+  direction: z.string().nullable().optional(),
+  status: z.string().default("no_setup"),
+  entry_price: z.number().nullable().optional(),
+  entry_zone_low: z.number().nullable().optional(),
+  entry_zone_high: z.number().nullable().optional(),
+  stop_loss: z.number().nullable().optional(),
+  target_1: z.number().nullable().optional(),
+  target_2: z.number().nullable().optional(),
+  rr_ratio: z.number().nullable().optional(),
+  atr_14: z.number().nullable().optional(),
+  adjusted_consensus: z.number().nullable().optional(),
+  explain: z.string().default(""),
+})
+export type ExecutionPlan = z.infer<typeof ExecutionPlanSchema>
+
+export async function fetchExecution(body: {
+  symbol: string
+  horizon: string
+  enabled_families: string[]
+  execution_holding_bars?: number
+  side_policy: string
+  entry_threshold?: number
+  atr_multiplier?: number
+  buffer_pct?: number
+  min_rr?: number
+  cost_bps?: number
+  cooldown_bars?: number
+  consensus_override?: number | null
+}): Promise<ExecutionPlan> {
+  const raw = await request<unknown>("/strategy/plan/execution", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+  return ExecutionPlanSchema.parse(raw)
+}
+
+// ---------------------------------------------------------------------------
+// Sizing
+// ---------------------------------------------------------------------------
+
+const StockSizingRowSchema = z.object({
+  symbol: z.string(),
+  weight_pct: z.number().default(0),
+  shares: z.number().default(0),
+  position_value: z.number().default(0),
+  trade_risk: z.number().default(0),
+  status: z.string().default("no_setup"),
+})
+
+const FocusedKellyOutSchema = z.object({
+  full_kelly_pct: z.number().default(0),
+  modified_kelly_pct: z.number().default(0),
+  position_size_shares: z.number().default(0),
+  position_value: z.number().default(0),
+  trade_risk: z.number().default(0),
+  pct_of_account_risked: z.number().default(0),
+})
+
+export const SizingResultSchema = z.object({
+  focused_kelly: FocusedKellyOutSchema.nullable().optional(),
+  portfolio_table: z.array(StockSizingRowSchema).default([]),
+  total_exposure_pct: z.number().default(0),
+  total_risk_pct: z.number().default(0),
+  capital_deployed: z.number().default(0),
+  explain: z.string().default(""),
+})
+export type SizingResult = z.infer<typeof SizingResultSchema>
+export type StockSizingRow = z.infer<typeof StockSizingRowSchema>
+export type FocusedKelly = z.infer<typeof FocusedKellyOutSchema>
+
+export interface StockSizingInput {
+  symbol: string
+  entry_price: number
+  stop_price: number
+  atr_pct?: number
+  consensus?: number
+  sector?: string
+  status?: string
+}
+
+export async function fetchSizing(body: {
+  stocks: StockSizingInput[]
+  account_equity: number
+  kelly_modifier: number
+  allocation_method: string
+  max_position_pct: number
+  max_sector_pct: number
+  win_rate: number
+  avg_wl_ratio: number
+  focused_symbol?: string | null
+}): Promise<SizingResult> {
+  const raw = await request<unknown>("/strategy/plan/sizing", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+  return SizingResultSchema.parse(raw)
 }

@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 
 from . import auth
-from .routers import datasets, results, runs, market_data, data, leaderboard, trials, snapshot, defaults, strategy_signals
+from .routers import datasets, results, runs, market_data, data, leaderboard, trials, snapshot, defaults, strategy_signals, strategy
 
 
 @asynccontextmanager
@@ -39,6 +39,7 @@ def create_app() -> FastAPI:
     app.include_router(trials.router)
     app.include_router(snapshot.router)
     app.include_router(strategy_signals.router)
+    app.include_router(strategy.router)
 
 
     @app.get("/health")

@@ -124,13 +124,30 @@ Conservative estimate for Moroccan equities:
 
 ### 7. Indicator Selection
 
-**Choice**: 4 families (SMA, RSI, MACD, OBV), each with one archetype.
+**Choice**: Decompose trend following into 4 orthogonal dimensions, each captured by a classical indicator family.
+
+| Pillar | Family | What It Detects | Visual Encoding |
+|--------|--------|----------------|-----------------|
+| **Direction** | SMA | Is price trending up or down? | SMA curves on price chart |
+| **Acceleration** | MACD | Is the trend strengthening or weakening? | Arrows at crossover points |
+| **Exhaustion** | RSI | Has price stretched too far? | Overbought/oversold bands (0-100 axis) |
+| **Confirmation** | OBV | Does volume confirm the move? | Colored volume bars |
+
+**Why these four?**
+Each captures a dimension the others cannot:
+- SMA sees direction but not speed â€” MACD fills this gap
+- SMA and MACD are trend-following â€” RSI provides mean-reversion counterbalance
+- All three are price-based â€” OBV adds volume as an independent information source
+
+This decomposition follows Elder's "Triple Screen" principle (Elder 1993): use indicators from different categories to avoid redundant confirmation.
+
+> *"The first rule of using indicators is that you should never use two indicators from the same group. Combining two trend-following indicators... or two oscillators is redundant â€” they just confirm each other's blind spots."* â€” Alexander Elder (1993), *Trading for a Living*
 
 | Family | Category | Justification |
 |--------|----------|---------------|
 | SMA | Trend | The simplest and most robust trend indicator. Price > MA indicates uptrend. Used by practitioners for decades (Murphy 1999). |
+| MACD | Momentum | Captures trend acceleration via short/long EMA difference. More responsive than SMA to momentum changes (Appel 2005). |
 | RSI | Oscillator | Measures relative strength of recent gains vs losses. Captures mean-reversion at extremes (Wilder 1978). |
-| MACD | Trend | Captures trend acceleration via short/long EMA difference. More responsive than SMA to momentum changes (Appel 2005). |
 | OBV | Volume | Accumulates volume directionally. Provides independent (non-price) confirmation of trends (Granville 1963). |
 
 **Why not more families?**

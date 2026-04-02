@@ -20,6 +20,8 @@
 | 08 | [variant-detail.md](./08-variant-detail.md) | Trade register, execution model, cost-adjusted carry price, per-window plots, performance metrics |
 | 09 | [api-and-frontend.md](./09-api-and-frontend.md) | API endpoints, Pydantic schemas, frontend 3-level drill-down, caching, batch scores |
 | 10 | [methodology-and-sources.md](./10-methodology-and-sources.md) | Academic justification for every design choice, full bibliography, honest limitations |
+| 11 | [regime-aware-conditioning.md](./11-regime-aware-conditioning.md) | Regime-aware signal conditioning: market-state detection, family reweighting, WFO methodology (designed, not yet implemented) |
+| 12 | [indicator-explorer.md](./12-indicator-explorer.md) | Indicateurs tab — interactive chart-based indicator explorer with continuous scores and live signal labels |
 
 ---
 

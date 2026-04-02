@@ -47,6 +47,65 @@ function formatNumber(n: number): string {
   return n.toFixed(2)
 }
 
+function formatTradePrice(n: number): string {
+  return n.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 6,
+  })
+}
+
+function formatHoldPeriodDays(n: number): string {
+  return `${Number.isInteger(n) ? n : n.toFixed(1)} j`
+}
+
+function formatPercent(n: number): string {
+  return `${(n * 100).toFixed(2)}%`
+}
+
+function formatBacktestMetricLabel(metric: string): string {
+  if (metric === "total_pnl") return "PnL simule (100k)"
+  if (metric === "total_pnl_100k") return "PnL simule (100k)"
+  if (metric === "total_pnl_realise_1u") return "PnL realise total (1 unite)"
+  if (metric === "mean_hold_period_between_trades_days") return "Mean Hold Period (jours)"
+  return metric.replace(/_/g, " ")
+}
+
+function formatTradeMetricLabel(metric: string): string {
+  if (metric === "total_pnl_realise") return "PnL realise (registre, 1 unite)"
+  return metric.replace(/_/g, " ")
+}
+
+function normalizeMetricKey(metric: string): string {
+  return metric.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")
+}
+
+function shouldHideTradePerformanceMetric(metric: string): boolean {
+  const key = normalizeMetricKey(metric)
+  return key === "n_oos_windows" || key === "total_pnl" || key === "total_pnl_100k"
+}
+
+function meanHoldPeriodBetweenTradesDays(trades: Record<string, unknown>[]): number | null {
+  const timestamps = trades
+    .map((trade) => {
+      const rawDate = trade.date
+      if (typeof rawDate !== "string" || !rawDate) return null
+      const timestamp = new Date(rawDate).getTime()
+      return Number.isFinite(timestamp) ? timestamp : null
+    })
+    .filter((timestamp): timestamp is number => timestamp != null)
+    .sort((a, b) => a - b)
+
+  if (timestamps.length < 2) return null
+
+  const dayDiffs: number[] = []
+  for (let i = 1; i < timestamps.length; i += 1) {
+    dayDiffs.push((timestamps[i] - timestamps[i - 1]) / (1000 * 60 * 60 * 24))
+  }
+
+  if (dayDiffs.length === 0) return null
+  return dayDiffs.reduce((sum, value) => sum + value, 0) / dayDiffs.length
+}
+
 export default function VariantDetailPage() {
   const params = useParams()
   const searchParams = useSearchParams()
@@ -270,7 +329,7 @@ function ComparisonTab({
             <option value="reliability_score">Score</option>
             <option value="cagr">CAGR</option>
             <option value="mean_sharpe">Sharpe</option>
-            <option value="total_pnl">PnL</option>
+            <option value="total_pnl">PnL (100k)</option>
           </select>
         </CardHeader>
         <CardContent className="px-0 pb-0">
@@ -284,7 +343,7 @@ function ComparisonTab({
                   <th className="text-right px-2.5 py-2.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">CAGR</th>
                   <th className="text-right px-2.5 py-2.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Sharpe</th>
                   <th className="text-right px-2.5 py-2.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Max DD</th>
-                  <th className="text-right px-2.5 py-2.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">PnL</th>
+                  <th className="text-right px-2.5 py-2.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">PnL (100k)</th>
                   <th className="text-right px-2.5 py-2.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Fen+</th>
                   <th className="text-right px-2.5 py-2.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Score</th>
                   <th className="text-center px-2.5 py-2.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Statut</th>
@@ -494,6 +553,26 @@ function VariantDetailPanel({
 }) {
   const { data, isLoading, error } = useVariantBacktest(variantId, symbol, horizon, costBps, cooldownBars)
   const [selectedWindow, setSelectedWindow] = useState<number | null>(null)
+  const plotKeys = Object.keys(data?.plots ?? {})
+  const hasPerWindow = (data?.per_window?.length ?? 0) > 0
+  const activeWindow = selectedWindow != null ? data?.per_window.find((pw) => pw.window_index === selectedWindow) ?? null : null
+  const filteredTradePerformance = useMemo(
+    () => (data?.trade_performance ?? []).filter((row) => !shouldHideTradePerformanceMetric(String(row.metric ?? ""))),
+    [data?.trade_performance],
+  )
+  const meanHoldPeriod = useMemo(
+    () => meanHoldPeriodBetweenTradesDays(data?.trade_ledger ?? []),
+    [data?.trade_ledger],
+  )
+  const activeWindowMeanHoldPeriod = useMemo(
+    () => (activeWindow ? meanHoldPeriodBetweenTradesDays(activeWindow.trades) : null),
+    [activeWindow],
+  )
+  const metricsEntries = useMemo(() => {
+    const entries = Object.entries(data?.metrics ?? {})
+    if (meanHoldPeriod == null) return entries
+    return [...entries, ["mean_hold_period_between_trades_days", meanHoldPeriod] as [string, unknown]]
+  }, [data?.metrics, meanHoldPeriod])
 
   if (isLoading) {
     return (
@@ -510,10 +589,6 @@ function VariantDetailPanel({
       </div>
     )
   }
-
-  const plotKeys = Object.keys(data.plots)
-  const hasPerWindow = data.per_window && data.per_window.length > 0
-  const activeWindow = selectedWindow != null ? data.per_window.find((pw) => pw.window_index === selectedWindow) : null
 
   return (
     <div className="border-t border-border bg-background p-4">
@@ -560,7 +635,7 @@ function VariantDetailPanel({
             </span>
           </div>
           <div>
-            <span className="text-muted-foreground">PnL: </span>
+            <span className="text-muted-foreground">PnL (100k): </span>
             <span className={cn("font-mono font-semibold", activeWindow.pnl > 0 ? "text-green-700" : "text-red-700")}>
               {formatNumber(activeWindow.pnl)}
             </span>
@@ -582,7 +657,7 @@ function VariantDetailPanel({
         <TabsList className="mb-4">
           {(plotKeys.length > 0 || activeWindow) && <TabsTrigger value="graphiques">Graphiques</TabsTrigger>}
           <TabsTrigger value="metriques">Metriques</TabsTrigger>
-          {((activeWindow ? activeWindow.trades.length : data.trade_performance.length) > 0) && (
+          {((activeWindow ? activeWindow.trades.length : filteredTradePerformance.length) > 0) && (
             <TabsTrigger value="performance">Performance Trades</TabsTrigger>
           )}
           {((activeWindow ? activeWindow.trades.length : data.trade_ledger.length) > 0) && (
@@ -653,13 +728,21 @@ function VariantDetailPanel({
                     <p className="font-mono text-sm font-semibold mt-0.5">{activeWindow.sharpe.toFixed(3)}</p>
                   </div>
                   <div>
-                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">PnL</p>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">PnL (100k)</p>
                     <p className="font-mono text-sm font-semibold mt-0.5">{formatNumber(activeWindow.pnl)}</p>
                   </div>
                   <div>
                     <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Trades</p>
                     <p className="font-mono text-sm font-semibold mt-0.5">{activeWindow.n_trades}</p>
                   </div>
+                  {activeWindowMeanHoldPeriod != null && (
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Mean Hold Period</p>
+                      <p className="font-mono text-sm font-semibold mt-0.5">
+                        {formatHoldPeriodDays(activeWindowMeanHoldPeriod)}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -667,13 +750,17 @@ function VariantDetailPanel({
             <Card>
               <CardContent className="p-0">
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-px bg-border">
-                  {Object.entries(data.metrics).map(([k, v]) => (
+                  {metricsEntries.map(([k, v]) => (
                     <div key={k} className="bg-background p-3">
                       <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                        {k.replace(/_/g, " ")}
+                        {formatBacktestMetricLabel(k)}
                       </p>
                       <p className="font-mono text-sm font-semibold mt-0.5">
-                        {typeof v === "number" ? formatNumber(v) : String(v ?? "\u2014")}
+                        {k === "mean_hold_period_between_trades_days" && typeof v === "number"
+                          ? formatHoldPeriodDays(v)
+                          : typeof v === "number"
+                            ? formatNumber(v)
+                            : String(v ?? "\u2014")}
                       </p>
                     </div>
                   ))}
@@ -688,7 +775,7 @@ function VariantDetailPanel({
           {activeWindow ? (
             <TradesTable trades={activeWindow.trades} />
           ) : (
-            data.trade_performance.length > 0 && (
+            filteredTradePerformance.length > 0 && (
               <Card>
                 <CardContent className="p-0">
                   <table className="w-full text-sm">
@@ -703,10 +790,10 @@ function VariantDetailPanel({
                       </tr>
                     </thead>
                     <tbody>
-                      {data.trade_performance.map((row, i) => (
+                      {filteredTradePerformance.map((row, i) => (
                         <tr key={i} className="border-b border-border/50 hover:bg-secondary/20">
                           <td className="px-4 py-2 font-medium capitalize">
-                            {String(row.metric ?? "").replace(/_/g, " ")}
+                            {formatTradeMetricLabel(String(row.metric ?? ""))}
                           </td>
                           <td className="px-4 py-2 text-right tabular-nums font-mono text-xs">
                             {typeof row.value === "number"
@@ -753,20 +840,22 @@ function TradeLedgerTable({ trades }: { trades: Record<string, unknown>[] }) {
   return (
     <Card>
       <CardContent className="p-0 overflow-x-auto">
+        <div className="border-b bg-secondary/20 px-3 py-2 text-[11px] text-muted-foreground">
+          <span className="font-medium text-foreground">Audit:</span>{" "}
+          <span>`PnL (100k) = 100000 × Return cumule`.</span>{" "}
+          <span>`PnL realise cumule (1 unite)` suit separement le ledger des trades unitaires.</span>
+        </div>
         <table className="w-full text-xs whitespace-nowrap">
           <thead>
             <tr className="border-b bg-secondary/30">
               {[
                 "Date",
                 "Sens",
-                "Prix Exec.",
-                "Close du Jour",
+                "Open (t+1)",
+                "CMP",
                 "Position",
-                "Tresorerie",
-                "PnL Realise",
-                "PnL Latent",
-                "Cout",
-                "Fenetre OOS",
+                "Return Cumule (%)",
+                "PnL Realise Cumule (1 unite)",
               ].map((h) => (
                 <th
                   key={h}
@@ -779,10 +868,10 @@ function TradeLedgerTable({ trades }: { trades: Record<string, unknown>[] }) {
           </thead>
           <tbody>
             {trades.map((row, i) => {
-              const pnlRealise = Number(row.pnl_realise ?? 0)
-              const pnlLatent = Number(row.pnl_latent ?? 0)
-              const tresorerie = Number(row.tresorerie)
-              const cout = Number(row.cout ?? 0)
+              const hasReturnCumule = row.return_cumule != null
+              const returnCumule = hasReturnCumule ? Number(row.return_cumule) : NaN
+              const hasPnlCumule = row.pnl_realise_cumule != null
+              const pnlRealiseCumule = hasPnlCumule ? Number(row.pnl_realise_cumule) : NaN
               const side = String(row.side ?? "")
               return (
                 <tr
@@ -805,13 +894,13 @@ function TradeLedgerTable({ trades }: { trades: Record<string, unknown>[] }) {
                     </span>
                   </td>
                   <td className="px-3 py-1.5 tabular-nums">
-                    {row.prix_execution != null
-                      ? formatNumber(Number(row.prix_execution))
+                    {row.open_t_plus_1 != null || row.prix_execution != null
+                      ? formatTradePrice(Number(row.open_t_plus_1 ?? row.prix_execution))
                       : "\u2014"}
                   </td>
                   <td className="px-3 py-1.5 tabular-nums">
-                    {row.close_du_jour != null
-                      ? formatNumber(Number(row.close_du_jour))
+                    {row.cmp != null || row.close_du_jour != null
+                      ? formatTradePrice(Number(row.cmp ?? row.close_du_jour))
                       : "\u2014"}
                   </td>
                   <td
@@ -835,48 +924,26 @@ function TradeLedgerTable({ trades }: { trades: Record<string, unknown>[] }) {
                   <td
                     className={cn(
                       "px-3 py-1.5 tabular-nums font-semibold",
-                      tresorerie > 0
+                      returnCumule > 0
                         ? "text-emerald-600"
-                        : tresorerie < 0
+                        : returnCumule < 0
                           ? "text-red-600"
                           : "text-muted-foreground",
                     )}
                   >
-                    {Number.isFinite(tresorerie)
-                      ? formatNumber(tresorerie)
-                      : "\u2014"}
+                    {Number.isFinite(returnCumule) ? formatPercent(returnCumule) : "\u2014"}
                   </td>
                   <td
                     className={cn(
                       "px-3 py-1.5 tabular-nums font-semibold",
-                      pnlRealise > 0
+                      pnlRealiseCumule > 0
                         ? "text-emerald-600"
-                        : pnlRealise < 0
+                        : pnlRealiseCumule < 0
                           ? "text-red-600"
-                          : "",
+                          : "text-muted-foreground",
                     )}
                   >
-                    {Number.isFinite(pnlRealise) ? formatNumber(pnlRealise) : "\u2014"}
-                  </td>
-                  <td
-                    className={cn(
-                      "px-3 py-1.5 tabular-nums font-semibold",
-                      pnlLatent > 0
-                        ? "text-emerald-600"
-                        : pnlLatent < 0
-                          ? "text-red-600"
-                          : "",
-                    )}
-                  >
-                    {Number.isFinite(pnlLatent) ? formatNumber(pnlLatent) : "\u2014"}
-                  </td>
-                  <td className="px-3 py-1.5 tabular-nums">
-                    {Number.isFinite(cout) ? formatNumber(cout) : "\u2014"}
-                  </td>
-                  <td className="px-3 py-1.5 tabular-nums text-center">
-                    {row.oos_window != null
-                      ? `#${Number(row.oos_window) + 1}`
-                      : "\u2014"}
+                    {Number.isFinite(pnlRealiseCumule) ? formatNumber(pnlRealiseCumule) : "\u2014"}
                   </td>
                 </tr>
               )

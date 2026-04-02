@@ -266,6 +266,7 @@ export default function DataPage() {
                   <TableRow>
                     <TableHead className="w-20">Ticker</TableHead>
                     <TableHead className="hidden sm:table-cell">Nom</TableHead>
+                    <TableHead className="hidden lg:table-cell">Secteur</TableHead>
                     <TableHead>Debut</TableHead>
                     <TableHead>Fin</TableHead>
                     <TableHead className="hidden md:table-cell text-right">Barres</TableHead>
@@ -292,6 +293,10 @@ export default function DataPage() {
 
                         <TableCell className="hidden text-sm text-muted-foreground sm:table-cell">
                           {row.display_name ?? "\u2014"}
+                        </TableCell>
+
+                        <TableCell className="hidden text-sm text-muted-foreground lg:table-cell">
+                          {row.sector ?? "\u2014"}
                         </TableCell>
 
                         <TableCell className="text-xs text-muted-foreground">

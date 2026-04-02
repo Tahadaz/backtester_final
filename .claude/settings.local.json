@@ -9,7 +9,13 @@
       "Bash(ls:*)",
       "Bash(.venv/Scripts/python.exe:*)",
       "Bash(git checkout:*)",
-      "Bash(find /c/Users/taha/Downloads/backtester_final -path \"*/.venv\" -prune -o -name \"*.py\" -type f -exec grep -l \"train_start.*train_end\" {} \\\\; | head -10)"
+      "Bash(find /c/Users/taha/Downloads/backtester_final -path \"*/.venv\" -prune -o -name \"*.py\" -type f -exec grep -l \"train_start.*train_end\" {} \\\\; | head -10)",
+      "Bash(git:*)",
+      "Bash(find:*)",
+      "Bash(cd:*)",
+      "Bash(curl:*)",
+      "Bash(PYTHONPATH=core:. python -m pytest core/tests/test_signal_engine.py -q)",
+      "Bash(python3:*)"
     ]
   }
 }

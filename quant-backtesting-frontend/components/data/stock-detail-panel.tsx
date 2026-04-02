@@ -5,7 +5,6 @@ import type {
   AvailabilityCalendar,
   MarketCatalogRow,
   OhlcvHistory,
-  PlotlyFigure,
 } from "@/lib/api"
 import { upsertOhlcvRow, deleteOhlcvRows } from "@/lib/api"
 import {
@@ -21,6 +20,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { OhlcvHistoryChart } from "@/components/data/ohlcv-history-chart"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
@@ -32,7 +32,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { PlotlyChart } from "@/components/run/plotly-chart"
 import { Check, ChevronLeft, ChevronRight, Pencil, Plus, Trash2, X } from "lucide-react"
 import { toast } from "sonner"
 
@@ -83,91 +82,6 @@ function formatMonthLabel(value: string, locale: string = "fr-MA") {
     month: "long",
     year: "numeric",
   })
-}
-
-function buildHistoryFigure(
-  history: OhlcvHistory | undefined,
-  calendar: AvailabilityCalendar | undefined
-): PlotlyFigure | undefined {
-  if (!history || history.bars.length === 0) return undefined
-
-  const x = history.bars.map((bar) => bar.date)
-  const open = history.bars.map((bar) => bar.open)
-  const high = history.bars.map((bar) => bar.high)
-  const low = history.bars.map((bar) => bar.low)
-  const close = history.bars.map((bar) => bar.close)
-  const volume = history.bars.map((bar) => bar.volume ?? 0)
-  const holidayBreaks =
-    calendar?.days
-      .filter((day) => day.state === "market_holiday")
-      .map((day) => day.date) ?? []
-
-  const lastDate = parseLocalDate(history.bars[history.bars.length - 1].date)
-  const startDate = new Date(lastDate)
-  startDate.setFullYear(startDate.getFullYear() - 1)
-
-  return {
-    data: [
-      {
-        type: "candlestick",
-        x,
-        open,
-        high,
-        low,
-        close,
-        name: "OHLC",
-        increasing: { line: { color: "#0f766e" }, fillcolor: "#14b8a6" },
-        decreasing: { line: { color: "#b91c1c" }, fillcolor: "#ef4444" },
-        xaxis: "x",
-        yaxis: "y",
-        hovertemplate:
-          "Date=%{x}<br>Open=%{open}<br>High=%{high}<br>Low=%{low}<br>Close=%{close}<extra></extra>",
-      },
-      {
-        type: "bar",
-        x,
-        y: volume,
-        name: "Volume",
-        marker: { color: "#94a3b8" },
-        opacity: 0.6,
-        xaxis: "x",
-        yaxis: "y2",
-        hovertemplate: "Date=%{x}<br>Volume=%{y}<extra></extra>",
-      },
-    ],
-    layout: {
-      height: 520,
-      showlegend: false,
-      dragmode: "pan",
-      paper_bgcolor: "white",
-      plot_bgcolor: "white",
-      margin: { l: 42, r: 18, t: 24, b: 30 },
-      xaxis: {
-        type: "date",
-        rangeslider: { visible: false },
-        range: [formatDateKey(startDate), formatDateKey(lastDate)],
-        rangebreaks: [
-          { bounds: ["sat", "mon"] },
-          ...(holidayBreaks.length > 0 ? [{ values: holidayBreaks }] : []),
-        ],
-        showgrid: true,
-        gridcolor: "#e2e8f0",
-      },
-      yaxis: {
-        title: { text: "Prix" },
-        domain: [0.30, 1],
-        fixedrange: false,
-        gridcolor: "#e2e8f0",
-      },
-      yaxis2: {
-        title: { text: "Volume" },
-        domain: [0, 0.20],
-        fixedrange: false,
-        gridcolor: "#e2e8f0",
-      },
-      hovermode: "x unified",
-    },
-  }
 }
 
 function stateClasses(state: string) {
@@ -793,8 +707,6 @@ export function StockDetailPanel({
     setSelectedMonth(defaultMonth ?? lastMonth ?? null)
   }, [calendar?.symbol, calendar?.default_month, calendar?.last_date])
 
-  const historyFigure = useMemo(() => buildHistoryFigure(history, calendar), [history, calendar])
-
   return (
     <Dialog open={open} onOpenChange={(value) => !value && onClose()}>
       <DialogContent className="h-[95vh] max-w-[96vw] gap-0 overflow-hidden p-0 sm:max-w-[96vw]">
@@ -846,8 +758,8 @@ export function StockDetailPanel({
                   </div>
                   {historyLoading ? (
                     <Skeleton className="h-[520px] w-full" />
-                  ) : historyFigure ? (
-                    <PlotlyChart figure={historyFigure} />
+                  ) : history && history.bars.length > 0 ? (
+                    <OhlcvHistoryChart history={history} />
                   ) : (
                     <p className="text-sm text-muted-foreground">Aucun historique OHLCV disponible.</p>
                   )}

@@ -17,12 +17,18 @@ from ..market_data_loader import load_close_for_symbol, load_ohlcv_for_symbol
 from ..schemas.strategy_signals import (
     BatchScoresRequest,
     FamilyEnsembleRequest,
+    RegimeConsensusRequest,
+    SignalZoneChartRequest,
     SmaEnsembleRequest,
     VariantBacktestRequest,
     VariantDetailRequest,
 )
 
-from core.quant_core.signal_engine.ensemble import run_family_ensemble_full, _score_to_label
+from core.quant_core.signal_engine.ensemble import (
+    run_family_ensemble_full,
+    compute_family_score_timeseries,
+    _score_to_label,
+)
 from core.quant_core.signal_engine.domain import (
     CATEGORY_FAMILIES,
     FAMILY_SIGNAL_TYPE,
@@ -31,7 +37,14 @@ from core.quant_core.signal_engine.domain import (
     label_to_signal_value,
     signal_type_label,
 )
-from core.quant_core.signal_engine.variant_detail import compute_variant_detail
+from core.quant_core.signal_engine.variant_detail import (
+    compute_variant_detail,
+    compute_variant_trade_register,
+    _compute_indicator,
+)
+from core.quant_core.signal_engine.rsi_semantics import latest_rsi_variant_signal
+from core.quant_core.signal_engine.oos_eval import compute_signal_array
+from core.quant_core.signal_engine.regime import validate_regime_oos, compute_regime_consensus
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +59,7 @@ _CACHE_TTL = 300.0  # 5 minutes
 
 _BACKTEST_CACHE: dict[tuple, tuple[float, dict]] = {}
 _BACKTEST_CACHE_TTL = 600.0
+_BACKTEST_CACHE_VERSION = 3
 
 
 def _truncate_for_horizon(ohlcv, horizon: str):
@@ -155,6 +169,7 @@ def _get_or_compute(
     # Override as_of with actual last data date (not server timestamp)
     last_date = str(ohlcv.index[-1])[:10]
     detail.signal.as_of = last_date
+    detail.signal.latest_close = float(close[-1]) if len(close) else None
 
     _CACHE[key] = (now, detail)
     return detail
@@ -196,16 +211,54 @@ def variant_detail(body: VariantDetailRequest, db: Session = Depends(get_db)):
     windows = detail.oos_windows.get(body.variant_id, [])
     fallback_lookup = _fallback_variants_by_id(detail)
     methodology_context = _methodology_context_payload(detail.signal)
+    try:
+        ohlcv = load_ohlcv_for_symbol(db, body.symbol, body.timeframe)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    ohlcv = _truncate_for_horizon(ohlcv, body.horizon)
+    ohlcv = _clean_ohlcv(ohlcv)
+    close = ohlcv["Close"].values.astype("float64")
+    volume = ohlcv["Volume"].values.astype("float64") if "Volume" in ohlcv.columns else None
+    variant_signal_labels: dict[str, str] = {}
+    variant_realized_totals: dict[str, float] = {}
+
+    if detail.signal.family == "rsi":
+        for summary in detail.all_summaries:
+            _signal_val, signal_label = latest_rsi_variant_signal(
+                close,
+                summary.variant,
+                cooldown_bars=body.cooldown_bars,
+            )
+            variant_signal_labels[summary.variant.variant_id] = signal_label
+
+    for summary in detail.all_summaries:
+        trades, _window_cash_starts = compute_variant_trade_register(
+            ohlcv,
+            close,
+            summary.variant,
+            detail.oos_windows.get(summary.variant.variant_id, []),
+            volume=volume,
+            cost_bps=body.cost_bps,
+            cooldown_bars=body.cooldown_bars,
+        )
+        variant_realized_totals[summary.variant.variant_id] = round(
+            sum(float(row.get("pnl_realise", 0.0)) for row in trades),
+            2,
+        )
 
     # Determine signal for this variant — use current_signal_labels for all,
     # override with representative-quality signal if available
-    target_signal_label = detail.current_signal_labels.get(body.variant_id, "NEUTRE")
+    target_signal_label = (
+        variant_signal_labels.get(body.variant_id)
+        or detail.current_signal_labels.get(body.variant_id, "NEUTRE")
+    )
     target_signal = label_to_signal_value(target_signal_label)
     target_selection_status = fallback_lookup.get(body.variant_id, {}).get("selection_status", "")
     for rep in detail.signal.representatives:
         if rep["variant_id"] == body.variant_id:
-            target_signal = rep["signal"]
-            target_signal_label = rep["signal_label"]
+            if not variant_signal_labels:
+                target_signal = rep["signal"]
+                target_signal_label = rep["signal_label"]
             target_selection_status = rep.get("selection_status", "selected")
             break
     if body.variant_id in detail.representative_ids and not target_selection_status:
@@ -249,7 +302,7 @@ def variant_detail(body: VariantDetailRequest, db: Session = Depends(get_db)):
             elim = "not_viable"
 
         # Signal value for this variant (type-specific label → numeric)
-        sig_label = detail.current_signal_labels.get(vid, "NEUTRE")
+        sig_label = variant_signal_labels.get(vid) or detail.current_signal_labels.get(vid, "NEUTRE")
         sig_value = label_to_signal_value(sig_label)
 
         # Correlation info for redundancy-filtered variants
@@ -286,6 +339,8 @@ def variant_detail(body: VariantDetailRequest, db: Session = Depends(get_db)):
             "mean_max_drawdown": round(s.mean_max_drawdown, 4),
             "fraction_positive_windows": round(s.fraction_positive_windows, 4),
             "cagr": round(s.cagr, 4),
+            "total_pnl_100k": round(s.total_pnl, 2),
+            "total_pnl_realise_1u": variant_realized_totals.get(vid, 0.0),
             "total_pnl": round(s.total_pnl, 2),
             "signal_value": sig_value,
             "signal_label": sig_label,
@@ -303,8 +358,10 @@ def variant_detail(body: VariantDetailRequest, db: Session = Depends(get_db)):
     # Enrich OOS windows with date strings
     oos_windows_dicts = [asdict(w) for w in windows]
     try:
-        ohlcv = load_ohlcv_for_symbol(db, body.symbol, body.timeframe)
-        ohlcv = _truncate_for_horizon(ohlcv, body.horizon)
+        if ohlcv is None:
+            ohlcv = load_ohlcv_for_symbol(db, body.symbol, body.timeframe)
+            ohlcv = _truncate_for_horizon(ohlcv, body.horizon)
+            ohlcv = _clean_ohlcv(ohlcv)
         idx = ohlcv.index
         for wd in oos_windows_dicts:
             ts = wd.get("test_start", 0)
@@ -356,6 +413,8 @@ def variant_detail(body: VariantDetailRequest, db: Session = Depends(get_db)):
             "stability_score": round(target_summary.stability_score, 4),
             "consistency_score": round(target_summary.consistency_score, 4),
             "drawdown_score": round(target_summary.drawdown_score, 4),
+            "total_pnl_100k": round(target_summary.total_pnl, 2),
+            "total_pnl_realise_1u": variant_realized_totals.get(body.variant_id, 0.0),
         },
         "oos_windows": oos_windows_dicts,
         "all_variants": all_variants,
@@ -410,7 +469,14 @@ def variant_backtest(body: VariantBacktestRequest, db: Session = Depends(get_db)
         raise HTTPException(status_code=404, detail=f"Variant {body.variant_id!r} not found")
 
     # Check cache
-    cache_key = (body.symbol, body.variant_id, body.horizon, body.cost_bps, body.cooldown_bars)
+    cache_key = (
+        _BACKTEST_CACHE_VERSION,
+        body.symbol,
+        body.variant_id,
+        body.horizon,
+        body.cost_bps,
+        body.cooldown_bars,
+    )
     now = time.monotonic()
     cached = _BACKTEST_CACHE.get(cache_key)
     if cached and (now - cached[0]) < _BACKTEST_CACHE_TTL:
@@ -530,3 +596,372 @@ def batch_scores(body: BatchScoresRequest, db: Session = Depends(get_db)):
                 "per_family": {},
             })
     return results
+
+
+# ---------------------------------------------------------------------------
+# Layer H — Regime-aware consensus
+# ---------------------------------------------------------------------------
+
+_REGIME_CACHE: dict[tuple, tuple[float, dict]] = {}
+_REGIME_CACHE_TTL = 600.0  # 10 minutes
+_REGIME_CONSENSUS_ENABLED = False
+
+
+@router.post("/signal/regime-consensus")
+def regime_consensus(body: RegimeConsensusRequest, db: Session = Depends(get_db)):
+    """Return regime-aware consensus: Kaufman ER detection + OOS-validated weights.
+
+    Layer H: runs AFTER per-family A→G pipelines.
+    If regime weighting beats equal-weight OOS → regime-weighted consensus.
+    Otherwise → transparent equal-weight fallback.
+    """
+    if not _REGIME_CONSENSUS_ENABLED:
+        raise HTTPException(status_code=404, detail="Regime-aware consensus is currently disabled.")
+
+    cache_key = (body.symbol, body.horizon, body.timeframe, body.cost_bps, body.cooldown_bars)
+    now = time.monotonic()
+    cached = _REGIME_CACHE.get(cache_key)
+    if cached and (now - cached[0]) < _REGIME_CACHE_TTL:
+        return cached[1]
+
+    # 1. Compute all 4 family ensembles (each individually cached at 5min TTL)
+    family_scores: dict[str, float] = {}
+    family_details: dict[str, EnsemblePipelineDetail] = {}
+    for family in ("sma", "rsi", "macd", "obv"):
+        try:
+            detail = _get_or_compute(
+                db, family, body.symbol, body.horizon, body.timeframe,
+                body.cost_bps, body.cooldown_bars,
+            )
+            family_scores[family] = detail.signal.family_score_pct
+            family_details[family] = detail
+        except HTTPException:
+            pass  # skip unavailable families
+
+    if not family_scores:
+        return {
+            "symbol": body.symbol,
+            "final_consensus": None,
+            "family_weights": {},
+            "per_family": {},
+            "regime_active": False,
+            "regime_label": "insufficient_data",
+            "er_value": None,
+            "improvement": 0.0,
+            "tercile_bounds": [0.33, 0.67],
+            "equal_consensus": None,
+            "n_families": 0,
+            "window_results": [],
+            "n_folds": 0,
+            "folds_regime_wins": 0,
+            "top_variants": {},
+        }
+
+    # 2. Load OHLCV for signal array computation
+    try:
+        ohlcv = load_ohlcv_for_symbol(db, body.symbol, body.timeframe)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    ohlcv = _truncate_for_horizon(ohlcv, body.horizon)
+    ohlcv = _clean_ohlcv(ohlcv)
+    close = ohlcv["Close"].values.astype("float64")
+    volume = ohlcv["Volume"].values.astype("float64") if "Volume" in ohlcv.columns else None
+
+    # 3. Extract top variant per family (highest reliability) and compute signal arrays
+    family_signals: dict[str, np.ndarray] = {}
+    for family, detail in family_details.items():
+        if not detail.all_summaries:
+            continue
+        top_variant = max(detail.all_summaries, key=lambda s: s.reliability_score).variant
+        try:
+            sig = compute_signal_array(close, top_variant, volume=volume)
+            family_signals[family] = sig
+        except Exception as exc:
+            logger.warning("Failed to compute signal array for %s/%s: %s", body.symbol, family, exc)
+
+    # 4. Run OOS regime validation
+    regime_result = validate_regime_oos(
+        close, family_signals, body.horizon, body.cost_bps,
+    )
+
+    # 5. Compute regime consensus
+    consensus = compute_regime_consensus(family_scores, regime_result)
+
+    # 6. Enrich window_results with date strings
+    idx = ohlcv.index
+    enriched_windows: list[dict[str, Any]] = []
+    for wr in regime_result.window_results:
+        ew = dict(wr)
+        ts, te = wr["test_start"], wr["test_end"]
+        trs = wr["train_start"]
+        if trs < len(idx):
+            ew["train_start_date"] = str(idx[trs])[:10]
+        if wr["train_end"] < len(idx):
+            ew["train_end_date"] = str(idx[wr["train_end"] - 1])[:10]
+        if ts < len(idx):
+            ew["test_start_date"] = str(idx[ts])[:10]
+        if te < len(idx):
+            ew["test_end_date"] = str(idx[min(te, len(idx) - 1)])[:10]
+        # Compute delta for easy display
+        ew["delta"] = round(wr["regime_sharpe"] - wr["equal_sharpe"], 4)
+        enriched_windows.append(ew)
+
+    # 7. Equal-weight consensus for comparison
+    n_avail = len(family_scores)
+    equal_consensus = round(sum(family_scores.values()) / n_avail, 2) if n_avail > 0 else None
+
+    # 8. Top variant info per family (what was used for regime validation)
+    top_variants: dict[str, dict[str, Any]] = {}
+    for family, detail in family_details.items():
+        if not detail.all_summaries:
+            continue
+        top = max(detail.all_summaries, key=lambda s: s.reliability_score)
+        top_variants[family] = {
+            "variant_id": top.variant.variant_id,
+            "archetype": top.variant.archetype,
+            "params": top.variant.params,
+            "reliability_score": round(top.reliability_score, 4),
+            "label": _variant_label(top.variant),
+        }
+
+    # 9. Compute win rate across folds
+    n_folds = len(enriched_windows)
+    folds_regime_wins = sum(1 for w in enriched_windows if w.get("delta", 0) > 0)
+
+    response = {
+        "symbol": body.symbol,
+        **consensus,
+        "tercile_bounds": list(consensus.get("tercile_bounds", (0.33, 0.67))),
+        "equal_consensus": equal_consensus,
+        "n_families": regime_result.n_families,
+        "window_results": enriched_windows,
+        "n_folds": n_folds,
+        "folds_regime_wins": folds_regime_wins,
+        "top_variants": top_variants,
+    }
+
+    _REGIME_CACHE[cache_key] = (now, response)
+    return response
+
+
+# ---------------------------------------------------------------------------
+# Signal zone chart — per-bar family consensus presentation
+# ---------------------------------------------------------------------------
+
+def _safe_float(v) -> float | None:
+    """Convert numpy scalar to Python float, NaN → None."""
+    if v is None:
+        return None
+    f = float(v)
+    return None if np.isnan(f) else f
+
+
+def _safe_float_list(arr: np.ndarray) -> list[float | None]:
+    """Convert numpy array to list of floats, NaN → None."""
+    return [None if np.isnan(float(v)) else round(float(v), 4) for v in arr]
+
+
+def _detect_macd_crossovers(macd_line: list, signal_line: list) -> list[dict]:
+    """Detect MACD / signal-line crossover bar indices."""
+    crossovers: list[dict] = []
+    for i in range(1, len(macd_line)):
+        prev_m, curr_m = macd_line[i - 1], macd_line[i]
+        prev_s, curr_s = signal_line[i - 1], signal_line[i]
+        if prev_m is None or curr_m is None or prev_s is None or curr_s is None:
+            continue
+        prev_diff = prev_m - prev_s
+        curr_diff = curr_m - curr_s
+        if prev_diff <= 0 < curr_diff:
+            crossovers.append({"bar_index": i, "direction": "bullish"})
+        elif prev_diff >= 0 > curr_diff:
+            crossovers.append({"bar_index": i, "direction": "bearish"})
+    return crossovers
+
+
+def _compute_obv_bar_signals(obv: list, ema_vals: list) -> list[str]:
+    """Per-bar accumulation / distribution / neutral classification."""
+    signals: list[str] = []
+    for i in range(len(obv)):
+        o, e = obv[i], ema_vals[i]
+        if o is None or e is None:
+            signals.append("neutral")
+        elif o > e:
+            signals.append("accumulation")
+        elif o < e:
+            signals.append("distribution")
+        else:
+            signals.append("neutral")
+    return signals
+
+
+def _get_all_representative_indicators(
+    detail: EnsemblePipelineDetail,
+    close: np.ndarray,
+    volume: np.ndarray | None,
+) -> list[dict]:
+    """Representative entries enriched with per-variant indicator data."""
+    reps = [
+        s for s in detail.all_summaries
+        if s.variant.variant_id in detail.representative_ids
+    ]
+    if not reps:
+        reps = [
+            s for s in detail.all_summaries
+            if s.variant.variant_id in detail.fallback_variant_ids
+        ]
+
+    result: list[dict] = []
+    for s in reps:
+        entry: dict = {
+            "variant_id": s.variant.variant_id,
+            "weight": round(s.reliability_score, 4),
+            "label": _variant_label(s.variant),
+        }
+
+        ind = _compute_indicator(close, s.variant, volume=volume)
+        if ind["type"] == "none":
+            entry["indicator"] = None
+        else:
+            ind_serialized: dict = {"type": ind["type"], "name": ind.get("name", "")}
+            for key, val in ind.items():
+                if key in ("type", "name"):
+                    continue
+                if isinstance(val, np.ndarray):
+                    ind_serialized[key] = _safe_float_list(val)
+                else:
+                    ind_serialized[key] = val
+
+            if "macd_line" in ind_serialized and "signal_line" in ind_serialized:
+                ind_serialized["crossovers"] = _detect_macd_crossovers(
+                    ind_serialized["macd_line"], ind_serialized["signal_line"],
+                )
+            if "obv" in ind_serialized and "ema_values" in ind_serialized:
+                ind_serialized["bar_signals"] = _compute_obv_bar_signals(
+                    ind_serialized["obv"], ind_serialized["ema_values"],
+                )
+
+            entry["indicator"] = ind_serialized
+
+        result.append(entry)
+    return result
+
+
+def _get_top_representative_indicator(
+    detail: EnsemblePipelineDetail,
+    close: np.ndarray,
+    volume: np.ndarray | None,
+) -> dict | None:
+    """Indicator overlay data from the top representative variant."""
+    reps = [
+        s for s in detail.all_summaries
+        if s.variant.variant_id in detail.representative_ids
+    ]
+    if not reps:
+        reps = [
+            s for s in detail.all_summaries
+            if s.variant.variant_id in detail.fallback_variant_ids
+        ]
+    if not reps:
+        return None
+
+    top = max(reps, key=lambda s: s.reliability_score)
+    ind = _compute_indicator(close, top.variant, volume=volume)
+    if ind["type"] == "none":
+        return None
+
+    result: dict = {"type": ind["type"], "name": ind.get("name", "")}
+    for key, val in ind.items():
+        if key in ("type", "name"):
+            continue
+        if isinstance(val, np.ndarray):
+            result[key] = _safe_float_list(val)
+        else:
+            result[key] = val
+    return result
+
+
+def _get_representatives_info(detail: EnsemblePipelineDetail) -> list[dict]:
+    """Representative variant labels and weights."""
+    reps = [
+        s for s in detail.all_summaries
+        if s.variant.variant_id in detail.representative_ids
+    ]
+    if not reps:
+        reps = [
+            s for s in detail.all_summaries
+            if s.variant.variant_id in detail.fallback_variant_ids
+        ]
+    return [
+        {
+            "variant_id": s.variant.variant_id,
+            "weight": round(s.reliability_score, 4),
+            "label": _variant_label(s.variant),
+        }
+        for s in reps
+    ]
+
+
+@router.post("/signal/zone-chart")
+def signal_zone_chart(body: SignalZoneChartRequest, db: Session = Depends(get_db)):
+    """Per-bar family consensus with representative overlays for chart rendering."""
+    try:
+        ohlcv = load_ohlcv_for_symbol(db, body.symbol, body.timeframe)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    ohlcv = _truncate_for_horizon(ohlcv, body.horizon)
+    ohlcv = _clean_ohlcv(ohlcv)
+
+    if len(ohlcv) == 0:
+        raise HTTPException(status_code=422, detail=f"No OHLCV data for {body.symbol}")
+
+    close = ohlcv["Close"].values.astype("float64")
+    volume = (
+        ohlcv["Volume"].values.astype("float64")
+        if "Volume" in ohlcv.columns
+        else None
+    )
+    dates = [str(d)[:10] for d in ohlcv.index]
+
+    # Format OHLCV bars
+    bars: list[dict] = []
+    has_volume = "Volume" in ohlcv.columns
+    for i, d in enumerate(dates):
+        bars.append({
+            "date": d,
+            "open": _safe_float(ohlcv["Open"].iloc[i]),
+            "high": _safe_float(ohlcv["High"].iloc[i]),
+            "low": _safe_float(ohlcv["Low"].iloc[i]),
+            "close": _safe_float(ohlcv["Close"].iloc[i]),
+            "volume": _safe_float(ohlcv["Volume"].iloc[i]) if has_volume else None,
+        })
+
+    # Per-family signal computation
+    families: dict[str, dict] = {}
+
+    for fam in body.enabled_families:
+        try:
+            detail = _get_or_compute(
+                db, fam, body.symbol, body.horizon,
+                body.timeframe, body.cost_bps, body.cooldown_bars,
+            )
+        except HTTPException:
+            continue  # skip family if data insufficient (e.g. OBV without volume)
+
+        scores = compute_family_score_timeseries(
+            detail, close, volume=volume, cooldown_bars=body.cooldown_bars,
+        )
+
+        families[fam] = {
+            "scores": [round(float(s), 2) for s in scores],
+            "representatives": _get_all_representative_indicators(detail, close, volume),
+            "indicator": _get_top_representative_indicator(detail, close, volume),
+        }
+
+    return {
+        "symbol": body.symbol,
+        "horizon": body.horizon,
+        "bars": bars,
+        "families": families,
+    }

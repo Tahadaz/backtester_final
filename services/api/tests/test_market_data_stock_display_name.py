@@ -104,3 +104,58 @@ def test_patch_stock_ignores_display_name_mutation_but_updates_allowed_fields(cl
         assert stock.display_name == "Attijariwafa Bank"
         assert stock.notes == "canonical-name-lock"
         assert stock.sector == "Banques Premium"
+
+
+def test_market_catalog_uses_official_masi_sector_fallback_without_writing(client_and_session) -> None:
+    client, SessionLocal = client_and_session
+
+    with SessionLocal() as db:
+        db.add(
+            models.StockMaster(
+                symbol="AKT",
+                display_name="Akdital",
+                sector=None,
+                track_source="bourse_direct",
+                is_active=True,
+            )
+        )
+        db.add(
+            models.MarketDataStore(
+                symbol="AKT",
+                timeframe="1D",
+                object_key="market_data/AKT/1D.parquet",
+                row_count=250,
+            )
+        )
+        db.commit()
+
+    response = client.get("/market-data/catalog")
+
+    assert response.status_code == 200
+    payload = response.json()
+    akt = next(row for row in payload if row["symbol"] == "AKT")
+    assert akt["sector"] == "Santé"
+
+    with SessionLocal() as db:
+        stock = db.query(models.StockMaster).filter(models.StockMaster.symbol == "AKT").one()
+        assert stock.sector is None
+
+
+def test_add_tracked_stock_uses_official_masi_sector_by_default(client_and_session) -> None:
+    client, SessionLocal = client_and_session
+
+    response = client.post(
+        "/market-data/stocks",
+        json={
+            "symbol": "CAP",
+            "track_source": "bourse_direct",
+        },
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["sector"] == "Sociétés de financement"
+
+    with SessionLocal() as db:
+        stock = db.query(models.StockMaster).filter(models.StockMaster.symbol == "CAP").one()
+        assert stock.sector == "Sociétés de financement"

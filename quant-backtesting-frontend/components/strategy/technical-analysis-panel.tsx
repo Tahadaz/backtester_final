@@ -10,9 +10,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { formatNumber } from "@/lib/format"
 import { Info, TrendingUp, Activity, BarChart3 } from "lucide-react"
 
-// Category structure (Murphy 1999, Elder 1993 Triple Screen)
+// Category structure for signal families shown in the UI.
 const CATEGORIES = [
   {
     id: "tendance",
@@ -21,6 +22,14 @@ const CATEGORIES = [
     icon: TrendingUp,
     families: [
       { id: "sma", label: "SMA" },
+    ],
+  },
+  {
+    id: "momentum",
+    label: "Momentum",
+    description: "Dynamique du marche",
+    icon: Activity,
+    families: [
       { id: "macd", label: "MACD" },
     ],
   },
@@ -47,10 +56,9 @@ const CATEGORIES = [
 // Flat list for loading/error checks
 const ALL_FAMILIES = CATEGORIES.flatMap((c) => c.families)
 
-// Label → badge color mapping (type-specific labels)
+// Label -> badge color mapping (type-specific labels)
 function labelBadgeClass(label: string): string {
   const l = label.toLowerCase()
-  // Positive signals (bullish trend, oversold oscillator, accumulation volume)
   if (
     l.includes("haussier") ||
     l.includes("survendu") ||
@@ -59,7 +67,6 @@ function labelBadgeClass(label: string): string {
   ) {
     return "text-green-700 border-green-300"
   }
-  // Negative signals (bearish trend, overbought oscillator, distribution volume)
   if (
     l.includes("baissier") ||
     l.includes("surachet") ||
@@ -135,12 +142,18 @@ export function TechnicalAnalysisPanel({
     )
   }
 
+  // Aggregate score: equal-weight across loaded families.
   const aggregateScore =
     loadedFamilies.length > 0
       ? loadedFamilies.reduce((sum, f) => sum + (familyData[f.id].data?.family_score_pct ?? 0), 0) /
         loadedFamilies.length
       : null
   const aggregateIsProvisional = loadedFamilies.some((f) => familyData[f.id].data?.is_provisional)
+  const aggregateMeta =
+    sma.data ??
+    rsi.data ??
+    macd.data ??
+    obv.data
 
   // Level 2: Family drill-down
   if (level === 2 && selectedFamily && familyData[selectedFamily]?.data) {
@@ -163,8 +176,13 @@ export function TechnicalAnalysisPanel({
           onClick={() => setLevel(1)}
         >
           <CardContent className="flex flex-col items-center py-6 gap-2">
-            <SignalScoreBar value={aggregateScore} size="lg" label="Score agrege — Analyse Technique" className="w-full max-w-xs" />
-            <div className="flex items-center gap-2 mt-2">
+            <SignalScoreBar
+              value={aggregateScore}
+              size="lg"
+              label="Consensus des signaux - Analyse Technique"
+              className="w-full max-w-xs"
+            />
+            <div className="flex items-center gap-2 mt-2 flex-wrap justify-center">
               <Badge variant="outline" className="text-[10px]">
                 {loadedFamilies.length}/{ALL_FAMILIES.length} familles
               </Badge>
@@ -173,9 +191,14 @@ export function TechnicalAnalysisPanel({
                   Provisoire
                 </Badge>
               )}
-              {sma.data && (
+              {aggregateMeta?.latest_close != null && (
                 <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                  {sma.data.as_of}
+                  Cloture {formatNumber(aggregateMeta.latest_close)}
+                </Badge>
+              )}
+              {aggregateMeta && (
+                <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                  {aggregateMeta.as_of}
                 </Badge>
               )}
             </div>
@@ -186,7 +209,7 @@ export function TechnicalAnalysisPanel({
         </Card>
       )}
 
-      {/* Level 1: Category sections (Tendance / Oscillation / Volume) */}
+      {/* Level 1: Category sections (Tendance / Momentum / Oscillation / Volume) */}
       {level === 1 && (
         <>
           <div className="flex items-center justify-between">
@@ -303,7 +326,6 @@ export function TechnicalAnalysisPanel({
                           )
                         }
 
-                        // Loading or error
                         return (
                           <div
                             key={fam.id}

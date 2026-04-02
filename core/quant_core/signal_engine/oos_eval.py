@@ -138,24 +138,43 @@ def _obv_trend(close: np.ndarray, params: dict, volume: np.ndarray) -> np.ndarra
 # Walk-forward OOS evaluation
 # ---------------------------------------------------------------------------
 
-# Families whose signals are actions (+1=buy, -1=sell, 0=do nothing)
-# rather than positions (+1=long, -1=short).
-_ACTION_FAMILIES = frozenset({"rsi"})
+# Variant archetypes whose signals are event/action intents rather than
+# state/position levels. In the long-only variant engine, +1 opens a long,
+# -1 closes the long, and 0 keeps the current state.
+_EVENT_SIGNAL_ARCHETYPES = frozenset({"sma_cross", "macd_cross", "rsi_level"})
+
+
+def variant_uses_event_signals(variant: VariantDef) -> bool:
+    """Return True when *variant* emits event-style open/close intents."""
+    return variant.archetype in _EVENT_SIGNAL_ARCHETYPES
 
 
 def _actions_to_positions(actions: np.ndarray) -> np.ndarray:
-    """Convert action signals to position signals via forward-fill.
+    """Convert long-only action signals to carried positions.
 
-    +1 (buy) sets position to +1 (long), -1 (sell) sets position to -1 (short),
-    0 (no action) keeps the current position.
+    +1 opens (or keeps) a long, -1 closes to flat, and 0 holds the current
+    state. Returned positions are always in {0.0, +1.0}.
     """
     positions = np.zeros_like(actions)
     pos = 0.0
-    for i in range(len(actions)):
-        if actions[i] != 0.0:
-            pos = actions[i]
+    for i, action in enumerate(actions):
+        if action > 0.0:
+            pos = 1.0
+        elif action < 0.0:
+            pos = 0.0
         positions[i] = pos
     return positions
+
+
+def signal_to_long_only_positions(signal: np.ndarray, variant: VariantDef) -> np.ndarray:
+    """Convert a raw variant signal stream to long-only carried positions.
+
+    Event-style variants use +1=open, -1=close, 0=hold. State-style variants
+    use +1=long and any non-positive value as flat.
+    """
+    if variant_uses_event_signals(variant):
+        return _actions_to_positions(signal)
+    return np.where(signal > 0.0, 1.0, 0.0).astype(float, copy=False)
 
 
 def apply_cooldown(sig: np.ndarray, cooldown_bars: int) -> np.ndarray:
@@ -227,8 +246,6 @@ def evaluate_variant_oos(
 
     # Compute signal once on full close array (no look-ahead: indicators are causal)
     sig = compute_signal_array(close, variant, volume=volume)
-    is_action = variant.family in _ACTION_FAMILIES
-
     cost_factor = cost_bps / 10_000.0
     results: list[OOSWindowResult] = []
     window_idx = 0
@@ -247,13 +264,7 @@ def evaluate_variant_oos(
 
         price_ret = close_oos[1:] / close_oos[:-1] - 1.0
 
-        if is_action:
-            # Action signals: +1=buy, -1=sell, 0=do nothing
-            # Convert to positions via forward-fill for return calculation
-            sig_oos = _actions_to_positions(sig_raw)
-        else:
-            # Position signals: +1=long, -1=short
-            sig_oos = sig_raw
+        sig_oos = signal_to_long_only_positions(sig_raw, variant)
 
         # Unified cost model: charge on position changes only (Chan 2008)
         sig_change = np.abs(np.diff(sig_oos, prepend=0.0))

@@ -8,6 +8,7 @@ from core.quant_core.optimize import sma_cumsum, rsi_wilder, ema, macd_pack, obv
 
 from .domain import VariantCurrentSignal, VariantRobustnessSummary, variant_signal_label
 from .oos_eval import compute_signal_array
+from .rsi_semantics import is_rsi_level_variant, latest_rsi_variant_signal
 
 
 def build_current_signal(
@@ -16,12 +17,20 @@ def build_current_signal(
     *,
     volume: np.ndarray | None = None,
     reliability_weight: float = 0.0,
+    cooldown_bars: int = 0,
 ) -> VariantCurrentSignal:
     """Compute the latest-bar signal for a single variant."""
     current_close = float(close[-1])
-    sig_arr = compute_signal_array(close, variant, volume=volume)
-    signal_val = float(sig_arr[-1])
-    label = variant_signal_label(variant.family, signal_val)
+    if is_rsi_level_variant(variant):
+        signal_val, label = latest_rsi_variant_signal(
+            close,
+            variant,
+            cooldown_bars=cooldown_bars,
+        )
+    else:
+        sig_arr = compute_signal_array(close, variant, volume=volume)
+        signal_val = float(sig_arr[-1])
+        label = variant_signal_label(variant.family, signal_val)
     indicator_val = _get_indicator_value(close, variant, volume=volume)
     explanation = _build_explanation(current_close, indicator_val, variant, label, signal_val)
 
@@ -41,6 +50,7 @@ def compute_current_signals(
     close: np.ndarray,
     *,
     volume: np.ndarray | None = None,
+    cooldown_bars: int = 0,
 ) -> list[VariantCurrentSignal]:
     """Compute the latest-bar signal for each representative."""
     results: list[VariantCurrentSignal] = []
@@ -52,6 +62,7 @@ def compute_current_signals(
                 close,
                 volume=volume,
                 reliability_weight=rep.reliability_score,
+                cooldown_bars=cooldown_bars,
             )
         )
 

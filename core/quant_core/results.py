@@ -537,6 +537,8 @@ class ResultsAnalyzer:
             years = n / self.periods_per_year
         if years <= 0:
             return np.nan
+        if total <= 0:
+            return np.nan
         return float(total ** (1.0 / years) - 1.0)
 
     def _annualized_vol(self, rets: pd.Series) -> float:

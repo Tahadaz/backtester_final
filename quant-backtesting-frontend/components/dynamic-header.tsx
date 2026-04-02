@@ -7,7 +7,12 @@ import { SignalsHeader } from "@/components/signals-header"
 export function DynamicHeader() {
   const pathname = usePathname()
 
-  if (pathname.startsWith("/data") || pathname.startsWith("/signals")) {
+  if (
+    pathname.startsWith("/data") ||
+    pathname.startsWith("/signals") ||
+    pathname.startsWith("/strategy") ||
+    pathname.startsWith("/backtest")
+  ) {
     return <SignalsHeader />
   }
 

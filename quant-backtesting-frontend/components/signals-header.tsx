@@ -2,13 +2,15 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Database, Gauge } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { ChartColumnIncreasing, Database, Gauge, Target } from "lucide-react"
 
 const navItems = [
-  { href: "/data", label: "Données", icon: Database },
-  { href: "/signals", label: "Signaux", icon: Gauge },
+  { href: "/data", label: "Data", icon: Database },
+  { href: "/signals", label: "Signals", icon: Gauge },
+  { href: "/strategy", label: "Strategy", icon: Target },
+  { href: "/backtest", label: "Backtest", icon: ChartColumnIncreasing },
 ]
 
 export function SignalsHeader() {
@@ -18,14 +20,14 @@ export function SignalsHeader() {
     <header className="sticky top-0 z-50 w-full border-b border-border bg-card/80 backdrop-blur-md">
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4">
         <Link href="/" className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground text-xs font-black tracking-wider">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-xs font-black tracking-wider text-primary-foreground">
             BT
           </div>
           <div>
-            <div className="text-sm font-bold text-foreground leading-tight">
+            <div className="text-sm font-bold leading-tight text-foreground">
               Backtest
             </div>
-            <div className="text-[10px] text-muted-foreground leading-tight">
+            <div className="text-[10px] leading-tight text-muted-foreground">
               Signal Engine
             </div>
           </div>
@@ -42,7 +44,7 @@ export function SignalsHeader() {
                 asChild
                 className={cn(
                   "gap-1.5 text-xs font-semibold",
-                  isActive && "bg-secondary text-secondary-foreground"
+                  isActive && "bg-secondary text-secondary-foreground",
                 )}
               >
                 <Link href={item.href}>

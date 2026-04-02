@@ -248,6 +248,7 @@ class FamilyCombinedSignal:
     warning_message: str = ""
     is_provisional: bool = False
     as_of: str = ""
+    latest_close: float | None = None
     best_variant_id: str = ""  # highest-reliability variant (for navigation when 0 reps)
     signal_type: str = "trend"     # "trend", "oscillator", "volume"
     category: str = "tendance"     # "tendance", "oscillation", "volume"
@@ -269,3 +270,20 @@ class EnsemblePipelineDetail:
     redundancy_info: dict[str, tuple[str, float]] = field(default_factory=dict)  # {eliminated_id: (corr_with_id, corr_val)}
     correlation_matrix: dict[str, dict[str, float]] = field(default_factory=dict)  # pairwise for survivors
     fallback_variant_ids: set[str] = field(default_factory=set)
+
+
+# ---------------------------------------------------------------------------
+# Layer H — Regime detection result
+# ---------------------------------------------------------------------------
+
+@dataclass
+class RegimeResult:
+    """Result of OOS-validated regime detection via Kaufman Efficiency Ratio."""
+    regime_active: bool
+    regime_label: str           # "trending" / "ranging" / "mixed" / "insufficient_data"
+    regime_weights: dict[str, float]   # family → weight (for current regime)
+    er_value: float | None      # current ER value
+    improvement: float          # mean OOS Sharpe improvement over equal-weight
+    tercile_bounds: tuple[float, float]  # (er_low, er_high) from last train window
+    window_results: list[dict[str, Any]]  # per-fold transparency
+    n_families: int             # how many families were used

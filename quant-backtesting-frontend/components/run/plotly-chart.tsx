@@ -1,7 +1,7 @@
 "use client"
 
 import dynamic from "next/dynamic"
-import { useMemo } from "react"
+import { memo, useMemo } from "react"
 import type {
   Config as PlotlyConfig,
   Data as PlotlyData,
@@ -25,7 +25,7 @@ type PlotlyChartProps = {
   data?: PlotlyFigure
 }
 
-export function PlotlyChart({ figure, data }: PlotlyChartProps) {
+export const PlotlyChart = memo(function PlotlyChart({ figure, data }: PlotlyChartProps) {
   const chartFigure = figure ?? data
   if (!chartFigure) return null
 
@@ -90,4 +90,4 @@ export function PlotlyChart({ figure, data }: PlotlyChartProps) {
       />
     </div>
   )
-}
+})

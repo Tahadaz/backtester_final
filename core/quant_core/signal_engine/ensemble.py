@@ -10,7 +10,7 @@ from typing import Any
 
 import numpy as np
 
-from .candidates import filter_candidates_for_history, generate_candidates, variant_min_history
+from .candidates import generate_candidates, variant_min_history
 from .current_signal import build_current_signal, compute_current_signals
 from .domain import (
     CATEGORY_FAMILIES,
@@ -29,6 +29,7 @@ from .domain import (
     variant_signal_label,
 )
 from .oos_eval import compute_signal_array, evaluate_variant_oos
+from .rsi_semantics import is_rsi_level_variant, latest_rsi_variant_signal
 from .redundancy import reduce_redundancy
 from .robustness import score_variant_robustness
 from .survivor import filter_survivors
@@ -77,6 +78,65 @@ def combine_family_signals(
         })
 
     return score_pct, label, per_rep
+
+
+# ---------------------------------------------------------------------------
+# Per-bar family consensus score
+# ---------------------------------------------------------------------------
+
+def compute_family_score_timeseries(
+    detail: EnsemblePipelineDetail,
+    close: np.ndarray,
+    *,
+    volume: np.ndarray | None = None,
+    cooldown_bars: int = 0,
+) -> np.ndarray:
+    """Per-bar family consensus score from representative variants.
+
+    Combines the per-bar signals of all representative (or fallback)
+    variants using their reliability weights.
+
+    Returns array of shape ``(len(close),)`` with values in [-100, +100].
+    """
+    from .variant_detail import compute_variant_signal_array
+
+    n = len(close)
+    if n == 0:
+        return np.zeros(0, dtype="float64")
+
+    # Collect representative variants + weights
+    reps = [
+        s for s in detail.all_summaries
+        if s.variant.variant_id in detail.representative_ids
+    ]
+    use_equal_weight = False
+
+    if not reps:
+        # Fallback mode (live_signal_only) — equal weights
+        reps = [
+            s for s in detail.all_summaries
+            if s.variant.variant_id in detail.fallback_variant_ids
+        ]
+        use_equal_weight = True
+
+    if not reps:
+        return np.zeros(n, dtype="float64")
+
+    # Compute weighted per-bar signal
+    weighted_sum = np.zeros(n, dtype="float64")
+    total_weight = 0.0
+    for s in reps:
+        w = 1.0 if use_equal_weight else max(s.reliability_score, 1e-9)
+        sig = compute_variant_signal_array(
+            close, s.variant, volume=volume, cooldown_bars=cooldown_bars,
+        )
+        weighted_sum += w * sig
+        total_weight += w
+
+    if total_weight <= 0:
+        return np.zeros(n, dtype="float64")
+
+    return (weighted_sum / total_weight) * 100.0
 
 
 def _score_to_label(score_pct: float, family: str | None = None) -> str:
@@ -179,6 +239,7 @@ def _current_signal_entry(
     *,
     volume: np.ndarray | None = None,
     reliability_weight: float = 0.0,
+    cooldown_bars: int = 0,
     selection_status: str,
 ) -> tuple[VariantCurrentSignal, dict[str, Any]]:
     current = build_current_signal(
@@ -186,6 +247,7 @@ def _current_signal_entry(
         close,
         volume=volume,
         reliability_weight=reliability_weight,
+        cooldown_bars=cooldown_bars,
     )
     entry = {
         "variant_id": current.variant_id,
@@ -223,6 +285,7 @@ def _fallback_from_summaries(
     close: np.ndarray,
     *,
     volume: np.ndarray | None = None,
+    cooldown_bars: int = 0,
     selection_status: str,
 ) -> tuple[list[VariantCurrentSignal], list[dict[str, Any]], set[str]]:
     ranked = sorted(
@@ -240,6 +303,7 @@ def _fallback_from_summaries(
             close,
             volume=volume,
             reliability_weight=summary.reliability_score,
+            cooldown_bars=cooldown_bars,
             selection_status=selection_status,
         )
         signals.append(current)
@@ -254,6 +318,7 @@ def _fallback_live_only(
     close: np.ndarray,
     *,
     volume: np.ndarray | None = None,
+    cooldown_bars: int = 0,
 ) -> tuple[list[VariantCurrentSignal], list[dict[str, Any]], set[str], dict[str, str], list[VariantRobustnessSummary]]:
     ranked = sorted(
         candidates,
@@ -267,8 +332,12 @@ def _fallback_live_only(
     labels: dict[str, str] = {}
     summaries: list[VariantRobustnessSummary] = []
     for candidate in candidates:
-        sig_arr = compute_signal_array(close, candidate, volume=volume)
-        labels[candidate.variant_id] = variant_signal_label(candidate.family, float(sig_arr[-1]))
+        if is_rsi_level_variant(candidate):
+            _signal_val, signal_label = latest_rsi_variant_signal(close, candidate)
+        else:
+            sig_arr = compute_signal_array(close, candidate, volume=volume)
+            signal_label = variant_signal_label(candidate.family, float(sig_arr[-1]))
+        labels[candidate.variant_id] = signal_label
         summaries.append(VariantRobustnessSummary(
             variant=candidate,
             n_oos_windows=0,
@@ -290,6 +359,7 @@ def _fallback_live_only(
             close,
             volume=volume,
             reliability_weight=1.0,
+            cooldown_bars=cooldown_bars,
             selection_status="live_only_fallback",
         )
         signals.append(current)
@@ -336,22 +406,6 @@ def run_family_ensemble_full(
 
     # Layer A: candidates
     candidates = generate_candidates(family, horizon)
-    if methodology.methodology_mode == "adaptive_oos_ensemble":
-        candidates = filter_candidates_for_history(candidates, methodology.effective_window.train + 1)
-        if not candidates:
-            methodology = MethodologyContext(
-                methodology_mode="live_signal_only",
-                available_bars=methodology.available_bars,
-                nominal_window=methodology.nominal_window,
-                effective_window=MethodologyWindow(0, 0, 0, target_windows=_TARGET_ADAPTIVE_WINDOWS),
-                warning_message=(
-                    methodology.warning_message
-                    + " Aucune variante n'a assez d'historique chauffe pour un OOS adaptatif; bascule en signal live uniquement."
-                ).strip(),
-                is_provisional=True,
-            )
-    elif methodology.methodology_mode == "live_signal_only":
-        candidates = filter_candidates_for_history(candidates, len(close))
     tested_count = len(candidates)
 
     if len(close) == 0 or not candidates:
@@ -393,6 +447,7 @@ def run_family_ensemble_full(
             candidates,
             close,
             volume=volume,
+            cooldown_bars=cooldown_bars,
         )
         score_pct, label, _ = combine_family_signals(fallback_signals, family)
         explanation = (
@@ -470,9 +525,16 @@ def run_family_ensemble_full(
     # Compute current signal labels for ALL candidates (type-specific)
     current_signal_labels: dict[str, str] = {}
     for c in candidates:
-        sig_arr = compute_signal_array(close, c, volume=volume)
-        val = float(sig_arr[-1])
-        current_signal_labels[c.variant_id] = variant_signal_label(c.family, val)
+        if is_rsi_level_variant(c):
+            _signal_val, signal_label = latest_rsi_variant_signal(
+                close,
+                c,
+                cooldown_bars=cooldown_bars,
+            )
+        else:
+            sig_arr = compute_signal_array(close, c, volume=volume)
+            signal_label = variant_signal_label(c.family, float(sig_arr[-1]))
+        current_signal_labels[c.variant_id] = signal_label
 
     # Layer E: redundancy reduction
     if survivors:
@@ -485,7 +547,12 @@ def run_family_ensemble_full(
     representative_ids = {r.variant.variant_id for r in representatives}
 
     # Layer F: current signals
-    current_signals = compute_current_signals(representatives, close, volume=volume)
+    current_signals = compute_current_signals(
+        representatives,
+        close,
+        volume=volume,
+        cooldown_bars=cooldown_bars,
+    )
 
     # Layer G: ensemble combination
     score_pct, label, per_rep = combine_family_signals(current_signals, family)
@@ -499,18 +566,8 @@ def run_family_ensemble_full(
             entry["archetype"] = vdef.archetype
         entry["selection_status"] = "selected"
 
-    fallback_signals: list[VariantCurrentSignal] = []
     fallback_variants: list[dict[str, Any]] = []
     fallback_variant_ids: set[str] = set()
-    if methodology.methodology_mode == "adaptive_oos_ensemble" and not representatives:
-        fallback_signals, fallback_variants, fallback_variant_ids = _fallback_from_summaries(
-            summaries,
-            close,
-            volume=volume,
-            selection_status="adaptive_fallback",
-        )
-        if fallback_signals:
-            score_pct, label, _ = combine_family_signals(fallback_signals, family)
 
     # Score explanation
     rep_strs = [
@@ -521,17 +578,11 @@ def run_family_ensemble_full(
             f"{representative_count} representative(s): "
             + "; ".join(rep_strs)
         )
-    elif fallback_variants:
-        explanation = (
-            "Aucune variante n'a passe le filtrage strict en mode adaptatif. "
-            f"{len(fallback_variants)} variante(s) provisoire(s) sont affichees a titre indicatif."
-        )
     else:
         explanation = "Aucune variante n'a survecu au filtrage competitif."
 
     best_id = (
         representatives[0].variant.variant_id if representatives else
-        fallback_variants[0]["variant_id"] if fallback_variants else
         max(summaries, key=lambda s: s.reliability_score).variant.variant_id if summaries else
         ""
     )

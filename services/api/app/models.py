@@ -449,6 +449,27 @@ class MarketRefreshRun(Base):
     )
 
 
+class SavedStrategy(Base):
+    """Persisted trading strategy with configuration and snapshot."""
+    __tablename__ = "saved_strategy"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(200), nullable=False)
+    note = Column(Text, nullable=True)
+    status = Column(String(20), nullable=False, default="draft")          # draft/modified/saved/archived
+    side_policy = Column(String(20), nullable=False, default="long_only") # long_only/long_short
+    horizon = Column(String(20), nullable=False, default="medium")        # short/medium/long
+    config_json = Column(JSONB, nullable=False, default=dict)             # all layer configs
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    archived_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_saved_strategy_status", "status"),
+        Index("ix_saved_strategy_updated_at", "updated_at"),
+    )
+
+
 class MarketRefreshError(Base):
     """Per-symbol error log within a refresh run."""
     __tablename__ = "market_refresh_error"

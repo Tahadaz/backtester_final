@@ -454,11 +454,14 @@ def _stock_to_out(
     stock: models.StockMaster,
     store: models.MarketDataStore | None,
 ) -> StockMasterOut:
+    masi_info = get_masi_info(stock.symbol)
+    sector = stock.sector or (masi_info.get("sector") if masi_info else None)
+
     return StockMasterOut(
         symbol=stock.symbol,
         display_name=stock.display_name,
         isin=stock.isin,
-        sector=stock.sector,
+        sector=sector,
         market_cap_class=stock.market_cap_class,
         is_active=stock.is_active,
         track_source=stock.track_source,
@@ -1257,12 +1260,14 @@ def get_market_catalog(db: Session = Depends(get_db)) -> list[MarketCatalogRowOu
         data_as_of: datetime.date | None = r["data_as_of"]
         if isinstance(data_as_of, datetime.datetime):
             data_as_of = data_as_of.date()
+        masi_info = get_masi_info(r["symbol"])
+        sector = r["sector"] or (masi_info.get("sector") if masi_info else None)
         result.append(
             MarketCatalogRowOut(
                 symbol=r["symbol"],
                 display_name=r["display_name"],
                 isin=r["isin"],
-                sector=r["sector"],
+                sector=sector,
                 is_active=r["is_active"],
                 track_source=r["track_source"],
                 bourse_url=r["bourse_url"],

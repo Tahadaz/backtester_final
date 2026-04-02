@@ -44,3 +44,20 @@ class BatchScoresRequest(BaseModel):
     timeframe: str = Field(default="1D", min_length=1)
     cost_bps: float = Field(default=10.0, ge=0, le=100)
     cooldown_bars: int = Field(default=0, ge=0)
+
+
+class RegimeConsensusRequest(BaseModel):
+    symbol: str = Field(..., min_length=1)
+    horizon: str = Field(default="medium", pattern=r"^(short|medium|long)$")
+    timeframe: str = Field(default="1D", min_length=1)
+    cost_bps: float = Field(default=10.0, ge=0, le=100)
+    cooldown_bars: int = Field(default=0, ge=0)
+
+
+class SignalZoneChartRequest(BaseModel):
+    symbol: str = Field(..., min_length=1)
+    horizon: str = Field(default="medium", pattern=r"^(short|medium|long)$")
+    timeframe: str = Field(default="1D", min_length=1)
+    enabled_families: list[str] = Field(default=["sma", "rsi", "macd", "obv"])
+    cost_bps: float = Field(default=10.0, ge=0, le=100)
+    cooldown_bars: int = Field(default=0, ge=0)
