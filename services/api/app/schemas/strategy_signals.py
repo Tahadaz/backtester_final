@@ -61,3 +61,10 @@ class SignalZoneChartRequest(BaseModel):
     enabled_families: list[str] = Field(default=["sma", "rsi", "macd", "obv"])
     cost_bps: float = Field(default=10.0, ge=0, le=100)
     cooldown_bars: int = Field(default=0, ge=0)
+
+
+class IndicatorSeriesRequest(BaseModel):
+    symbol: str = Field(..., min_length=1)
+    indicator: str = Field(..., pattern=r"^(sma|rsi|macd|obv)$")
+    params: dict[str, float] = Field(default_factory=dict)
+    timeframe: str = Field(default="1D", pattern=r"^1D$")

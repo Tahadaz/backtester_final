@@ -17,6 +17,7 @@ from ..market_data_loader import load_close_for_symbol, load_ohlcv_for_symbol
 from ..schemas.strategy_signals import (
     BatchScoresRequest,
     FamilyEnsembleRequest,
+    IndicatorSeriesRequest,
     RegimeConsensusRequest,
     SignalZoneChartRequest,
     SmaEnsembleRequest,
@@ -34,6 +35,7 @@ from core.quant_core.signal_engine.domain import (
     FAMILY_SIGNAL_TYPE,
     EnsemblePipelineDetail,
     HORIZON_PARAMS,
+    VariantDef,
     label_to_signal_value,
     signal_type_label,
 )
@@ -187,6 +189,210 @@ def family_ensemble(body: FamilyEnsembleRequest, db: Session = Depends(get_db)):
     """Run the full signal engine pipeline for any family (Layers A->G)."""
     detail = _get_or_compute(db, body.family, body.symbol, body.horizon, body.timeframe, body.cost_bps, body.cooldown_bars)
     return asdict(detail.signal)
+
+
+def _validate_indicator_volume(symbol: str, volume: np.ndarray | None) -> None:
+    if volume is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Volume data missing for {symbol}; OBV cannot be computed.",
+        )
+    finite_volume = volume[np.isfinite(volume)]
+    nonzero_ratio = (finite_volume != 0).mean() if len(finite_volume) > 0 else 0.0
+    if nonzero_ratio < 0.01:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Volume data for {symbol} is mostly zero/NaN; OBV requires real volume data.",
+        )
+
+
+def _int_param(params: dict[str, float], key: str, *, minimum: int, maximum: int) -> int:
+    value = params.get(key)
+    if value is None:
+        raise HTTPException(status_code=422, detail=f"Missing parameter: {key}")
+    numeric = float(value)
+    if not numeric.is_integer():
+        raise HTTPException(status_code=422, detail=f"Parameter {key} must be an integer")
+    integer = int(numeric)
+    if integer < minimum or integer > maximum:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Parameter {key} must be between {minimum} and {maximum}",
+        )
+    return integer
+
+
+def _validate_indicator_params(indicator: str, params: dict[str, float]) -> dict[str, int]:
+    keys = set(params.keys())
+    if indicator == "sma":
+        if keys != {"period"}:
+            raise HTTPException(status_code=422, detail="SMA params must be exactly: period")
+        return {"period": _int_param(params, "period", minimum=5, maximum=500)}
+    if indicator == "rsi":
+        if keys != {"period"}:
+            raise HTTPException(status_code=422, detail="RSI params must be exactly: period")
+        return {"period": _int_param(params, "period", minimum=2, maximum=200)}
+    if indicator == "macd":
+        if keys != {"fast", "slow", "signal"}:
+            raise HTTPException(status_code=422, detail="MACD params must be exactly: fast, slow, signal")
+        validated = {
+            "fast": _int_param(params, "fast", minimum=2, maximum=100),
+            "slow": _int_param(params, "slow", minimum=5, maximum=200),
+            "signal": _int_param(params, "signal", minimum=2, maximum=50),
+        }
+        if validated["fast"] >= validated["slow"]:
+            raise HTTPException(status_code=422, detail="MACD params require fast < slow")
+        return validated
+    if indicator == "obv":
+        if keys != {"ema_period"}:
+            raise HTTPException(status_code=422, detail="OBV params must be exactly: ema_period")
+        return {"ema_period": _int_param(params, "ema_period", minimum=2, maximum=200)}
+    raise HTTPException(status_code=422, detail=f"Unsupported indicator: {indicator}")
+
+
+def _indicator_variant(indicator: str, params: dict[str, int]) -> VariantDef:
+    if indicator == "sma":
+        return VariantDef(
+            variant_id="indicator-series-sma",
+            family="sma",
+            archetype="price_vs_sma",
+            params={"window": params["period"]},
+            description="SMA",
+        )
+    if indicator == "rsi":
+        return VariantDef(
+            variant_id="indicator-series-rsi",
+            family="rsi",
+            archetype="rsi_level",
+            params={"period": params["period"], "oversold": 30, "overbought": 70},
+            description="RSI",
+        )
+    if indicator == "macd":
+        return VariantDef(
+            variant_id="indicator-series-macd",
+            family="macd",
+            archetype="macd_cross",
+            params=params,
+            description="MACD",
+        )
+    return VariantDef(
+        variant_id="indicator-series-obv",
+        family="obv",
+        archetype="obv_trend",
+        params=params,
+        description="OBV",
+    )
+
+
+def _primary_indicator_series(indicator: dict[str, Any]) -> tuple[np.ndarray, np.ndarray | None]:
+    kind = indicator.get("type")
+    if kind == "overlay":
+        return indicator["values"], None
+    if kind == "secondary_yaxis":
+        if "histogram" in indicator:
+            return indicator["histogram"], indicator.get("signal_line")
+        if "values" in indicator:
+            return indicator["values"], None
+        if "obv" in indicator:
+            return indicator["obv"], indicator.get("ema_values")
+    return np.full(0, np.nan), None
+
+
+def _last_finite(arr: np.ndarray) -> float | None:
+    finite = arr[np.isfinite(arr)]
+    if len(finite) == 0:
+        return None
+    return float(finite[-1])
+
+
+def _indicator_current_score(indicator: str, plot_payload: dict[str, Any], close: np.ndarray) -> float | None:
+    if indicator == "sma" and "values" in plot_payload:
+        latest = _last_finite(plot_payload["values"])
+        if latest is None:
+            return None
+        return float(close[-1]) - latest
+    if indicator == "macd" and "histogram" in plot_payload:
+        return _last_finite(plot_payload["histogram"])
+    if indicator == "obv" and "obv" in plot_payload and "ema_values" in plot_payload:
+        obv_last = _last_finite(plot_payload["obv"])
+        ema_last = _last_finite(plot_payload["ema_values"])
+        if obv_last is None or ema_last is None:
+            return None
+        return obv_last - ema_last
+    primary, _overlay = _primary_indicator_series(plot_payload)
+    return _last_finite(primary)
+
+
+def _current_label_for_indicator(indicator: str, signal_val: float) -> str:
+    signal_type = FAMILY_SIGNAL_TYPE.get(indicator, "trend")
+    if signal_type == "trend":
+        if signal_val > 0:
+            return "Haussier"
+        if signal_val < 0:
+            return "Baissier"
+        return "Neutre"
+    if signal_type == "momentum":
+        if signal_val > 0:
+            return "Momentum haussier"
+        if signal_val < 0:
+            return "Momentum baissier"
+        return "Pas de momentum"
+    if signal_type == "oscillator":
+        if signal_val > 0:
+            return "Survendu"
+        if signal_val < 0:
+            return "Surachete"
+        return "Normal"
+    if signal_type == "volume":
+        if signal_val > 0:
+            return "Accumulation"
+        if signal_val < 0:
+            return "Distribution"
+        return "Neutre"
+    return signal_type_label(signal_type, signal_val * 100.0)
+
+
+@router.post("/signal/indicator-series")
+def indicator_series(body: IndicatorSeriesRequest, db: Session = Depends(get_db)):
+    try:
+        ohlcv = load_ohlcv_for_symbol(db, body.symbol, body.timeframe)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    ohlcv = _clean_ohlcv(ohlcv)
+    if len(ohlcv) == 0:
+        raise HTTPException(status_code=422, detail=f"No usable OHLCV rows for {body.symbol}")
+
+    close = ohlcv["Close"].values.astype("float64")
+    volume = ohlcv["Volume"].values.astype("float64") if "Volume" in ohlcv.columns else None
+    if body.indicator == "obv":
+        _validate_indicator_volume(body.symbol, volume)
+
+    validated_params = _validate_indicator_params(body.indicator, body.params)
+    variant = _indicator_variant(body.indicator, validated_params)
+    plot_payload = _compute_indicator(close, variant, volume=volume)
+    indicator_values, indicator_overlay = _primary_indicator_series(plot_payload)
+    current_score = _indicator_current_score(body.indicator, plot_payload, close)
+    signal_arr = compute_signal_array(close, variant, volume=volume)
+    signal_value = float(signal_arr[-1]) if len(signal_arr) else 0.0
+
+    if current_score is None or not np.isfinite(current_score):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Insufficient history for {body.indicator} with params {validated_params}",
+        )
+
+    return {
+        "symbol": body.symbol,
+        "indicator": body.indicator,
+        "params": {key: float(value) for key, value in validated_params.items()},
+        "dates": [str(idx)[:10] for idx in ohlcv.index],
+        "close": _safe_float_list(close),
+        "indicator_values": _safe_float_list(indicator_values),
+        "indicator_overlay": _safe_float_list(indicator_overlay) if indicator_overlay is not None else None,
+        "current_score": round(float(current_score), 4),
+        "current_label": _current_label_for_indicator(body.indicator, signal_value),
+    }
 
 
 @router.post("/signal/variant-detail")

@@ -1819,6 +1819,19 @@ export const FamilyCombinedSignalSchema = z.object({
 })
 export type FamilyCombinedSignal = z.infer<typeof FamilyCombinedSignalSchema>
 
+export const IndicatorSeriesResponseSchema = z.object({
+  symbol: z.string(),
+  indicator: z.string(),
+  params: z.record(z.number()),
+  dates: z.array(z.string()),
+  close: z.array(z.number().nullable().optional()),
+  indicator_values: z.array(z.number().nullable().optional()),
+  indicator_overlay: z.array(z.number().nullable().optional()).nullable(),
+  current_score: z.number(),
+  current_label: z.string(),
+})
+export type IndicatorSeriesResponse = z.infer<typeof IndicatorSeriesResponseSchema>
+
 export async function fetchSmaEnsemble(body: {
   symbol: string
   horizon: string
@@ -1859,6 +1872,24 @@ export async function fetchFamilyEnsemble(body: {
     body: JSON.stringify(payload),
   })
   return FamilyCombinedSignalSchema.parse(raw)
+}
+
+export async function fetchIndicatorSeries(body: {
+  symbol: string
+  indicator: string
+  params: Record<string, number>
+  timeframe?: string
+}): Promise<IndicatorSeriesResponse> {
+  const raw = await request<unknown>("/strategy/signal/indicator-series", {
+    method: "POST",
+    body: JSON.stringify({
+      symbol: body.symbol,
+      indicator: body.indicator,
+      params: body.params,
+      timeframe: body.timeframe ?? "1D",
+    }),
+  })
+  return IndicatorSeriesResponseSchema.parse(raw)
 }
 
 // ── Signal Engine — Variant Detail ──────────────────────────────────────────
