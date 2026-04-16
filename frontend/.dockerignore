@@ -1,0 +1,24 @@
+Dockerfile
+.dockerignore
+
+# Build outputs — never copy host artifacts into the image
+.next
+.next-pages
+out
+out-pages
+.export-disabled
+tsconfig.tsbuildinfo
+
+# Dependencies — restored by `npm ci` in the deps stage
+node_modules
+
+# Env + VCS + misc
+.env
+.env.local
+.env.*.local
+.git
+.gitignore
+.vscode
+.idea
+*.log
+npm-debug.log*
