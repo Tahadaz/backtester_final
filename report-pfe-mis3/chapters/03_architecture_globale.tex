@@ -1,0 +1,68 @@
+\chapter{Architecture globale de la plateforme}
+
+\section{Vue systeme}
+La plateforme est organisee autour de quatre blocs techniques :
+\begin{enumerate}
+\item un frontend de pilotage et de visualisation,
+\item une API de service pour les contrats metier,
+\item un worker asynchrone pour les traitements longs,
+\item une couche de persistance (base relationnelle + stockage d'artefacts).
+\end{enumerate}
+
+La Figure~\ref{fig:archi-systeme} illustre cette vue d'ensemble.
+
+\begin{figure}[H]
+\centering
+\fbox{\parbox{0.92\textwidth}{
+\centering
+Frontend \(\leftrightarrow\) API \(\leftrightarrow\) Worker\\
+API \(\leftrightarrow\) PostgreSQL\\
+API et Worker \(\leftrightarrow\) Stockage artefacts (S3/MinIO)
+}}
+\caption{Architecture technique globale}
+\label{fig:archi-systeme}
+\end{figure}
+
+La Figure~\ref{fig:archi-systeme} montre que l'API joue le role de facade
+contractuelle entre l'interface et les traitements.
+
+\section{Contrats inter-stations}
+Le coeur de l'architecture ne se limite pas aux composants techniques ; il
+reside dans les contrats de transfert de responsabilite entre stations. Ces
+contrats sont resumes dans le Tableau~\ref{tab:contrats-interstations}.
+
+\begin{table}[H]
+\centering
+\caption{Contrats documentaires inter-stations}
+\label{tab:contrats-interstations}
+\begin{tabular}{p{3.2cm}p{4cm}p{7.2cm}}
+\toprule
+\textbf{Flux} & \textbf{Artefact principal} & \textbf{Invariant} \\
+\midrule
+Data $\rightarrow$ Signal & OHLCV valide & Index temporel ordonne, valeurs exploitables, historique suffisant. \\
+Signal $\rightarrow$ Strategie & Findings OOS & Scores interpretables, familles explicites, robustesse tracee. \\
+Strategie $\rightarrow$ Backtest & Config WFO-ready & Parametres optimisables identifies, bornes valides, regles coherentes. \\
+Backtest $\rightarrow$ Decision & Verdict robuste & WFE, diagnostics de stabilite et tests statistiques exposes. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Le Tableau~\ref{tab:contrats-interstations} est reutilise en annexe comme check-list
+de verification documentaire.
+
+\section{Choix techniques structurants}
+Trois choix ont ete determinants pour la robustesse du systeme :
+\begin{itemize}
+\item \textbf{API contractuelle explicite} : schemas et endpoints dedies par
+station, pour eviter les couplages implicites.
+\item \textbf{Worker asynchrone} : separation des traitements longs
+(optimisations, batchs, snapshots) et du cycle interactif utilisateur.
+\item \textbf{Stockage des artefacts} : conservation des sorties de calcul
+pour auditabilite et reproductibilite.
+\end{itemize}
+
+\section{Traceabilite et reproductibilite}
+La reproductibilite repose sur l'identification du run, la configuration
+utilisee, les parametres retenus et les artefacts associes. Cette traque des
+preuves est essentielle pour passer d'un outil de demonstration a un outil de
+decision.

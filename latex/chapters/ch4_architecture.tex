@@ -1,0 +1,264 @@
+%% ============================================================
+%%  Chapitre 4 — Architecture de la Plateforme
+%% ============================================================
+\chapter{Architecture de la Plateforme}
+\label{ch:architecture}
+
+\section{Paradigme Méta-Stratégie~: les Quatre Stations}
+\label{sec:quatre_stations}
+
+\subsection{Séparation des responsabilités}
+
+L'architecture de la plateforme découle directement du paradigme méta-stratégie de
+López de Prado~\cite{lopezdeprado2018}. Quatre stations spécialisées et indépendantes
+constituent la ligne de production quantitative~:
+
+\begin{quote}
+\textit{«~Backtesting is not a research tool. Feature importance is.~»}
+— López de Prado (2018), Ch.~7.
+\end{quote}
+
+Cette séparation n'est pas cosmétique~: elle prévient l'overfitting cognitif qui
+survient quand le chercheur observe les résultats du backtest et \emph{modifie} en
+conséquence les paramètres du signal — une forme de fuite d'information entre stations.
+
+\begin{table}[H]
+\centering
+\caption{Les quatre stations de la plateforme}
+\label{tab:quatre_stations}
+\begin{tabularx}{\linewidth}{@{}lllY@{}}
+\toprule
+\textbf{Station} & \textbf{Page}    & \textbf{Route}     & \textbf{Mandat} \\
+\midrule
+Data Curators    & Données          & \texttt{/data}     & Gérer l'univers de marché OHLCV : ingestion, stockage, fraîcheur \\
+Feature Analysts & Signaux          & \texttt{/signals}  & Découvrir quels indicateurs ont un pouvoir prédictif (OOS) \\
+Strategists      & Stratégie        & \texttt{/strategy} & Définir les règles de trading et paramétrer pour WFO \\
+Backtesting      & Backtest         & \texttt{/backtest} & Évaluer les stratégies via WFA, produire un verdict de robustesse \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Stack Technologique}
+\label{sec:stack}
+
+La migration d'un prototype Streamlit vers une architecture full-stack de production
+a été réalisée en Semaine~5~\cite{rapport_s5, rapport_point_hebdo}. Le choix de la
+stack repose sur quatre critères~: scalabilité des calculs, expérience utilisateur
+fluide, traçabilité des runs et reproductibilité.
+
+\begin{figure}[H]
+\centering
+\placeholder{Diagramme d'architecture complet — style "stacké de gauche à droite" :\\
+\textbf{Frontend (Next.js 14)} : App Router, Tailwind CSS, Recharts, SWR polling 30s. \\
+\textbf{API (FastAPI)} : Pydantic v2, SQLAlchemy, 18 endpoints market\_data, routers runs/signals/strategy. \\
+\textbf{Workers (RQ / Redis)} : Calculs asynchrones, exécution des runs, optimisation parallèle. \\
+\textbf{Moteur quant (quant\_core)} : Data → Signal Engine A→G → WFO → BacktestEngine → Artifacts. \\
+\textbf{PostgreSQL} : Tables stock\_master, dataset, runs, fills, metrics, strategy\_decision. \\
+\textbf{MinIO / S3} : Stockage objet — parquets OHLCV, artefacts plots, exports. \\
+Flèches HTTP, SQL, RQ enqueue, S3 GET/PUT. \\
+Source : Point hebdomadaire BMCE Capital, Semaine 5.}
+\caption{Architecture technique de la plateforme~: stack modulaire et industrialisable.
+Chaque composant est isolé et communique via des interfaces définies.
+(Adapté de~\cite{rapport_point_hebdo})}
+\label{fig:architecture_stack}
+\end{figure}
+
+\subsection{Détail des composants}
+
+\begin{table}[H]
+\centering
+\caption{Composants de la stack et leurs rôles}
+\label{tab:stack_detail}
+\begin{tabularx}{\linewidth}{@{}lYY@{}}
+\toprule
+\textbf{Composant}        & \textbf{Technologie}             & \textbf{Rôle clé} \\
+\midrule
+Frontend                  & Next.js 14 (App Router), Tailwind, SWR & Pages interactives, polling automatique, graphiques \\
+API                       & FastAPI, Pydantic v2, SQLAlchemy & Orchestration, validation, 18+ endpoints REST \\
+Queue asynchrone          & RQ (Redis Queue)                 & Découpler les runs lourds du thread HTTP \\
+Noyau quantitatif         & Python, Numba, Pandas, NumPy     & Signal Engine, WFO, métriques, artefacts \\
+Base de données           & PostgreSQL                       & Persistance des runs, métriques, fills, datasets \\
+Stockage objet            & MinIO (compatible S3)            & Parquets OHLCV, plots PNG, exports JSON \\
+Migrations                & Alembic                          & Versionnage du schéma BDD \\
+Tests                     & pytest                           & 87+ tests unitaires et d'intégration \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Station 1 --- Données}
+\label{sec:station_data}
+
+\subsection{Pipeline d'ingestion OHLCV}
+
+La page Données est le centre de contrôle de l'ensemble de la data pipeline.
+Tout signal et tout backtest dépend des données gérées ici.
+
+Les données OHLCV (Open, High, Low, Close, Volume) sont ingérées depuis trois
+sources adaptatives~:
+
+\begin{itemize}
+    \item \textbf{YFinance Morocco Adapter}~: données gratuites pour les tickers MASI~;
+    \item \textbf{Bourse Directe Adapter}~: données officielles de la Bourse de Casablanca~;
+    \item \textbf{BDCSession Adapter}~: session authentifiée pour les données institutionnelles.
+\end{itemize}
+
+Trois formats de fichiers sont détectés automatiquement (BMCE new/old, Investing.com),
+avec gestion robuste des encodages (déaccent, casefold, mojibake) et des nombres
+au format français (séparateur décimal virgule).
+
+\subsection{Calendrier des jours fériés}
+
+Un calendrier des jours fériés spécifique à la Bourse de Casablanca est maintenu
+pour les 93 tickers MASI. Il distingue deux niveaux de certitude~:
+\begin{itemize}
+    \item \textbf{Confirmés}~: dates officiellement publiées~;
+    \item \textbf{Provisoires}~: estimations basées sur les calendriers religieux et civils.
+\end{itemize}
+
+\subsection{Fraîcheur et rafraîchissement automatique}
+
+Un scheduler APScheduler déclenche un rafraîchissement automatique quotidien à
+\textbf{18h00, heure d'Afrique/Casablanca}, du lundi au vendredi (après clôture).
+Ce comportement est contrôlable via la variable d'environnement
+\texttt{MARKET\_REFRESH\_CRON\_ENABLED}.
+
+\subsection{Stockage canonique}
+
+Chaque dataset est stocké sous une clé canonique unique~:
+
+\begin{equation}
+\texttt{key} = \texttt{datasets/\{data\_hash\}/\{filename\}}
+\label{eq:canonical_key}
+\end{equation}
+
+La valeur de \texttt{data\_hash} est calculée au moment de l'upload. Cette clé
+est persistée en base de données comme \og source of truth \fg{} — elle n'est
+jamais recalculée sauf pour les lignes héritées (migrations Alembic).
+
+\figuretodo{screenshot_data_page}{Capture d'écran de la page Données~: catalogue des 93 tickers MASI avec statut de fraîcheur, date de dernière mise à jour, bouton de rafraîchissement manuel et vue graphique prix.}
+
+\section{Station 2 --- Signaux (Interface Utilisateur)}
+\label{sec:station_signaux}
+
+La page Signaux expose le Signal Engine (Chapitre~\ref{ch:signaux}) via une interface
+visuelle intuitive.
+
+\subsection{Vue par ticker}
+
+Pour chaque ticker sélectionné, l'utilisateur voit~:
+
+\begin{itemize}
+    \item Un \textbf{compteur de vitesse principal} (gauge $[-100, +100]$) représentant
+    le score d'ensemble toutes familles confondues~;
+    \item \textbf{Quatre sous-compteurs} (Tendance, Momentum, Oscillation, Volume)
+    affichant le score par catégorie~;
+    \item La \textbf{recommandation directionnelle}~: FORT ACHAT, ACHAT, NEUTRE,
+    VENTE, FORTE VENTE.
+\end{itemize}
+
+\figuretodo{screenshot_signals_page}{Capture d'écran de la page Signaux~: ticker IAM, compteur de vitesse central (+67, signal ACHAT), 4 sous-compteurs par famille, tableau des variantes représentantes avec labels HAUSSIER / SURVENDU / ACCUMULATION.}
+
+\subsection{Drill-down par variante}
+
+L'utilisateur peut cliquer sur un représentant pour accéder au détail~:
+\begin{itemize}
+    \item Paramètres de la variante~;
+    \item Résultats OOS par fenêtre temporelle (Sharpe, MDD, Win\%)~;
+    \item Décomposition du reliability\_score (4 composantes)~;
+    \item Graphique du signal dans le temps superposé au prix.
+\end{itemize}
+
+\figuretodo{screenshot_variant_detail}{Capture d'écran du panneau de détail d'une variante SMA(50) sur IAM~: OOS par fenêtre (tableau + barplot Sharpe), décomposition reliability score (radar chart), signal timeline.}
+
+\section{Station 3 --- Stratégie}
+\label{sec:station_strategie}
+
+La page Stratégie permet de définir une stratégie de trading complète avant
+tout backtesting.
+
+\subsection{Structure en cinq blocs}
+
+Conformément à l'architecture définie en Semaine~9~\cite{rapport_s9}~:
+
+\begin{enumerate}
+    \item \textbf{Univers}~: sélection des actions MASI à inclure (par secteur,
+    liquidité ou valeur de signal de consensus)~;
+    \item \textbf{Capital}~: budget total et currency~;
+    \item \textbf{Allocation par action}~: méthode d'allocation (HRP, Markowitz)~;
+    \item \textbf{Entrées/Sorties et Dimensionnement}~: règles d'entrée, de sortie,
+    sizing (\texttt{size\_pct}, Kelly), ATR stop~;
+    \item \textbf{Risque}~: stop-loss global, drawdown maximum, cooldown.
+\end{enumerate}
+
+\subsection{Déclenchement du mode WFO}
+
+Chaque paramètre peut être marqué \texttt{optimize=True}. Lorsqu'au moins un paramètre
+est ainsi marqué, la page Backtest détecte automatiquement le mode WFO et affiche les
+contrôles de configuration supplémentaires (dates WFO, horizon, période test).
+
+\figuretodo{screenshot_strategy_page}{Capture d'écran de la page Stratégie~: 5 blocs dépliables, paramètre fenêtre SMA avec toggle "Optimiser via WFO" activé, presets short/medium/long.}
+
+\section{Station 4 --- Backtest}
+\label{sec:station_backtest}
+
+\subsection{Deux modes de fonctionnement}
+
+\begin{itemize}
+    \item \textbf{Mode Standard}~: backtest sur une période unique avec paramètres
+    fixés manuellement. Utile pour les évaluations rapides ou les stratégies à
+    paramètres connus.
+    \item \textbf{Mode WFO}~: déclenché automatiquement si des paramètres sont
+    marqués \texttt{optimize=True}. Implémente le pipeline complet du
+    Chapitre~\ref{ch:wfo}.
+\end{itemize}
+
+\subsection{Modèle de coût réaliste}
+
+Le backtest intègre un modèle de coût de transaction calibré sur les conditions
+de marché marocaines~:
+
+\begin{itemize}
+    \item \textbf{Frais de courtage}~: en points de base du montant de la transaction~;
+    \item \textbf{Commission}~: frais fixes ou proportionnels~;
+    \item \textbf{Slippage}~: estimation de l'impact de marché~;
+    \item \textbf{TVA}~: taxe sur la valeur ajoutée applicable aux services
+    financiers au Maroc.
+\end{itemize}
+
+\figuretodo{screenshot_backtest_page}{Capture d'écran de la page Backtest en mode WFO~: sélecteur de stratégie, contrôles WFO (dates, horizon, période test), barre de progression, résultats WFE par titre.}
+
+\section{Persistance, Traçabilité et Bonnes Pratiques}
+\label{sec:persistance}
+
+\subsection{Module d'artefacts canonique}
+
+Un module partagé \texttt{core/quant\_core/artifacts/} centralise toutes les
+interactions avec le stockage objet~:
+
+\begin{itemize}
+    \item \texttt{errors.py}~: exceptions typées (\texttt{ArtifactNotFound},
+    \texttt{StorageAuthError}, \texttt{StorageUnavailable})~;
+    \item \texttt{models.py}~: dataclass \texttt{DatasetRef}~;
+    \item \texttt{store.py}~: \texttt{head\_object}, \texttt{get\_bytes},
+    \texttt{download\_to\_temp}~;
+    \item \texttt{datasets.py}~: \texttt{get\_dataset\_ref}, \texttt{preflight\_dataset},
+    \texttt{ensure\_dataset\_materialized}.
+\end{itemize}
+
+Cette centralisation garantit qu'API et Worker utilisent exactement le même code
+pour accéder au stockage — pas de dérive entre implémentations.
+
+\subsection{Tests automatisés}
+
+\begin{itemize}
+    \item 87+ tests unitaires et d'intégration (\texttt{pytest})~;
+    \item Tests de régression sur le chemin d'optimisation rapide~;
+    \item Tests de format et de cohérence des datasets.
+\end{itemize}
+
+\section*{Conclusion du chapitre}
+
+Ce chapitre a présenté l'architecture technique qui héberge et orchestre les deux
+moteurs de résultat. La séparation stricte en quatre stations, le stack full-stack
+industrialisable et la traçabilité complète des runs constituent la fondation sur
+laquelle repose le tableau de bord final, présenté dans le chapitre suivant.

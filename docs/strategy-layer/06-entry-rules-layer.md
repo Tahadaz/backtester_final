@@ -18,6 +18,8 @@ A single entry threshold is too rigid for real trading:
 
 Multiple entry levels with graduated sizing enable these strategies naturally. The 5 configuration options (A–E) give the user full control over how much of this is manual vs WFO-optimized.
 
+The implemented contract treats the A-E label as descriptive metadata. Runtime behavior is driven by the actual threshold and sizing field modes on each rule.
+
 ## Entry Rule Structure
 
 Each entry in the list has:
@@ -59,7 +61,18 @@ The exposure for this entry, expressed as a percentage of the portfolio allocati
 - **Kelly from WFO**: the backtest engine computes optimal sizing using the Kelly criterion applied to WFO out-of-sample results
 - **WFO-optimized**: the optimizer determines the exposure as part of the joint optimization
 
+Phase 1 makes the sizing split explicit:
+
+- direct `wfo` sizing is an ordinary bounded leaf optimization parameter (`size_pct`)
+- `kelly_wfo` means `Kelly(from WFO) x modifier`
+- the raw Kelly number is always WFO-derived
+- the modifier is the separate risk dial and may be manual or WFO-optimized
+
+This means fixed-rule WFO sizing is not Option E. Option E remains the later structure-discovery workflow.
+
 ## The 5 Configuration Options
+
+These options describe common combinations of field modes, but execution follows the actual rule fields (`threshold.mode`, `sizing.mode`, and leaf `WFOParam` values), not the letter itself.
 
 ### Option A: Manual Rule + Manual Sizing
 
@@ -89,7 +102,7 @@ Entry 1:
   Sizing: Kelly(modifier=0.5) from WFO OOS metrics
 ```
 
-WFO parameters from this entry: **1** (Kelly sizing derived from optimization results). The rule thresholds are fixed.
+WFO parameters from this entry: **1** when the modifier is WFO-optimized. The rule thresholds are fixed, and the raw Kelly fraction is always WFO-derived.
 
 **When to use**: The user trusts their entry logic but wants data-driven position sizing.
 
@@ -119,7 +132,7 @@ Entry 1:
   Sizing: Kelly(modifier=WFO) from WFO OOS metrics
 ```
 
-WFO parameters from this entry: **3** (trend threshold, momentum threshold, Kelly sizing).
+WFO parameters from this entry: **3** when the modifier is also WFO-optimized (trend threshold, momentum threshold, Kelly modifier).
 
 **When to use**: Systematic traders who want the optimizer to determine both when and how much to enter.
 
@@ -142,6 +155,8 @@ WFO search space:
 4. PROM naturally penalizes too many levels (more levels = more trades = more cost = lower PROM unless the levels genuinely add value)
 
 **Constraint**: Option E is only available when the rule parameters are also WFO-optimized (joint optimization). You cannot have the number of entries auto-discovered while the thresholds within each entry are manually fixed — the two must be optimized together.
+
+Phase 1 does not execute this mode yet. In the current implementation, Option E should be read as a future auto-discovery workflow, not as another fixed-rule sizing mode.
 
 WFO parameters from this section: **variable** (depends on how many levels and score variables the optimizer explores).
 
@@ -208,6 +223,86 @@ The optimizer discovers that 3 levels work best:
 - Level 1: trend_score > 1.2, exposure 25%
 - Level 2: trend_score > 2.1 AND momentum_score > 0.8, exposure 35%
 - Level 3: trend_score > 3.0 AND momentum_score > 1.5, exposure 40%
+
+## Default WFO Threshold Presets by Horizon
+
+The strategy page now seeds horizon-specific search spaces for entry thresholds and Kelly modifiers, just like it already did for indicator parameters. The goal is to start from ranges that are financially interpretable and narrow enough to keep WFO honest.
+
+### Continuous score thresholds
+
+These defaults apply to `trend_score`, `momentum_score`, `volume_score`, and the app's aggregate `consensus_score`.
+
+For bullish or strengthening conditions (`>` or `>=`):
+
+| Horizon | Default range |
+|--------|---------------|
+| Short | 0.5 to 2.0 step 0.25 |
+| Medium | 0.5 to 3.0 step 0.5 |
+| Long | 1.0 to 4.0 step 0.5 |
+
+For bearish or contrarian conditions (`<` or `<=`):
+
+| Horizon | Default range |
+|--------|---------------|
+| Short | -2.0 to -0.5 step 0.25 |
+| Medium | -3.0 to -0.5 step 0.5 |
+| Long | -4.0 to -1.0 step 0.5 |
+
+Why these ranges make sense:
+
+- `trend_score` and `momentum_score` are ATR-normalized, so a threshold like `+2.0` means "roughly two ATRs of directional strength," not just an arbitrary raw-price distance.
+- Short-horizon entries should trigger on earlier confirmation, so the positive band starts at `0.5` and tops out at `2.0`. Beyond that, a short-horizon move is often already mature.
+- Long-horizon entries should demand stronger confirmation because longer lookbacks already smooth away noise. Requiring `1.0` to `4.0` ATR-equivalent conviction is economically consistent with slower, more structural positioning.
+- Negative thresholds mirror the same logic for bearish filters and mean-reversion context: short horizons react to moderate dislocations quickly, while long horizons can afford to wait for deeper deterioration or deeper pullbacks.
+- `consensus_score` uses the same signed-conviction default family because it is consumed operationally like a combined directional score. Sweeping it over giant `0..100` grids would create many combinations with little extra economic meaning.
+
+Why the steps make sense:
+
+- `0.25` on short horizons is fine enough to distinguish materially different conviction bands without pretending the optimizer can meaningfully separate `1.31` from `1.34`.
+- `0.5` on medium and long horizons is intentionally coarser because the holding period is longer and adjacent threshold values are economically closer substitutes.
+
+### Oscillation thresholds
+
+These defaults apply to `oscillation_score` (RSI-style bounded oscillators).
+
+For lower-threshold entries (`<` or `<=`, oversold logic):
+
+| Horizon | Default range |
+|--------|---------------|
+| Short | 10 to 35 step 5 |
+| Medium | 15 to 40 step 5 |
+| Long | 20 to 45 step 5 |
+
+For upper-threshold entries (`>` or `>=`, overbought filters or short setups):
+
+| Horizon | Default range |
+|--------|---------------|
+| Short | 65 to 90 step 5 |
+| Medium | 60 to 85 step 5 |
+| Long | 55 to 80 step 5 |
+
+Why these ranges make sense:
+
+- RSI-like oscillators already have a natural economic vocabulary: 30/70, 20/80, and nearby levels are widely used because they correspond to progressively stronger stretch conditions.
+- Short-horizon mean reversion usually wants more extreme excursions, so the oversold band reaches down to `10` and the overbought band up to `90`.
+- Long-horizon oscillators move more slowly and spend less time at extreme edges. Relaxing the band toward `20..45` and `55..80` keeps the search inside economically meaningful levels without demanding rare, almost unreachable readings.
+- A fixed step of `5` respects the natural granularity of oscillator interpretation. Scanning RSI in `0.1` increments creates false precision and needlessly inflates the WFO grid.
+
+### Kelly modifier
+
+When entry sizing uses Kelly-from-WFO, the modifier now defaults to:
+
+| Horizon | Default range |
+|--------|---------------|
+| Short | 0.25 to 0.75 step 0.25 |
+| Medium | 0.25 to 1.0 step 0.25 |
+| Long | 0.25 to 1.0 step 0.25 |
+
+Why this makes sense:
+
+- The modifier is intentionally conservative. It scales the Kelly estimate rather than treating Kelly as a precision instrument.
+- Short-horizon OOS edges are usually noisier and less stable, so the default cap stops below full Kelly.
+- Medium and long horizons can explore up to `1.0`, but still do not default above full Kelly because leverage beyond full Kelly is usually a risk preference decision, not something WFO should encourage by default.
 
 ## Summary Table: Configuration Options
 

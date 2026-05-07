@@ -232,3 +232,130 @@ def detect_swing_levels(
         "nearest_resistance": nearest_resistance,
         "current_close": round(current_close, 4),
     }
+
+
+# ---------------------------------------------------------------------------
+# Fibonacci retracement levels
+# ---------------------------------------------------------------------------
+
+_FIB_RATIOS = (0.236, 0.382, 0.500, 0.618, 0.786)
+
+
+def compute_fibonacci_retracement_levels(
+    high: np.ndarray,
+    low: np.ndarray,
+    close: np.ndarray,
+    *,
+    lookback: int = 120,
+    left_bars: int = 5,
+    right_bars: int = 5,
+) -> dict[str, Any]:
+    """Fibonacci retracement S/R from the dominant swing range.
+
+    Identifies the highest swing high and lowest swing low in the lookback
+    window, then computes standard Fibonacci retracement levels between them.
+    The nearest level below close is support; nearest above is resistance.
+
+    Returns
+    -------
+    dict with keys:
+        ``support``, ``resistance`` — float | None
+        ``swing_high``, ``swing_low`` — float
+        ``levels`` — dict mapping ratio string → price
+        ``explanation`` — str
+        ``inputs`` — dict for UI display
+    """
+    n = len(close)
+    if n < max(left_bars + right_bars + 2, 10):
+        return {
+            "support": None,
+            "resistance": None,
+            "swing_high": None,
+            "swing_low": None,
+            "levels": {},
+            "explanation": "Données insuffisantes pour calculer les retracements Fibonacci.",
+            "inputs": {},
+        }
+
+    lb = min(lookback, n)
+    offset = n - lb
+    h = high[offset:]
+    l_ = low[offset:]
+    c = close[offset:]
+    current_close = float(close[-1])
+
+    # Find dominant swing high and swing low from pivot detection
+    swing_high: float | None = None
+    swing_low: float | None = None
+
+    for i in range(left_bars, len(h) - right_bars):
+        if _is_swing_high(h, i, left_bars, right_bars):
+            price = float(h[i])
+            if swing_high is None or price > swing_high:
+                swing_high = price
+        if _is_swing_low(l_, i, left_bars, right_bars):
+            price = float(l_[i])
+            if swing_low is None or price < swing_low:
+                swing_low = price
+
+    # Fall back to simple high/low of the window if no pivots found
+    if swing_high is None:
+        swing_high = float(np.max(h))
+    if swing_low is None:
+        swing_low = float(np.min(l_))
+
+    swing_range = swing_high - swing_low
+    if swing_range <= 0:
+        return {
+            "support": None,
+            "resistance": None,
+            "swing_high": round(swing_high, 4),
+            "swing_low": round(swing_low, 4),
+            "levels": {},
+            "explanation": "Amplitude du swing insuffisante pour calculer les retracements Fibonacci.",
+            "inputs": {"swing_high": round(swing_high, 4), "swing_low": round(swing_low, 4), "lookback": lb},
+        }
+
+    # Compute fib levels as retracements from swing_high downward
+    fib_levels: dict[str, float] = {}
+    for ratio in _FIB_RATIOS:
+        price = round(swing_high - ratio * swing_range, 4)
+        fib_levels[f"{ratio:.3f}"] = price
+
+    # Nearest fib level ≤ close → support; nearest ≥ close → resistance
+    levels_below = [p for p in fib_levels.values() if p <= current_close]
+    levels_above = [p for p in fib_levels.values() if p >= current_close]
+    support = max(levels_below) if levels_below else None
+    resistance = min(levels_above) if levels_above else None
+
+    # Pick the closest fib ratio labels for explanation
+    support_label = next((k for k, v in fib_levels.items() if v == support), None)
+    resistance_label = next((k for k, v in fib_levels.items() if v == resistance), None)
+
+    parts = []
+    if support_label:
+        parts.append(f"support Fib {support_label}")
+    if resistance_label:
+        parts.append(f"résistance Fib {resistance_label}")
+    explanation = (
+        f"Retracements Fibonacci du swing [{round(swing_low, 2)}–{round(swing_high, 2)}] "
+        f"sur {lb} barres. "
+        + (", ".join(parts) if parts else "Aucun niveau Fibonacci proche du prix actuel.")
+    )
+
+    return {
+        "support": support,
+        "resistance": resistance,
+        "swing_high": round(swing_high, 4),
+        "swing_low": round(swing_low, 4),
+        "levels": fib_levels,
+        "explanation": explanation,
+        "inputs": {
+            "swing_high": round(swing_high, 4),
+            "swing_low": round(swing_low, 4),
+            "lookback": lb,
+            "left_bars": left_bars,
+            "right_bars": right_bars,
+            "levels": fib_levels,
+        },
+    }

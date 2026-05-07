@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils"
 
 function getSignalInfo(value: number | null | undefined) {
-  if (value == null) return { label: "NEUTRE", cls: "text-slate-500", dotColor: "bg-slate-400" }
+  if (value == null) return { label: "PAS DISPONIBLE", cls: "text-slate-500", dotColor: "bg-slate-300" }
   if (value > 50) return { label: "ACHAT FORT", cls: "text-emerald-700", dotColor: "bg-emerald-600" }
   if (value > 15) return { label: "ACHAT", cls: "text-green-600", dotColor: "bg-green-500" }
   if (value >= -15) return { label: "NEUTRE", cls: "text-slate-500", dotColor: "bg-slate-400" }

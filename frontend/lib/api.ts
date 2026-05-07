@@ -1249,7 +1249,7 @@ export async function pollIngestStatus(datasetId: string): Promise<IngestStatusR
  */
 export async function waitForIngestCompletion(
   datasetId: string,
-  { intervalMs = 1500, timeoutMs = 30_000 } = {},
+  { intervalMs = 1500, timeoutMs = 300_000 } = {},
 ): Promise<IngestStatusResponse> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
@@ -1532,12 +1532,38 @@ export const MarketCatalogRowSchema = z.object({
   is_tracked: z.boolean().default(false),
   has_canonical_data: z.boolean().default(false),
   market: z.string().default("masi"),
+  // Asset taxonomy
+  asset_type: z.string().default("equity"),   // "equity" | "commodity" | "forex" | "bond"
+  market_region: z.string().nullable().optional(), // "masi" | "us" | "european" | "asian" | null
 })
 export type MarketCatalogRow = z.infer<typeof MarketCatalogRowSchema>
+
+export const MacroFactorSchema = z.object({
+  canonical_id: z.string(),
+  yahoo_ticker: z.string(),
+  display_name: z.string(),
+  asset_type: z.string(),
+  market_region: z.string().nullable().optional(),
+  active: z.boolean(),
+  added_via: z.string(),
+})
+export type MacroFactor = z.infer<typeof MacroFactorSchema>
 
 export async function listMarketCatalog(): Promise<MarketCatalogRow[]> {
   const rows = await request<unknown[]>("/market-data/catalog")
   return z.array(MarketCatalogRowSchema).parse(rows)
+}
+
+export async function patchAssetCategory(
+  symbol: string,
+  body: { asset_type: string; market_region: string | null },
+): Promise<MarketCatalogRow> {
+  const data = await request<unknown>(`/market-data/stocks/${encodeURIComponent(symbol)}/category`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  })
+  return MarketCatalogRowSchema.parse(data)
 }
 
 // ── MASI Ticker Registry ─────────────────────────────────────────────────────
@@ -1578,6 +1604,36 @@ export async function addTrackedStock(body: {
     body: JSON.stringify(body),
   })
   return StockMasterSchema.parse(row)
+}
+
+export async function addMacroFactor(body: {
+  canonical_id: string
+  yahoo_ticker: string
+  display_name: string
+  asset_type: string
+  market_region?: string | null
+  notes?: string | null
+}): Promise<MacroFactor> {
+  const row = await request<unknown>("/market-data/factors", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+  return MacroFactorSchema.parse(row)
+}
+
+export async function updateMacroFactor(
+  canonical_id: string,
+  body: {
+    active?: boolean
+    display_name?: string
+    notes?: string
+  }
+): Promise<MacroFactor> {
+  const row = await request<unknown>(`/market-data/factors/${encodeURIComponent(canonical_id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  })
+  return MacroFactorSchema.parse(row)
 }
 
 export async function updateTrackedStock(
@@ -1771,6 +1827,105 @@ export async function getMarketHealth(): Promise<MarketHealth> {
   return MarketHealthSchema.parse(row)
 }
 
+// ── Moroccan Indices API ──────────────────────────────────────────────────────
+
+export const IndexMasterRowSchema = z.object({
+  symbol: z.string(),
+  display_name: z.string(),
+  family: z.string().nullable().optional(),
+  is_active: z.boolean(),
+  source: z.string(),
+  notes: z.string().nullable().optional(),
+  created_at: z.string(),
+  updated_at: z.string(),
+})
+export type IndexMasterRow = z.infer<typeof IndexMasterRowSchema>
+
+export const IndicesCatalogRowSchema = z.object({
+  symbol: z.string(),
+  display_name: z.string().nullable().optional(),
+  family: z.string().nullable().optional(),
+  is_active: z.boolean().nullable().optional(),
+  source: z.string().nullable().optional(),
+  start_ts: z.string().nullable().optional(),
+  end_ts: z.string().nullable().optional(),
+  row_count: z.number().nullable().optional(),
+  source_provider: z.string().nullable().optional(),
+  data_as_of: z.string().nullable().optional(),
+  is_stale: z.boolean().default(false),
+  is_tracked: z.boolean().default(false),
+  has_canonical_data: z.boolean().default(false),
+})
+export type IndicesCatalogRow = z.infer<typeof IndicesCatalogRowSchema>
+
+export async function listIndicesCatalog(): Promise<IndicesCatalogRow[]> {
+  const rows = await request<unknown[]>("/market-data/indices/catalog")
+  return z.array(IndicesCatalogRowSchema).parse(rows)
+}
+
+export async function listIndices(): Promise<IndexMasterRow[]> {
+  const rows = await request<unknown[]>("/market-data/indices")
+  return z.array(IndexMasterRowSchema).parse(rows)
+}
+
+export async function uploadIndicesExcel(
+  file: File
+): Promise<{ dataset_id: string; job_id: string; raw_object_key: string }> {
+  const form = new FormData()
+  form.append("file", file)
+  const payload = await request<unknown>("/market-data/indices/excel", {
+    method: "POST",
+    body: form,
+  })
+  return payload as { dataset_id: string; job_id: string; raw_object_key: string }
+}
+
+export async function getIndicesIngestStatus(
+  datasetId: string
+): Promise<{ status: "done" | "processing"; report?: unknown }> {
+  return request<{ status: "done" | "processing"; report?: unknown }>(
+    `/market-data/indices/uploads/${datasetId}/status`
+  )
+}
+
+export async function refreshAllIndices(): Promise<{
+  refresh_run_id: string
+  status: string
+  symbols_total: number
+  job_id?: string
+}> {
+  const payload = await request<unknown>("/market-data/indices/refresh", { method: "POST" })
+  return payload as { refresh_run_id: string; status: string; symbols_total: number; job_id?: string }
+}
+
+export async function getIndexOhlcvPreview(
+  symbol: string,
+  limit = 30
+): Promise<OhlcvPreview> {
+  const row = await request<unknown>(
+    `/market-data/indices/${encodeURIComponent(symbol)}/ohlcv-preview?limit=${limit}`
+  )
+  return OhlcvPreviewSchema.parse(row)
+}
+
+export async function getIndexOhlcvHistory(symbol: string): Promise<OhlcvHistory> {
+  const row = await request<unknown>(
+    `/market-data/indices/${encodeURIComponent(symbol)}/ohlcv-history`
+  )
+  return OhlcvHistorySchema.parse(row)
+}
+
+export async function deleteIndexSymbol(symbol: string): Promise<void> {
+  await request<void>(`/market-data/indices/${encodeURIComponent(symbol)}`, {
+    method: "DELETE",
+  })
+}
+
+export async function getIndicesRefreshRun(refreshRunId: string): Promise<MarketRefreshRun> {
+  const row = await request<unknown>(`/market-data/indices/refresh/${refreshRunId}`)
+  return MarketRefreshRunSchema.parse(row)
+}
+
 // ── Signal Engine — SMA Ensemble ──────────────────────────────────────────────
 
 export const SignalRepresentativeSchema = z.object({
@@ -1783,6 +1938,7 @@ export const SignalRepresentativeSchema = z.object({
   current_close: z.number(),
   indicator_value: z.number().nullable(),
   explanation: z.string(),
+  description: z.string().default(""),
   params: z.record(z.unknown()).default({}),
   archetype: z.string().default(""),
   selection_status: z.string().optional(),
@@ -1967,12 +2123,14 @@ export async function fetchFamilyEnsemble(body: {
   timeframe?: string
   cost_bps?: number
   cooldown_bars?: number
+  variant?: string
 }): Promise<FamilyCombinedSignal> {
   const payload: Record<string, unknown> = {
     family: body.family,
     symbol: body.symbol,
     horizon: body.horizon,
     timeframe: body.timeframe ?? "1D",
+    variant: body.variant ?? "expanded",
   }
   if (body.cost_bps != null) payload.cost_bps = body.cost_bps
   if (body.cooldown_bars != null) payload.cooldown_bars = body.cooldown_bars
@@ -1989,11 +2147,13 @@ export async function fetchSupportResistance(body: {
   timeframe?: string
   cost_bps?: number
   cooldown_bars?: number
+  variant?: string
 }): Promise<SupportResistanceResponse> {
   const payload: Record<string, unknown> = {
     symbol: body.symbol,
     horizon: body.horizon,
     timeframe: body.timeframe ?? "1D",
+    variant: body.variant ?? "expanded",
   }
   if (body.cost_bps != null) payload.cost_bps = body.cost_bps
   if (body.cooldown_bars != null) payload.cooldown_bars = body.cooldown_bars
@@ -2011,12 +2171,14 @@ export async function fetchSupportResistanceMethodDetail(body: {
   timeframe?: string
   cost_bps?: number
   cooldown_bars?: number
+  variant?: string
 }): Promise<SupportResistanceMethodDetailResponse> {
   const payload: Record<string, unknown> = {
     symbol: body.symbol,
     horizon: body.horizon,
     method_id: body.method_id,
     timeframe: body.timeframe ?? "1D",
+    variant: body.variant ?? "expanded",
   }
   if (body.cost_bps != null) payload.cost_bps = body.cost_bps
   if (body.cooldown_bars != null) payload.cooldown_bars = body.cooldown_bars
@@ -2188,12 +2350,14 @@ export async function fetchVariantDetail(body: {
   variant_id: string
   cost_bps?: number
   cooldown_bars?: number
+  variant?: string
 }): Promise<VariantDetail> {
   const payload: Record<string, unknown> = {
     symbol: body.symbol,
     horizon: body.horizon,
     timeframe: body.timeframe ?? "1D",
     variant_id: body.variant_id,
+    variant: body.variant ?? "expanded",
   }
   if (body.cost_bps != null) payload.cost_bps = body.cost_bps
   if (body.cooldown_bars != null) payload.cooldown_bars = body.cooldown_bars
@@ -2210,11 +2374,13 @@ export async function fetchSupportResistanceVariants(body: {
   timeframe?: string
   cost_bps?: number
   cooldown_bars?: number
+  variant?: string
 }): Promise<SupportResistanceVariantsResponse> {
   const payload: Record<string, unknown> = {
     symbol: body.symbol,
     horizon: body.horizon,
     timeframe: body.timeframe ?? "1D",
+    variant: body.variant ?? "expanded",
   }
   if (body.cost_bps != null) payload.cost_bps = body.cost_bps
   if (body.cooldown_bars != null) payload.cooldown_bars = body.cooldown_bars
@@ -2232,12 +2398,14 @@ export async function fetchSupportResistanceVariantDetail(body: {
   variant_id: string
   cost_bps?: number
   cooldown_bars?: number
+  variant?: string
 }): Promise<VariantDetail> {
   const payload: Record<string, unknown> = {
     symbol: body.symbol,
     horizon: body.horizon,
     timeframe: body.timeframe ?? "1D",
     variant_id: body.variant_id,
+    variant: body.variant ?? "expanded",
   }
   if (body.cost_bps != null) payload.cost_bps = body.cost_bps
   if (body.cooldown_bars != null) payload.cooldown_bars = body.cooldown_bars
@@ -2285,12 +2453,14 @@ export async function fetchVariantBacktest(body: {
   timeframe?: string
   cost_bps?: number
   cooldown_bars?: number
+  variant?: string
 }): Promise<VariantBacktest> {
   const payload: Record<string, unknown> = {
     symbol: body.symbol,
     variant_id: body.variant_id,
     horizon: body.horizon ?? "medium",
     timeframe: body.timeframe ?? "1D",
+    variant: body.variant ?? "expanded",
   }
   if (body.cost_bps != null) payload.cost_bps = body.cost_bps
   if (body.cooldown_bars != null) payload.cooldown_bars = body.cooldown_bars
@@ -2308,12 +2478,14 @@ export async function fetchSupportResistanceVariantBacktest(body: {
   timeframe?: string
   cost_bps?: number
   cooldown_bars?: number
+  variant?: string
 }): Promise<VariantBacktest> {
   const payload: Record<string, unknown> = {
     symbol: body.symbol,
     variant_id: body.variant_id,
     horizon: body.horizon ?? "medium",
     timeframe: body.timeframe ?? "1D",
+    variant: body.variant ?? "expanded",
   }
   if (body.cost_bps != null) payload.cost_bps = body.cost_bps
   if (body.cooldown_bars != null) payload.cooldown_bars = body.cooldown_bars
@@ -2338,6 +2510,7 @@ export async function fetchBatchScores(body: {
   horizon: string
   cost_bps?: number
   cooldown_bars?: number
+  variant?: string
 }): Promise<BatchScore[]> {
   const raw = await request<unknown[]>("/strategy/signal/batch-scores", {
     method: "POST",
@@ -2346,9 +2519,39 @@ export async function fetchBatchScores(body: {
       horizon: body.horizon,
       cost_bps: body.cost_bps ?? 10,
       cooldown_bars: body.cooldown_bars ?? 0,
+      variant: body.variant ?? "expanded",
     }),
   })
   return z.array(BatchScoreSchema).parse(raw)
+}
+
+export const PersistedSignalEngineSummarySchema = z.object({
+  symbol: z.string(),
+  aggregate_score_pct: z.number().nullable(),
+  aggregate_signal_label: z.string().nullable(),
+  data_as_of: z.string().nullable().optional(),
+  market_data_as_of: z.string().nullable().optional(),
+  computed_at: z.string().nullable().optional(),
+  is_stale: z.boolean().default(false),
+})
+export type PersistedSignalEngineSummary = z.infer<typeof PersistedSignalEngineSummarySchema>
+
+export async function fetchPersistedSignalEngineSummaries(body: {
+  symbols: string[]
+  horizon: string
+  variant?: string
+  timeframe?: string
+}): Promise<PersistedSignalEngineSummary[]> {
+  const raw = await request<unknown[]>("/strategy/engine/persisted-summaries", {
+    method: "POST",
+    body: JSON.stringify({
+      symbols: body.symbols,
+      horizon: body.horizon,
+      variant: body.variant ?? "expanded",
+      timeframe: body.timeframe ?? "1D",
+    }),
+  })
+  return z.array(PersistedSignalEngineSummarySchema).parse(raw)
 }
 
 // ── Signal Engine — Regime Consensus (Layer H) ──────────────────────────────
@@ -2408,6 +2611,7 @@ export async function fetchRegimeConsensus(body: {
   timeframe?: string
   cost_bps?: number
   cooldown_bars?: number
+  variant?: string
 }): Promise<RegimeConsensus> {
   const raw = await request<unknown>("/strategy/signal/regime-consensus", {
     method: "POST",
@@ -2417,6 +2621,7 @@ export async function fetchRegimeConsensus(body: {
       timeframe: body.timeframe ?? "1D",
       cost_bps: body.cost_bps ?? 10,
       cooldown_bars: body.cooldown_bars ?? 0,
+      variant: body.variant ?? "expanded",
     }),
   })
   return RegimeConsensusSchema.parse(raw)
@@ -3403,6 +3608,7 @@ export const WfoCategorySummarySchema = z.object({
   computed_at: z.string().nullable().optional(),
   data_as_of: z.string().nullable().optional(),
   compute_seconds: z.number().nullable().optional(),
+  config: z.record(z.unknown()).nullable().optional(),
 })
 export type WfoCategorySummary = z.infer<typeof WfoCategorySummarySchema>
 
@@ -3442,8 +3648,9 @@ export type WfoSummaryResponse = z.infer<typeof WfoSummaryResponseSchema>
 export async function fetchWfoSummary(
   symbol: string,
   horizon: string,
+  variant: string = "expanded",
 ): Promise<WfoSummaryResponse> {
-  const params = new URLSearchParams({ symbol, horizon })
+  const params = new URLSearchParams({ symbol, horizon, variant })
   const res = await fetch(`${API_BASE}/strategy/wfo/summary?${params}`)
   if (!res.ok) throw new Error(`WFO summary fetch failed: ${res.status}`)
   return WfoSummaryResponseSchema.parse(await res.json())
@@ -3452,10 +3659,16 @@ export async function fetchWfoSummary(
 export async function triggerWfoComputation(body: {
   symbol: string
   horizon: string
+  variant?: string
   categories?: string[]
   train_bars?: number
   oos_bars?: number
   step_bars?: number
+  window_policy?: string
+  top_k_folds?: number
+  min_walk_forwards?: number
+  strict_fallback_enabled?: boolean
+  strict_fallback_floor?: number
   cost_bps?: number
   max_reps?: number
   max_corr?: number
@@ -3482,8 +3695,9 @@ export async function fetchWfoDetail(
   symbol: string,
   horizon: string,
   category: string,
+  variant = "expanded",
 ): Promise<WfoCategoryDetail> {
-  const params = new URLSearchParams({ symbol, horizon, category })
+  const params = new URLSearchParams({ symbol, horizon, category, variant })
   const res = await fetch(`${API_BASE}/strategy/wfo/detail?${params}`)
   if (!res.ok) throw new Error(`WFO detail fetch failed: ${res.status}`)
   return WfoCategoryDetailSchema.parse(await res.json())
@@ -3524,6 +3738,18 @@ export const WfoConfigSchema = z.object({
     max_representatives: z.number(),
     max_correlation: z.number(),
   }),
+  window_policy_defaults: z.object({
+    default_policy: z.string(),
+    ratio_anchors: z.array(z.number()),
+    min_walk_forwards: z.number(),
+    top_k_folds: z.number(),
+    strict_fallback_enabled: z.boolean(),
+    strict_fallback_floor: z.number(),
+    train_bands: z.record(z.object({
+      min: z.number(),
+      max: z.number(),
+    })),
+  }),
   pipeline_steps: z.array(WfoPipelineStepSchema),
 })
 export type WfoConfig = z.infer<typeof WfoConfigSchema>
@@ -3532,4 +3758,916 @@ export async function fetchWfoConfig(): Promise<WfoConfig> {
   const res = await fetch(`${API_BASE}/strategy/wfo/config`)
   if (!res.ok) throw new Error(`WFO config fetch failed: ${res.status}`)
   return WfoConfigSchema.parse(await res.json())
+}
+
+export async function triggerAllWfo(body: {
+  variants?: string[]
+  train_bars?: number
+  oos_bars?: number
+  step_bars?: number
+  window_policy?: string
+  top_k_folds?: number
+  min_walk_forwards?: number
+  strict_fallback_enabled?: boolean
+  strict_fallback_floor?: number
+  cost_bps?: number
+  max_reps?: number
+  max_corr?: number
+}): Promise<{ total_jobs: number; symbols: number; horizons: string[]; variants: string[] }> {
+  const res = await fetch(`${API_BASE}/strategy/wfo/trigger-all`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(`WFO trigger-all failed: ${res.status}`)
+  return res.json()
+}
+
+export async function fetchWfoBatchStatus(): Promise<{
+  total: number
+  succeeded: number
+  running: number
+  failed: number
+  pending: number
+  insufficient_data: number
+}> {
+  const res = await fetch(`${API_BASE}/strategy/wfo/batch-status`)
+  if (!res.ok) throw new Error(`WFO batch-status fetch failed: ${res.status}`)
+  return res.json()
+}
+
+// ---------------------------------------------------------------------------
+// Signal backtest + Monte Carlo
+// ---------------------------------------------------------------------------
+
+const MCEnvelopeSchema = z.object({
+  p05: z.array(z.number()),
+  p25: z.array(z.number()),
+  p50: z.array(z.number()),
+  p75: z.array(z.number()),
+  p95: z.array(z.number()),
+})
+
+const MCStatBandSchema = z.object({
+  p05: z.number().nullable(),
+  p50: z.number().nullable(),
+  p95: z.number().nullable(),
+})
+
+const MCStatsSchema = z.object({
+  total_return: MCStatBandSchema,
+  cagr: MCStatBandSchema,
+  sharpe: MCStatBandSchema,
+  max_drawdown: MCStatBandSchema,
+  var95: z.number().nullable(),
+  cvar95: z.number().nullable(),
+  prob_positive_terminal: z.number().nullable(),
+})
+
+const BacktestMetricsSchema = z.object({
+  total_return: z.number().nullable(),
+  cagr: z.number().nullable(),
+  sharpe: z.number().nullable(),
+  max_drawdown: z.number().nullable(),
+  win_rate: z.number().nullable(),
+  n_trades: z.number().nullable(),
+})
+
+const ShuffleStatsSchema = z.object({
+  status: z.string(),
+  n_trades: z.number(),
+  expected_return: z.number().nullable(),
+  ci95: z.tuple([z.number(), z.number()]).nullable(),
+  prob_positive: z.number().nullable(),
+  var95: z.number().nullable(),
+  cvar95: z.number().nullable(),
+  envelope: MCEnvelopeSchema.nullable(),
+}).nullable()
+
+export const SignalBacktestResultSchema = z.object({
+  source: z.string(),
+  scope: z.string(),
+  scope_key: z.string(),
+  status: z.string(),
+  warning_code: z.string().nullable().optional(),
+  window_start: z.string().nullable(),
+  window_end: z.string().nullable(),
+  n_bars: z.number().nullable(),
+  n_trades: z.number().nullable(),
+  equity: z.array(z.number()).nullable(),
+  dates: z.array(z.string()).nullable(),
+  trades: z.array(z.record(z.unknown())).nullable().optional(),
+  close_series: z.array(z.number()).nullable().optional(),
+  position_series: z.array(z.number()).nullable().optional(),
+  signal_diagnostics: z.record(z.unknown()).nullable().optional(),
+  metrics: BacktestMetricsSchema,
+  mc: z.object({
+    method: z.string(),
+    n_paths: z.number(),
+    envelope: MCEnvelopeSchema.nullable(),
+    stats: MCStatsSchema.nullable(),
+  }),
+  shuffle_stats: ShuffleStatsSchema.optional(),
+  computed_at: z.string().nullable(),
+  data_as_of: z.string().nullable(),
+  is_stale: z.boolean(),
+})
+
+export const SignalBacktestResponseSchema = z.object({
+  symbol: z.string(),
+  horizon: z.string(),
+  variant: z.string(),
+  market_data_as_of: z.string().nullable(),
+  results: z.array(SignalBacktestResultSchema),
+})
+
+export type SignalBacktestResult = z.infer<typeof SignalBacktestResultSchema>
+export type SignalBacktestResponse = z.infer<typeof SignalBacktestResponseSchema>
+
+export const SignalEngineResultSchema = z.object({
+  symbol: z.string(),
+  horizon: z.string(),
+  variant: z.string(),
+  status: z.string(),
+  aggregate_score_pct: z.number().nullable(),
+  expanded_aggregate_score_pct: z.number().nullable(),
+  signal_label: z.string().nullable(),
+  per_category: z.record(z.unknown()).nullable(),
+  per_family: z.record(z.unknown()).nullable(),
+  technical_levels: z.record(z.unknown()).nullable(),
+  support_resistance: z.record(z.unknown()).nullable(),
+  computed_at: z.string().nullable(),
+  data_as_of: z.string().nullable(),
+  is_stale: z.boolean(),
+  market_data_as_of: z.string().nullable(),
+  families: z.record(z.unknown()),
+  resolution_mode: z.string().optional(),
+  cache_state: z.string().optional(),
+})
+
+export type SignalEngineResult = z.infer<typeof SignalEngineResultSchema>
+
+export async function fetchSignalBacktestResults(
+  symbol: string,
+  horizon: string,
+  opts?: { variant?: string; source?: string; scope?: string }
+): Promise<SignalBacktestResponse> {
+  const params = new URLSearchParams({ symbol, horizon, variant: opts?.variant ?? "expanded" })
+  if (opts?.source) params.set("source", opts.source)
+  if (opts?.scope) params.set("scope", opts.scope)
+  const raw = await request<unknown>(`/strategy/backtest-mc?${params}`)
+  return SignalBacktestResponseSchema.parse(raw)
+}
+
+export async function triggerSignalBacktest(body: {
+  symbol: string
+  horizon: string
+  variant?: string
+  window_start?: string
+  window_end?: string
+  mc_config?: Record<string, unknown>
+}): Promise<{ job_id: string; status: string }> {
+  return request("/strategy/backtest-mc/trigger", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+}
+
+export async function triggerSignalEngine(body: {
+  symbol: string
+  horizon: string
+  variant?: string
+}): Promise<{ job_id: string; status: string }> {
+  return request("/strategy/engine/trigger", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+}
+
+export async function fetchSignalEngineResult(
+  symbol: string,
+  horizon: string,
+  variant = "expanded",
+  opts?: { cooldownBars?: number }
+): Promise<SignalEngineResult> {
+  const params = new URLSearchParams({ symbol, horizon, variant })
+  if (opts?.cooldownBars != null) {
+    params.set("cooldown_bars", String(Math.max(0, Math.floor(opts.cooldownBars))))
+  }
+  const raw = await request<unknown>(`/strategy/engine/result?${params}`)
+  return SignalEngineResultSchema.parse(raw)
+}
+
+export async function fetchSignalEngineBatchStatus(
+  symbol: string,
+  horizon: string,
+  variant = "expanded"
+): Promise<{ symbol: string; horizon: string; variant: string; jobs: unknown[] }> {
+  const params = new URLSearchParams({ symbol, horizon, variant })
+  return request(`/strategy/engine/batch-status?${params}`)
+}
+
+function _shouldBootstrapSignalEngineResult(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return false
+  const message = error.message.toLowerCase()
+  if (error.status === 404) {
+    return (
+      message.includes("no persisted signal engine result")
+      || message.includes("no signal engine result")
+    )
+  }
+  if (error.status === 409) {
+    return message.includes("persisted signal engine result is invalid")
+  }
+  return false
+}
+
+function _sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
+}
+
+export async function fetchSignalEngineResultWithBootstrap(
+  symbol: string,
+  horizon: string,
+  variant = "expanded",
+  opts?: { timeoutMs?: number; pollMs?: number }
+): Promise<SignalEngineResult> {
+  try {
+    return await fetchSignalEngineResult(symbol, horizon, variant)
+  } catch (error) {
+    if (!_shouldBootstrapSignalEngineResult(error)) throw error
+  }
+
+  await triggerSignalEngine({ symbol, horizon, variant })
+  const timeoutMs = Math.max(15_000, opts?.timeoutMs ?? 180_000)
+  const pollMs = Math.max(1_000, opts?.pollMs ?? 3_000)
+  const deadline = Date.now() + timeoutMs
+
+  while (Date.now() < deadline) {
+    await _sleep(pollMs)
+
+    try {
+      return await fetchSignalEngineResult(symbol, horizon, variant)
+    } catch (error) {
+      if (!_shouldBootstrapSignalEngineResult(error)) throw error
+    }
+
+    try {
+      const status = await fetchSignalEngineBatchStatus(symbol, horizon, variant)
+      const latest = (Array.isArray(status.jobs) ? status.jobs[0] : null) as
+        | { status?: unknown; error_message?: unknown }
+        | null
+      const latestStatus = String(latest?.status ?? "").toLowerCase()
+      if (latestStatus === "failed") {
+        const detail = typeof latest?.error_message === "string" && latest.error_message
+          ? `: ${latest.error_message}`
+          : ""
+        throw new Error(`Le calcul Signal Engine a echoue${detail}`)
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("a echoue")) {
+        throw error
+      }
+    }
+  }
+
+  throw new Error("Le calcul Signal Engine est toujours en cours. Reessayez dans quelques instants.")
+}
+
+export async function triggerAllSignalEngine(body?: {
+  variants?: string[]
+}): Promise<{ batch_id: string; total_jobs: number; symbols: number; horizons: string[]; variants: string[] }> {
+  return request("/strategy/engine/trigger-all", {
+    method: "POST",
+    body: JSON.stringify(body ?? {}),
+  })
+}
+
+export async function fetchSignalEngineGlobalBatchStatus(batchId?: string): Promise<{
+  batch_id: string | null
+  total: number
+  succeeded: number
+  running: number
+  failed: number
+  pending: number
+  partial: number
+}> {
+  const params = new URLSearchParams()
+  if (batchId) params.set("batch_id", batchId)
+  const query = params.toString()
+  return request(`/strategy/engine/batch-status-global${query ? `?${query}` : ""}`)
+}
+
+// ---------------------------------------------------------------------------
+// Analytics — signal evaluation + macro factor
+// ---------------------------------------------------------------------------
+
+export const ICCurveSchema = z.object({
+  horizons: z.array(z.number()),
+  ic_values: z.array(z.number()),
+  ic_se: z.array(z.number()),
+  ic_ci_lower: z.array(z.number()),
+  ic_ci_upper: z.array(z.number()),
+  n_obs: z.array(z.number()),
+})
+export type ICCurve = z.infer<typeof ICCurveSchema>
+
+export const PortfolioStatsSchema = z.object({
+  sharpe: z.number(),
+  sortino: z.number(),
+  max_drawdown: z.number(),
+  calmar: z.number(),
+  turnover: z.number(),
+  hit_rate: z.number(),
+  profit_factor: z.number(),
+  avg_win: z.number(),
+  avg_loss: z.number(),
+  after_cost_sharpe: z.number(),
+  n_trades: z.number(),
+  total_return: z.number(),
+})
+export type PortfolioStats = z.infer<typeof PortfolioStatsSchema>
+
+export const RobustnessSchema = z.object({
+  dsr: z.number(),
+  psr: z.number(),
+  sharpe_bootstrap_ci: z.array(z.number()),
+  ic_bootstrap_ci: z.array(z.number()),
+  ic_cv: z.number(),
+  sharpe_cv: z.number(),
+  n_variants: z.number(),
+})
+export type Robustness = z.infer<typeof RobustnessSchema>
+
+export const SignalEvaluationReportSchema = z.object({
+  signal_id: z.string(),
+  symbol: z.string(),
+  n_obs: z.number(),
+  horizons: z.array(z.number()),
+  ic_curve: ICCurveSchema,
+  hit_rate_h1: z.number(),
+  hit_rate_ci: z.array(z.number()),
+  conditional_return_tstat: z.number(),
+  portfolio: PortfolioStatsSchema,
+  robustness: RobustnessSchema,
+})
+export type SignalEvaluationReport = z.infer<typeof SignalEvaluationReportSchema>
+
+export const SignalOverviewRowSchema = z.object({
+  symbol: z.string(),
+  category: z.string(),
+  horizon: z.string(),
+  signal_id: z.string(),
+  ic_h1: z.number().nullable().optional(),
+  ic_h5: z.number().nullable().optional(),
+  dsr: z.number().nullable().optional(),
+  psr: z.number().nullable().optional(),
+  sharpe: z.number(),
+  after_cost_sharpe: z.number().nullable().optional(),
+  hit_rate: z.number().nullable().optional(),
+  n_obs: z.number(),
+  fdr_pass: z.boolean(),
+  engine_score_pct: z.number().nullable().optional(),
+  engine_label: z.string().nullable().optional(),
+})
+export type SignalOverviewRow = z.infer<typeof SignalOverviewRowSchema>
+
+export const MacroCatalogRowSchema = z.object({
+  canonical_id: z.string(),
+  yahoo_symbol: z.string(),
+  description: z.string(),
+  channel_tags: z.array(z.string()),
+  data_as_of: z.string().nullable().optional(),
+  row_count: z.number().nullable().optional(),
+  has_data: z.boolean(),
+})
+export type MacroCatalogRow = z.infer<typeof MacroCatalogRowSchema>
+
+export async function getAnalyticsSignalsOverview(symbol?: string, horizon?: string): Promise<SignalOverviewRow[]> {
+  const params = new URLSearchParams()
+  if (symbol) params.set("symbol", symbol)
+  if (horizon) params.set("horizon", horizon)
+  const q = params.toString()
+  const data = await request(`/analytics/signals${q ? `?${q}` : ""}`)
+  return z.array(SignalOverviewRowSchema).parse(data)
+}
+
+export async function evaluateStockSignal(
+  symbol: string,
+  category: string,
+  horizon: string,
+  opts?: { n_variants?: number; spread_bps?: number; commission_bps?: number }
+): Promise<SignalEvaluationReport> {
+  const params = new URLSearchParams()
+  if (opts?.n_variants) params.set("n_variants", String(opts.n_variants))
+  if (opts?.spread_bps) params.set("spread_bps", String(opts.spread_bps))
+  if (opts?.commission_bps) params.set("commission_bps", String(opts.commission_bps))
+  const q = params.toString()
+  const data = await request(`/analytics/stocks/${symbol}/evaluate/${category}/${horizon}${q ? `?${q}` : ""}`)
+  return SignalEvaluationReportSchema.parse(data)
+}
+
+export async function getMacroCatalog(): Promise<MacroCatalogRow[]> {
+  const data = await request("/analytics/macro/catalog")
+  return z.array(MacroCatalogRowSchema).parse(data)
+}
+
+export async function enqueueMacroIngest(canonicalId: string, start?: string): Promise<{ canonical_id: string; job_id: string; status: string }> {
+  const params = new URLSearchParams()
+  if (start) params.set("start", start)
+  const q = params.toString()
+  return request(`/analytics/macro/ingest/${canonicalId}${q ? `?${q}` : ""}`, { method: "POST" })
+}
+
+export async function enqueueAllMacroIngest(start?: string): Promise<{ enqueued: { canonical_id: string; job_id: string }[] }> {
+  const params = new URLSearchParams()
+  if (start) params.set("start", start)
+  const q = params.toString()
+  return request(`/analytics/macro/ingest-all${q ? `?${q}` : ""}`, { method: "POST" })
+}
+
+// Factor relevance
+
+export const FactorRelevanceRowSchema = z.object({
+  factor_id: z.string(),
+  symbol: z.string(),
+  ic: z.number(),
+  t_stat: z.number(),
+  p_value: z.number(),
+  ic_cv: z.number(),
+  n_obs: z.number(),
+  significant: z.boolean(),
+})
+export type FactorRelevanceRow = z.infer<typeof FactorRelevanceRowSchema>
+
+export const FactorRelevanceMatrixSchema = z.object({
+  symbol: z.string(),
+  as_of: z.string(),
+  pairs: z.array(FactorRelevanceRowSchema),
+})
+export type FactorRelevanceMatrix = z.infer<typeof FactorRelevanceMatrixSchema>
+
+export const AllFactorRelevanceSummarySchema = z.object({
+  factor_id: z.string(),
+  n_significant: z.number(),
+  n_total: z.number(),
+  top_symbols: z.array(z.string()),
+})
+export type AllFactorRelevanceSummary = z.infer<typeof AllFactorRelevanceSummarySchema>
+
+export const FactorLeaderboardRowSchema = z.object({
+  symbol: z.string(),
+  n_significant: z.number(),
+  best_factor: z.string(),
+  max_t_stat: z.number(),
+  max_ic: z.number(),
+  n_obs: z.number(),
+})
+export type FactorLeaderboardRow = z.infer<typeof FactorLeaderboardRowSchema>
+
+export async function getFactorRelevance(
+  symbol: string,
+  opts?: { lagRule?: string; returnMethod?: string; lookbackDays?: number; forwardHorizon?: number }
+): Promise<FactorRelevanceMatrix> {
+  const params = new URLSearchParams()
+  if (opts?.lagRule) params.set("lag_rule", opts.lagRule)
+  if (opts?.returnMethod) params.set("return_method", opts.returnMethod)
+  if (opts?.lookbackDays) params.set("lookback_days", String(opts.lookbackDays))
+  if (opts?.forwardHorizon) params.set("forward_horizon", String(opts.forwardHorizon))
+  const q = params.toString()
+  const data = await request(`/analytics/factors/${symbol}${q ? `?${q}` : ""}`)
+  return FactorRelevanceMatrixSchema.parse(data)
+}
+
+export async function getAllFactorRelevanceSummary(): Promise<AllFactorRelevanceSummary[]> {
+  const data = await request("/analytics/factors")
+  return z.array(AllFactorRelevanceSummarySchema).parse(data)
+}
+
+export async function getFactorLeaderboard(opts?: {
+  lookbackDays?: number
+  forwardHorizon?: number
+  returnMethod?: string
+}): Promise<FactorLeaderboardRow[]> {
+  const params = new URLSearchParams()
+  if (opts?.lookbackDays) params.set("lookback_days", String(opts.lookbackDays))
+  if (opts?.forwardHorizon) params.set("forward_horizon", String(opts.forwardHorizon))
+  if (opts?.returnMethod) params.set("return_method", opts.returnMethod)
+  const q = params.toString()
+  const data = await request(`/analytics/factors/leaderboard${q ? `?${q}` : ""}`)
+  return z.array(FactorLeaderboardRowSchema).parse(data)
+}
+
+export const FactorSignalEvalSchema = z.object({
+  factor_id: z.string(),
+  signal_name: z.string(),
+  symbol: z.string(),
+  citation: z.string(),
+  channel_filter: z.array(z.string()),
+  applicable: z.boolean(),
+  ic_h1: z.number(),
+  ic_h5: z.number(),
+  hit_rate: z.number(),
+  sharpe: z.number(),
+  after_cost_sharpe: z.number(),
+  dsr: z.number(),
+  psr: z.number(),
+  conditional_return_tstat: z.number(),
+  n_obs: z.number(),
+  fdr_pass: z.boolean(),
+  ic_curve: ICCurveSchema,
+  portfolio: PortfolioStatsSchema,
+  robustness: RobustnessSchema,
+})
+export type FactorSignalEval = z.infer<typeof FactorSignalEvalSchema>
+
+export async function getFactorSignalEval(
+  symbol: string,
+  opts?: { returnMethod?: string; lookbackDays?: number }
+): Promise<FactorSignalEval[]> {
+  const params = new URLSearchParams()
+  if (opts?.returnMethod) params.set("return_method", opts.returnMethod)
+  if (opts?.lookbackDays) params.set("lookback_days", String(opts.lookbackDays))
+  const q = params.toString()
+  const data = await request(`/analytics/factors/${symbol}/evaluate${q ? `?${q}` : ""}`)
+  return z.array(FactorSignalEvalSchema).parse(data)
+}
+
+
+// ---------------------------------------------------------------------------
+// Predictive ability — bucket × forward-horizon analytics
+// ---------------------------------------------------------------------------
+
+export const PREDICTIVE_BUCKETS = ["strong_sell", "sell", "hold", "buy", "strong_buy"] as const
+export type PredictiveBucket = (typeof PREDICTIVE_BUCKETS)[number]
+
+export const PredictiveAbilityCellSchema = z.object({
+  bucket: z.string(),
+  fwd_h: z.number(),
+  n: z.number(),
+  mean: z.number().nullable().optional(),
+  std: z.number().nullable().optional(),
+  ci_lower: z.number().nullable().optional(),
+  ci_upper: z.number().nullable().optional(),
+  hit_rate: z.number().nullable().optional(),
+  hit_ci_lower: z.number().nullable().optional(),
+  hit_ci_upper: z.number().nullable().optional(),
+})
+export type PredictiveAbilityCell = z.infer<typeof PredictiveAbilityCellSchema>
+
+export const PredictiveAbilityMatrixSchema = z.object({
+  symbol: z.string(),
+  source: z.string(),
+  horizon: z.string(),
+  categories: z.array(z.string()),
+  n_obs: z.number(),
+  buckets: z.array(z.string()),
+  fwd_horizons: z.array(z.number()),
+  cells: z.array(PredictiveAbilityCellSchema),
+  available: z.boolean().default(true),
+  message: z.string().nullable().optional(),
+  current_score: z.number().nullable().optional(),
+  current_bucket: z.string().nullable().optional(),
+})
+export type PredictiveAbilityMatrix = z.infer<typeof PredictiveAbilityMatrixSchema>
+
+export const CategoryCombinationRowSchema = z.object({
+  categories: z.array(z.string()),
+  n_strong_buy: z.number(),
+  n_strong_sell: z.number(),
+  strong_buy_mean: z.number().nullable().optional(),
+  strong_sell_mean: z.number().nullable().optional(),
+  monotonicity_score: z.number().nullable().optional(),
+})
+export type CategoryCombinationRow = z.infer<typeof CategoryCombinationRowSchema>
+
+export const CategoryCombinationsSchema = z.object({
+  symbol: z.string(),
+  source: z.string(),
+  horizon: z.string(),
+  fwd_h: z.number(),
+  rows: z.array(CategoryCombinationRowSchema),
+})
+export type CategoryCombinations = z.infer<typeof CategoryCombinationsSchema>
+
+export const PredictiveHistoryStatusSchema = z.object({
+  total: z.number(),
+  pending: z.number(),
+  running: z.number(),
+  succeeded: z.number(),
+  failed: z.number(),
+})
+export type PredictiveHistoryStatus = z.infer<typeof PredictiveHistoryStatusSchema>
+
+export interface PredictiveAbilityArgs {
+  symbol: string
+  source: "engine_legacy" | "engine_expanded" | "wfo" | "factor_x_ta"
+  horizon: "short" | "medium" | "long"
+  categories?: string[]
+  fwdHorizons?: number[]
+  lookback_days?: number
+  return_calc_method?: string
+}
+
+export async function getPredictiveAbility(args: PredictiveAbilityArgs): Promise<PredictiveAbilityMatrix> {
+  const params = new URLSearchParams({
+    symbol: args.symbol,
+    source: args.source,
+    horizon: args.horizon,
+    lookback_days: String(args.lookback_days ?? 0),
+  })
+  if (args.categories && args.categories.length > 0) {
+    params.set("categories", args.categories.join(","))
+  }
+  if (args.fwdHorizons && args.fwdHorizons.length > 0) {
+    params.set("fwd_horizons", args.fwdHorizons.join(","))
+  }
+  if (args.return_calc_method) {
+    params.set("return_calc_method", args.return_calc_method)
+  }
+  const data = await request(`/analytics/predictive-ability?${params.toString()}`)
+  return PredictiveAbilityMatrixSchema.parse(data)
+}
+
+export async function getCategoryCombinations(args: {
+  symbol: string
+  source: "engine_legacy" | "engine_expanded" | "wfo" | "factor_x_ta"
+  horizon: "short" | "medium" | "long"
+  fwd_h?: number
+  lookback_days?: number
+  return_calc_method?: string
+}): Promise<CategoryCombinations> {
+  const params = new URLSearchParams({
+    symbol: args.symbol,
+    source: args.source,
+    horizon: args.horizon,
+    fwd_h: String(args.fwd_h ?? 5),
+    lookback_days: String(args.lookback_days ?? 0),
+  })
+  if (args.return_calc_method) {
+    params.set("return_calc_method", args.return_calc_method)
+  }
+  const data = await request(`/analytics/predictive-ability/combinations?${params.toString()}`)
+  return CategoryCombinationsSchema.parse(data)
+}
+
+export async function triggerPredictiveHistory(symbol: string): Promise<{ triggered: number; job_ids: string[] }> {
+  const res = await fetch(`${API_BASE}/analytics/predictive-history/trigger?symbol=${encodeURIComponent(symbol)}`, {
+    method: "POST",
+  })
+  if (!res.ok) throw new Error(`predictive-history trigger failed: ${res.status}`)
+  return res.json()
+}
+
+export async function triggerAllPredictiveHistory(): Promise<{ triggered: number; job_ids: string[] }> {
+  const res = await fetch(`${API_BASE}/analytics/predictive-history/trigger-all`, { method: "POST" })
+  if (!res.ok) throw new Error(`predictive-history trigger-all failed: ${res.status}`)
+  return res.json()
+}
+
+export async function fetchPredictiveHistoryBatchStatus(): Promise<PredictiveHistoryStatus> {
+  const data = await request("/analytics/predictive-history/batch-status")
+  return PredictiveHistoryStatusSchema.parse(data)
+}
+
+export const PredictiveLeaderboardRowSchema = z.object({
+  symbol: z.string(),
+  source: z.string(),
+  n: z.number(),
+  ic_by_fwd_h: z.record(z.string(), z.number().nullable()),
+  tstat_by_fwd_h: z.record(z.string(), z.number().nullable()),
+  mean_ic: z.number().nullable().optional(),
+  mean_hit_rate: z.number().nullable().optional(),
+  mean_sharpe: z.number().nullable().optional(),
+})
+export type PredictiveLeaderboardRow = z.infer<typeof PredictiveLeaderboardRowSchema>
+
+export const PredictiveLeaderboardSchema = z.object({
+  engine_horizon: z.string(),
+  fwd_horizons: z.array(z.number()),
+  rows: z.array(PredictiveLeaderboardRowSchema),
+})
+export type PredictiveLeaderboard = z.infer<typeof PredictiveLeaderboardSchema>
+
+export async function getPredictiveAbilityLeaderboard(
+  engineHorizon: "short" | "medium" | "long",
+  lookback_days: number = 0,
+  return_calc_method: string = "open_to_open",
+): Promise<PredictiveLeaderboard> {
+  const data = await request(
+    `/analytics/predictive-ability/leaderboard?engine_horizon=${engineHorizon}&lookback_days=${lookback_days}&return_calc_method=${return_calc_method}`,
+  )
+  return PredictiveLeaderboardSchema.parse(data)
+}
+
+// ---------------------------------------------------------------------------
+// Factor × TA — Phase 2
+// ---------------------------------------------------------------------------
+
+export const FactorConfigItemSchema = z.object({
+  factor_ticker: z.string(),
+  label: z.string(),
+  enabled: z.boolean(),
+})
+export type FactorConfigItem = z.infer<typeof FactorConfigItemSchema>
+
+export const FactorConfigResponseSchema = z.object({
+  stock_symbol: z.string(),
+  factors: z.array(FactorConfigItemSchema),
+})
+export type FactorConfigResponse = z.infer<typeof FactorConfigResponseSchema>
+
+export const FamilyResultSummarySchema = z.object({
+  family: z.string(),
+  category: z.string(),
+  status: z.string(),
+  family_score_pct: z.number().nullable(),
+  representative_count: z.number().nullable(),
+  is_provisional: z.boolean().nullable(),
+  representatives: z.array(z.record(z.unknown())),
+  as_of: z.string().nullable(),
+})
+export type FamilyResultSummary = z.infer<typeof FamilyResultSummarySchema>
+
+const PipelineResultSchema = z.object({
+  families: z.array(FamilyResultSummarySchema),
+  as_of: z.string().nullable(),
+})
+export type PipelineResult = z.infer<typeof PipelineResultSchema>
+
+export const FactorXTaSignalResponseSchema = z.object({
+  symbol: z.string(),
+  horizon: z.string(),
+  engine: PipelineResultSchema,
+  wfo: PipelineResultSchema,
+})
+export type FactorXTaSignalResponse = z.infer<typeof FactorXTaSignalResponseSchema>
+
+export const FactorConditionStateSchema = z.object({
+  condition_id: z.string(),
+  form: z.string(),
+  lookback: z.number(),
+  threshold: z.number(),
+  direction: z.string(),
+  current_metric_value: z.number().nullable(),
+  is_active: z.boolean(),
+  human_rule: z.string(),
+})
+export type FactorConditionState = z.infer<typeof FactorConditionStateSchema>
+
+export const FactorStateEntrySchema = z.object({
+  factor_ticker: z.string(),
+  canonical_id: z.string(),
+  current_value: z.number(),
+  as_of: z.string().nullable(),
+  conditions: z.array(FactorConditionStateSchema),
+})
+export type FactorStateEntry = z.infer<typeof FactorStateEntrySchema>
+
+export const FactorXTaDetailSchema = z.object({
+  family: z.string(),
+  category: z.string(),
+  status: z.string(),
+  family_score_pct: z.number().nullable(),
+  viable_count: z.number().nullable(),
+  tested_count: z.number().nullable(),
+  competitive_count: z.number().nullable(),
+  representative_count: z.number().nullable(),
+  is_provisional: z.boolean().nullable(),
+  methodology_mode: z.string().nullable(),
+  wfe_pct: z.number().nullable().optional(),
+  robustness_ratio: z.number().nullable().optional(),
+  robustness_grade: z.string().nullable().optional(),
+  total_folds: z.number().nullable().optional(),
+  profitable_folds: z.number().nullable().optional(),
+  warning_message: z.string().nullable(),
+  representatives: z.array(z.record(z.unknown())),
+  family_detail: z.record(z.unknown()),
+  as_of: z.string().nullable(),
+})
+export type FactorXTaDetail = z.infer<typeof FactorXTaDetailSchema>
+
+export const FactorSelectionActiveRowSchema = z.object({
+  symbol: z.string(),
+  horizon: z.string(),
+  factor_canonical_id: z.string(),
+  rank: z.number().nullable(),
+  ic: z.number().nullable(),
+  spearman_ic: z.number().nullable().optional(),
+  pearson_corr: z.number().nullable().optional(),
+  ic_t_stat: z.number().nullable(),
+  bh_p_adj: z.number().nullable(),
+  lasso_coef: z.number().nullable(),
+  relevance_score: z.number().nullable().optional(),
+  n_obs: z.number().nullable().optional(),
+  selected_reason: z.string().nullable().optional(),
+  cusum_status: z.string(),
+  low_confidence: z.boolean(),
+  next_forced_recal: z.string().nullable(),
+  history_n_days: z.number().nullable(),
+  last_calibrated_at: z.string(),
+  cusum_drift_score: z.number().nullable(),
+  is_active: z.boolean(),
+})
+export type FactorSelectionActiveRow = z.infer<typeof FactorSelectionActiveRowSchema>
+
+export const FactorSelectionStage1RowSchema = z.object({
+  symbol: z.string(),
+  horizon: z.string(),
+  factor_canonical_id: z.string(),
+  ic_mean: z.number(),
+  spearman_ic: z.number().nullable().optional(),
+  pearson_corr: z.number().nullable().optional(),
+  ic_tstat: z.number(),
+  bh_p_adj: z.number().nullable(),
+  relevance_score: z.number().nullable().optional(),
+  n_obs: z.number().nullable().optional(),
+  selected_reason: z.string().nullable().optional(),
+  passed_fdr: z.boolean(),
+  regime_start: z.string().nullable(),
+  low_confidence: z.boolean(),
+  history_n_days: z.number().nullable(),
+  calculated_at: z.string(),
+})
+export type FactorSelectionStage1Row = z.infer<typeof FactorSelectionStage1RowSchema>
+
+export async function getFactorConfig(symbol: string): Promise<FactorConfigResponse> {
+  const data = await request(`/factor-signals/${symbol}/config`)
+  return FactorConfigResponseSchema.parse(data)
+}
+
+export async function updateFactorConfig(
+  symbol: string,
+  factors: FactorConfigItem[],
+): Promise<FactorConfigResponse> {
+  const data = await request(`/factor-signals/${symbol}/config`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ factors }),
+  })
+  return FactorConfigResponseSchema.parse(data)
+}
+
+export async function getFactorXTaSignals(
+  symbol: string,
+  horizon: string,
+): Promise<FactorXTaSignalResponse> {
+  const data = await request(`/factor-signals/${symbol}/${horizon}`)
+  return FactorXTaSignalResponseSchema.parse(data)
+}
+
+export async function getFactorXTaDetail(
+  symbol: string,
+  horizon: string,
+  family: string,
+  variant: "engine" | "wfo" = "engine",
+): Promise<FactorXTaDetail> {
+  const data = await request(
+    `/factor-signals/${symbol}/${horizon}/detail?family=${encodeURIComponent(family)}&variant=${variant}`,
+  )
+  return FactorXTaDetailSchema.parse(data)
+}
+
+export async function getFactorXTaFactorState(
+  symbol: string,
+  horizon: string,
+  variant: "engine" | "wfo" = "engine",
+): Promise<FactorStateEntry[]> {
+  const data = await request(
+    `/factor-signals/${symbol}/${horizon}/factor-state?variant=${variant}`,
+  )
+  return z.array(FactorStateEntrySchema).parse(data)
+}
+
+export async function enqueueFactorXTaRun(
+  symbol: string,
+  horizon: string,
+): Promise<{ engine_job_id: string; wfo_job_id: string }> {
+  return request(`/factor-signals/${symbol}/${horizon}/run`, { method: "POST" })
+}
+
+export async function getFactorSelectionActive(
+  symbol: string,
+  horizon?: string,
+): Promise<FactorSelectionActiveRow[]> {
+  const qs = horizon ? `?horizon=${encodeURIComponent(horizon)}` : ""
+  const data = await request(`/factor-selection/stocks/${symbol}/active${qs}`)
+  return z.array(FactorSelectionActiveRowSchema).parse(data)
+}
+
+export async function getFactorSelectionStage1Cache(
+  symbol: string,
+  horizon?: string,
+): Promise<FactorSelectionStage1Row[]> {
+  const qs = horizon ? `?horizon=${encodeURIComponent(horizon)}` : ""
+  const data = await request(`/factor-selection/stocks/${symbol}/stage1-cache${qs}`)
+  return z.array(FactorSelectionStage1RowSchema).parse(data)
+}
+
+export async function triggerFactorSelectionRecalibration(
+  symbol: string,
+): Promise<{ status: string; job_id: string; symbol: string }> {
+  return request(`/factor-selection/stocks/${symbol}/trigger-recalibration`, { method: "POST" })
 }

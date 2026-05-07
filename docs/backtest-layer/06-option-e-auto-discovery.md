@@ -8,6 +8,12 @@
 
 Options A through D on the strategy page allow users to define the **number** of entry/exit levels manually, while WFO optimizes the **values** (thresholds, exposures). Option E goes further: WFO also discovers the optimal **number** of levels.
 
+This document is intentionally about structure discovery. It is not the same thing as fixed-rule `wfo` sizing. In Phase 1:
+
+- direct fixed-rule `wfo` sizing means a normal leaf parameter such as entry `size_pct` or exit `reduction_pct`
+- `kelly_wfo` means `Kelly(from WFO) x modifier`
+- true Option E remains the later workflow that discovers rule count and ladder structure
+
 This is the most powerful configuration option — and the most computationally expensive. It requires joint optimization of indicator parameters, threshold values, exposure values, and level count within a single WFO framework.
 
 ---

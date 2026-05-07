@@ -131,6 +131,79 @@ Each WFO-optimizable parameter adds to the total WFO parameter count:
 
 Maximum WFO parameters from the risk section: **4**.
 
+## Horizon-Scoped Default WFO Presets
+
+The risk layer now follows the same horizon-specific preset model as Signal Construction and the rule layers. This matters because risk geometry should match thesis duration. A short-horizon trade needs tighter and faster failure detection than a long-horizon structural position.
+
+### Stop loss: ATR multiplier
+
+| Horizon | Default range |
+|--------|---------------|
+| Short | 1.0 to 2.5 step 0.25 |
+| Medium | 1.5 to 3.0 step 0.25 |
+| Long | 2.0 to 4.0 step 0.5 |
+
+Why this makes sense:
+
+- Short-horizon trades should fail fast. If the move needs more than roughly `2.5 ATR` of room, the thesis is often no longer "short horizon" in practical terms.
+- Medium-horizon trades need enough space to survive ordinary trend pullbacks, so the band shifts moderately wider.
+- Long-horizon trades are expected to live through regime noise, news shocks, and trend retracements. A `2.0` to `4.0 ATR` band reflects that wider economic holding tolerance.
+- The long-horizon step widens to `0.5` because the difference between, for example, `3.1 ATR` and `3.2 ATR` is usually not economically meaningful enough to justify a denser scan.
+
+### Take profit: reward-to-risk ratio
+
+| Horizon | Default range |
+|--------|---------------|
+| Short | 1.0 to 2.5 step 0.25 |
+| Medium | 1.5 to 3.5 step 0.25 |
+| Long | 2.0 to 5.0 step 0.5 |
+
+Why this makes sense:
+
+- Short-horizon trades usually target smaller, faster moves, so a modest `1.0` to `2.5` reward-to-risk band is realistic.
+- Medium-horizon trades can justify a somewhat larger payoff target because they are trying to capture multi-week extensions.
+- Long-horizon trades should be allowed to search for larger asymmetry because they commit capital longer and aim at structural moves rather than quick swings.
+- Again, the long-horizon step is coarser because reward geometry at that scale should be chosen in broad bands, not tiny decimal increments.
+
+### Cooldown bars
+
+| Horizon | Default range |
+|--------|---------------|
+| Short | 0 to 10 step 1 |
+| Medium | 0 to 15 step 1 |
+| Long | 0 to 20 step 2 |
+
+Why this makes sense:
+
+- Short-horizon strategies are most exposed to churn and repeated re-entry after noise stops. A `0` to `10` bar band lets WFO decide whether the edge needs immediate re-engagement or a brief pause.
+- Medium and long horizons benefit from a wider cooldown search because repeated re-entry into the same unfinished regime break can waste capital and inflate turnover.
+- The long-horizon step moves to `2` bars because one-bar precision is not especially meaningful once the strategy is operating over multi-week to multi-month cycles.
+
+### Time stop bars
+
+| Horizon | Default range |
+|--------|---------------|
+| Short | 5 to 20 step 1 |
+| Medium | 20 to 60 step 5 |
+| Long | 40 to 120 step 10 |
+
+Why this makes sense:
+
+- A short-horizon trade that has not resolved within `5` to `20` daily bars is usually no longer expressing the intended fast thesis.
+- A medium-horizon trade often needs roughly one to three months to play out, so `20` to `60` bars is a reasonable economic holding band.
+- A long-horizon trade may need multiple months before the thesis matures, so `40` to `120` bars provides that room without drifting into "hold forever."
+- Step size becomes much coarser at longer horizons because the difference between `67` and `68` bars is usually not a genuine economic distinction.
+
+### Why these risk defaults are narrower than the absolute allowed ranges
+
+The summary table below still shows broad admissible ranges for expert users. The new horizon defaults are intentionally narrower starting presets:
+
+- they keep the first WFO search economically plausible
+- they reduce the odds of exploding the Cartesian search grid
+- they force the optimizer to distinguish between materially different trade geometries instead of tiny cosmetic variations
+
+Users can still widen these presets when they have a specific reason. The default policy is "start from a credible domain, then expand deliberately."
+
 ## Parameter Interactions
 
 ### Stop Loss vs Exit Rules

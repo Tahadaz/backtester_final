@@ -1,0 +1,74 @@
+freeze_date: "2026-04-29"
+commit_hash: "<run: git rev-parse HEAD at commit time>"
+methodology: "pure factor-only signals, evaluated via core/quant_core/research/evaluate.py"
+
+universe:
+  seed: [ATW, BCP, BMCE, IAM, CDM, ADDH, COSU, WAA]
+  auto_expand:
+    min_bars: 252
+    min_price_mad: 5.0
+
+horizons: [1, 2, 3, 5, 10]
+
+evaluation_costs:
+  # commission_bps applies per position change (per-side)
+  # User-confirmed Moroccan-market round-trip = 66 bps (33 bps × 2 actions)
+  # all-in: tax + bourse commission + execution commission
+  # Spread held at 0 pending separate quantitative spread study for Moroccan market
+  spread_bps: 0.0
+  commission_bps: 33.0
+
+fdr_q: 0.10
+bootstrap_samples: 500
+
+alignment:
+  lag_rule: "precede_open"
+  max_staleness: 3
+
+signals:
+  vix_zscore:
+    factor: VIX
+    rule: "z20 < -1 → +1; z20 > +2 → -1; else 0"
+    window: 20
+    z_long: -1.0
+    z_short: 2.0
+    channel: all
+    citation: "Ilmanen (2011), Expected Returns, Ch.15"
+
+  dxy_momentum:
+    factor: DXY
+    rule: "20d momentum < 0 → +1 (EM tailwind); else -1"
+    window: 20
+    channel: all
+    citation: "Hau & Rey (2006), JF"
+
+  brent_direction:
+    factor: BRENT
+    rule: "5d momentum direction → +1/-1"
+    window: 5
+    channel: [materials, mining, chemicals]
+    citation: "economic channel only"
+
+  sp500_vix_confirmation:
+    factors: [SP500, VIX]
+    rule: "SP500 5d mom > 0 AND VIX z20 < +1 → +1; else 0"
+    sp500_window: 5
+    vix_window: 20
+    vix_z_cap: 1.0
+    channel: all
+    citation: "Ilmanen (2011), Expected Returns, Ch.15"
+
+  us10y_shock:
+    factor: US10Y
+    rule: "5d yield change > +20 bp → -1; else 0"
+    window: 5
+    shock_threshold_bp: 20.0
+    channel: [banks, insurance, real_estate]
+    citation: "Campbell & Shiller (1988), JF"
+
+  eurusd_momentum:
+    factor: EURUSD
+    rule: "20d momentum direction → +1/-1"
+    window: 20
+    channel: all
+    citation: "MAD peg channel (~60% EUR, 40% USD)"

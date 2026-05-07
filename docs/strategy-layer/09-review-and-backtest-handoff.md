@@ -40,6 +40,8 @@ Risk:                 2 WFO parameters (stop ATR multiplier, cooldown)
 Total:               11 WFO parameters
 ```
 
+Only real leaf `WFOParam` records contribute to this count. Container objects such as `entry_rules[i].sizing` do not count as parameters on their own. This matters both methodologically and operationally: Pardo-style parameter-count discipline applies to actual optimization dimensions, not wrapper objects.
+
 ### WFO Parameter Warnings
 
 The review applies three levels of guidance:
@@ -62,11 +64,21 @@ Where:
 - `IS_bars` = number of bars in the in-sample window
 - `max_lookback` = the longest lookback period among all indicators
 
-Additionally, the total number of WFO parameters should be considered relative to the IS window size. With Moroccan stocks having 10–15 years of daily data (~2,500–3,750 bars), the practical limits are:
+Additionally, the total number of WFO parameters should be considered relative to the IS window size. The IS window is computed dynamically by the backtest engine using:
 
-- Short horizon (IS = 252 bars): ~8 WFO parameters safe
-- Medium horizon (IS = 504 bars): ~12 WFO parameters safe
-- Long horizon (IS = 756 bars): ~15 WFO parameters safe
+```
+IS >= 10 × max_lookback    (Pardo Ch.6 p.163)
+```
+
+Where `max_lookback` is the longest indicator lookback among all WFO-flagged parameters. Examples for Moroccan stocks with 10–15 years of daily data:
+
+| max_lookback | Minimum IS | Approx. safe WFO params |
+|-------------|-----------|------------------------|
+| 40 (SMA short) | 400 bars | ~10 |
+| 100 (SMA medium) | 1,000 bars | ~20 |
+| 250 (SMA long) | 2,500 bars | ~50 |
+
+**Important:** These IS values are NOT the signal engine horizon windows (252/504/756), which are OOS evaluation train/test windows — a different concept. The backtest IS window is always larger because it must satisfy the degrees-of-freedom constraint.
 
 These are guidelines, not hard limits — but exceeding them significantly increases the risk that WFO finds in-sample patterns that do not generalize.
 
@@ -87,6 +99,8 @@ This table should be prominently displayed in the review:
 | Max position %, max sector % | — (always manual) |
 
 For **Option E**: WFO also determines the number of entry/exit levels, so that shifts from the "user chooses" column to the "WFO optimizes" column.
+
+In Phase 1, fixed-rule `wfo` sizing and `kelly_wfo` sizing are reviewed as ordinary field-level modes. The review does not use the A-E letter as an execution control.
 
 ## Ready / Not-Ready Checklist
 
@@ -164,6 +178,8 @@ type WFOParamManifest = {
   }>
 }
 ```
+
+The manifest should contain only leaf numeric WFO parameters: indicator params, entry/exit thresholds, direct size or reduction params, Kelly modifiers, and risk params.
 
 ### Strategy vs Backtest Responsibility Boundary
 

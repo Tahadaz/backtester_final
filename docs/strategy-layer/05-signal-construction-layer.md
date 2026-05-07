@@ -4,6 +4,7 @@
 
 The Signal Construction section defines **which indicators to use and how to compute their scores** for each stock in the basket. For each of the four indicator families, the user chooses:
 
+0. Which **strategy horizon** is active (`short`, `medium`, `long`)
 1. Which indicator type within the family (e.g., SMA vs EMA vs DEMA for Tendance)
 2. What parameters that indicator uses (e.g., SMA period = 50)
 3. Whether those parameters are manually fixed or marked for WFO optimization
@@ -20,76 +21,90 @@ The signal engine (Phase 1) discovers which indicators have predictive power usi
 
 Signal Construction bridges the gap between "the signal engine says SMA works" and "I want SMA(50) for IAM but SMA(200) for BCP, with MACD parameters optimized by WFO."
 
+The horizon selector belongs in this section because horizon meaning is primarily about indicator construction. The selected horizon drives:
+
+- signal previews for the focused stock
+- the active WFO search space used across entry, exit, and risk
+- the preset ranges surfaced to the backtest handoff
+
 ## The Four Indicator Families
 
-### Available Now (v1)
+### Available Indicators (20 total, 5 per category)
 
-| Family | Category (FR) | v1 Indicator | Score Range | Notes |
-|--------|--------------|-------------|-------------|-------|
-| **Tendance** | Tendance | SMA | Unbounded (ATR-normalized) | Price-vs-MA as trend proxy |
-| **Momentum** | Momentum | MACD | Unbounded (ATR-normalized) | Histogram as momentum proxy |
-| **Oscillation** | Oscillation | RSI | 0–100 (native) | Relative strength as extremity measure |
-| **Volume** | Volume | OBV | Unbounded (ratio) | Cumulative volume as confirmation |
-
-### Planned Future Additions
-
-| Family | Future Indicators | Status |
-|--------|------------------|--------|
-| Tendance | EMA, DEMA | Designed, not implemented |
-| Momentum | Stochastic, CCI | Designed, not implemented |
-| Oscillation | Williams %R | Designed, not implemented |
-| Volume | VWAP, MFI | Designed, not implemented |
+| Category | Family ID | Indicator | Score Range | Source |
+|----------|-----------|-----------|-------------|--------|
+| **Tendance** | `sma` | SMA | Unbounded (ATR-normalized) | Murphy (1999) |
+| | `ema` | EMA | Unbounded (ATR-normalized) | Murphy (1999) |
+| | `ema_cross` | EMA Cross | Unbounded (ATR-normalized) | Murphy (1999) |
+| | `ichimoku` | Ichimoku | Unbounded (ATR-normalized) | Hosoda (1969) |
+| | `psar` | Parabolic SAR | Unbounded (ATR-normalized) | Wilder (1978) |
+| **Momentum** | `macd` | MACD | Unbounded (ATR-normalized) | Appel (1979) |
+| | `roc` | Rate of Change | Unbounded (percentage) | Murphy (1999) |
+| | `trix` | TRIX | Unbounded (percentage) | Hutson (1983) |
+| | `adx` | ADX/DMI | 0–100 (native) | Wilder (1978) |
+| | `tsi` | TSI | ~[-100, +100] (native) | Blau (1991) |
+| **Oscillation** | `rsi` | RSI | 0–100 (native) | Wilder (1978) |
+| | `stochastic` | Stochastic | 0–100 (native) | Lane (1984) |
+| | `cci` | CCI | Unbounded (~±300) | Lambert (1980) |
+| | `mfi` | MFI | 0–100 (native) | Quong & Soudack (1989) |
+| | `uo` | Ultimate Oscillator | 0–100 (native) | Williams (1985) |
+| **Volume** | `obv` | OBV | Unbounded (ratio) | Granville (1963) |
+| | `cmf` | CMF | [-1, +1] (native) | Chaikin (1986) |
+| | `ad` | A/D Line | Unbounded (ratio) | Williams (1972) |
+| | `vwap` | VWAP Deviation | Unbounded (percentage) | Berkowitz (1988) |
+| | `fi` | Force Index | Unbounded (ATR-normalized) | Elder (1993) |
 
 ## Continuous Scoring Formulas
 
 Each indicator family produces a **continuous score** — not a binary buy/sell signal. Continuous scores enable graduated entry and exit at multiple conviction levels (see [06-entry-rules-layer.md](./06-entry-rules-layer.md)).
 
-### Tendance (SMA)
+### Tendance
 
-```
-trend_score = (Price - SMA(period)) / ATR(14)
-```
+Each trend indicator produces a continuous score using ATR normalization:
 
-- **Positive** when price is above the MA (bullish trend)
-- **Negative** when price is below the MA (bearish trend)
-- **Magnitude** reflects how many ATR units price has moved away from the MA
-- A score of +2.0 means price is 2 ATR above the SMA — a strong trend reading
+| Indicator | Continuous Score Formula |
+|-----------|------------------------|
+| SMA | `(close - SMA(w)) / ATR(14)` |
+| EMA | `(close - EMA(w)) / ATR(14)` |
+| EMA Cross | `(EMA(fast) - EMA(slow)) / ATR(14)` |
+| Ichimoku | `(close - kijun_sen) / ATR(14)` |
+| PSAR | `(close - SAR) / ATR(14)` |
 
-### Momentum (MACD)
+- **Positive** when price is above the reference (bullish trend)
+- **Negative** when price is below (bearish trend)
+- **Magnitude** reflects ATR units of deviation
 
-```
-momentum_score = MACD_histogram(fast, slow, signal) / ATR(14)
-```
+### Momentum
 
-Where `MACD_histogram = MACD_line - signal_line` and `MACD_line = EMA(fast) - EMA(slow)`.
+| Indicator | Continuous Score Formula |
+|-----------|------------------------|
+| MACD | `MACD_histogram / ATR(14)` |
+| ROC | `ROC(n)` (already a percentage) |
+| TRIX | `TRIX(n) × 1000` (scaled for readability) |
+| ADX | `(+DI - -DI) × (ADX / 50)` (direction × strength) |
+| TSI | `TSI` (already [-100, +100]) |
 
-- **Positive** when momentum is bullish (MACD above signal line)
-- **Negative** when momentum is bearish
-- **Magnitude** reflects momentum strength in ATR units
+### Oscillation
 
-### Oscillation (RSI)
+Oscillators are already bounded and do not require ATR normalization:
 
-```
-oscillation_score = RSI(period)
-```
+| Indicator | Continuous Score | Range |
+|-----------|-----------------|-------|
+| RSI | `RSI(period)` | [0, 100] |
+| Stochastic | `%K` | [0, 100] |
+| CCI | `CCI(period)` | unbounded (~±300) |
+| MFI | `MFI(period)` | [0, 100] |
+| UO | `UO(p1,p2,p3)` | [0, 100] |
 
-RSI is already bounded [0, 100] and does not require ATR normalization.
+### Volume
 
-- **Low values** (< 30) indicate oversold conditions — potential mean-reversion entry
-- **High values** (> 70) indicate overbought conditions — potential mean-reversion entry (short) or trend filter
-- **Mid-range** (30–70) indicates no extreme — neutral
-
-### Volume (OBV)
-
-```
-volume_score = (OBV - OBV_EMA(period)) / OBV_EMA(period)
-```
-
-This is a percentage deviation of OBV from its own exponential moving average.
-
-- **Positive** when volume flow is accumulating faster than average
-- **Negative** when volume flow is distributing
-- **Magnitude** reflects the strength of the volume divergence
+| Indicator | Continuous Score Formula |
+|-----------|------------------------|
+| OBV | `(OBV - OBV_EMA) / OBV_EMA` (percentage deviation) |
+| CMF | `CMF(period)` (already [-1, +1]) |
+| A/D | `(A/D - A/D_EMA) / abs(A/D_EMA)` (percentage deviation) |
+| VWAP | `(close - VWAP) / VWAP × 100` (percentage deviation) |
+| Force Index | `EMA(FI) / ATR(14)` (ATR-normalized) |
 
 ## ATR Normalization Rationale
 
@@ -137,6 +152,18 @@ Some parameters are fixed, others are flagged for WFO. WFO parameter count from 
 
 **When to use**: The user knows which indicator types to use but wants the optimizer to find the best parameters.
 
+## Horizon-Scoped Search Spaces
+
+Each WFO parameter stores three presets internally:
+
+- `short`
+- `medium`
+- `long`
+
+Only the currently selected strategy horizon is editable at a time. Its preset is copied into the active `scan_min / scan_max / scan_step` fields that the review and backtest layers consume.
+
+If a legacy saved strategy only has one WFO range, that range is copied to all three presets on load.
+
 ### Mode 3: Full-WFO
 
 WFO chooses the best indicator type per family AND the optimal parameters:
@@ -162,6 +189,65 @@ For each family, the Signal Construction section shows:
 | Parameters | User sets exact values | User sets scan ranges | WFO determines |
 | Score preview | Computed from fixed params | Shown for current (seed) values | Shown for current (seed) values |
 | WFO param count | 0 | N (one per flagged param) | N + type selection |
+
+Default indicator search spaces follow the horizon table from the backtest methodology:
+
+| Family | Short | Medium | Long |
+|-------|-------|--------|------|
+| SMA | 5-20 step 1 | 21-80 step 1 | 120-250 step 5 |
+| RSI period | 5-14 step 1 | 14-28 step 1 | 21-50 step 1 |
+| MACD fast | 5-10 step 1 | 10-18 step 1 | 18-30 step 1 |
+| MACD slow | 12-20 step 1 | 22-45 step 1 | 50-100 step 2 |
+| MACD signal | 5-9 step 1 | 7-12 step 1 | 9-18 step 1 |
+| OBV EMA | 5-20 step 1 | 21-80 step 1 | 120-250 step 5 |
+
+### Why these indicator intervals make sense
+
+These defaults are not arbitrary UI placeholders. They are the first-pass search policy the app uses because they balance three things at once:
+
+1. financial meaning
+2. horizon meaning
+3. WFO tractability
+
+**Financial meaning**
+
+- Short-horizon indicators should react to moves that matter over days to a few weeks. That is why their lookbacks stay short and their step sizes stay fine.
+- Medium-horizon indicators should smooth part of the noise while still reacting to earnings cycles, sector moves, and multi-week swings.
+- Long-horizon indicators should capture structural drift, regime persistence, and macro trend, which requires longer windows and coarser steps.
+
+**Economic meaning**
+
+- A short-horizon trader cares more about responsiveness than smoothness. Missing the turn by 10-20 bars can erase the edge.
+- A long-horizon trader cares more about avoiding churn than about shaving a few bars off a moving-average period. The economic question is usually "is this a structural trend?" not "is 83 better than 84?"
+
+**Logical meaning**
+
+- Step size becomes coarser as the range widens because adjacent long lookbacks are economically similar. Testing every single value creates false precision without creating meaning.
+- This follows the same WFO logic described in the backtest methodology: enough candidates to explore the domain, not so many that the optimizer spends its effort fitting noise.
+
+### Why the app now uses the same horizon logic outside indicators
+
+Signal Construction is where horizon is defined because horizon primarily describes how quickly information should decay inside the strategy. Once that choice is made, the same horizon should also shape:
+
+- entry thresholds
+- exit thresholds
+- Kelly modifier search
+- ATR stop distance
+- reward-to-risk target
+- cooldown length
+- time stop length
+
+Otherwise the app would mix a short-horizon signal engine with long-horizon risk geometry, or a long-horizon signal with intraday-like threshold ranges. The new design keeps those pieces economically consistent.
+
+### Defaults are seeds, not hard caps
+
+The implemented default tables are used as sensible starting presets. They are not a hard restriction:
+
+- every WFO parameter stores separate `short`, `medium`, and `long` presets
+- the active strategy horizon decides which preset is surfaced and handed to review/backtest
+- if the current saved seed value sits outside the default band, the app widens the preset to include that value rather than silently overwriting it
+
+That last rule matters because defaults should guide the search, not erase prior intent.
 
 ## Score Preview
 

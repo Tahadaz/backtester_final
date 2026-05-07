@@ -1,3 +1,89 @@
+# ---------------------------------------------------------------------------
+# Worker scaling notes:
+#   Total parallelism per pool = (replicas in pool) × WORKER_CONCURRENCY
+#   Default: 4 containers × 4 concurrency = 16 parallel jobs per pool.
+#   To scale up: set WORKER_CONCURRENCY=8 in .env (or add more replica services).
+#   Tune to your CPU core count — too high causes contention and slows all jobs.
+# ---------------------------------------------------------------------------
+
+x-worker-base: &worker_base
+  build:
+    context: ..
+    dockerfile: services/worker/Dockerfile
+  depends_on:
+    quant_postgres:
+      condition: service_healthy
+    quant_redis:
+      condition: service_healthy
+    quant_minio:
+      condition: service_healthy
+    quant_minio_init:
+      condition: service_completed_successfully
+    quant_db_migrate:
+      condition: service_completed_successfully
+  volumes:
+    - featurecache:/app/.cache
+    - ../services/api:/repo/services/api
+    - ../services/worker:/repo/services/worker
+    - ../core:/repo/core
+  command: python -m services.worker.worker
+  restart: unless-stopped
+
+x-wfo-worker-base: &wfo_worker_base
+  <<: *worker_base
+  environment:
+    REDIS_URL: redis://quant_redis:6379/0
+    DATABASE_URL: postgresql+psycopg2://app:app@quant_postgres:5432/quant
+    RUNS_QUEUE_NAME: runs
+    DEFAULTS_DISCOVERY_QUEUE_NAME: defaults_discovery
+    WORKER_QUEUES: wfo_signals
+    S3_ENDPOINT: http://minio:9000
+    S3_PRESIGN_ENDPOINT_URL: http://127.0.0.1:9000
+    S3_ACCESS_KEY: minio
+    S3_SECRET_KEY: minio12345
+    S3_BUCKET: quant-artifacts
+    PYTHONPATH: /repo
+    WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
+    OMP_NUM_THREADS: ${OMP_NUM_THREADS:-1}
+    MKL_NUM_THREADS: ${MKL_NUM_THREADS:-1}
+    OPENBLAS_NUM_THREADS: ${OPENBLAS_NUM_THREADS:-1}
+
+x-signal-engine-worker-base: &signal_engine_worker_base
+  <<: *worker_base
+  environment:
+    REDIS_URL: redis://quant_redis:6379/0
+    DATABASE_URL: postgresql+psycopg2://app:app@quant_postgres:5432/quant
+    RUNS_QUEUE_NAME: runs
+    DEFAULTS_DISCOVERY_QUEUE_NAME: defaults_discovery
+    WORKER_QUEUES: signal_engine
+    S3_ENDPOINT: http://minio:9000
+    S3_PRESIGN_ENDPOINT_URL: http://127.0.0.1:9000
+    S3_ACCESS_KEY: minio
+    S3_SECRET_KEY: minio12345
+    S3_BUCKET: quant-artifacts
+    PYTHONPATH: /repo
+    WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
+    OMP_NUM_THREADS: ${OMP_NUM_THREADS:-1}
+    MKL_NUM_THREADS: ${MKL_NUM_THREADS:-1}
+    OPENBLAS_NUM_THREADS: ${OPENBLAS_NUM_THREADS:-1}
+
+x-score-history-worker-base: &score_history_worker_base
+  <<: *worker_base
+  environment:
+    REDIS_URL: redis://quant_redis:6379/0
+    DATABASE_URL: postgresql+psycopg2://app:app@quant_postgres:5432/quant
+    WORKER_QUEUES: score_history
+    S3_ENDPOINT: http://minio:9000
+    S3_PRESIGN_ENDPOINT_URL: http://127.0.0.1:9000
+    S3_ACCESS_KEY: minio
+    S3_SECRET_KEY: minio12345
+    S3_BUCKET: quant-artifacts
+    PYTHONPATH: /repo
+    WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
+    OMP_NUM_THREADS: ${OMP_NUM_THREADS:-1}
+    MKL_NUM_THREADS: ${MKL_NUM_THREADS:-1}
+    OPENBLAS_NUM_THREADS: ${OPENBLAS_NUM_THREADS:-1}
+
 services:
   quant_postgres:
     image: postgres:16
@@ -93,7 +179,8 @@ services:
       DATABASE_URL: postgresql+psycopg2://app:app@quant_postgres:5432/quant
       RUNS_QUEUE_NAME: runs
       DEFAULTS_DISCOVERY_QUEUE_NAME: defaults_discovery
-      WORKER_QUEUES: runs,market_refresh
+      WORKER_QUEUES: runs,market_refresh,signal_backtest,score_history
+      SIGNAL_ENGINE_REFRESH_ON_MARKET_REFRESH: "1"
       RUN_HEARTBEAT_INTERVAL_SECONDS: "15"
       RUN_ORPHAN_STALE_SECONDS: "600"
       S3_ENDPOINT: http://minio:9000
@@ -122,6 +209,7 @@ services:
       - ../services/api:/repo/services/api
       - ../services/worker:/repo/services/worker
       - ../core:/repo/core
+      - ../frontend:/repo/frontend
     healthcheck:
       test:
         [
@@ -184,6 +272,7 @@ services:
       - featurecache:/app/.cache
       - ../services/worker:/repo/services/worker
       - ../core:/repo/core
+      - ../frontend:/repo/frontend
     healthcheck:
       test:
         [
@@ -209,11 +298,37 @@ services:
     command: python -m services.worker.worker
     restart: unless-stopped
 
+  quant_worker_wfo_1:
+    <<: *wfo_worker_base
+  quant_worker_wfo_2:
+    <<: *wfo_worker_base
+  quant_worker_wfo_3:
+    <<: *wfo_worker_base
+  quant_worker_wfo_4:
+    <<: *wfo_worker_base
+
+  # Dedicated signal-engine pool: 4 workers × WORKER_CONCURRENCY = 16 parallel jobs by default
+  quant_worker_signal_engine_1:
+    <<: *signal_engine_worker_base
+  quant_worker_signal_engine_2:
+    <<: *signal_engine_worker_base
+  quant_worker_signal_engine_3:
+    <<: *signal_engine_worker_base
+  quant_worker_signal_engine_4:
+    <<: *signal_engine_worker_base
+
+  # Dedicated score-history pool: 2 workers (DB-bound, ~30s/symbol, 73 symbols ≈ 5 min)
+  quant_worker_score_history_1:
+    <<: *score_history_worker_base
+  quant_worker_score_history_2:
+    <<: *score_history_worker_base
+
   quant_api:
     build:
       context: ..
       dockerfile: services/api/Dockerfile
     environment:
+      API_WORKERS: ${API_WORKERS:-4}
       REDIS_URL: redis://quant_redis:6379/0
       DATABASE_URL: postgresql+psycopg2://app:app@quant_postgres:5432/quant
       RUN_JOB_TIMEOUT_SECONDS: "21600"
@@ -244,6 +359,7 @@ services:
       - "8000:8000"
     volumes:
       - ../services/api:/repo/services/api
+      - ../services/worker:/repo/services/worker   # ← add
       - ../core:/repo/core
     healthcheck:
       test:
@@ -263,6 +379,18 @@ services:
       timeout: 3s
       retries: 5
       start_period: 15s
+
+  quant_frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    environment:
+      UPSTREAM_API_BASE: http://quant_api:8000
+    depends_on:
+      quant_api:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
 
 volumes:
   pgdata:

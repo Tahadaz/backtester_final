@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -48,6 +49,7 @@ export function SignalSection({
   enabledFamilies: string[]
   onToggleFamily: (family: string) => void
 }) {
+  const [familyHistoryMode, setFamilyHistoryMode] = useState<"static_current_reps" | "dynamic_point_in_time">("dynamic_point_in_time")
   const { data: consensus, isLoading } = useSignalConsensus(
     focusedStock,
     horizon,
@@ -57,6 +59,7 @@ export function SignalSection({
     focusedStock,
     horizon,
     enabledFamilies,
+    { familyHistoryMode },
   )
 
   return (
@@ -107,11 +110,36 @@ export function SignalSection({
 
       {/* Zone chart — only when stock focused */}
       {focusedStock && (
-        <SignalZoneChart
-          data={zoneChart}
-          enabledFamilies={enabledFamilies}
-          isLoading={zoneLoading}
-        />
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[11px] font-medium text-muted-foreground">Family history mode</span>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => setFamilyHistoryMode("static_current_reps")}
+                className={familyHistoryMode === "static_current_reps"
+                  ? "rounded-full border border-primary bg-primary px-2.5 py-1 text-[10px] font-medium text-primary-foreground"
+                  : "rounded-full border bg-background px-2.5 py-1 text-[10px] font-medium text-muted-foreground hover:text-foreground"}
+              >
+                Static reps
+              </button>
+              <button
+                type="button"
+                onClick={() => setFamilyHistoryMode("dynamic_point_in_time")}
+                className={familyHistoryMode === "dynamic_point_in_time"
+                  ? "rounded-full border border-primary bg-primary px-2.5 py-1 text-[10px] font-medium text-primary-foreground"
+                  : "rounded-full border bg-background px-2.5 py-1 text-[10px] font-medium text-muted-foreground hover:text-foreground"}
+              >
+                Point-in-time reps
+              </button>
+            </div>
+          </div>
+          <SignalZoneChart
+            data={zoneChart}
+            enabledFamilies={enabledFamilies}
+            isLoading={zoneLoading}
+          />
+        </div>
       )}
 
       {/* Family categories — always visible */}

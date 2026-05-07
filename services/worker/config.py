@@ -30,8 +30,12 @@ def _default_worker_queues() -> tuple[str, ...]:
     runs = os.getenv("RUNS_QUEUE_NAME", "runs").strip() or "runs"
     defaults = os.getenv("DEFAULTS_DISCOVERY_QUEUE_NAME", "defaults_discovery").strip() or "defaults_discovery"
     market_refresh = os.getenv("MARKET_REFRESH_QUEUE_NAME", "market_refresh").strip() or "market_refresh"
+    signal_engine = os.getenv("SIGNAL_ENGINE_QUEUE_NAME", "signal_engine").strip() or "signal_engine"
+    signal_backtest = os.getenv("SIGNAL_BACKTEST_QUEUE_NAME", "signal_backtest").strip() or "signal_backtest"
     # Use dict.fromkeys to preserve order and deduplicate
-    return tuple(dict.fromkeys([runs, defaults, market_refresh]))
+    wfo_signals = "wfo_signals"
+    score_history = "score_history"
+    return tuple(dict.fromkeys([runs, defaults, market_refresh, signal_engine, signal_backtest, wfo_signals, score_history]))
 
 
 class Settings(BaseModel):
@@ -50,6 +54,10 @@ class Settings(BaseModel):
     RUNS_QUEUE_NAME: str = os.getenv("RUNS_QUEUE_NAME", "runs").strip() or "runs"
     DEFAULTS_DISCOVERY_QUEUE_NAME: str = (
         os.getenv("DEFAULTS_DISCOVERY_QUEUE_NAME", "defaults_discovery").strip() or "defaults_discovery"
+    )
+    SIGNAL_ENGINE_QUEUE_NAME: str = os.getenv("SIGNAL_ENGINE_QUEUE_NAME", "signal_engine").strip() or "signal_engine"
+    SIGNAL_BACKTEST_QUEUE_NAME: str = (
+        os.getenv("SIGNAL_BACKTEST_QUEUE_NAME", "signal_backtest").strip() or "signal_backtest"
     )
     WORKER_QUEUES: tuple[str, ...] = _parse_queue_list(
         os.getenv("WORKER_QUEUES"),

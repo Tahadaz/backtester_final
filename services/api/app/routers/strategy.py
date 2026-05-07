@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+import numpy as np
 from sqlalchemy.orm import Session
 
 from .. import models
@@ -17,9 +19,17 @@ from ..schemas.strategy import (
     ExecutionRequest,
     FamilyScoreOut,
     FocusedKellyOut,
+    HandoffOut,
     LevelsOut,
     LevelsRequest,
     PivotPoints,
+    ReviewOut,
+    ReviewRequest,
+    RiskPreviewOut,
+    RiskPreviewRequest,
+    RulePreviewOut,
+    RulePreviewRequest,
+    RulePreviewRow,
     SRLevel,
     SavedStrategyCreate,
     StrategyAllocationOut,
@@ -30,6 +40,8 @@ from ..schemas.strategy import (
     SavedStrategyUpdate,
     SignalConsensusOut,
     SignalConsensusRequest,
+    SignalConstructionPreviewOut,
+    SignalConstructionPreviewRequest,
     StrategyBacktestRequest,
     StrategyBacktestResponse,
     SizingOut,
@@ -39,19 +51,40 @@ from ..schemas.strategy import (
     UniverseStockOut,
 )
 import pandas as pd
-from .strategy_signals import _get_or_compute, _score_to_label
+from .strategy_signals import (
+    _get_all_representative_indicators,
+    _get_or_compute,
+    _get_top_representative_indicator,
+    _macd_label,
+    _obv_label,
+    _rsi_label,
+    _score_to_label,
+    _safe_float,
+    _sma_label,
+)
 
+from core.quant_core.data import drop_incomplete_ohlcv_rows
 from core.quant_core.strategy_plan.allocation import compute_strategy_allocation
 from core.quant_core.strategy_plan.backtest import run_strategy_plan_backtest
 from core.quant_core.signal_engine.domain import (
     CATEGORY_FAMILIES,
     FAMILY_SIGNAL_TYPE,
     HORIZON_PARAMS,
+    VariantDef,
     signal_type_label,
 )
+from core.quant_core.signal_engine.ensemble import family_signal_is_available
 from core.quant_core.strategy_plan.execution import compute_execution_plan
 from core.quant_core.strategy_plan.execution_policy import build_execution_horizon_policy
 from core.quant_core.strategy_plan.signal_policy import compute_consensus
+from core.quant_core.strategy_plan.score_sources import (
+    compute_strategy_score_frame,
+    iter_score_sources,
+    source_has_wfo_params,
+    source_params_bundle,
+    source_wfo_param_names,
+    score_variable_catalog,
+)
 from core.quant_core.strategy_plan.sizing import (
     compute_kelly_ceiling,
     compute_portfolio_allocation,
@@ -61,6 +94,14 @@ from core.quant_core.strategy_plan.levels import (
     compute_atr,
     compute_pivot_points,
     detect_swing_levels,
+)
+from core.quant_core.signal_engine.variant_detail import _compute_indicator
+from ..strategy_v2 import (
+    build_legacy_backtest_config_from_v2,
+    build_strategy_handoff,
+    build_strategy_review,
+    get_basket_from_strategy_config,
+    migrate_strategy_config_v2,
 )
 
 logger = logging.getLogger(__name__)
@@ -80,10 +121,7 @@ def _truncate_for_horizon(ohlcv, horizon: str):
 
 
 def _clean_ohlcv(ohlcv):
-    cols = [c for c in ["Open", "High", "Low", "Close", "Volume"] if c in ohlcv.columns]
-    if cols:
-        ohlcv = ohlcv.dropna(subset=cols)
-    return ohlcv
+    return drop_incomplete_ohlcv_rows(ohlcv)
 
 
 def _resolve_execution_policy(
@@ -117,6 +155,8 @@ def _compute_batch_scores(
                 detail = _get_or_compute(
                     db, family, symbol, horizon, timeframe, cost_bps, cooldown_bars,
                 )
+                if not family_signal_is_available(detail.signal):
+                    continue
                 family_scores[family] = detail.signal.family_score_pct
                 family_labels[family] = detail.signal.family_signal_label
             except HTTPException:
@@ -154,6 +194,390 @@ def _compute_batch_scores(
                 "per_family": {},
             }
     return result
+
+
+def _extract_enabled_families(stock_config: dict[str, Any]) -> list[str]:
+    seen: list[str] = []
+    for source in iter_score_sources(stock_config):
+        if source.family_id not in seen:
+            seen.append(source.family_id)
+    return seen
+
+
+def _score_label_for_source(source_family: str, score: float | None) -> str | None:
+    if score is None:
+        return None
+    value = float(score)
+    if source_family == "sma":
+        return _sma_label(value)
+    if source_family == "macd":
+        return _macd_label(value)
+    if source_family == "rsi":
+        return _rsi_label(value)
+    if source_family == "obv":
+        return _obv_label(value)
+    return None
+
+
+def _normalize_indicator_payload(
+    indicator: dict[str, Any] | None,
+    *,
+    family_id: str,
+    fallback_name: str,
+) -> dict[str, Any] | None:
+    if not isinstance(indicator, dict) or indicator.get("type") == "none":
+        return None
+
+    payload: dict[str, Any] = {
+        "type": indicator.get("type"),
+        "name": indicator.get("name", fallback_name),
+    }
+    for key, value in indicator.items():
+        if key in {"type", "name"}:
+            continue
+        if isinstance(value, np.ndarray):
+            payload[key] = [None if not np.isfinite(item) else float(item) for item in value.tolist()]
+        else:
+            payload[key] = value
+
+    if "obv" in payload and "ema_values" in payload:
+        payload["bar_signals"] = [
+            "accumulation" if o is not None and e is not None and o > e else
+            "distribution" if o is not None and e is not None and o < e else
+            "neutral"
+            for o, e in zip(payload["obv"], payload["ema_values"])
+        ]
+        payload["deviation_values"] = [
+            None if o is None or e is None or e == 0 else float((float(o) - float(e)) / float(e))
+            for o, e in zip(payload["obv"], payload["ema_values"])
+        ]
+    if "macd_line" in payload and "signal_line" in payload:
+        crossovers: list[dict[str, Any]] = []
+        macd_line = payload["macd_line"]
+        signal_line = payload["signal_line"]
+        prev_diff: float | None = None
+        for index, (macd_value, signal_value) in enumerate(zip(macd_line, signal_line)):
+            if macd_value is None or signal_value is None:
+                prev_diff = None
+                continue
+            diff = float(macd_value) - float(signal_value)
+            if prev_diff is not None:
+                if prev_diff <= 0 < diff:
+                    crossovers.append({"bar_index": index, "direction": "bullish"})
+                elif prev_diff >= 0 > diff:
+                    crossovers.append({"bar_index": index, "direction": "bearish"})
+            prev_diff = diff
+        payload["crossovers"] = crossovers
+    if payload.get("type") == "overlay" and "values" in payload:
+        payload["plot_kind"] = "line"
+        payload["plot_values"] = payload["values"]
+        payload["plot_axis"] = "price"
+    elif family_id == "rsi" and "values" in payload:
+        payload["plot_kind"] = "line"
+        payload["plot_values"] = payload["values"]
+        payload["plot_axis"] = "indicator"
+        payload["zero_line"] = 50.0
+    elif family_id == "macd" and "histogram" in payload:
+        payload["plot_kind"] = "histogram"
+        payload["plot_values"] = payload["histogram"]
+        payload["plot_axis"] = "indicator"
+        payload["zero_line"] = 0.0
+    elif family_id == "obv" and "deviation_values" in payload:
+        payload["plot_kind"] = "line"
+        payload["plot_values"] = payload["deviation_values"]
+        payload["plot_axis"] = "indicator"
+        payload["zero_line"] = 0.0
+    return payload
+
+
+def _indicator_payload_for_source(
+    source: Any,
+    close: Any,
+    volume: Any,
+    *,
+    params_override: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    params_source = params_override if isinstance(params_override, dict) else source.params
+    archetype_map = {
+        "sma": ("price_vs_sma", {"window": int(round(float(params_source.get("window", {}).get("value", 20) if isinstance(params_source.get("window"), dict) else params_source.get("window", 20))))}),
+        "rsi": ("rsi_level", {"period": int(round(float(params_source.get("period", {}).get("value", 14) if isinstance(params_source.get("period"), dict) else params_source.get("period", 14)))), "oversold": 30, "overbought": 70}),
+        "macd": ("macd_cross", {
+            "fast": int(round(float(params_source.get("fast", {}).get("value", 12) if isinstance(params_source.get("fast"), dict) else params_source.get("fast", 12)))),
+            "slow": int(round(float(params_source.get("slow", {}).get("value", 26) if isinstance(params_source.get("slow"), dict) else params_source.get("slow", 26)))),
+            "signal": int(round(float(params_source.get("signal", {}).get("value", 9) if isinstance(params_source.get("signal"), dict) else params_source.get("signal", 9)))),
+        }),
+        "obv": ("obv_trend", {"ema_period": int(round(float(params_source.get("ema_period", {}).get("value", 21) if isinstance(params_source.get("ema_period"), dict) else params_source.get("ema_period", 21))))}),
+    }
+    archetype, params = archetype_map[source.family_id]
+    variant = VariantDef(
+        variant_id=f"preview_{source.score_key}",
+        family=source.family_id,
+        archetype=archetype,
+        params=params,
+        description=source.label,
+    )
+    indicator = _compute_indicator(close, variant, volume=volume)
+    return _normalize_indicator_payload(indicator, family_id=source.family_id, fallback_name=source.label)
+
+
+def _build_chart_payload(
+    db: Session,
+    *,
+    stock_config: dict[str, Any],
+    symbol: str,
+    horizon: str,
+    timeframe: str,
+    cost_bps: float,
+    cooldown_bars: int,
+    ohlcv: pd.DataFrame,
+    frame: pd.DataFrame,
+) -> dict[str, Any]:
+    close = ohlcv["Close"].astype(float).to_numpy(dtype="float64")
+    volume = ohlcv["Volume"].astype(float).to_numpy(dtype="float64") if "Volume" in ohlcv.columns else None
+    bars: list[dict[str, Any]] = []
+    for index, row in ohlcv.iterrows():
+        bars.append(
+            {
+                "date": str(index)[:10],
+                "open": _safe_float(row.get("Open")),
+                "high": _safe_float(row.get("High")),
+                "low": _safe_float(row.get("Low")),
+                "close": _safe_float(row.get("Close")),
+                "volume": _safe_float(row.get("Volume")) if "Volume" in ohlcv.columns else None,
+            }
+        )
+
+    sources_payload: list[dict[str, Any]] = []
+    for source in iter_score_sources(stock_config):
+        wfo_param_names = source_wfo_param_names(source)
+        source_payload = {
+            "score_key": source.score_key,
+            "label": source.label,
+            "family": source.family_id,
+            "source_kind": source.source_kind,
+            "source_mode_label": "Family score" if source.source_kind == "family_ensemble" else ("WFO range" if source_has_wfo_params(source) else "Specific setup"),
+            "scores": [round(float(v), 2) for v in frame[source.score_key].fillna(0.0).tolist()] if source.score_key in frame.columns else [],
+            "wfo_param_names": wfo_param_names,
+            "wfo_range_active": bool(wfo_param_names),
+        }
+        if source.source_kind == "family_ensemble":
+            detail = _get_or_compute(db, source.family_id, symbol, horizon, timeframe, cost_bps, cooldown_bars)
+            reps = _get_all_representative_indicators(detail, close, volume)
+            source_payload["representatives"] = [
+                {
+                    **rep,
+                    "indicator": _normalize_indicator_payload(
+                        rep.get("indicator"),
+                        family_id=source.family_id,
+                        fallback_name=str(rep.get("label") or source.label),
+                    ),
+                }
+                for rep in reps
+            ]
+            source_payload["indicator"] = _normalize_indicator_payload(
+                _get_top_representative_indicator(detail, close, volume),
+                family_id=source.family_id,
+                fallback_name=source.label,
+            )
+            source_payload["wfo_start_indicator"] = None
+            source_payload["wfo_end_indicator"] = None
+        else:
+            source_payload["representatives"] = []
+            source_payload["indicator"] = _indicator_payload_for_source(source, close, volume)
+            if wfo_param_names:
+                source_payload["wfo_start_indicator"] = _indicator_payload_for_source(
+                    source,
+                    close,
+                    volume,
+                    params_override=source_params_bundle(source, boundary="start"),
+                )
+                source_payload["wfo_end_indicator"] = _indicator_payload_for_source(
+                    source,
+                    close,
+                    volume,
+                    params_override=source_params_bundle(source, boundary="end"),
+                )
+            else:
+                source_payload["wfo_start_indicator"] = None
+                source_payload["wfo_end_indicator"] = None
+        sources_payload.append(source_payload)
+    return {
+        "symbol": symbol,
+        "horizon": horizon,
+        "bars": bars,
+        "sources": sources_payload,
+    }
+
+
+def _preview_score_bundle(
+    db: Session,
+    *,
+    stock_config: dict[str, Any],
+    symbol: str,
+    horizon: str,
+    timeframe: str,
+    cost_bps: float,
+    cooldown_bars: int,
+    family_history_mode: str = "static_current_reps",
+) -> tuple[dict[str, float | None], list[dict[str, Any]], dict[str, Any], list[dict[str, str]]]:
+    preview_key = "__PREVIEW__"
+    migrated = migrate_strategy_config_v2(
+        {
+            "schema_version": 3,
+            "app_domain": "four_pages",
+            "stocks": {preview_key: stock_config},
+            "portfolio": {
+                "universe": {"basket": [preview_key]},
+                "allocation": {},
+                "total_capital_mad": 0,
+            },
+        },
+        horizon=horizon,
+    )
+    stocks = migrated.get("stocks") if isinstance(migrated.get("stocks"), dict) else {}
+    portfolio = migrated.get("portfolio") if isinstance(migrated.get("portfolio"), dict) else {}
+    universe = portfolio.get("universe") if isinstance(portfolio.get("universe"), dict) else {}
+    basket = [str(item).strip() for item in list(universe.get("basket") or []) if str(item).strip()]
+    preview_candidates = [preview_key, preview_key.upper(), *basket]
+    canonical = next((stocks.get(candidate) for candidate in preview_candidates if isinstance(stocks.get(candidate), dict)), None)
+    if canonical is None and len(stocks) == 1:
+        only_stock = next(iter(stocks.values()))
+        canonical = only_stock if isinstance(only_stock, dict) else None
+    if canonical is None:
+        raise HTTPException(status_code=422, detail="Unable to resolve preview stock configuration.")
+    ohlcv = load_ohlcv_for_symbol(db, symbol, timeframe)
+    ohlcv = _truncate_for_horizon(ohlcv, horizon)
+    ohlcv = _clean_ohlcv(ohlcv)
+    if ohlcv.empty:
+        raise HTTPException(status_code=422, detail=f"No usable OHLCV rows for {symbol}")
+    frame = compute_strategy_score_frame(
+        stock_config=canonical,
+        ohlcv=ohlcv,
+        symbol=symbol,
+        horizon=horizon,
+        timeframe=timeframe,
+        signal_cost_bps=cost_bps,
+        cooldown_bars=cooldown_bars,
+        family_history_mode=family_history_mode,
+    )
+    last_row = frame.iloc[-1] if not frame.empty else pd.Series(dtype="float64")
+    snapshot = {column: float(last_row[column]) for column in frame.columns}
+
+    # For family_ensemble sources, use the authoritative score from the signal
+    # page pipeline (_get_or_compute) instead of the timeseries last-bar value,
+    # which can diverge slightly due to different weighting code paths.
+    family_ensemble_scores: dict[str, tuple[float, str | None]] = {}
+    for source in iter_score_sources(canonical):
+        if source.source_kind == "family_ensemble":
+            try:
+                detail = _get_or_compute(db, source.family_id, symbol, horizon, timeframe, cost_bps, cooldown_bars)
+                if not family_signal_is_available(detail.signal):
+                    continue
+                family_ensemble_scores[source.score_key] = (
+                    detail.signal.family_score_pct,
+                    _score_label_for_source(source.family_id, detail.signal.family_score_pct),
+                )
+            except HTTPException:
+                pass
+
+    active_scores = [
+        {
+            "score_key": source.score_key,
+            "label": source.label,
+            "family": source.family_id,
+            "source_kind": source.source_kind,
+            "score": round(family_ensemble_scores[source.score_key][0], 4)
+                if source.score_key in family_ensemble_scores
+                else (round(float(snapshot.get(source.score_key, 0.0)), 4) if source.score_key in snapshot else None),
+            "signal_label": family_ensemble_scores[source.score_key][1]
+                if source.score_key in family_ensemble_scores
+                else _score_label_for_source(source.family_id, snapshot.get(source.score_key)),
+        }
+        for source in iter_score_sources(canonical)
+        if source.score_key in snapshot or source.score_key in family_ensemble_scores
+    ]
+    chart = _build_chart_payload(
+        db,
+        stock_config=canonical,
+        symbol=symbol,
+        horizon=horizon,
+        timeframe=timeframe,
+        cost_bps=cost_bps,
+        cooldown_bars=cooldown_bars,
+        ohlcv=ohlcv,
+        frame=frame,
+    )
+    return snapshot, active_scores, chart, score_variable_catalog(canonical)
+
+
+def _latest_score_snapshot(
+    db: Session,
+    *,
+    symbol: str,
+    horizon: str,
+    timeframe: str,
+    stock_config: dict[str, Any],
+    cost_bps: float,
+    cooldown_bars: int,
+    family_history_mode: str = "static_current_reps",
+) -> dict[str, float | None]:
+    snapshot, _active_scores, _chart, _catalog = _preview_score_bundle(
+        db,
+        stock_config=stock_config,
+        symbol=symbol,
+        horizon=horizon,
+        timeframe=timeframe,
+        cost_bps=cost_bps,
+        cooldown_bars=cooldown_bars,
+        family_history_mode=family_history_mode,
+    )
+    return snapshot
+
+
+def _condition_to_text(condition: dict[str, Any]) -> str:
+    threshold = condition.get("threshold") if isinstance(condition.get("threshold"), dict) else {}
+    if str(threshold.get("mode") or "manual").lower() == "wfo":
+        value_text = f"WFO {threshold.get('scan_min', threshold.get('value', 0))}-{threshold.get('scan_max', threshold.get('value', 0))}"
+    else:
+        value_text = str(threshold.get("value", 0))
+    return f"{condition.get('variable', 'consensus_score')} {condition.get('operator', '>=')} {value_text}"
+
+
+def _condition_triggered(condition: dict[str, Any], snapshot: dict[str, float | None]) -> bool:
+    threshold = condition.get("threshold") if isinstance(condition.get("threshold"), dict) else {}
+    variable = str(condition.get("variable") or "consensus_score")
+    left = snapshot.get(variable)
+    right = float(threshold.get("value") or 0.0)
+    if left is None:
+        return False
+    operator = str(condition.get("operator") or ">=")
+    if operator == ">":
+        return left > right
+    if operator == ">=":
+        return left >= right
+    if operator == "<":
+        return left < right
+    if operator == "<=":
+        return left <= right
+    return False
+
+
+def _build_rule_preview_rows(rules: list[Any], snapshot: dict[str, float | None]) -> list[RulePreviewRow]:
+    out: list[RulePreviewRow] = []
+    for index, raw_rule in enumerate(rules):
+        rule = raw_rule if isinstance(raw_rule, dict) else {}
+        conditions = [item for item in list(rule.get("conditions") or []) if isinstance(item, dict)]
+        out.append(
+            RulePreviewRow(
+                id=str(rule.get("id") or f"rule_{index + 1}"),
+                label=str(rule.get("label") or f"Rule {index + 1}"),
+                config_option=str(rule.get("config_option") or "A"),
+                condition_count=len(conditions),
+                triggered=all(_condition_triggered(condition, snapshot) for condition in conditions) if conditions else False,
+                conditions=[_condition_to_text(condition) for condition in conditions],
+            )
+        )
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -388,6 +812,8 @@ def get_signal_consensus(
                 db, family, body.symbol, body.horizon,
                 body.timeframe, body.cost_bps, body.cooldown_bars,
             )
+            if not family_signal_is_available(detail.signal):
+                continue
             per_family_scores[family] = detail.signal.family_score_pct
             per_family_labels[family] = detail.signal.family_signal_label
         except HTTPException:
@@ -426,6 +852,128 @@ def get_signal_consensus(
     )
 
 
+@router.post("/signal-construction/preview")
+def preview_signal_construction(
+    body: SignalConstructionPreviewRequest,
+    db: Session = Depends(get_db),
+) -> SignalConstructionPreviewOut:
+    snapshot, active_scores, chart, variable_catalog = _preview_score_bundle(
+        db,
+        stock_config=body.stock_config if isinstance(body.stock_config, dict) else {},
+        symbol=body.symbol,
+        horizon=body.horizon,
+        timeframe=body.timeframe,
+        cost_bps=body.cost_bps,
+        cooldown_bars=body.cooldown_bars,
+        family_history_mode=body.family_history_mode,
+    )
+    return SignalConstructionPreviewOut(
+        active_scores=active_scores,
+        score_snapshot=snapshot,
+        variable_catalog=variable_catalog,
+        zone_chart=chart,
+        explain="Preview reflects the active signal-construction sources exactly as configured for this stock.",
+    )
+
+
+@router.post("/entry-rules/preview")
+def preview_entry_rules(
+    body: RulePreviewRequest,
+    db: Session = Depends(get_db),
+) -> RulePreviewOut:
+    snapshot = _latest_score_snapshot(
+        db,
+        symbol=body.symbol,
+        horizon=body.horizon,
+        timeframe=body.timeframe,
+        stock_config=body.stock_config if isinstance(body.stock_config, dict) else {},
+        cost_bps=body.cost_bps,
+        cooldown_bars=body.cooldown_bars,
+    )
+    rules = list((body.stock_config.get("entry_rules") if isinstance(body.stock_config, dict) else []) or [])
+    return RulePreviewOut(
+        symbol=body.symbol,
+        score_snapshot=snapshot,
+        rules=_build_rule_preview_rows(rules, snapshot),
+        explain="Preview evaluates the latest score snapshot against the configured entry rules.",
+    )
+
+
+@router.post("/exit-rules/preview")
+def preview_exit_rules(
+    body: RulePreviewRequest,
+    db: Session = Depends(get_db),
+) -> RulePreviewOut:
+    snapshot = _latest_score_snapshot(
+        db,
+        symbol=body.symbol,
+        horizon=body.horizon,
+        timeframe=body.timeframe,
+        stock_config=body.stock_config if isinstance(body.stock_config, dict) else {},
+        cost_bps=body.cost_bps,
+        cooldown_bars=body.cooldown_bars,
+    )
+    rules = list((body.stock_config.get("exit_rules") if isinstance(body.stock_config, dict) else []) or [])
+    return RulePreviewOut(
+        symbol=body.symbol,
+        score_snapshot=snapshot,
+        rules=_build_rule_preview_rows(rules, snapshot),
+        explain="Preview evaluates the latest score snapshot against the configured exit rules.",
+    )
+
+
+@router.post("/risk/preview")
+def preview_risk(
+    body: RiskPreviewRequest,
+    db: Session = Depends(get_db),
+) -> RiskPreviewOut:
+    try:
+        ohlcv = load_ohlcv_for_symbol(db, body.symbol, body.timeframe)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    ohlcv = _truncate_for_horizon(ohlcv, body.horizon)
+    ohlcv = _clean_ohlcv(ohlcv)
+    if ohlcv.empty or len(ohlcv) < 3:
+        raise HTTPException(status_code=422, detail=f"Insufficient data for {body.symbol}: {len(ohlcv)} bars.")
+
+    high = ohlcv["High"].values.astype("float64")
+    low = ohlcv["Low"].values.astype("float64")
+    close = ohlcv["Close"].values.astype("float64")
+    current_close = float(close[-1])
+    atr_14, _ = compute_atr(high, low, close, window=14)
+    risk = body.stock_config.get("risk") if isinstance(body.stock_config, dict) and isinstance(body.stock_config.get("risk"), dict) else {}
+    stop_loss = risk.get("stop_loss") if isinstance(risk.get("stop_loss"), dict) else {}
+    take_profit = risk.get("take_profit") if isinstance(risk.get("take_profit"), dict) else {}
+    time_stop = risk.get("time_stop") if isinstance(risk.get("time_stop"), dict) else {}
+
+    stop_price = None
+    if str(stop_loss.get("mode") or "atr_based") == "manual_pct":
+        stop_price = current_close * (1 - float(stop_loss.get("manual_pct") or 0.02))
+    else:
+        atr_multiplier = ((stop_loss.get("atr_multiplier") or {}).get("value") if isinstance(stop_loss.get("atr_multiplier"), dict) else 1.5) or 1.5
+        stop_price = current_close - float(atr_14 or 0.0) * float(atr_multiplier)
+
+    target_price = None
+    if str(take_profit.get("mode") or "rr_target") == "manual_pct":
+        target_price = current_close * (1 + float(take_profit.get("manual_pct") or 0.03))
+    else:
+        rr_ratio = ((take_profit.get("rr_ratio") or {}).get("value") if isinstance(take_profit.get("rr_ratio"), dict) else 1.5) or 1.5
+        target_price = current_close + (current_close - float(stop_price or current_close)) * float(rr_ratio)
+
+    return RiskPreviewOut(
+        symbol=body.symbol,
+        current_close=current_close,
+        atr_14=atr_14,
+        stop_loss=stop_price,
+        take_profit=target_price,
+        rr_ratio=((target_price - current_close) / max(current_close - float(stop_price or current_close), 1e-9)) if stop_price is not None and target_price is not None else None,
+        cooldown_bars=int(((risk.get("cooldown_bars") or {}).get("value") if isinstance(risk.get("cooldown_bars"), dict) else 0) or 0),
+        time_stop_bars=int(((time_stop.get("bars") or {}).get("value") if isinstance(time_stop.get("bars"), dict) else 0) or 0) if bool(time_stop.get("enabled", True)) else None,
+        explain="Preview estimates stop, target, cooldown, and time-stop from the current risk configuration.",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Execution Plan
 # ---------------------------------------------------------------------------
@@ -448,6 +996,8 @@ def get_execution_plan(
                     db, family, body.symbol, body.horizon,
                     body.timeframe, body.cost_bps, body.cooldown_bars,
                 )
+                if not family_signal_is_available(detail.signal):
+                    continue
                 per_family_scores[family] = detail.signal.family_score_pct
             except HTTPException:
                 logger.warning("Signal failed for %s/%s", family, body.symbol)
@@ -565,7 +1115,7 @@ def get_sizing(body: SizingRequest) -> SizingOut:
 # ---------------------------------------------------------------------------
 
 def _strategy_to_list_item(row: models.SavedStrategy) -> SavedStrategyListItem:
-    basket = (row.config_json or {}).get("universe", {}).get("basket", [])
+    basket = get_basket_from_strategy_config(row.config_json or {}, horizon=row.horizon)
     return SavedStrategyListItem(
         id=str(row.id),
         name=row.name,
@@ -632,11 +1182,15 @@ def backtest_strategy(
     if not row:
         raise HTTPException(status_code=404, detail="Strategy not found")
 
-    config_json = row.config_json or {}
-    universe = config_json.get("universe") if isinstance(config_json.get("universe"), dict) else {}
-    basket = [str(symbol).strip().upper() for symbol in list(universe.get("basket") or []) if str(symbol).strip()]
+    source_config_json = row.config_json or {}
+    basket = get_basket_from_strategy_config(source_config_json, horizon=row.horizon)
     if not basket:
         raise HTTPException(status_code=422, detail="Saved strategy has an empty basket.")
+
+    try:
+        config_json = build_legacy_backtest_config_from_v2(source_config_json, horizon=row.horizon)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
     bars_by_symbol: dict[str, pd.DataFrame] = {}
     missing_symbols: list[str] = []
@@ -672,6 +1226,7 @@ def backtest_strategy(
             cost_model_raw=body.cost_model.model_dump(),
             volume_gate=body.volume_gate.model_dump(),
             cooldown_bars=body.cooldown_bars,
+            family_history_mode=body.family_history_mode,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
@@ -795,3 +1350,35 @@ def archive_strategy(
     db.commit()
     db.refresh(row)
     return _strategy_to_out(row)
+
+
+@router.post("/review")
+def review_strategy_config(body: ReviewRequest) -> ReviewOut:
+    review = build_strategy_review(body.config_json or {}, horizon=body.horizon)
+    review.pop("canonical_config", None)
+    return ReviewOut(**review)
+
+
+@router.post("/strategies/{strategy_id}/handoff")
+def strategy_handoff(
+    strategy_id: str,
+    db: Session = Depends(get_db),
+) -> HandoffOut:
+    try:
+        strategy_key = UUID(strategy_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    row = db.query(models.SavedStrategy).filter(
+        models.SavedStrategy.id == strategy_key,
+    ).one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    handoff = build_strategy_handoff(
+        strategy_id=str(row.id),
+        strategy_name=row.name,
+        raw=row.config_json or {},
+        horizon=row.horizon,
+    )
+    return HandoffOut(**handoff)

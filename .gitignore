@@ -24,7 +24,9 @@ Thumbs.db
 # ---- Node / Next.js ----
 node_modules/
 .next/
+.next-pages/
 out/
+out-pages/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -32,10 +34,17 @@ pnpm-debug.log*
 
 # ---- Data / Artifacts (VERY IMPORTANT) ----
 data/
-!quant-backtesting-frontend/app/data/
-!quant-backtesting-frontend/components/data/
+# Whitelist: source code directories literally named "data"
+!frontend/app/data/
+!frontend/components/data/
+# Whitelist: static JSON datasets shipped with the dashboard (used by GH Pages build)
+!frontend/public/data/
+!frontend/public/data/**
 datasets/
 artifacts/
+# Whitelist: Python package literally named "artifacts" (core runtime code, not build output)
+!core/quant_core/artifacts/
+!core/quant_core/artifacts/**
 *.csv
 *.xlsx
 *.xls

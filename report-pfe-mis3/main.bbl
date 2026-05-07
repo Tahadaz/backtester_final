@@ -1,0 +1,20 @@
+\begin{thebibliography}{1}
+
+\bibitem{deprado2018}
+M.~Lopez~de Prado, {\em Advances in Financial Machine Learning}.
+\newblock Wiley, 2018.
+
+\bibitem{pardo2008}
+R.~Pardo, {\em The Evaluation and Optimization of Trading Strategies}.
+\newblock Wiley, 2nd~ed., 2008.
+
+\bibitem{kelly1956}
+J.~L. Kelly, ``A new interpretation of information rate,'' {\em Bell System Technical Journal}, vol.~35, no.~4, pp.~917--926, 1956.
+
+\bibitem{thorp2006}
+E.~O. Thorp, ``The kelly criterion in blackjack, sports betting, and the stock market,'' in {\em Handbook of Asset and Liability Management}, Elsevier, 2006.
+
+\bibitem{bailey2014}
+D.~H. Bailey and M.~Lopez~de Prado, ``The deflated sharpe ratio: Correcting for selection bias, backtest overfitting and non-normality,'' {\em Journal of Portfolio Management}, vol.~40, no.~5, pp.~94--107, 2014.
+
+\end{thebibliography}

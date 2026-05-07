@@ -1,13 +1,13 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { useMarketCatalog, useBatchScores } from "@/hooks/use-api"
+import { useMarketCatalog, usePersistedSignalEngineSummaries } from "@/hooks/use-api"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import { Eye, EyeOff, Search } from "lucide-react"
-import type { BatchScore } from "@/lib/api"
+import type { PersistedSignalEngineSummary } from "@/lib/api"
 
 function signalLabel(score: number): { label: string; cls: string } {
   if (score > 50) return { label: "ACHAT FORT", cls: "bg-emerald-100 text-emerald-700" }
@@ -17,22 +17,42 @@ function signalLabel(score: number): { label: string; cls: string } {
   return { label: "VENTE FORTE", cls: "bg-red-100 text-red-700" }
 }
 
+const CATEGORY_FILTERS = [
+  { value: "all", label: "Tous" },
+  { value: "equity", label: "Actions" },
+  { value: "commodity", label: "MP" },
+  { value: "forex", label: "FX" },
+  { value: "bond", label: "Oblig." },
+] as const
+
+const SUBCATEGORY_FILTERS = [
+  { value: "all", label: "Tous" },
+  { value: "masi", label: "MASI" },
+  { value: "us", label: "US" },
+  { value: "european", label: "EU" },
+  { value: "asian", label: "Asie" },
+] as const
+
 export function StockSidebar({
   selectedSymbol,
   onSelect,
   horizon,
+  variant,
   cooldownBars,
   className,
 }: {
   selectedSymbol: string | null
   onSelect: (symbol: string) => void
   horizon: string
+  variant: string
   cooldownBars?: number
   className?: string
 }) {
   const { data: catalog, isLoading } = useMarketCatalog()
   const [search, setSearch] = useState("")
   const [hideUnavailable, setHideUnavailable] = useState(false)
+  const [categoryFilter, setCategoryFilter] = useState<string>("all")
+  const [subcategoryFilter, setSubcategoryFilter] = useState<string>("all")
 
   const canonicalStocks = useMemo(
     () => (catalog ?? []).filter((r) => r.has_canonical_data),
@@ -44,31 +64,89 @@ export function StockSidebar({
     [canonicalStocks],
   )
 
-  const { data: batchScores, isLoading: scoresLoading } = useBatchScores(symbolList, horizon, cooldownBars)
+  const { data: batchScores, isLoading: scoresLoading } = usePersistedSignalEngineSummaries(
+    symbolList,
+    horizon,
+    variant,
+  )
 
   const scoreMap = useMemo(() => {
-    const map: Record<string, BatchScore> = {}
+    const map: Record<string, PersistedSignalEngineSummary> = {}
     if (batchScores) {
       for (const s of batchScores) map[s.symbol] = s
     }
     return map
   }, [batchScores])
 
-  const filtered = canonicalStocks.filter((r) => {
-    if (hideUnavailable && !scoresLoading) {
-      const score = scoreMap[r.symbol]
-      if (!score || score.aggregate_score_pct == null) return false
-    }
-    if (!search) return true
-    const q = search.toLowerCase()
-    return (
-      r.symbol.toLowerCase().includes(q) ||
-      (r.display_name?.toLowerCase().includes(q) ?? false)
-    )
-  })
+  const filtered = useMemo(() => {
+    return canonicalStocks.filter((r) => {
+      // Category filter
+      if (categoryFilter !== "all" && (r.asset_type ?? "equity") !== categoryFilter) return false
+      // Subcategory filter (equity only)
+      if (categoryFilter === "equity" && subcategoryFilter !== "all" && r.market_region !== subcategoryFilter) return false
+      // Availability filter
+      if (hideUnavailable && !scoresLoading) {
+        const score = scoreMap[r.symbol]
+        if (!score || score.aggregate_score_pct == null) return false
+      }
+      // Text search
+      if (search) {
+        const q = search.toLowerCase()
+        if (
+          !r.symbol.toLowerCase().includes(q) &&
+          !(r.display_name?.toLowerCase().includes(q) ?? false)
+        ) return false
+      }
+      return true
+    })
+  }, [canonicalStocks, categoryFilter, subcategoryFilter, hideUnavailable, scoresLoading, scoreMap, search])
 
   return (
     <div className={cn("flex flex-col border-r bg-card", className)}>
+      {/* Category filter chips */}
+      <div className="px-2 pt-2 pb-1 border-b">
+        <div className="flex flex-wrap gap-0.5">
+          {CATEGORY_FILTERS.map((f) => (
+            <button
+              key={f.value}
+              onClick={() => {
+                setCategoryFilter(f.value)
+                setSubcategoryFilter("all")
+              }}
+              className={cn(
+                "rounded px-2 py-0.5 text-[10px] font-semibold transition-colors border",
+                categoryFilter === f.value
+                  ? "bg-slate-900 text-white border-slate-900"
+                  : "text-muted-foreground bg-background border-border hover:bg-accent",
+              )}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Subcategory chips — equity only */}
+        {categoryFilter === "equity" && (
+          <div className="flex flex-wrap gap-0.5 mt-1">
+            {SUBCATEGORY_FILTERS.map((f) => (
+              <button
+                key={f.value}
+                onClick={() => setSubcategoryFilter(f.value)}
+                className={cn(
+                  "rounded px-2 py-0.5 text-[10px] font-semibold transition-colors border",
+                  subcategoryFilter === f.value
+                    ? "bg-blue-700 text-white border-blue-700"
+                    : "text-muted-foreground bg-background border-border hover:bg-accent",
+                )}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Search + hide toggle */}
       <div className="p-3 border-b">
         <div className="flex items-center gap-1.5">
           <div className="relative flex-1">
@@ -130,15 +208,20 @@ export function StockSidebar({
                   {scoreMap[row.symbol]?.aggregate_score_pct != null ? (() => {
                     const info = signalLabel(scoreMap[row.symbol].aggregate_score_pct!)
                     return (
-                      <span className={cn(
-                        "text-[9px] font-semibold px-1.5 py-0.5 rounded whitespace-nowrap",
-                        info.cls,
-                      )}>
-                        {info.label}
-                      </span>
+                      <div className="flex items-center gap-1">
+                        <span className={cn(
+                          "text-[9px] font-semibold px-1.5 py-0.5 rounded whitespace-nowrap",
+                          info.cls,
+                        )}>
+                          {info.label}
+                        </span>
+                        {scoreMap[row.symbol]?.is_stale ? (
+                          <span className="text-[9px] text-amber-700">stale</span>
+                        ) : null}
+                      </div>
                     )
                   })() : scoresLoading ? (
-                    <span className="text-[9px] text-muted-foreground animate-pulse">{"\u2022\u2022\u2022"}</span>
+                    <span className="text-[9px] text-muted-foreground animate-pulse">{"•••"}</span>
                   ) : null}
                 </div>
                 {/* Line 2: display name */}

@@ -21,13 +21,15 @@ from services.api.app.market_data_formats import (
     parse_numeric_series,
     rename_columns_for_upload,
 )
+from services.api.app.masi_tickers import get_masi_info, is_masi_ticker
 from services.worker.db import SessionLocal
 from services.worker.config import settings
 from services.worker.storage import s3_client, ensure_bucket
 
 # Reuse your core normalizer (keeps canonical OHLCV rules identical)
-from core.quant_core.data import _standardize_ohlcv
+from core.quant_core.data import _standardize_ohlcv, _standardize_ohlcv_index, _slugify_index_name
 from core.quant_core.s3_keys import build_dataset_object_key, build_market_store_object_key
+from services.worker.tasks.dashboard_snapshot import regenerate_dashboard_snapshot
 
 
 def _utcnow() -> datetime:
@@ -272,6 +274,25 @@ def _drop_future_dated_rows(df: pd.DataFrame) -> pd.DataFrame:
     return df.loc[mask]
 
 
+def _normalize_upload_scope(meta: dict[str, object] | None) -> str:
+    raw_scope = str((meta or {}).get("upload_scope") or "").strip().lower()
+    return raw_scope if raw_scope in {"masi", "other"} else "other"
+
+
+def _is_symbol_allowed_for_upload_scope(symbol: str, upload_scope: str) -> tuple[bool, str | None]:
+    if upload_scope == "masi" and not is_masi_ticker(symbol):
+        return False, "non_masi_symbol_rejected"
+    return True, None
+
+
+def _mark_ohlc_zeros_as_missing(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    for col in ("Open", "High", "Low", "Close"):
+        if col in out.columns:
+            out[col] = out[col].where(out[col] != 0)
+    return out
+
+
 def _merge_overwrite_if_different(old: pd.DataFrame | None, incoming: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     """
     Returns merged_df and a summary:
@@ -373,6 +394,7 @@ def ingest_excel_to_store(dataset_id: str) -> dict:
         stored_key = str(row["object_key"]) if row.get("object_key") else None
         meta = dict(row.get("meta_json") or {})
         detected = meta.get("detected_symbols") or []
+        upload_scope = _normalize_upload_scope(meta)
 
         # Download excel — prefer stored object_key; fall back to canonical reconstruction.
         payload = _download_dataset_bytes(filename=filename, data_hash=data_hash, object_key=stored_key)
@@ -407,6 +429,19 @@ def ingest_excel_to_store(dataset_id: str) -> dict:
             canonical_sym: str | None = None
             exists_in: str | None = None
             try:
+                allowed, rejection_code = _is_symbol_allowed_for_upload_scope(sym, upload_scope)
+                if not allowed:
+                    report["symbols"][sym] = {
+                        "canonical_symbol": None,
+                        "exists_in": None,
+                        "is_new_ticker": False,
+                        "status": "error",
+                        "final_status_reason": rejection_code,
+                        "error_code": rejection_code,
+                        "error": f"Symbol '{sym}' is not part of the MASI universe for this upload.",
+                    }
+                    continue
+
                 # ── Step 1: Explicit ticker identity resolution ────────────────────────
                 # Query market_data_store first, then stock_master.
                 # Upload is UPDATE-ONLY: unknown tickers are rejected here, not created.
@@ -415,13 +450,16 @@ def ingest_excel_to_store(dataset_id: str) -> dict:
                 if canonical_sym is None:
                     # Auto-create stock in stock_master + provider mappings
                     canonical_sym = sym  # already uppercased
+                    masi_info = get_masi_info(canonical_sym)
+                    display_name = masi_info["display_name"] if masi_info else canonical_sym
+                    sector = masi_info["sector"] if masi_info else None
                     db.execute(
                         text("""
-                            INSERT INTO stock_master (id, symbol, display_name, is_active, track_source, created_at, updated_at)
-                            VALUES (:id, :symbol, :display_name, true, 'bmce_excel', now(), now())
+                            INSERT INTO stock_master (id, symbol, display_name, sector, is_active, track_source, created_at, updated_at)
+                            VALUES (:id, :symbol, :display_name, :sector, true, 'bmce_excel', now(), now())
                             ON CONFLICT (symbol) DO NOTHING
                         """),
-                        {"id": uuid4(), "symbol": canonical_sym, "display_name": canonical_sym},
+                        {"id": uuid4(), "symbol": canonical_sym, "display_name": display_name, "sector": sector},
                     )
                     # Yahoo provider mapping (.CS suffix for Casablanca)
                     db.execute(
@@ -487,6 +525,8 @@ def ingest_excel_to_store(dataset_id: str) -> dict:
                         "is_new_ticker":                     False,
                         "status":                            "error",
                         "final_status_reason":               "unknown_format",
+                        "error_code":                        "unknown_upload_format",
+                        "error":                             f"Sheet '{sym}' does not match a supported upload format.",
                         "raw_columns":                       raw_columns,
                         "detected_format":                   detected_format,
                         "matched_aliases":                   matched_aliases,
@@ -529,6 +569,7 @@ def ingest_excel_to_store(dataset_id: str) -> dict:
                             number_style=format_spec.number_style,
                             allow_suffixes=(col == "Volume"),
                         )
+                df_raw = _mark_ohlc_zeros_as_missing(df_raw)
 
                 row_count_after_numeric_clean = int(len(df_raw))
 
@@ -550,6 +591,8 @@ def ingest_excel_to_store(dataset_id: str) -> dict:
                         "is_new_ticker":                 False,
                         "status":                        "error",
                         "final_status_reason":           "empty_after_standardization",
+                        "error_code":                    "empty_after_standardization",
+                        "error":                         "No valid OHLCV rows remained after cleaning and validation.",
                         "raw_columns":                   raw_columns,
                         "detected_format":               detected_format,
                         "matched_aliases":               matched_aliases,
@@ -646,6 +689,7 @@ def ingest_excel_to_store(dataset_id: str) -> dict:
                 }
 
         db.commit()
+        pass
 
         # Save report
         report_key = _report_object_key(rid)
@@ -668,3 +712,234 @@ def ingest_excel_to_store(dataset_id: str) -> dict:
 
     finally:
         db.close()
+
+
+# ---------------------------------------------------------------------------
+# Moroccan index Excel ingestion
+# ---------------------------------------------------------------------------
+
+# Expected French column aliases in uploaded index Excel files
+_INDEX_COLUMN_ALIASES: dict[str, list[str]] = {
+    "date":    ["date", "séance", "seance", "date séance"],
+    "close":   ["valeur indice", "valeur_indice", "valeur", "cours", "clôture"],
+    "high":    ["plus haut", "plus_haut", "haut"],
+    "low":     ["plus bas", "plus_bas", "bas"],
+    "libelle": ["libellé indice", "libelle indice", "libellé", "libelle", "indice", "nom"],
+}
+
+
+def _rename_index_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Map French/alias column names to canonical names for index OHLCV."""
+    rename: dict[str, str] = {}
+    for col in df.columns:
+        col_lower = col.lower().strip()
+        for canonical, aliases in _INDEX_COLUMN_ALIASES.items():
+            if col_lower in aliases:
+                rename[col] = canonical
+                break
+    return df.rename(columns=rename)
+
+
+def _upsert_index_master(db, symbol: str, display_name: str) -> None:
+    """Insert index_master row if it doesn't exist yet; update display_name if it does."""
+    db.execute(
+        text("""
+            INSERT INTO index_master (symbol, display_name, source, is_active, created_at, updated_at)
+            VALUES (:symbol, :display_name, 'casablanca_bourse', true, now(), now())
+            ON CONFLICT (symbol)
+            DO UPDATE SET display_name = excluded.display_name, updated_at = now()
+        """),
+        {"symbol": symbol, "display_name": display_name},
+    )
+
+
+def _upsert_market_data_store_index(
+    db,
+    symbol: str,
+    object_key: str,
+    start_ts,
+    end_ts,
+    row_count: int,
+    dataset_id,
+) -> None:
+    db.execute(
+        text("""
+            INSERT INTO market_data_store(
+                symbol, timeframe, object_key, start_ts, end_ts, row_count,
+                last_dataset_id, source_provider, data_as_of, asset_class,
+                created_at, updated_at
+            ) VALUES (
+                :symbol, '1D', :object_key, :start_ts, :end_ts, :row_count,
+                :last_dataset_id, 'casablanca_bourse_excel', :data_as_of, 'index',
+                now(), now()
+            )
+            ON CONFLICT (symbol, timeframe)
+            DO UPDATE SET
+                object_key      = excluded.object_key,
+                start_ts        = excluded.start_ts,
+                end_ts          = excluded.end_ts,
+                row_count       = excluded.row_count,
+                last_dataset_id = excluded.last_dataset_id,
+                source_provider = excluded.source_provider,
+                data_as_of      = excluded.data_as_of,
+                asset_class     = excluded.asset_class,
+                updated_at      = now()
+        """),
+        {
+            "symbol":          symbol,
+            "object_key":      object_key,
+            "start_ts":        start_ts,
+            "end_ts":          end_ts,
+            "row_count":       row_count,
+            "last_dataset_id": dataset_id,
+            "data_as_of":      end_ts.date() if hasattr(end_ts, "date") else end_ts,
+        },
+    )
+
+
+def ingest_excel_indices_to_store(dataset_id: str) -> dict:
+    """
+    Worker task: ingest a Moroccan index OHLCV Excel file.
+
+    Expected sheet layout (one or many sheets, each with rows per date):
+        Columns (French, case-insensitive): date, libellé indice, valeur indice, plus haut, plus bas
+
+    Alternatively: a single sheet where each row is one index on one date.
+
+    On first encounter, auto-creates index_master rows from the libellé.
+    Open is synthesized as prev-close; Volume is set to 0.
+    """
+    db = SessionLocal()
+    rid = UUID(dataset_id)
+
+    report: dict = {
+        "dataset_id": str(rid),
+        "generated_at": _utcnow().isoformat(),
+        "indices": {},
+        "errors": [],
+    }
+
+    try:
+        row = db.execute(
+            text("SELECT id, data_hash, filename, object_key, meta_json FROM dataset WHERE id = :id"),
+            {"id": rid},
+        ).mappings().first()
+        if not row:
+            raise RuntimeError(f"Dataset not found: {rid}")
+
+        filename = str(row["filename"] or "upload.xlsx")
+        data_hash = str(row["data_hash"])
+        stored_key = str(row["object_key"]) if row.get("object_key") else None
+
+        payload = _download_dataset_bytes(filename=filename, data_hash=data_hash, object_key=stored_key)
+        ensure_bucket()
+
+        with pd.ExcelFile(BytesIO(payload)) as xls:
+            sheet_names = xls.sheet_names
+
+        # Collect per-index data across all sheets
+        # Strategy: read all sheets, look for a "libelle" column to identify per-index rows,
+        # or treat each sheet as one index (sheet name = symbol).
+        index_frames: dict[str, tuple[str, pd.DataFrame]] = {}  # symbol -> (display_name, df)
+
+        for sheet in sheet_names:
+            try:
+                raw = pd.read_excel(BytesIO(payload), sheet_name=sheet, header=0)
+                if raw.empty:
+                    continue
+                raw = _rename_index_columns(raw)
+
+                if "libelle" in raw.columns:
+                    # Multi-index sheet: group by libelle
+                    for libelle, grp in raw.groupby("libelle"):
+                        symbol = _slugify_index_name(str(libelle))
+                        grp = grp.drop(columns=["libelle"], errors="ignore").copy()
+                        if symbol in index_frames:
+                            index_frames[symbol] = (
+                                str(libelle),
+                                pd.concat([index_frames[symbol][1], grp], axis=0),
+                            )
+                        else:
+                            index_frames[symbol] = (str(libelle), grp)
+                else:
+                    # Single-index sheet: use sheet name as display_name
+                    symbol = _slugify_index_name(str(sheet))
+                    display_name = str(sheet)
+                    if symbol in index_frames:
+                        index_frames[symbol] = (
+                            display_name,
+                            pd.concat([index_frames[symbol][1], raw], axis=0),
+                        )
+                    else:
+                        index_frames[symbol] = (display_name, raw)
+            except Exception as exc:
+                report["errors"].append(f"Sheet '{sheet}': {type(exc).__name__}: {exc}")
+
+        for symbol, (display_name, df) in index_frames.items():
+            try:
+                # Parse date index
+                if "date" in df.columns:
+                    from services.api.app.market_data_formats import parse_datetime_series
+                    df["date"] = parse_datetime_series(df["date"])
+                    df = df.dropna(subset=["date"]).set_index("date")
+                    df.index.name = "Date"
+
+                # Standardize
+                df_std = _standardize_ohlcv_index(df)
+                df_std = _drop_future_dated_rows(df_std)
+
+                if df_std.empty:
+                    report["indices"][symbol] = {"status": "error", "error": "empty_after_standardization"}
+                    continue
+
+                object_key = build_market_store_object_key(symbol, "1D")
+                old = _try_load_existing_parquet(object_key)
+                merged, summary = _merge_overwrite_if_different(old, df_std)
+
+                if summary["status"] != "unchanged":
+                    _save_parquet(object_key, merged)
+
+                start_ts = merged.index.min().to_pydatetime()
+                end_ts = merged.index.max().to_pydatetime()
+
+                _upsert_index_master(db, symbol, display_name)
+                _upsert_market_data_store_index(
+                    db, symbol, object_key, start_ts, end_ts, int(len(merged)), rid
+                )
+
+                report["indices"][symbol] = {
+                    "display_name": display_name,
+                    "status": summary["status"],
+                    "inserted_count": summary["inserted_count"],
+                    "overwritten_overlap_count": summary["overwritten_overlap_count"],
+                    "row_count": int(len(merged)),
+                    "start_ts": start_ts.isoformat(),
+                    "end_ts": end_ts.isoformat(),
+                    "object_key": object_key,
+                }
+            except Exception as exc:
+                report["indices"][symbol] = {
+                    "display_name": display_name,
+                    "status": "error",
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+
+        db.commit()
+        report_key = _report_object_key(rid)
+        _save_json(report_key, report)
+        return {"dataset_id": str(rid), "report_object_key": report_key, "indices": report["indices"]}
+
+    except Exception as exc:
+        db.rollback()
+        report["errors"].append(f"{type(exc).__name__}: {exc}")
+        report["traceback"] = traceback.format_exc()
+        report_key = _report_object_key(rid)
+        try:
+            _save_json(report_key, report)
+        except Exception:
+            pass
+        raise
+
+    finally:
+        db.close()
+

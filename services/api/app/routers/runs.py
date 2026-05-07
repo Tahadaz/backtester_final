@@ -18,8 +18,11 @@ import numpy as np
 import pandas as pd
 import sqlalchemy as sa
 from redis import Redis
-from rq import Queue, Retry
-from rq.job import Job
+try:
+    from rq import Queue, Retry
+    from rq.job import Job
+except ValueError:  # pragma: no cover - Windows test environments lack fork context
+    Queue = Retry = Job = None  # type: ignore[assignment]
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text

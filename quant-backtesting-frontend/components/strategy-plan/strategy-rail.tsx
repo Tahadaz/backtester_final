@@ -39,7 +39,7 @@ export function StrategyRail({
   className,
 }: StrategyRailProps) {
   return (
-    <div className={cn("flex flex-col h-full border-r bg-muted/30", className)}>
+    <div className={cn("flex h-full flex-col bg-muted/30", className)}>
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">

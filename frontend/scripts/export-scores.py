@@ -55,13 +55,13 @@ logger = logging.getLogger(__name__)
 OUTPUT_DIR = REPO_ROOT / "frontend" / "public" / "data"
 FAMILIES = ("sma", "macd", "rsi", "obv")
 LEGACY_CATEGORY_FAMILIES: dict[str, list[str]] = {
-    "trend": ["sma"],
+    "tendance": ["sma"],
     "momentum": ["macd"],
     "oscillation": ["rsi"],
     "volume": ["obv"],
 }
 EXPANDED_CATEGORY_FAMILIES: dict[str, list[str]] = {
-    "trend": ["sma", "ema", "ema_cross", "ichimoku", "psar"],
+    "tendance": ["sma", "ema", "ema_cross", "ichimoku", "psar"],
     "momentum": ["macd", "roc", "trix", "adx", "tsi"],
     "oscillation": ["rsi", "stochastic", "cci", "mfi", "uo"],
     "volume": ["obv", "cmf", "ad", "vwap", "fi"],
@@ -138,6 +138,7 @@ def _sanitize_rep(rep: dict) -> dict:
         "current_close": _round_number(rep.get("current_close"), 6),
         "indicator_value": _round_number(rep.get("indicator_value"), 6),
         "explanation": str(rep.get("explanation", "")),
+        "description": str(rep.get("description", "")),
         "params": _to_json_value(rep.get("params", {})) or {},
         "archetype": str(rep.get("archetype", "")),
         "selection_status": str(rep.get("selection_status", "")),
@@ -271,6 +272,121 @@ def _compute_support_resistance_snapshot(
     return technical_levels, support_resistance
 
 
+def load_wfo_data(db, horizon: str) -> dict[str, dict]:
+    """Bulk-load WFO signal data for all symbols at a given horizon.
+
+    Returns a dict keyed by symbol:
+      { "global": {...} | None, "categories": { category: {...}, ... } }
+    """
+    from sqlalchemy import text
+
+    global_rows = db.execute(
+        text(
+            """
+            SELECT symbol, status, global_score_pct, signal_label,
+                   weight_tendance, weight_momentum, weight_oscillation, weight_volume,
+                   sr_support_level, sr_resistance_level,
+                   sr_support_method, sr_resistance_method,
+                   best_category, consensus_wfe_pct, consensus_robustness
+            FROM wfo_global_signal
+            WHERE horizon = :horizon AND variant = 'expanded'
+            """
+        ),
+        {"horizon": horizon},
+    ).fetchall()
+
+    summary_rows = db.execute(
+        text(
+            """
+            SELECT symbol, category, score_pct, signal_label
+            FROM wfo_signal_summary
+            WHERE horizon = :horizon AND variant = 'expanded' AND status = 'succeeded'
+            """
+        ),
+        {"horizon": horizon},
+    ).fetchall()
+
+    by_symbol: dict[str, dict] = {}
+
+    for row in global_rows:
+        symbol = row[0]
+        by_symbol[symbol] = {
+            "global": {
+                "status": str(row[1] or ""),
+                "global_score_pct": row[2],
+                "signal_label": str(row[3] or ""),
+                "weight_tendance": row[4],
+                "weight_momentum": row[5],
+                "weight_oscillation": row[6],
+                "weight_volume": row[7],
+                "sr_support_level": row[8],
+                "sr_resistance_level": row[9],
+                "sr_support_method": str(row[10] or ""),
+                "sr_resistance_method": str(row[11] or ""),
+                "best_category": str(row[12] or ""),
+                "consensus_wfe_pct": row[13],
+                "consensus_robustness": row[14],
+            },
+            "categories": {},
+        }
+
+    for row in summary_rows:
+        symbol, category, score_pct, signal_label = row[0], row[1], row[2], row[3]
+        if symbol not in by_symbol:
+            by_symbol[symbol] = {"global": None, "categories": {}}
+        if score_pct is not None:
+            by_symbol[symbol]["categories"][category] = {
+                "score_pct": round(float(score_pct), 2),
+                "label": str(signal_label or ""),
+            }
+
+    return by_symbol
+
+
+def _build_wfo_scores(wfo_data: dict | None) -> dict | None:
+    """Build the wfo score subobject from loaded DB data.
+
+    Returns None when the row is missing, pending, or failed.
+    """
+    if wfo_data is None:
+        return None
+
+    global_row = wfo_data.get("global")
+    if global_row is None or global_row.get("status") != "succeeded":
+        return None
+
+    per_family: dict[str, dict] = {}
+    for category, cat_data in wfo_data.get("categories", {}).items():
+        per_family[category] = {
+            "score_pct": cat_data["score_pct"],
+            "label": cat_data["label"],
+        }
+
+    sr_support = global_row.get("sr_support_level")
+    sr_resistance = global_row.get("sr_resistance_level")
+    technical_levels = {
+        "support_buy_trigger": _round_number(sr_support, 6),
+        "resistance_sell_trigger": _round_number(sr_resistance, 6),
+        "support_reference": _round_number(sr_support, 6),
+        "support_method": global_row.get("sr_support_method") or "",
+        "resistance_method": global_row.get("sr_resistance_method") or "",
+        "method": "wfo_sr",
+    }
+
+    global_score = global_row.get("global_score_pct")
+    return {
+        "variant": "expanded",
+        "aggregate_score_pct": _round_number(global_score, 2) if global_score is not None else None,
+        "aggregate_signal_label": global_row.get("signal_label") or "",
+        "per_family": per_family,
+        "technical_levels": technical_levels,
+        "best_category": global_row.get("best_category") or "",
+        "consensus_wfe_pct": _round_number(global_row.get("consensus_wfe_pct"), 2),
+        "consensus_robustness": _round_number(global_row.get("consensus_robustness"), 4),
+        "status": "succeeded",
+    }
+
+
 def _build_family_snapshot(family: str, signal) -> dict:
     """Serialize family signal detail for public static signals page."""
     representatives = [
@@ -301,8 +417,70 @@ def _build_family_snapshot(family: str, signal) -> dict:
     }
 
 
+def _load_family_results_from_db(db, symbol: str, horizon: str) -> dict[str, dict] | None:
+    """Load persisted signal engine family results from DB.
+
+    Returns a dict keyed by family name, or None if no rows exist yet.
+    Each value contains family_detail_json (for JSON export) and metadata.
+    """
+    try:
+        from sqlalchemy import text
+        rows = db.execute(
+            text(
+                """
+                SELECT family, status, family_score_pct, signal_label,
+                       family_detail_json, is_provisional, data_as_of
+                FROM signal_engine_family_result
+                WHERE symbol = :symbol AND horizon = :horizon AND variant = 'expanded'
+                  AND status IN ('succeeded', 'no_signal')
+                """
+            ),
+            {"symbol": symbol, "horizon": horizon},
+        ).fetchall()
+    except Exception as exc:
+        logger.debug("  %s/%s: DB family result load failed (%s)", symbol, horizon, exc)
+        return None
+
+    if not rows:
+        return None
+
+    result: dict[str, dict] = {}
+    for row in rows:
+        family, status, score_pct, signal_label, detail_json, is_provisional, data_as_of = row
+        result[family] = {
+            "status": status,
+            "family_score_pct": score_pct,
+            "signal_label": signal_label,
+            "family_detail_json": detail_json,
+            "is_provisional": bool(is_provisional),
+            "data_as_of": data_as_of,
+        }
+    return result
+
+
+def _check_db_results_fresh(db_family_results: dict[str, dict], ohlcv_data_as_of) -> bool:
+    """Return True if all DB results match the current OHLCV data_as_of date."""
+    if not db_family_results:
+        return False
+    ohlcv_str = str(ohlcv_data_as_of)[:10]
+    for fr in db_family_results.values():
+        row_as_of = fr.get("data_as_of")
+        if row_as_of is None or str(row_as_of)[:10] != ohlcv_str:
+            return False
+    return True
+
+
 def compute_symbol_scores(db, symbol: str, horizon: str) -> dict | None:
-    """Compute all family scores for one symbol at one horizon."""
+    """Compute all family scores for one symbol at one horizon.
+
+    Strategy:
+    1. Load OHLCV (needed for adv + S/R computation).
+    2. Try reading persisted signal_engine_family_result rows from DB.
+    3. If DB rows are present AND fresh (data_as_of matches): use family_detail_json
+       directly (fast path — no A→G pipeline rerun).
+    4. If DB rows are missing or stale: fall back to live run_family_ensemble_full
+       (current behavior) and log a warning.
+    """
     try:
         ohlcv = load_ohlcv_for_symbol(db, symbol, TIMEFRAME)
     except Exception as exc:
@@ -317,40 +495,76 @@ def compute_symbol_scores(db, symbol: str, horizon: str) -> dict | None:
         return None
 
     close = ohlcv["Close"].values.astype("float64")
+    high = ohlcv["High"].values.astype("float64") if "High" in ohlcv.columns else None
+    low = ohlcv["Low"].values.astype("float64") if "Low" in ohlcv.columns else None
     volume = ohlcv["Volume"].values.astype("float64") if "Volume" in ohlcv.columns else None
 
     finite_vol = volume[np.isfinite(volume)] if volume is not None else np.array([])
     adv = float(np.mean(finite_vol)) if len(finite_vol) > 0 else None
 
+    ohlcv_data_as_of = ohlcv.index[-1].date() if len(ohlcv) > 0 else None
+    has_volume = _has_valid_volume(ohlcv)
+
     family_scores: dict[str, float] = {}
     family_labels: dict[str, str] = {}
     family_snapshots: dict[str, dict] = {}
-    has_volume = _has_valid_volume(ohlcv)
 
-    for family in EXPANDED_FAMILIES:
-        try:
-            if family in VOLUME_FAMILIES and not has_volume:
+    # ------------------------------------------------------------------
+    # Fast path: read from DB if rows are present and fresh
+    # ------------------------------------------------------------------
+    db_results = _load_family_results_from_db(db, symbol, horizon)
+    use_db = db_results is not None and _check_db_results_fresh(db_results, ohlcv_data_as_of)
+
+    if use_db:
+        logger.debug("  %s/%s: using DB-cached signal engine results", symbol, horizon)
+        for family, fr in db_results.items():
+            if fr.get("status") != "succeeded":
                 continue
-
-            detail = run_family_ensemble_full(
-                family,
-                close,
-                volume=volume,
-                symbol=symbol,
-                horizon=horizon,
-                timeframe=TIMEFRAME,
-                cost_bps=COST_BPS,
-                cooldown_bars=COOLDOWN_BARS,
+            detail_json = fr.get("family_detail_json")
+            if detail_json and isinstance(detail_json, dict):
+                family_snapshots[family] = detail_json
+            score = fr.get("family_score_pct")
+            if score is not None and not fr.get("is_provisional"):
+                family_scores[family] = float(score)
+                family_labels[family] = str(fr.get("signal_label") or "")
+    else:
+        # ------------------------------------------------------------------
+        # Fallback: live computation (original behavior)
+        # ------------------------------------------------------------------
+        if db_results is not None:
+            logger.warning(
+                "  %s/%s: DB results stale (data_as_of mismatch), falling back to live compute",
+                symbol, horizon,
             )
-            family_signal = detail.signal
-            family_snapshots[family] = _build_family_snapshot(family, family_signal)
-            if not family_signal_is_available(family_signal):
+        else:
+            logger.debug("  %s/%s: no DB results, using live compute", symbol, horizon)
+
+        for family in EXPANDED_FAMILIES:
+            try:
+                if family in VOLUME_FAMILIES and not has_volume:
+                    continue
+
+                detail = run_family_ensemble_full(
+                    family,
+                    close,
+                    volume=volume,
+                    high=high,
+                    low=low,
+                    symbol=symbol,
+                    horizon=horizon,
+                    timeframe=TIMEFRAME,
+                    cost_bps=COST_BPS,
+                    cooldown_bars=COOLDOWN_BARS,
+                )
+                family_signal = detail.signal
+                family_snapshots[family] = _build_family_snapshot(family, family_signal)
+                if not family_signal_is_available(family_signal):
+                    continue
+                family_scores[family] = family_signal.family_score_pct
+                family_labels[family] = family_signal.family_signal_label
+            except Exception as exc:
+                logger.debug("  %s/%s: failed (%s)", symbol, family, exc)
                 continue
-            family_scores[family] = family_signal.family_score_pct
-            family_labels[family] = family_signal.family_signal_label
-        except Exception as exc:
-            logger.debug("  %s/%s: failed (%s)", symbol, family, exc)
-            continue
 
     if not family_scores and not family_snapshots:
         return None
@@ -411,18 +625,38 @@ def compute_symbol_scores(db, symbol: str, horizon: str) -> dict | None:
         fallback_as_of=str(ohlcv.index[-1])[:10],
     )
 
-    return {
-        "per_family": per_family,
-        "expanded_per_family": expanded_per_family,
-        "categories": categories,
+    se_scores = {
+        "variant": "expanded",
         "aggregate_score_pct": round(aggregate, 2) if aggregate is not None else None,
         "aggregate_signal_label": _score_to_label(aggregate) if aggregate is not None else None,
         "expanded_aggregate_score_pct": round(expanded_aggregate, 2) if expanded_aggregate is not None else None,
         "expanded_aggregate_signal_label": _score_to_label(expanded_aggregate) if expanded_aggregate is not None else None,
+        "per_family": per_family,
+        "expanded_per_family": expanded_per_family,
+        "categories": categories,
         "families": family_snapshots,
         "technical_levels": technical_levels,
         "support_resistance": support_resistance,
+    }
+
+    return {
         "adv": round(adv, 2) if adv is not None else None,
+        # Nested shape (Phase 1); wfo filled in by main() after load_wfo_data()
+        "scores": {
+            "signal_engine": se_scores,
+            "wfo": None,
+        },
+        # Backward-compat flat fields kept until Phase 2 updates the TypeScript layer
+        "per_family": per_family,
+        "expanded_per_family": expanded_per_family,
+        "categories": categories,
+        "aggregate_score_pct": se_scores["aggregate_score_pct"],
+        "aggregate_signal_label": se_scores["aggregate_signal_label"],
+        "expanded_aggregate_score_pct": se_scores["expanded_aggregate_score_pct"],
+        "expanded_aggregate_signal_label": se_scores["expanded_aggregate_signal_label"],
+        "families": family_snapshots,
+        "technical_levels": technical_levels,
+        "support_resistance": support_resistance,
     }
 
 
@@ -435,57 +669,110 @@ def aggregate_sectors(stocks: list[dict]) -> list[dict]:
 
     sectors = []
     for sector_name, sector_stocks in sorted(by_sector.items()):
-        category_sums: dict[str, list[float]] = defaultdict(list)
-        expanded_category_sums: dict[str, list[float]] = defaultdict(list)
-        aggregate_scores = []
-        expanded_aggregate_scores = []
-        for stock in sector_stocks:
-            if stock["aggregate_score_pct"] is not None:
-                aggregate_scores.append(stock["aggregate_score_pct"])
-            if stock["expanded_aggregate_score_pct"] is not None:
-                expanded_aggregate_scores.append(stock["expanded_aggregate_score_pct"])
-            for category, category_data in stock["per_family"].items():
-                if category_data is not None:
-                    category_sums[category].append(category_data["score_pct"])
-            for category, category_data in stock.get("expanded_per_family", {}).items():
-                if category_data is not None:
-                    expanded_category_sums[category].append(category_data["score_pct"])
+        se_category_sums: dict[str, list[float]] = defaultdict(list)
+        se_expanded_sums: dict[str, list[float]] = defaultdict(list)
+        se_aggregate_scores = []
+        se_expanded_aggregate_scores = []
 
-        per_family = {}
+        wfo_category_sums: dict[str, list[float]] = defaultdict(list)
+        wfo_aggregate_scores = []
+
+        for stock in sector_stocks:
+            se = stock["scores"]["signal_engine"]
+            wfo = stock["scores"].get("wfo")
+
+            if se["aggregate_score_pct"] is not None:
+                se_aggregate_scores.append(se["aggregate_score_pct"])
+            if se.get("expanded_aggregate_score_pct") is not None:
+                se_expanded_aggregate_scores.append(se["expanded_aggregate_score_pct"])
+            for category, category_data in se["per_family"].items():
+                if category_data is not None:
+                    se_category_sums[category].append(category_data["score_pct"])
+            for category, category_data in se.get("expanded_per_family", {}).items():
+                if category_data is not None:
+                    se_expanded_sums[category].append(category_data["score_pct"])
+
+            if wfo is not None:
+                if wfo["aggregate_score_pct"] is not None:
+                    wfo_aggregate_scores.append(wfo["aggregate_score_pct"])
+                for category, cat_data in wfo["per_family"].items():
+                    if cat_data is not None:
+                        wfo_category_sums[category].append(cat_data["score_pct"])
+
+        se_per_family = {}
         for category_name in LEGACY_CATEGORY_FAMILIES:
-            scores = category_sums.get(category_name, [])
+            scores = se_category_sums.get(category_name, [])
             if scores:
                 avg_score = sum(scores) / len(scores)
                 signal_type = FAMILY_SIGNAL_TYPE.get(LEGACY_CATEGORY_FAMILIES[category_name][0], "trend")
-                per_family[category_name] = {
+                se_per_family[category_name] = {
                     "score_pct": round(avg_score, 2),
                     "label": signal_type_label(signal_type, avg_score),
                 }
 
-        expanded_per_family = {}
+        se_expanded_per_family = {}
         for category_name in EXPANDED_CATEGORY_FAMILIES:
-            scores = expanded_category_sums.get(category_name, [])
+            scores = se_expanded_sums.get(category_name, [])
             if scores:
                 avg_score = sum(scores) / len(scores)
                 signal_type = FAMILY_SIGNAL_TYPE.get(EXPANDED_CATEGORY_FAMILIES[category_name][0], "trend")
-                expanded_per_family[category_name] = {
+                se_expanded_per_family[category_name] = {
                     "score_pct": round(avg_score, 2),
                     "label": signal_type_label(signal_type, avg_score),
                 }
 
-        sector_aggregate = sum(aggregate_scores) / len(aggregate_scores) if aggregate_scores else None
-        sector_expanded_aggregate = sum(expanded_aggregate_scores) / len(expanded_aggregate_scores) if expanded_aggregate_scores else None
+        se_aggregate = sum(se_aggregate_scores) / len(se_aggregate_scores) if se_aggregate_scores else None
+        se_expanded_aggregate = (
+            sum(se_expanded_aggregate_scores) / len(se_expanded_aggregate_scores)
+            if se_expanded_aggregate_scores
+            else None
+        )
+
+        se_scores_obj = {
+            "variant": "expanded",
+            "aggregate_score_pct": round(se_aggregate, 2) if se_aggregate is not None else None,
+            "aggregate_signal_label": _score_to_label(se_aggregate) if se_aggregate is not None else None,
+            "expanded_aggregate_score_pct": round(se_expanded_aggregate, 2) if se_expanded_aggregate is not None else None,
+            "expanded_aggregate_signal_label": _score_to_label(se_expanded_aggregate) if se_expanded_aggregate is not None else None,
+            "per_family": se_per_family,
+            "expanded_per_family": se_expanded_per_family,
+        }
+
+        wfo_scores_obj = None
+        if wfo_aggregate_scores:
+            wfo_per_family: dict[str, dict] = {}
+            for category_name in EXPANDED_CATEGORY_FAMILIES:
+                scores = wfo_category_sums.get(category_name, [])
+                if scores:
+                    avg_score = sum(scores) / len(scores)
+                    signal_type = FAMILY_SIGNAL_TYPE.get(EXPANDED_CATEGORY_FAMILIES[category_name][0], "trend")
+                    wfo_per_family[category_name] = {
+                        "score_pct": round(avg_score, 2),
+                        "label": signal_type_label(signal_type, avg_score),
+                    }
+            wfo_agg = sum(wfo_aggregate_scores) / len(wfo_aggregate_scores)
+            wfo_scores_obj = {
+                "variant": "expanded",
+                "aggregate_score_pct": round(wfo_agg, 2),
+                "aggregate_signal_label": _score_to_label(wfo_agg),
+                "per_family": wfo_per_family,
+            }
 
         sectors.append(
             {
                 "sector": sector_name,
                 "stock_count": len(sector_stocks),
-                "aggregate_score_pct": round(sector_aggregate, 2) if sector_aggregate is not None else None,
-                "aggregate_signal_label": _score_to_label(sector_aggregate) if sector_aggregate is not None else None,
-                "expanded_aggregate_score_pct": round(sector_expanded_aggregate, 2) if sector_expanded_aggregate is not None else None,
-                "expanded_aggregate_signal_label": _score_to_label(sector_expanded_aggregate) if sector_expanded_aggregate is not None else None,
-                "per_family": per_family,
-                "expanded_per_family": expanded_per_family,
+                "scores": {
+                    "signal_engine": se_scores_obj,
+                    "wfo": wfo_scores_obj,
+                },
+                # Backward-compat flat fields kept until Phase 2
+                "aggregate_score_pct": se_scores_obj["aggregate_score_pct"],
+                "aggregate_signal_label": se_scores_obj["aggregate_signal_label"],
+                "expanded_aggregate_score_pct": se_scores_obj["expanded_aggregate_score_pct"],
+                "expanded_aggregate_signal_label": se_scores_obj["expanded_aggregate_signal_label"],
+                "per_family": se_per_family,
+                "expanded_per_family": se_expanded_per_family,
             }
         )
 
@@ -494,78 +781,153 @@ def aggregate_sectors(stocks: list[dict]) -> list[dict]:
 
 def aggregate_index(stocks: list[dict]) -> dict:
     """Compute MASI-wide aggregate scores and breadth."""
-    category_sums: dict[str, list[float]] = defaultdict(list)
-    expanded_category_sums: dict[str, list[float]] = defaultdict(list)
-    aggregate_scores = []
-    expanded_aggregate_scores = []
-    count_achat = 0
-    count_neutre = 0
-    count_vente = 0
-    count_indisponible = 0
+    se_category_sums: dict[str, list[float]] = defaultdict(list)
+    se_expanded_sums: dict[str, list[float]] = defaultdict(list)
+    se_aggregate_scores = []
+    se_expanded_aggregate_scores = []
+    se_count_achat = 0
+    se_count_neutre = 0
+    se_count_vente = 0
+    se_count_indisponible = 0
+
+    wfo_category_sums: dict[str, list[float]] = defaultdict(list)
+    wfo_aggregate_scores = []
+    wfo_count_achat = 0
+    wfo_count_neutre = 0
+    wfo_count_vente = 0
+    wfo_count_indisponible = 0
 
     for stock in stocks:
-        label = stock.get("aggregate_signal_label")
+        se = stock["scores"]["signal_engine"]
+        wfo = stock["scores"].get("wfo")
+
+        label = se.get("aggregate_signal_label")
         if label is None:
-            count_indisponible += 1
+            se_count_indisponible += 1
         elif "Achat" in label:
-            count_achat += 1
+            se_count_achat += 1
         elif "Vente" in label:
-            count_vente += 1
+            se_count_vente += 1
         else:
-            count_neutre += 1
+            se_count_neutre += 1
 
-        if stock["aggregate_score_pct"] is not None:
-            aggregate_scores.append(stock["aggregate_score_pct"])
-        if stock["expanded_aggregate_score_pct"] is not None:
-            expanded_aggregate_scores.append(stock["expanded_aggregate_score_pct"])
+        if se["aggregate_score_pct"] is not None:
+            se_aggregate_scores.append(se["aggregate_score_pct"])
+        if se.get("expanded_aggregate_score_pct") is not None:
+            se_expanded_aggregate_scores.append(se["expanded_aggregate_score_pct"])
 
-        for category, category_data in stock["per_family"].items():
+        for category, category_data in se["per_family"].items():
             if category_data is not None:
-                category_sums[category].append(category_data["score_pct"])
-        for category, category_data in stock.get("expanded_per_family", {}).items():
+                se_category_sums[category].append(category_data["score_pct"])
+        for category, category_data in se.get("expanded_per_family", {}).items():
             if category_data is not None:
-                expanded_category_sums[category].append(category_data["score_pct"])
+                se_expanded_sums[category].append(category_data["score_pct"])
 
-    per_family = {}
+        if wfo is not None:
+            wfo_label = wfo.get("aggregate_signal_label")
+            if wfo_label is None:
+                wfo_count_indisponible += 1
+            elif "Achat" in wfo_label:
+                wfo_count_achat += 1
+            elif "Vente" in wfo_label:
+                wfo_count_vente += 1
+            else:
+                wfo_count_neutre += 1
+
+            if wfo["aggregate_score_pct"] is not None:
+                wfo_aggregate_scores.append(wfo["aggregate_score_pct"])
+            for category, cat_data in wfo["per_family"].items():
+                if cat_data is not None:
+                    wfo_category_sums[category].append(cat_data["score_pct"])
+        else:
+            wfo_count_indisponible += 1
+
+    se_per_family = {}
     for category_name in LEGACY_CATEGORY_FAMILIES:
-        scores = category_sums.get(category_name, [])
+        scores = se_category_sums.get(category_name, [])
         if scores:
             avg_score = sum(scores) / len(scores)
             signal_type = FAMILY_SIGNAL_TYPE.get(LEGACY_CATEGORY_FAMILIES[category_name][0], "trend")
-            per_family[category_name] = {
+            se_per_family[category_name] = {
                 "score_pct": round(avg_score, 2),
                 "label": signal_type_label(signal_type, avg_score),
             }
 
-    expanded_per_family = {}
+    se_expanded_per_family = {}
     for category_name in EXPANDED_CATEGORY_FAMILIES:
-        scores = expanded_category_sums.get(category_name, [])
+        scores = se_expanded_sums.get(category_name, [])
         if scores:
             avg_score = sum(scores) / len(scores)
             signal_type = FAMILY_SIGNAL_TYPE.get(EXPANDED_CATEGORY_FAMILIES[category_name][0], "trend")
-            expanded_per_family[category_name] = {
+            se_expanded_per_family[category_name] = {
                 "score_pct": round(avg_score, 2),
                 "label": signal_type_label(signal_type, avg_score),
             }
 
-    overall_aggregate = sum(aggregate_scores) / len(aggregate_scores) if aggregate_scores else None
-    overall_expanded_aggregate = sum(expanded_aggregate_scores) / len(expanded_aggregate_scores) if expanded_aggregate_scores else None
+    overall_aggregate = sum(se_aggregate_scores) / len(se_aggregate_scores) if se_aggregate_scores else None
+    overall_expanded_aggregate = (
+        sum(se_expanded_aggregate_scores) / len(se_expanded_aggregate_scores)
+        if se_expanded_aggregate_scores
+        else None
+    )
 
-    return {
-        "name": "MASI",
-        "stock_count": len(stocks),
+    se_scores_obj = {
+        "variant": "expanded",
         "aggregate_score_pct": round(overall_aggregate, 2) if overall_aggregate is not None else None,
         "aggregate_signal_label": _score_to_label(overall_aggregate) if overall_aggregate is not None else None,
         "expanded_aggregate_score_pct": round(overall_expanded_aggregate, 2) if overall_expanded_aggregate is not None else None,
         "expanded_aggregate_signal_label": _score_to_label(overall_expanded_aggregate) if overall_expanded_aggregate is not None else None,
-        "per_family": per_family,
-        "expanded_per_family": expanded_per_family,
+        "per_family": se_per_family,
+        "expanded_per_family": se_expanded_per_family,
         "breadth": {
-            "achat": count_achat,
-            "neutre": count_neutre,
-            "vente": count_vente,
-            "indisponible": count_indisponible,
+            "achat": se_count_achat,
+            "neutre": se_count_neutre,
+            "vente": se_count_vente,
+            "indisponible": se_count_indisponible,
         },
+    }
+
+    wfo_scores_obj = None
+    if wfo_aggregate_scores:
+        wfo_per_family: dict[str, dict] = {}
+        for category_name in EXPANDED_CATEGORY_FAMILIES:
+            scores = wfo_category_sums.get(category_name, [])
+            if scores:
+                avg_score = sum(scores) / len(scores)
+                signal_type = FAMILY_SIGNAL_TYPE.get(EXPANDED_CATEGORY_FAMILIES[category_name][0], "trend")
+                wfo_per_family[category_name] = {
+                    "score_pct": round(avg_score, 2),
+                    "label": signal_type_label(signal_type, avg_score),
+                }
+        wfo_agg = sum(wfo_aggregate_scores) / len(wfo_aggregate_scores)
+        wfo_scores_obj = {
+            "variant": "expanded",
+            "aggregate_score_pct": round(wfo_agg, 2),
+            "aggregate_signal_label": _score_to_label(wfo_agg),
+            "per_family": wfo_per_family,
+            "breadth": {
+                "achat": wfo_count_achat,
+                "neutre": wfo_count_neutre,
+                "vente": wfo_count_vente,
+                "indisponible": wfo_count_indisponible,
+            },
+        }
+
+    return {
+        "name": "MASI",
+        "stock_count": len(stocks),
+        "scores": {
+            "signal_engine": se_scores_obj,
+            "wfo": wfo_scores_obj,
+        },
+        # Backward-compat flat fields kept until Phase 2
+        "aggregate_score_pct": se_scores_obj["aggregate_score_pct"],
+        "aggregate_signal_label": se_scores_obj["aggregate_signal_label"],
+        "expanded_aggregate_score_pct": se_scores_obj["expanded_aggregate_score_pct"],
+        "expanded_aggregate_signal_label": se_scores_obj["expanded_aggregate_signal_label"],
+        "per_family": se_per_family,
+        "expanded_per_family": se_expanded_per_family,
+        "breadth": se_scores_obj["breadth"],
     }
 
 
@@ -659,6 +1021,9 @@ def main() -> None:
             logger.info("\n=== Horizon: %s (%s) ===", horizon, horizon_label)
             started_at = time.time()
 
+            wfo_data_for_horizon = load_wfo_data(db, horizon)
+            logger.info("Loaded WFO data for %d symbols", len(wfo_data_for_horizon))
+
             stocks = []
             for i, info in enumerate(symbols_info, 1):
                 symbol = info["symbol"]
@@ -673,19 +1038,24 @@ def main() -> None:
                     )
                     continue
 
+                result["scores"]["wfo"] = _build_wfo_scores(wfo_data_for_horizon.get(symbol))
+
+                se = result["scores"]["signal_engine"]
                 family_summary = " ".join(
-                    f"{category}={result['per_family'][category]['label']}"
+                    f"{category}={se['per_family'][category]['label']}"
                     for category in LEGACY_CATEGORY_FAMILIES
-                    if category in result["per_family"]
+                    if category in se["per_family"]
                 )
+                wfo_tag = f" WFO={result['scores']['wfo']['aggregate_score_pct']:.1f}" if result["scores"]["wfo"] else ""
                 logger.info(
-                    "[%d/%d] %s: %s -> %s (%s)",
+                    "[%d/%d] %s: %s -> %s (%s)%s",
                     i,
                     len(symbols_info),
                     symbol,
                     family_summary or "aucune famille disponible",
-                    result["aggregate_signal_label"] or "Indisponible",
-                    f"{result['aggregate_score_pct']:.1f}" if result["aggregate_score_pct"] is not None else "-",
+                    se["aggregate_signal_label"] or "Indisponible",
+                    f"{se['aggregate_score_pct']:.1f}" if se["aggregate_score_pct"] is not None else "-",
+                    wfo_tag,
                 )
 
                 stocks.append(
@@ -723,14 +1093,14 @@ def main() -> None:
                         "symbol": stock["symbol"],
                         "display_name": stock["display_name"],
                         "sector": stock["sector"],
-                        "aggregate_score_pct": stock["aggregate_score_pct"],
-                        "aggregate_signal_label": stock["aggregate_signal_label"],
-                        "expanded_aggregate_score_pct": stock.get("expanded_aggregate_score_pct"),
-                        "expanded_aggregate_signal_label": stock.get("expanded_aggregate_signal_label"),
-                        "per_family": stock.get("per_family", {}),
-                        "expanded_per_family": stock.get("expanded_per_family", {}),
-                        "families": stock.get("families", {}),
-                        "support_resistance": stock.get("support_resistance"),
+                        "aggregate_score_pct": stock["scores"]["signal_engine"]["aggregate_score_pct"],
+                        "aggregate_signal_label": stock["scores"]["signal_engine"]["aggregate_signal_label"],
+                        "expanded_aggregate_score_pct": stock["scores"]["signal_engine"].get("expanded_aggregate_score_pct"),
+                        "expanded_aggregate_signal_label": stock["scores"]["signal_engine"].get("expanded_aggregate_signal_label"),
+                        "per_family": stock["scores"]["signal_engine"].get("per_family", {}),
+                        "expanded_per_family": stock["scores"]["signal_engine"].get("expanded_per_family", {}),
+                        "families": stock["scores"]["signal_engine"].get("families", {}),
+                        "support_resistance": stock["scores"]["signal_engine"].get("support_resistance"),
                     }
                     for stock in stocks
                 ],

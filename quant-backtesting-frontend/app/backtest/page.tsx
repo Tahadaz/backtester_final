@@ -224,6 +224,7 @@ function BacktestContent() {
         strategy_id: selectedStrategyId,
         start_date: startDate,
         end_date: endDate,
+        family_history_mode: "dynamic_point_in_time",
         cost_model: costModel,
         volume_gate: {
           enabled: volumeGateEnabled,

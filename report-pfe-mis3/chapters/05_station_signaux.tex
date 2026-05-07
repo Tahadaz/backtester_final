@@ -1,0 +1,66 @@
+\chapter{Station Signaux}
+
+\section{Mandat de la station}
+La station Signaux transforme des donnees de marche en informations
+predictives evaluees hors echantillon. Son objectif n'est pas de produire une
+strategie executable, mais de produire des \textit{findings} robustes
+\cite{deprado2018}.
+
+\section{Pipeline A-G}
+Le pipeline de recherche est structure en sept couches.
+La Figure~\ref{fig:signals-ag} en donne la vue synthetique.
+
+\begin{figure}[H]
+\centering
+\fbox{\parbox{0.92\textwidth}{
+\centering
+A Candidats \(\rightarrow\) B Eval OOS \(\rightarrow\) C Robustesse \(\rightarrow\)
+D Survivants \(\rightarrow\) E Redondance \(\rightarrow\) F Signal courant
+\(\rightarrow\) G Ensemble
+}}
+\caption{Pipeline A-G de la station Signaux}
+\label{fig:signals-ag}
+\end{figure}
+
+La Figure~\ref{fig:signals-ag} sert de reference aux sous-sections suivantes.
+
+\section{Familles d'indicateurs et interpretation metier}
+La version actuelle utilise quatre familles : SMA (tendance), RSI
+(oscillation), MACD (momentum) et OBV (volume). Cette couverture est un compromis
+entre diversite informationnelle et maitrise du risque de tests multiples.
+
+\section{Evaluation OOS et score de robustesse}
+Chaque candidat est evalue sur des fenetres non vues pendant son ajustement.
+Un score de robustesse operationnel est construit a partir de plusieurs
+composantes :
+\begin{equation}
+R_i = w_1 \cdot \text{Sharpe}_{i}^{\text{OOS}} + w_2 \cdot \text{HitRate}_{i}
+- w_3 \cdot \sigma_i - w_4 \cdot \text{DD}_{i}
+\label{eq:robustness}
+\end{equation}
+avec $\sum_k w_k = 1$.
+L'equation~\ref{eq:robustness} formalise la logique de fiabilite utilisee dans
+la phase de selection.
+
+\section{Reduction de redondance}
+Apres filtrage par robustesse, la station elimine les variantes trop correlees
+afin d'eviter un consensus artificiellement gonfle par des signaux quasi
+identiques.
+
+\section{Construction de l'ensemble}
+Le signal final par famille est une moyenne ponderee par fiabilite :
+\begin{equation}
+\text{Score}_{\text{ensemble}} = \frac{\sum_{j=1}^{m} w_j s_j}{\sum_{j=1}^{m} w_j}
+\label{eq:ensemble}
+\end{equation}
+ou $s_j$ est le signal de la variante survivante $j$ et $w_j$ son poids de
+robustesse. L'equation~\ref{eq:ensemble} reduit la variance par rapport a une
+selection ``winner-takes-all'' \cite{deprado2018}.
+
+\section{Sorties de la station Signaux}
+Les sorties principales sont :
+\begin{itemize}
+\item les scores de consensus par famille et horizon,
+\item les variantes representatives et leurs diagnostics,
+\item des series indicateurs continues pour l'exploration metier.
+\end{itemize}

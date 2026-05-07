@@ -1,0 +1,70 @@
+\chapter{Resultats experimentaux et valeur operationnelle}
+
+\section{Cadre d'evaluation}
+Cette section presente un premier jeu de resultats issus des artefacts du projet.
+Le run analyse (\texttt{81fc268b-fe7d-49f3-86cb-07d17598686e}) a ete enregistre
+le 6 mars 2026 en mode \textit{walk\_forward}. Les chiffres sont reproduits depuis
+les fichiers \texttt{leaderboard\_clean.json} et \texttt{run\_details.json}.
+
+\section{Resultats par horizon}
+Le Tableau~\ref{tab:results-horizon} compare les sorties short/medium/long pour
+le symbole IAM.
+
+\begin{table}[H]
+\centering
+\caption{Extrait des resultats par horizon (run du 6 mars 2026)}
+\label{tab:results-horizon}
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Horizon} & \textbf{PnL} & \textbf{Total Return} & \textbf{Efficiency} & \textbf{n\_fills} \\
+\midrule
+Short & 14549.33 & 0.0153 & 0.1456 & 1 \\
+Medium & 13776.37 & 0.1378 & 0.1379 & 1 \\
+Long & 15271.22 & 0.1527 & 1.0000 & 6 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Le Tableau~\ref{tab:results-horizon} montre que l'horizon long conserve la
+meilleure efficience dans cet echantillon de demonstration.
+
+\section{Lecture des resultats}
+Les resultats indiquent trois points :
+\begin{enumerate}
+\item la plateforme produit des sorties comparables par horizon avec un format
+contractuel unique ;
+\item les metriques exposees permettent une lecture \textit{performance + stabilite}
+plutot qu'une lecture PnL seule ;
+\item la decision finale peut etre argumentee avec des traces
+reproductibles (parametres, periode, scores, artefacts).
+\end{enumerate}
+
+\section{Valeur operationnelle pour le desk}
+La valeur creee par la plateforme est synthetisee dans le
+Tableau~\ref{tab:operational-value}.
+
+\begin{table}[H]
+\centering
+\caption{Valeur operationnelle de la solution}
+\label{tab:operational-value}
+\begin{tabular}{p{4.5cm}p{8.8cm}}
+\toprule
+\textbf{Besoin desk} & \textbf{Apport de la plateforme} \\
+\midrule
+Comparer plusieurs hypotheses & Leaderboards et diagnostics homogenes par horizon/symbole. \\
+Eviter les decisions opaques & Contrats inter-stations et parametres traces par run. \\
+Limiter le sur-ajustement & Validation WFO + OOS + controles statistiques. \\
+Industrialiser progressivement & Architecture modulaire compatible extensions familles/risque. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Le Tableau~\ref{tab:operational-value} montre que l'outil fournit une aide a la
+decision structuree, au-dela d'un simple simulateur de performance.
+
+\section{Discussion critique}
+Ces resultats restent un socle de validation technique. Pour une validation
+metier complete, il faudra etendre l'analyse a un univers d'actions plus large,
+integrer des periodes de stress supplementaires, et documenter un protocole
+d'acceptation de production par lot de strategies.
+

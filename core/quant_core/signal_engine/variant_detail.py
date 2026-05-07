@@ -11,9 +11,30 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from core.quant_core.optimize import sma_cumsum, rsi_wilder, ema, macd_pack, obv_array
+from core.quant_core.optimize import ema, obv_array
 
 from .domain import OOSWindowResult, VariantDef
+from .indicator_series import (
+    compute_ad_series,
+    compute_adx_series,
+    compute_cci_series,
+    compute_cmf_series,
+    compute_ema_cross_series,
+    compute_ema_series,
+    compute_force_index_series,
+    compute_ichimoku_series,
+    compute_macd_pack_series,
+    compute_mfi_series,
+    compute_psar_series,
+    compute_roc_series,
+    compute_rsi_series,
+    compute_sma_series,
+    compute_stochastic_series,
+    compute_trix_series,
+    compute_tsi_series,
+    compute_uo_series,
+    compute_vwap_series,
+)
 from .oos_eval import apply_cooldown, compute_signal_array, signal_to_long_only_positions
 from .rsi_semantics import (
     compute_rsi_variant_actions,
@@ -29,7 +50,12 @@ from .rsi_semantics import (
 # ---------------------------------------------------------------------------
 
 def _compute_indicator(
-    close: np.ndarray, variant: VariantDef, *, volume: np.ndarray | None = None,
+    close: np.ndarray,
+    variant: VariantDef,
+    *,
+    volume: np.ndarray | None = None,
+    high: np.ndarray | None = None,
+    low: np.ndarray | None = None,
 ) -> dict[str, Any]:
     """Return indicator data dict for plotting.
 
@@ -42,22 +68,49 @@ def _compute_indicator(
 
     if arch == "price_vs_sma":
         w = int(p["window"])
-        return {"type": "overlay", "name": f"SMA-{w}", "values": sma_cumsum(close, w)}
+        return {"type": "overlay", "name": f"SMA-{w}", "values": compute_sma_series(close, w)}
 
     if arch == "sma_cross":
-        fast_arr = sma_cumsum(close, int(p["fast"]))
-        slow_arr = sma_cumsum(close, int(p["slow"]))
+        fast_arr = compute_sma_series(close, int(p["fast"]))
+        slow_arr = compute_sma_series(close, int(p["slow"]))
         return {"type": "overlay_dual", "name": f"SMA({p['fast']},{p['slow']})",
                 "fast": fast_arr, "slow": slow_arr,
                 "fast_label": f"SMA-{p['fast']}", "slow_label": f"SMA-{p['slow']}"}
 
     if arch == "slope_confirmed":
         w = int(p["window"])
-        return {"type": "overlay", "name": f"SMA-{w}", "values": sma_cumsum(close, w)}
+        return {"type": "overlay", "name": f"SMA-{w}", "values": compute_sma_series(close, w)}
+
+    if arch == "price_vs_ema":
+        w = int(p["window"])
+        return {"type": "overlay", "name": f"EMA-{w}", "values": compute_ema_series(close, w)}
+
+    if arch == "ema_cross":
+        fast_arr, slow_arr = compute_ema_cross_series(close, int(p["fast"]), int(p["slow"]))
+        return {
+            "type": "overlay_dual",
+            "name": f"EMA({p['fast']},{p['slow']})",
+            "fast": fast_arr,
+            "slow": slow_arr,
+            "fast_label": f"EMA-{p['fast']}",
+            "slow_label": f"EMA-{p['slow']}",
+        }
+
+    if arch == "ichi_cloud" and high is not None and low is not None:
+        ichi = compute_ichimoku_series(high, low, close, int(p["tenkan"]), int(p["kijun"]), int(p["senkou_b"]))
+        return {
+            "type": "overlay_cloud",
+            "name": f"Ichimoku({p['tenkan']},{p['kijun']},{p['senkou_b']})",
+            **ichi,
+        }
+
+    if arch == "psar_trend" and high is not None and low is not None:
+        sar = compute_psar_series(high, low, close, float(p["af_step"]), float(p["af_max"]))
+        return {"type": "overlay_dots", "name": "Parabolic SAR", "values": sar}
 
     if arch == "rsi_level":
         period = int(p["period"])
-        rsi_vals = rsi_wilder(close, period)
+        rsi_vals = compute_rsi_series(close, period)
         return {"type": "secondary_yaxis", "name": f"RSI({period})",
                 "values": rsi_vals,
                 "thresholds": [float(p["oversold"]), float(p["overbought"])],
@@ -65,17 +118,93 @@ def _compute_indicator(
 
     if arch == "macd_cross":
         fast, slow, sig = int(p["fast"]), int(p["slow"]), int(p["signal"])
-        macd_line, sig_line, hist = macd_pack(close, fast, slow, sig)
+        macd_line, sig_line, hist = compute_macd_pack_series(close, fast, slow, sig)
         return {"type": "secondary_yaxis", "name": f"MACD({fast},{slow},{sig})",
                 "macd_line": macd_line, "signal_line": sig_line, "histogram": hist}
+
+    if arch == "roc_zero":
+        vals = compute_roc_series(close, int(p["period"]))
+        return {"type": "secondary_yaxis", "name": f"ROC({p['period']})", "values": vals, "zero_line": True}
+
+    if arch == "trix_zero":
+        vals = compute_trix_series(close, int(p["period"]))
+        return {"type": "secondary_yaxis", "name": f"TRIX({p['period']})", "values": vals, "zero_line": True}
+
+    if arch == "adx_trend" and high is not None and low is not None:
+        plus_di, minus_di, adx = compute_adx_series(high, low, close, int(p["period"]))
+        return {
+            "type": "secondary_yaxis",
+            "name": f"ADX({p['period']})",
+            "plus_di": plus_di,
+            "minus_di": minus_di,
+            "adx": adx,
+            "thresholds": [float(p["adx_threshold"])],
+        }
+
+    if arch == "tsi_zero":
+        vals = compute_tsi_series(close, int(p["long_period"]), int(p["short_period"]))
+        return {"type": "secondary_yaxis", "name": f"TSI({p['long_period']},{p['short_period']})", "values": vals, "zero_line": True}
+
+    if arch == "stoch_level" and high is not None and low is not None:
+        k_vals, d_vals = compute_stochastic_series(high, low, close, int(p["k_period"]), int(p["d_period"]))
+        return {
+            "type": "secondary_yaxis",
+            "name": f"Stochastic({p['k_period']},{p['d_period']})",
+            "k": k_vals,
+            "d": d_vals,
+            "thresholds": [20.0, 80.0],
+            "y_range": [0, 100],
+        }
+
+    if arch == "cci_level" and high is not None and low is not None:
+        vals = compute_cci_series(high, low, close, int(p["period"]))
+        return {"type": "secondary_yaxis", "name": f"CCI({p['period']})", "values": vals, "thresholds": [-100.0, 100.0]}
+
+    if arch == "mfi_level" and volume is not None and high is not None and low is not None:
+        vals = compute_mfi_series(high, low, close, volume, int(p["period"]))
+        return {
+            "type": "secondary_yaxis",
+            "name": f"MFI({p['period']})",
+            "values": vals,
+            "thresholds": [float(p["oversold"]), float(p["overbought"])],
+            "y_range": [0, 100],
+        }
+
+    if arch == "uo_level" and high is not None and low is not None:
+        vals = compute_uo_series(high, low, close, int(p["period_1"]), int(p["period_2"]), int(p["period_3"]))
+        return {"type": "secondary_yaxis", "name": f"UO({p['period_1']},{p['period_2']},{p['period_3']})", "values": vals, "thresholds": [30.0, 70.0], "y_range": [0, 100]}
 
     if arch == "obv_trend":
         ema_period = int(p["ema_period"])
         vol = volume if volume is not None else np.zeros(len(close))
         obv_vals = obv_array(close, vol)
-        obv_ema_vals = ema(obv_vals, ema_period)
+        obv_ema_vals = compute_ema_series(obv_vals, ema_period)
         return {"type": "secondary_yaxis", "name": f"OBV-EMA({ema_period})",
                 "obv": obv_vals, "ema_values": obv_ema_vals}
+
+    if arch == "cmf_flow" and volume is not None and high is not None and low is not None:
+        vals = compute_cmf_series(high, low, close, volume, int(p["period"]))
+        return {"type": "secondary_yaxis", "name": f"CMF({p['period']})", "values": vals, "thresholds": [-0.05, 0.05], "zero_line": True}
+
+    if arch == "ad_trend" and volume is not None and high is not None and low is not None:
+        ad_vals = compute_ad_series(high, low, close, volume)
+        ad_ema_vals = compute_ema_series(ad_vals, int(p["ema_period"]))
+        return {"type": "secondary_yaxis", "name": f"AD-EMA({p['ema_period']})", "ad": ad_vals, "ema_values": ad_ema_vals}
+
+    if arch == "vwap_dev" and volume is not None:
+        vwap = compute_vwap_series(close, volume, int(p["period"]))
+        threshold = float(p["threshold_pct"]) / 100.0
+        return {
+            "type": "overlay_band",
+            "name": f"VWAP({p['period']})",
+            "values": vwap,
+            "upper": vwap * (1.0 + threshold),
+            "lower": vwap * (1.0 - threshold),
+        }
+
+    if arch == "fi_trend" and volume is not None:
+        vals = compute_force_index_series(close, volume, int(p["period"]))
+        return {"type": "secondary_yaxis", "name": f"Force Index({p['period']})", "values": vals, "zero_line": True}
 
     # Fallback: no indicator plot
     return {"type": "none"}
@@ -90,13 +219,15 @@ def compute_variant_signal_array(
     variant: VariantDef,
     *,
     volume: np.ndarray | None = None,
+    high: np.ndarray | None = None,
+    low: np.ndarray | None = None,
     cooldown_bars: int = 0,
 ) -> np.ndarray:
     """Compute the signal array used by variant detail/backtests."""
     if is_rsi_level_variant(variant):
         return compute_rsi_variant_actions(close, variant, cooldown_bars=cooldown_bars)
 
-    sig = compute_signal_array(close, variant, volume=volume)
+    sig = compute_signal_array(close, variant, volume=volume, high=high, low=low)
     return apply_cooldown(sig, cooldown_bars)
 
 
@@ -105,6 +236,8 @@ def compute_variant_position_array(
     variant: VariantDef,
     *,
     volume: np.ndarray | None = None,
+    high: np.ndarray | None = None,
+    low: np.ndarray | None = None,
     cooldown_bars: int = 0,
 ) -> np.ndarray:
     """Compute the carried position array used by variant backtests."""
@@ -115,6 +248,8 @@ def compute_variant_position_array(
         close,
         variant,
         volume=volume,
+        high=high,
+        low=low,
         cooldown_bars=cooldown_bars,
     )
     return signal_to_long_only_positions(raw_signal, variant)
@@ -127,14 +262,19 @@ def compute_variant_trade_register(
     oos_windows: list[OOSWindowResult],
     *,
     volume: np.ndarray | None = None,
+    high: np.ndarray | None = None,
+    low: np.ndarray | None = None,
     cost_bps: float = 10.0,
     cooldown_bars: int = 0,
+    force_valid_windows: bool = False,
 ) -> tuple[list[dict[str, Any]], dict[int, float]]:
     """Return the per-fill trade ledger for one variant without building plots."""
     position_sig = compute_variant_position_array(
         close,
         variant,
         volume=volume,
+        high=high,
+        low=low,
         cooldown_bars=cooldown_bars,
     )
     return _extract_trade_register(
@@ -144,6 +284,7 @@ def compute_variant_trade_register(
         ohlcv.index,
         oos_windows,
         cost_bps,
+        force_valid_windows=force_valid_windows,
     )
 
 
@@ -154,8 +295,11 @@ def compute_variant_detail(
     oos_windows: list[OOSWindowResult],
     *,
     volume: np.ndarray | None = None,
+    high: np.ndarray | None = None,
+    low: np.ndarray | None = None,
     cost_bps: float = 10.0,
     cooldown_bars: int = 0,
+    force_valid_windows: bool = False,
 ) -> dict[str, Any]:
     """Return plots + trade ledger + trade performance for a variant.
 
@@ -174,17 +318,23 @@ def compute_variant_detail(
     """
     dates = ohlcv.index
     open_prices = ohlcv["Open"].to_numpy()
-    indicator = _compute_indicator(close, variant, volume=volume)
+    high_arr = high if high is not None else (ohlcv["High"].to_numpy(dtype=np.float64) if "High" in ohlcv.columns else None)
+    low_arr = low if low is not None else (ohlcv["Low"].to_numpy(dtype=np.float64) if "Low" in ohlcv.columns else None)
+    indicator = _compute_indicator(close, variant, volume=volume, high=high_arr, low=low_arr)
     action_sig = compute_variant_signal_array(
         close,
         variant,
         volume=volume,
+        high=high_arr,
+        low=low_arr,
         cooldown_bars=cooldown_bars,
     )
     position_sig = compute_variant_position_array(
         close,
         variant,
         volume=volume,
+        high=high_arr,
+        low=low_arr,
         cooldown_bars=cooldown_bars,
     )
 
@@ -195,8 +345,11 @@ def compute_variant_detail(
         variant,
         oos_windows,
         volume=volume,
+        high=high_arr,
+        low=low_arr,
         cost_bps=cost_bps,
         cooldown_bars=cooldown_bars,
+        force_valid_windows=force_valid_windows,
     )
 
     # --- plots ---
@@ -241,7 +394,7 @@ def compute_variant_detail(
     cost_factor = cost_bps / 10_000.0
     per_window: list[dict[str, Any]] = []
     for w in oos_windows:
-        if not w.is_valid:
+        if not w.is_valid and not force_valid_windows:
             continue
         window_start_cash = float(window_cash_starts.get(w.window_index, 0.0))
         window_start_realized = 0.0
@@ -291,6 +444,7 @@ def _extract_trade_register_legacy(
     dates: pd.DatetimeIndex,
     oos_windows: list[OOSWindowResult],
     cost_bps: float,
+    force_valid_windows: bool = False,
 ) -> tuple[list[dict[str, Any]], dict[int, float]]:
     """Extract per-fill trade register with realized/latent PnL.
 
@@ -304,7 +458,7 @@ def _extract_trade_register_legacy(
     pnl_realise_cumule = 0.0
 
     for w in oos_windows:
-        if not w.is_valid:
+        if not w.is_valid and not force_valid_windows:
             continue
         ts, te = w.test_start, w.test_end
         sig_oos = sig[ts:te]
@@ -506,6 +660,7 @@ def _extract_trade_register(
     dates: pd.DatetimeIndex,
     oos_windows: list[OOSWindowResult],
     cost_bps: float,
+    force_valid_windows: bool = False,
 ) -> tuple[list[dict[str, Any]], dict[int, float]]:
     """Extract a long-only per-fill trade register.
 
@@ -519,7 +674,7 @@ def _extract_trade_register(
     pnl_realise_cumule = 0.0
 
     for w in oos_windows:
-        if not w.is_valid:
+        if not w.is_valid and not force_valid_windows:
             continue
 
         ts, te = w.test_start, w.test_end
@@ -704,6 +859,214 @@ def _add_buy_sell_markers(
         })
 
 
+def _slice_vals(values: np.ndarray, start: int, end: int) -> list[float | None]:
+    return [float(v) if not np.isnan(v) else None for v in values[start : end + 1]]
+
+
+def _extend_indicator_traces(data: list[dict], date_strs: list[str], indicator: dict[str, Any], start: int, end: int) -> None:
+    ind_type = indicator.get("type", "none")
+    if ind_type == "overlay":
+        data.append({
+            "type": "scatter",
+            "x": date_strs,
+            "y": _slice_vals(indicator["values"], start, end),
+            "mode": "lines",
+            "name": indicator["name"],
+            "line": {"color": "#f97316", "width": 1.5, "dash": "dash"},
+        })
+        return
+    if ind_type == "overlay_dual":
+        for key, label, color in [("fast", indicator["fast_label"], "#f97316"), ("slow", indicator["slow_label"], "#8b5cf6")]:
+            data.append({
+                "type": "scatter",
+                "x": date_strs,
+                "y": _slice_vals(indicator[key], start, end),
+                "mode": "lines",
+                "name": label,
+                "line": {"color": color, "width": 1.5, "dash": "dash"},
+            })
+        return
+    if ind_type == "overlay_cloud":
+        for key, label, color in [("tenkan_sen", "Tenkan", "#f97316"), ("kijun_sen", "Kijun", "#3b82f6")]:
+            data.append({
+                "type": "scatter",
+                "x": date_strs,
+                "y": _slice_vals(indicator[key], start, end),
+                "mode": "lines",
+                "name": label,
+                "line": {"color": color, "width": 1.5},
+            })
+        data.append({
+            "type": "scatter",
+            "x": date_strs,
+            "y": _slice_vals(indicator["senkou_a"], start, end),
+            "mode": "lines",
+            "name": "Senkou A",
+            "line": {"color": "#16a34a", "width": 1.0},
+        })
+        data.append({
+            "type": "scatter",
+            "x": date_strs,
+            "y": _slice_vals(indicator["senkou_b"], start, end),
+            "mode": "lines",
+            "name": "Senkou B",
+            "line": {"color": "#dc2626", "width": 1.0},
+            "fill": "tonexty",
+            "fillcolor": "rgba(59,130,246,0.10)",
+        })
+        return
+    if ind_type == "overlay_dots":
+        data.append({
+            "type": "scatter",
+            "x": date_strs,
+            "y": _slice_vals(indicator["values"], start, end),
+            "mode": "markers",
+            "name": indicator["name"],
+            "marker": {"color": "#0f172a", "size": 5},
+        })
+        return
+    if ind_type == "overlay_band":
+        data.append({
+            "type": "scatter",
+            "x": date_strs,
+            "y": _slice_vals(indicator["values"], start, end),
+            "mode": "lines",
+            "name": indicator["name"],
+            "line": {"color": "#f97316", "width": 1.5},
+        })
+        data.append({
+            "type": "scatter",
+            "x": date_strs,
+            "y": _slice_vals(indicator["upper"], start, end),
+            "mode": "lines",
+            "name": "Upper Band",
+            "line": {"color": "#94a3b8", "width": 1.0, "dash": "dot"},
+        })
+        data.append({
+            "type": "scatter",
+            "x": date_strs,
+            "y": _slice_vals(indicator["lower"], start, end),
+            "mode": "lines",
+            "name": "Lower Band",
+            "line": {"color": "#94a3b8", "width": 1.0, "dash": "dot"},
+            "fill": "tonexty",
+            "fillcolor": "rgba(148,163,184,0.10)",
+        })
+        return
+    if ind_type != "secondary_yaxis":
+        return
+
+    if "values" in indicator:
+        data.append({
+            "type": "scatter",
+            "x": date_strs,
+            "y": _slice_vals(indicator["values"], start, end),
+            "mode": "lines",
+            "name": indicator["name"],
+            "line": {"color": "#8b5cf6", "width": 1.5},
+            "yaxis": "y2",
+        })
+    if "macd_line" in indicator:
+        data.append({
+            "type": "scatter",
+            "x": date_strs,
+            "y": _slice_vals(indicator["macd_line"], start, end),
+            "mode": "lines",
+            "name": "MACD",
+            "line": {"color": "#8b5cf6", "width": 1.5},
+            "yaxis": "y2",
+        })
+    if "signal_line" in indicator:
+        data.append({
+            "type": "scatter",
+            "x": date_strs,
+            "y": _slice_vals(indicator["signal_line"], start, end),
+            "mode": "lines",
+            "name": "Signal",
+            "line": {"color": "#f97316", "width": 1.5, "dash": "dash"},
+            "yaxis": "y2",
+        })
+    if "histogram" in indicator:
+        data.append({
+            "type": "bar",
+            "x": date_strs,
+            "y": [0.0 if v is None else v for v in _slice_vals(indicator["histogram"], start, end)],
+            "name": "Histogram",
+            "yaxis": "y2",
+            "marker": {"color": ["#10b981" if (v or 0.0) >= 0 else "#ef4444" for v in _slice_vals(indicator["histogram"], start, end)]},
+        })
+    if "obv" in indicator:
+        data.append({
+            "type": "scatter",
+            "x": date_strs,
+            "y": _slice_vals(indicator["obv"], start, end),
+            "mode": "lines",
+            "name": "OBV",
+            "line": {"color": "#8b5cf6", "width": 1.5},
+            "yaxis": "y2",
+        })
+    if "ad" in indicator:
+        data.append({
+            "type": "scatter",
+            "x": date_strs,
+            "y": _slice_vals(indicator["ad"], start, end),
+            "mode": "lines",
+            "name": "A/D Line",
+            "line": {"color": "#8b5cf6", "width": 1.5},
+            "yaxis": "y2",
+        })
+    if "ema_values" in indicator:
+        data.append({
+            "type": "scatter",
+            "x": date_strs,
+            "y": _slice_vals(indicator["ema_values"], start, end),
+            "mode": "lines",
+            "name": indicator["name"],
+            "line": {"color": "#f97316", "width": 1.5, "dash": "dash"},
+            "yaxis": "y2",
+        })
+    for key, label, color in [("plus_di", "+DI", "#10b981"), ("minus_di", "-DI", "#ef4444"), ("adx", "ADX", "#0f172a"), ("k", "%K", "#8b5cf6"), ("d", "%D", "#f97316")]:
+        if key in indicator:
+            data.append({
+                "type": "scatter",
+                "x": date_strs,
+                "y": _slice_vals(indicator[key], start, end),
+                "mode": "lines",
+                "name": label,
+                "line": {"color": color, "width": 1.5},
+                "yaxis": "y2",
+            })
+
+
+def _indicator_shapes(indicator: dict[str, Any]) -> list[dict]:
+    if indicator.get("type") != "secondary_yaxis":
+        return []
+    shapes: list[dict] = []
+    if indicator.get("zero_line"):
+        shapes.append({
+            "type": "line",
+            "xref": "paper",
+            "yref": "y2",
+            "x0": 0,
+            "x1": 1,
+            "y0": 0,
+            "y1": 0,
+            "line": {"color": "#94a3b8", "width": 1, "dash": "dot"},
+        })
+    for threshold in indicator.get("thresholds", []):
+        shapes.append({
+            "type": "line",
+            "xref": "paper",
+            "yref": "y2",
+            "x0": 0,
+            "x1": 1,
+            "y0": threshold,
+            "y1": threshold,
+            "line": {"color": "#94a3b8", "width": 1, "dash": "dot"},
+        })
+    return shapes
+
+
 def _plot_single_window(
     close: np.ndarray,
     action_sig: np.ndarray,
@@ -732,70 +1095,8 @@ def _plot_single_window(
         },
     ]
 
-    # Add overlay indicator if applicable
     ind_type = indicator.get("type", "none")
-    if ind_type == "overlay":
-        vals = indicator["values"][ts:te + 1]
-        data.append({
-            "type": "scatter",
-            "x": date_strs,
-            "y": [float(v) if not np.isnan(v) else None for v in vals],
-            "mode": "lines",
-            "name": indicator["name"],
-            "line": {"color": "#f97316", "width": 1.5, "dash": "dash"},
-        })
-    elif ind_type == "overlay_dual":
-        for key, label, color in [("fast", indicator["fast_label"], "#f97316"), ("slow", indicator["slow_label"], "#8b5cf6")]:
-            vals = indicator[key][ts:te + 1]
-            data.append({
-                "type": "scatter",
-                "x": date_strs,
-                "y": [float(v) if not np.isnan(v) else None for v in vals],
-                "mode": "lines",
-                "name": label,
-                "line": {"color": color, "width": 1.5, "dash": "dash"},
-            })
-    elif ind_type == "secondary_yaxis":
-        arch = variant.archetype
-        if arch == "rsi_level":
-            vals = indicator["values"][ts:te + 1]
-            data.append({
-                "type": "scatter", "x": date_strs,
-                "y": [float(v) if not np.isnan(v) else None for v in vals],
-                "mode": "lines", "name": indicator["name"],
-                "line": {"color": "#8b5cf6", "width": 1.5},
-                "yaxis": "y2",
-            })
-        elif arch == "macd_cross":
-            for key, name, color, dash in [
-                ("macd_line", "MACD", "#8b5cf6", None),
-                ("signal_line", "Signal", "#f97316", "dash"),
-            ]:
-                vals = indicator[key][ts:te + 1]
-                line_cfg: dict = {"color": color, "width": 1.5}
-                if dash:
-                    line_cfg["dash"] = dash
-                data.append({
-                    "type": "scatter", "x": date_strs,
-                    "y": [float(v) if not np.isnan(v) else None for v in vals],
-                    "mode": "lines", "name": name,
-                    "line": line_cfg, "yaxis": "y2",
-                })
-        elif arch == "obv_trend":
-            for key, name, color, dash in [
-                ("obv", "OBV", "#8b5cf6", None),
-                ("ema_values", indicator["name"], "#f97316", "dash"),
-            ]:
-                vals = indicator[key][ts:te + 1]
-                line_cfg_o: dict = {"color": color, "width": 1.5}
-                if dash:
-                    line_cfg_o["dash"] = dash
-                data.append({
-                    "type": "scatter", "x": date_strs,
-                    "y": [float(v) if not np.isnan(v) else None for v in vals],
-                    "mode": "lines", "name": name,
-                    "line": line_cfg_o, "yaxis": "y2",
-                })
+    _extend_indicator_traces(data, date_strs, indicator, ts, te)
 
     if is_rsi_level_variant(variant):
         buy_idx, sell_idx = rsi_window_marker_indices(
@@ -834,14 +1135,10 @@ def _plot_single_window(
     if ind_type == "secondary_yaxis":
         y2_title = indicator.get("name", "Indicator")
         y2_config: dict[str, Any] = {"title": y2_title, "overlaying": "y", "side": "right", "showgrid": False}
-        if variant.archetype == "rsi_level":
-            y2_config["range"] = [0, 100]
-            for t in indicator.get("thresholds", [30, 70]):
-                layout.setdefault("shapes", []).append({
-                    "type": "line", "xref": "paper", "yref": "y2",
-                    "x0": 0, "x1": 1, "y0": t, "y1": t,
-                    "line": {"color": "#ef4444" if t > 50 else "#10b981", "width": 1, "dash": "dot"},
-                })
+        if "y_range" in indicator:
+            y2_config["range"] = indicator["y_range"]
+        for shape in _indicator_shapes(indicator):
+            layout.setdefault("shapes", []).append(shape)
         layout["yaxis2"] = y2_config
         layout["margin"]["r"] = 60
 
@@ -870,67 +1167,8 @@ def _plot_price_indicator_signal(
         },
     ]
 
-    # Add overlay indicator traces
     ind_type = indicator.get("type", "none")
-    if ind_type == "overlay":
-        data.append({
-            "type": "scatter",
-            "x": date_strs,
-            "y": [float(v) if not np.isnan(v) else None for v in indicator["values"]],
-            "mode": "lines",
-            "name": indicator["name"],
-            "line": {"color": "#f97316", "width": 1.5, "dash": "dash"},
-        })
-    elif ind_type == "overlay_dual":
-        for key, label, color in [("fast", indicator["fast_label"], "#f97316"), ("slow", indicator["slow_label"], "#8b5cf6")]:
-            data.append({
-                "type": "scatter",
-                "x": date_strs,
-                "y": [float(v) if not np.isnan(v) else None for v in indicator[key]],
-                "mode": "lines",
-                "name": label,
-                "line": {"color": color, "width": 1.5, "dash": "dash"},
-            })
-    elif ind_type == "secondary_yaxis":
-        arch = variant.archetype
-        if arch == "rsi_level":
-            data.append({
-                "type": "scatter", "x": date_strs,
-                "y": [float(v) if not np.isnan(v) else None for v in indicator["values"]],
-                "mode": "lines", "name": indicator["name"],
-                "line": {"color": "#8b5cf6", "width": 1.5},
-                "yaxis": "y2",
-            })
-        elif arch == "macd_cross":
-            data.append({
-                "type": "scatter", "x": date_strs,
-                "y": [float(v) if not np.isnan(v) else None for v in indicator["macd_line"]],
-                "mode": "lines", "name": "MACD",
-                "line": {"color": "#8b5cf6", "width": 1.5},
-                "yaxis": "y2",
-            })
-            data.append({
-                "type": "scatter", "x": date_strs,
-                "y": [float(v) if not np.isnan(v) else None for v in indicator["signal_line"]],
-                "mode": "lines", "name": "Signal",
-                "line": {"color": "#f97316", "width": 1.5, "dash": "dash"},
-                "yaxis": "y2",
-            })
-        elif arch == "obv_trend":
-            data.append({
-                "type": "scatter", "x": date_strs,
-                "y": [float(v) if not np.isnan(v) else None for v in indicator["obv"]],
-                "mode": "lines", "name": "OBV",
-                "line": {"color": "#8b5cf6", "width": 1.5},
-                "yaxis": "y2",
-            })
-            data.append({
-                "type": "scatter", "x": date_strs,
-                "y": [float(v) if not np.isnan(v) else None for v in indicator["ema_values"]],
-                "mode": "lines", "name": indicator["name"],
-                "line": {"color": "#f97316", "width": 1.5, "dash": "dash"},
-                "yaxis": "y2",
-            })
+    _extend_indicator_traces(data, date_strs, indicator, 0, len(close) - 1)
 
     buy_idx, sell_idx = transition_marker_indices(action_sig)
     _add_buy_sell_markers(
@@ -962,14 +1200,8 @@ def _plot_price_indicator_signal(
             "layer": "below",
         })
 
-    # Add RSI threshold shapes on secondary axis
-    if ind_type == "secondary_yaxis" and variant.archetype == "rsi_level":
-        for t in indicator.get("thresholds", [30, 70]):
-            shapes.append({
-                "type": "line", "xref": "paper", "yref": "y2",
-                "x0": 0, "x1": 1, "y0": t, "y1": t,
-                "line": {"color": "#ef4444" if t > 50 else "#10b981", "width": 1, "dash": "dot"},
-            })
+    if ind_type == "secondary_yaxis":
+        shapes.extend(_indicator_shapes(indicator))
 
     layout: dict[str, Any] = {
         "title": {"text": f"{variant.description} — Prix + Signal", "font": {"size": 14}},
@@ -985,8 +1217,8 @@ def _plot_price_indicator_signal(
     if ind_type == "secondary_yaxis":
         y2_title = indicator.get("name", "Indicator")
         y2_config: dict[str, Any] = {"title": y2_title, "overlaying": "y", "side": "right", "showgrid": False}
-        if variant.archetype == "rsi_level":
-            y2_config["range"] = [0, 100]
+        if "y_range" in indicator:
+            y2_config["range"] = indicator["y_range"]
         layout["yaxis2"] = y2_config
         layout["margin"]["r"] = 60
 

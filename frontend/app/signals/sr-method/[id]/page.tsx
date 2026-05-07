@@ -152,10 +152,11 @@ export default function SupportResistanceMethodPage() {
   const methodId = decodeURIComponent(params.id as string)
   const symbol = (searchParams.get("symbol") ?? "").trim().toUpperCase()
   const horizon = (searchParams.get("horizon") ?? "medium").trim().toLowerCase()
+  const variant = (searchParams.get("variant") ?? "expanded").trim().toLowerCase()
   const cooldownBars = Number(searchParams.get("cooldown") ?? 0)
   const costBps = 33
 
-  const detail = useSupportResistanceMethodDetail(methodId && symbol ? symbol : null, horizon, methodId, costBps, cooldownBars, Boolean(symbol && methodId))
+  const detail = useSupportResistanceMethodDetail(methodId && symbol ? symbol : null, horizon, methodId, costBps, cooldownBars, variant, Boolean(symbol && methodId))
 
   if (!symbol) {
     return <div className="p-6 text-center text-sm text-muted-foreground">Parametre &quot;symbol&quot; manquant dans l&apos;URL.</div>

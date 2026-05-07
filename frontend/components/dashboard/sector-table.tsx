@@ -29,7 +29,9 @@ export function SectorTable({ sectors, stocks, horizon }: SectorTableProps) {
   const sortedSectors = useMemo(
     () =>
       [...sectors].sort(
-        (left, right) => (right.aggregate_score_pct ?? -999) - (left.aggregate_score_pct ?? -999),
+        (left, right) =>
+          (right.scores.signal_engine.aggregate_score_pct ?? -999) -
+          (left.scores.signal_engine.aggregate_score_pct ?? -999),
       ),
     [sectors],
   )
@@ -68,15 +70,15 @@ export function SectorTable({ sectors, stocks, horizon }: SectorTableProps) {
 
                 {FAMILY_ORDER.map((family) => (
                   <TableCell key={`${sector.sector}-${family}`} className="py-4">
-                    <FamilyCell score={sector.per_family[family]} />
+                    <FamilyCell score={sector.scores.signal_engine.per_family[family]} />
                   </TableCell>
                 ))}
 
                 <TableCell className="sticky right-0 z-20 min-w-[240px] border-l border-slate-200 bg-blue-50 py-4 dark:border-slate-700 dark:bg-blue-950/30">
-                  {sector.aggregate_score_pct == null ? (
+                  {sector.scores.signal_engine.aggregate_score_pct == null ? (
                     <span className="text-xs text-slate-500 dark:text-slate-400">-</span>
                   ) : (
-                    <SignalBadge label={sector.aggregate_signal_label} />
+                    <SignalBadge label={sector.scores.signal_engine.aggregate_signal_label} />
                   )}
                 </TableCell>
               </TableRow>
@@ -118,14 +120,14 @@ export function SectorTable({ sectors, stocks, horizon }: SectorTableProps) {
                                     </TableCell>
                                     {FAMILY_ORDER.map((family) => (
                                       <TableCell key={`${stock.symbol}-nested-${family}`} className="py-3">
-                                        <FamilyCell score={stock.per_family[family]} />
+                                        <FamilyCell score={stock.scores.signal_engine.per_family[family]} />
                                       </TableCell>
                                     ))}
                                     <TableCell className="sticky right-0 z-20 min-w-[240px] border-l border-slate-200 bg-blue-50/80 py-3 dark:border-slate-700 dark:bg-blue-950/20">
-                                      {stock.aggregate_score_pct == null ? (
+                                      {stock.scores.signal_engine.aggregate_score_pct == null ? (
                                         <span className="text-xs text-slate-500 dark:text-slate-400">-</span>
                                       ) : (
-                                        <SignalBadge label={stock.aggregate_signal_label} />
+                                        <SignalBadge label={stock.scores.signal_engine.aggregate_signal_label} />
                                       )}
                                     </TableCell>
                                   </TableRow>

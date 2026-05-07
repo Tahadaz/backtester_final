@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { fetchWfoSummary, type WfoSummaryResponse } from "@/lib/api"
 
-export function useWfoSummary(symbol: string | null, horizon: string) {
+export function useWfoSummary(symbol: string | null, horizon: string, variant: string = "expanded") {
   const [data, setData] = useState<WfoSummaryResponse | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -18,7 +18,7 @@ export function useWfoSummary(symbol: string | null, horizon: string) {
     setIsLoading(true)
     setError(null)
 
-    fetchWfoSummary(symbol, horizon)
+    fetchWfoSummary(symbol, horizon, variant)
       .then((res) => {
         if (!cancelled) setData(res)
       })
@@ -32,13 +32,13 @@ export function useWfoSummary(symbol: string | null, horizon: string) {
     return () => {
       cancelled = true
     }
-  }, [symbol, horizon])
+  }, [symbol, horizon, variant])
 
   const refresh = async () => {
     if (!symbol) return
     setIsLoading(true)
     try {
-      const res = await fetchWfoSummary(symbol, horizon)
+      const res = await fetchWfoSummary(symbol, horizon, variant)
       setData(res)
       setError(null)
     } catch (err: any) {

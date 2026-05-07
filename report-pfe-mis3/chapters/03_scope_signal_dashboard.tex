@@ -1,0 +1,35 @@
+\chapter{Perimetre retenu : du signal legacy au dashboard}
+
+\section{Objectif de cette version du rapport}
+Cette version du memoire couvre uniquement la partie amont de la chaine
+quantitative : production de signaux techniques et restitution de ces signaux
+dans le tableau de bord.
+
+Le perimetre est volontairement limite a :
+\begin{enumerate}
+\item la page legacy originale \texttt{/signals} (mode \texttt{view=legacy}),
+\item la methodologie de detection et de filtrage des signaux,
+\item la representation des resultats sur le dashboard V1.
+\end{enumerate}
+
+Le perimetre exclut la construction complete de strategie et le backtest final.
+
+\section{Pourquoi ce cadrage}
+Ce cadrage correspond a la phase la plus mature du projet:
+\begin{itemize}
+\item page signal legacy fonctionnelle avec navigation multi-niveaux ;
+\item pipeline de signal OOS documente et expose via API ;
+\item dashboard V1 consommant les scores agreges par horizon.
+\end{itemize}
+
+\section{Flux fonctionnel cible}
+Le flux fonctionnel analyse dans ce rapport est :
+\[
+\text{OHLCV canonique} \rightarrow \text{Signal Engine legacy}
+\rightarrow \text{Scores par famille} \rightarrow \text{Dashboard V1}
+\]
+
+Ce flux est la brique decisionnelle minimale: il transforme des donnees de
+marche en un signal interpretable sans passer encore par la phase
+strategie/backtest.
+

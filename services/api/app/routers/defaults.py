@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from redis import Redis
-from rq import Queue, Retry
-from rq.job import Job
+try:
+    from rq import Queue, Retry
+    from rq.job import Job
+except ValueError:  # pragma: no cover - Windows test environments lack fork context
+    Queue = Retry = Job = None  # type: ignore[assignment]
 from sqlalchemy.orm import Session
 
 from ..config import settings
@@ -29,9 +33,9 @@ def _redis_connection() -> Redis:
     return Redis.from_url(
         settings.REDIS_URL,
         decode_responses=False,
-        socket_connect_timeout=2,
-        socket_timeout=2,
-        retry_on_timeout=False,
+        socket_connect_timeout=5,
+        socket_timeout=30,
+        retry_on_timeout=True,
     )
 
 

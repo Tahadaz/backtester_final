@@ -26,6 +26,30 @@ import pandas as pd
 CANONICAL_COLS = ["Open", "High", "Low", "Close", "Volume"]
 
 
+def drop_incomplete_ohlcv_rows(
+    df: pd.DataFrame,
+    required_cols: Sequence[str] | None = None,
+) -> pd.DataFrame:
+    """Return only rows with complete numeric OHLCV data.
+
+    This is the temporary "tradable bars only" gate: if any required field is
+    absent or cannot be coerced to a number, that date is excluded from signal
+    and backtest computations.
+    """
+    if df is None:
+        return pd.DataFrame(columns=list(required_cols or CANONICAL_COLS))
+
+    out = df.copy()
+    required = list(required_cols or CANONICAL_COLS)
+    for col in required:
+        if col not in out.columns:
+            out[col] = np.nan
+        out[col] = pd.to_numeric(out[col], errors="coerce")
+    if required:
+        out = out.dropna(subset=required)
+    return out
+
+
 def _infer_epoch_unit(values: pd.Series) -> str:
     numeric = pd.to_numeric(values, errors="coerce")
     numeric = numeric[np.isfinite(numeric.to_numpy(dtype="float64", copy=False))]
@@ -250,9 +274,10 @@ def _standardize_ohlcv(
     numeric_cols = [c for c in ["Open", "High", "Low", "Close", "Adj Close", "Volume"] if c in df.columns]
     df = _coerce_numeric(df, numeric_cols)
 
-    # Keep only canonical cols that exist (preserve order)
+    # Keep canonical cols in order, then append any non-canonical extras
     keep = [c for c in CANONICAL_COLS if c in df.columns]
-    df = df[keep]
+    extra = [c for c in df.columns if c not in set(CANONICAL_COLS)]
+    df = df[keep + extra]
 
     # Drop rows where close is missing
     df = df.dropna(subset=["Close"])
@@ -1013,7 +1038,7 @@ class BDCSessionAdapter(BaseDataSource):
         Ouverture     -> Open
         Plus haut     -> High
         Plus bas      -> Low
-        Volume en titre -> Volume
+        Quantité échangée -> Volume  (page relabelled circa 2026-04; was "Volume en titre")
 
     Session date is parsed from the "vendredi 6 mars 2026" header embedded in the HTML.
     Falls back to today (Africa/Casablanca = UTC+1) only when no date is found.
@@ -1037,7 +1062,8 @@ class BDCSessionAdapter(BaseDataSource):
         ("Ouverture",        "Open"),
         ("Plus haut",        "High"),
         ("Plus bas",         "Low"),
-        ("Volume en titre",  "Volume"),
+        ("Quantité échangée", "Volume"),
+        ("Nombre de titres", "NombreTitres"),
     ]
     _MONTH_MAP: Dict[str, int] = {
         "janvier": 1,
@@ -1140,6 +1166,7 @@ class BDCSessionAdapter(BaseDataSource):
                         "do NOT invent a fallback value."
                     )
                 raw_val = m.group(1).strip()
+
                 # French number format: "261,00" -> 261.0  |  "77 180" -> 77180.0
                 normalized = (
                     raw_val.replace("\u00a0", "").replace(" ", "").replace(",", ".")
@@ -1157,6 +1184,254 @@ class BDCSessionAdapter(BaseDataSource):
             # tz-localizes to self.timezone (UTC by default).
             ts = pd.Timestamp(session_date)
             df = pd.DataFrame([row], index=pd.DatetimeIndex([ts], name="Date"))
+            results[symbol] = df
+
+        return results
+
+
+def _standardize_ohlcv_index(
+    df: pd.DataFrame,
+    tz: str = "GMT",
+) -> pd.DataFrame:
+    """
+    Normalize a Moroccan index OHLCV DataFrame where no open price is published.
+
+    Input columns (case-insensitive aliases handled before calling):
+        Date/date/séance  → DatetimeIndex
+        Close/close/valeur/valeur_indice
+        High/high/plus_haut
+        Low/low/plus_bas
+
+    Open is synthesized as the previous bar's close (first bar: open = close).
+    Volume is set to 0 (indices are not tradable assets).
+    """
+    df = _ensure_datetime_index(df, tz=tz)
+
+    # Normalize column names
+    rename_map: Dict[str, str] = {}
+    for col in df.columns:
+        low = col.lower().strip()
+        if low in ("close", "valeur", "valeur_indice", "valeur indice"):
+            rename_map[col] = "Close"
+        elif low in ("high", "plus_haut", "plus haut"):
+            rename_map[col] = "High"
+        elif low in ("low", "plus_bas", "plus bas"):
+            rename_map[col] = "Low"
+    df = df.rename(columns=rename_map)
+
+    missing = [c for c in ("Close", "High", "Low") if c not in df.columns]
+    if missing:
+        raise ValueError(f"Index OHLCV missing required columns: {missing}. Found: {list(df.columns)}")
+
+    # Synthesize open: shift close forward one period; first bar open = close
+    df = df.sort_index()
+    df["Open"] = df["Close"].shift(1).fillna(df["Close"])
+    df["Volume"] = 0.0
+    df["Adj Close"] = df["Close"]
+
+    # Coerce all numeric
+    for col in ("Open", "High", "Low", "Close", "Volume"):
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    df = df.dropna(subset=["Close"])
+
+    keep = [c for c in ["Open", "High", "Low", "Close", "Adj Close", "Volume"] if c in df.columns]
+    return df[keep]
+
+
+# Slug rule: uppercase, strip accents, replace non-alphanumeric with underscore, deduplicate underscores
+def _slugify_index_name(libelle: str) -> str:
+    import unicodedata
+    nfd = unicodedata.normalize("NFD", libelle)
+    ascii_str = nfd.encode("ascii", "ignore").decode("ascii")
+    upper = ascii_str.upper()
+    import re as _re
+    slugged = _re.sub(r"[^A-Z0-9]+", "_", upper).strip("_")
+    return slugged
+
+
+class CasablancaBourseIndicesAdapter:
+    """
+    Fetches the current-session close, high, and low for all Moroccan market indices
+    from the Casablanca Bourse live-market page:
+
+        https://www.casablanca-bourse.com/fr/live-market/marche-cash/indices?pwa
+
+    Returns a dict {symbol_slug: DataFrame(one row)} with columns Close, High, Low.
+    Open synthesis and Volume=0 are applied by the caller via `_standardize_ohlcv_index`.
+
+    The adapter does NOT inherit from BaseDataSource because it operates on all indices
+    at once (not per-symbol), and the base class interface is designed for per-symbol loads.
+    """
+
+    _URL = "https://www.casablanca-bourse.com/fr/live-market/marche-cash/indices?pwa"
+    _USER_AGENT = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    )
+    _MONTH_MAP: Dict[str, int] = {
+        "janvier": 1,
+        "fevrier": 2, "février": 2,
+        "mars": 3,
+        "avril": 4,
+        "mai": 5,
+        "juin": 6,
+        "juillet": 7,
+        "aout": 8, "août": 8,
+        "septembre": 9,
+        "octobre": 10,
+        "novembre": 11,
+        "decembre": 12, "décembre": 12,
+    }
+
+    def fetch(self) -> Dict[str, pd.DataFrame]:
+        """
+        Returns {symbol: DataFrame(1 row, columns=[Close, High, Low])}.
+        DatetimeIndex is set to the session date parsed from the page.
+        Raises on HTTP error or unparseable page.
+        """
+        import re
+        import datetime
+        import warnings
+        import requests
+
+        resp = requests.get(
+            self._URL,
+            timeout=30,
+            verify=False,
+            headers={"User-Agent": self._USER_AGENT},
+        )
+        resp.raise_for_status()
+        html = resp.text
+
+        # --- Session date ---
+        date_m = re.search(
+            r"(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)"
+            r"\s+(\d{1,2})\s+"
+            r"(janvier|f[eé]vrier|mars|avril|mai|juin|juillet|ao[uû]t"
+            r"|septembre|octobre|novembre|d[eé]cembre)\s+(\d{4})",
+            html,
+            re.IGNORECASE,
+        )
+        if date_m:
+            day = int(date_m.group(1))
+            raw_month = date_m.group(2).lower()
+            month = self._MONTH_MAP.get(raw_month)
+            if month is None:
+                raise ValueError(f"CasablancaBourseIndicesAdapter: unrecognized month '{raw_month}'")
+            year = int(date_m.group(3))
+            session_date: datetime.date = datetime.date(year, month, day)
+        else:
+            warnings.warn(
+                "CasablancaBourseIndicesAdapter: no session date found; falling back to today."
+            )
+            try:
+                import zoneinfo
+                session_date = datetime.datetime.now(
+                    zoneinfo.ZoneInfo("Africa/Casablanca")
+                ).date()
+            except Exception:
+                session_date = datetime.datetime.utcnow().date()
+
+        ts = pd.Timestamp(session_date)
+
+        # --- Parse index rows from the HTML table ---
+        # Expected table structure (server-rendered):
+        #   <tr> ... <td>Libellé</td> <td>Valeur</td> <td>Plus haut</td> <td>Plus bas</td> ... </tr>
+        # We locate the indices table by looking for known header labels, then parse each data row.
+        results: Dict[str, pd.DataFrame] = {}
+
+        # Find all <tr> blocks; extract cells
+        rows = re.findall(r"<tr[^>]*>(.*?)</tr>", html, re.DOTALL | re.IGNORECASE)
+
+        def _parse_french_number(s: str) -> Optional[float]:
+            s = s.strip()
+            # Remove HTML tags
+            s = re.sub(r"<[^>]+>", "", s).strip()
+            # French: comma decimal, space/nbsp thousands
+            s = s.replace(" ", "").replace("\xa0", "").replace(" ", "")
+            s = s.replace(",", ".")
+            try:
+                return float(s)
+            except ValueError:
+                return None
+
+        def _extract_cells(row_html: str) -> List[str]:
+            tds = re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", row_html, re.DOTALL | re.IGNORECASE)
+            return [re.sub(r"<[^>]+>", "", td).strip() for td in tds]
+
+        # Detect column positions from header row
+        header_row_idx: Optional[int] = None
+        col_libelle: Optional[int] = None
+        col_valeur: Optional[int] = None
+        col_haut: Optional[int] = None
+        col_bas: Optional[int] = None
+
+        for i, row_html in enumerate(rows):
+            cells = _extract_cells(row_html)
+            cells_lower = [c.lower() for c in cells]
+            # Look for a row that contains header-like labels
+            if any("libell" in c for c in cells_lower) or any("indice" in c for c in cells_lower):
+                for j, c in enumerate(cells_lower):
+                    if "libell" in c or ("indice" in c and "valeur" not in c):
+                        col_libelle = j
+                    elif "valeur" in c or "cours" in c:
+                        col_valeur = j
+                    elif "haut" in c:
+                        col_haut = j
+                    elif "bas" in c:
+                        col_bas = j
+                if col_libelle is not None and col_valeur is not None:
+                    header_row_idx = i
+                    break
+
+        if header_row_idx is None:
+            # Fallback: try to find rows with a recognizable index name
+            # Some pages put the header inline differently. Try heuristic: rows where
+            # cell[0] contains "MASI" or "MADEX".
+            for i, row_html in enumerate(rows):
+                cells = _extract_cells(row_html)
+                if cells and any(kw in cells[0].upper() for kw in ("MASI", "MADEX", "MSI")):
+                    header_row_idx = i - 1  # assume row before first data row is header
+                    col_libelle, col_valeur, col_haut, col_bas = 0, 1, 2, 3
+                    break
+
+        if header_row_idx is None:
+            raise ValueError(
+                "CasablancaBourseIndicesAdapter: could not locate the indices table on the page. "
+                "The page layout may have changed."
+            )
+
+        # Parse data rows after the header
+        for row_html in rows[header_row_idx + 1:]:
+            cells = _extract_cells(row_html)
+            if not cells or len(cells) <= max(
+                c for c in [col_libelle, col_valeur, col_haut, col_bas] if c is not None
+            ):
+                continue
+
+            libelle = cells[col_libelle].strip() if col_libelle is not None else ""
+            if not libelle or libelle.lower() in ("", "libellé indice", "indice"):
+                continue
+
+            valeur = _parse_french_number(cells[col_valeur]) if col_valeur is not None else None
+            haut = _parse_french_number(cells[col_haut]) if col_haut is not None else None
+            bas = _parse_french_number(cells[col_bas]) if col_bas is not None else None
+
+            if valeur is None:
+                continue
+
+            symbol = _slugify_index_name(libelle)
+            df = pd.DataFrame(
+                {
+                    "Close": [valeur],
+                    "High": [haut if haut is not None else valeur],
+                    "Low": [bas if bas is not None else valeur],
+                    "display_name": [libelle],
+                },
+                index=pd.DatetimeIndex([ts], name="Date"),
+            )
             results[symbol] = df
 
         return results

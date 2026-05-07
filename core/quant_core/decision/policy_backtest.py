@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import json
-from ..data import MarketData
+from ..data import MarketData, drop_incomplete_ohlcv_rows
 from ..engine import BacktestBundle, build_strategy
 from ..indicators import FeaturesData, IndicatorEngine
 from ..plots import make_drawdown_plot
@@ -56,16 +56,12 @@ def _coerce_bars(bars: pd.DataFrame) -> pd.DataFrame:
     out = out[~out.index.isna()].sort_index()
     out = out[~out.index.duplicated(keep="last")]
 
-    needed = ["Open", "High", "Low", "Close"]
+    needed = ["Open", "High", "Low", "Close", "Volume"]
     missing = [c for c in needed if c not in out.columns]
     if missing:
         raise ValueError(f"Bars are missing required columns: {missing}")
 
-    if "Volume" not in out.columns:
-        out["Volume"] = 0.0
-    for col in ("Open", "High", "Low", "Close", "Volume"):
-        out[col] = pd.to_numeric(out[col], errors="coerce")
-    out = out.dropna(subset=["Open", "High", "Low", "Close"])
+    out = drop_incomplete_ohlcv_rows(out)
     return out[["Open", "High", "Low", "Close", "Volume"]]
 
 

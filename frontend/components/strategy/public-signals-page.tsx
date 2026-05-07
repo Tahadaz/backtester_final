@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { usePublicSignals } from "@/hooks/use-public-signals"
 import { formatScore } from "@/lib/dashboard-constants"
 import type { Horizon } from "@/lib/dashboard-types"
+import { signalVariantLabel } from "@/lib/signal-variant-label"
 import type {
   PublicFamilySignalDetail,
   PublicSignalRepresentative,
@@ -50,15 +51,7 @@ function parseHorizon(value: string | null): Horizon {
 }
 
 function representativeLabel(rep: PublicSignalRepresentative): string {
-  const p = rep.params || {}
-  if (rep.archetype === "price_vs_sma") return `SMA-${p.window ?? "?"}`
-  if (rep.archetype === "price_vs_ema") return `EMA-${p.window ?? "?"}`
-  if (rep.archetype === "sma_cross") return `SMA(${p.fast ?? "?"},${p.slow ?? "?"})`
-  if (rep.archetype === "ema_cross") return `EMA(${p.fast ?? "?"},${p.slow ?? "?"})`
-  if (rep.archetype === "rsi_level") return `RSI(${p.period ?? "?"})`
-  if (rep.archetype === "macd_cross") return `MACD(${p.fast ?? "?"},${p.slow ?? "?"},${p.signal ?? "?"})`
-  if (rep.archetype === "obv_trend") return `OBV-EMA-${p.ema_period ?? "?"}`
-  return rep.variant_id.slice(0, 18)
+  return signalVariantLabel(rep)
 }
 
 function fmtLevel(value: number | null | undefined): string {
@@ -66,7 +59,11 @@ function fmtLevel(value: number | null | undefined): string {
   return value.toFixed(2)
 }
 
-function FamilyDetailCard({ familyDetail }: { familyDetail: PublicFamilySignalDetail }) {
+function FamilyDetailCard({
+  familyDetail,
+}: {
+  familyDetail: PublicFamilySignalDetail
+}) {
   const available = familyDetail.representative_count > 0
   return (
     <Card>
@@ -198,12 +195,12 @@ export function PublicSignalsPage() {
   const searchParams = useSearchParams()
   const requestedSymbol = (searchParams.get("symbol") ?? "").toUpperCase()
   const requestedHorizon = parseHorizon(searchParams.get("horizon"))
-  const requestedView = (searchParams.get("view") ?? "legacy") as "legacy" | "expanded"
+  const requestedView = (searchParams.get("view") ?? "legacy") as "legacy" | "expanded" | "factor_x_ta"
 
   const [horizon, setHorizon] = useState<Horizon>(requestedHorizon)
   const [search, setSearch] = useState("")
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(requestedSymbol || null)
-  const [signalView, setSignalView] = useState<"legacy" | "expanded">(requestedView)
+  const [signalView, setSignalView] = useState<"legacy" | "expanded" | "factor_x_ta">(requestedView)
 
   const { data, error, isLoading } = usePublicSignals(horizon)
 
@@ -212,13 +209,16 @@ export function PublicSignalsPage() {
   }, [requestedHorizon])
 
   useEffect(() => {
+    setSignalView(requestedView)
+  }, [requestedView])
+
+  useEffect(() => {
     if (requestedSymbol) {
       setSelectedSymbol(requestedSymbol)
     }
   }, [requestedSymbol])
 
   const stocks = data?.stocks ?? []
-
   const filteredStocks = useMemo(() => {
     const query = search.trim().toLowerCase()
     if (!query) return stocks
@@ -250,8 +250,15 @@ export function PublicSignalsPage() {
 
   const selectedStock = useMemo(
     () => stocks.find((stock) => stock.symbol === selectedSymbol) ?? null,
-    [selectedSymbol, stocks],
+    [stocks, selectedSymbol],
   )
+
+  const displayedAggregateScore = signalView === "expanded"
+    ? selectedStock?.expanded_aggregate_score_pct ?? selectedStock?.aggregate_score_pct ?? null
+    : selectedStock?.aggregate_score_pct ?? null
+  const displayedAggregateLabel = signalView === "expanded"
+    ? selectedStock?.expanded_aggregate_signal_label ?? selectedStock?.aggregate_signal_label ?? null
+    : selectedStock?.aggregate_signal_label ?? null
 
   return (
     <div className="flex h-[calc(100vh-3.5rem-3rem)] overflow-hidden">
@@ -284,7 +291,13 @@ export function PublicSignalsPage() {
               >
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-mono text-xs font-bold">{stock.symbol}</p>
-                  <SignalBadge label={stock.aggregate_signal_label} />
+                  <SignalBadge
+                    label={
+                      signalView === "expanded"
+                        ? (stock.expanded_aggregate_signal_label ?? stock.aggregate_signal_label)
+                        : stock.aggregate_signal_label
+                    }
+                  />
                 </div>
                 {stock.display_name && (
                   <p className="truncate text-[10px] text-muted-foreground">{stock.display_name}</p>
@@ -350,10 +363,10 @@ export function PublicSignalsPage() {
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <SignalBadge label={selectedStock.aggregate_signal_label} />
-                        {selectedStock.aggregate_score_pct != null && (
+                        <SignalBadge label={displayedAggregateLabel} />
+                        {displayedAggregateScore != null && (
                           <span className="font-mono text-sm font-semibold">
-                            {formatScore(selectedStock.aggregate_score_pct)}
+                            {formatScore(displayedAggregateScore)}
                           </span>
                         )}
                       </div>

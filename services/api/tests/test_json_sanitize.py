@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 import numpy as np
+import pandas as pd
 
 from services.api.app.json_sanitize import sanitize_json_compatible
 from services.api.app.schemas.runs import MaterializeStrategyDetailsResponse
@@ -62,3 +63,22 @@ def test_sanitize_materialized_strategy_details_payload() -> None:
     assert validated.run_id == raw_payload["run_id"]
     assert validated.symbol == "AAPL"
     assert validated.strategy_kind == "sma_cross"
+
+
+def test_sanitize_converts_pandas_timestamp_and_nan_for_db_json() -> None:
+    raw_payload = {
+        "window": {
+            "start": pd.Timestamp("2026-01-02T00:00:00Z"),
+            "end": pd.Timestamp("2026-02-02"),
+        },
+        "ledger": [
+            {"timestamp": pd.Timestamp("2026-03-05T12:34:56Z"), "value": float("nan")},
+        ],
+    }
+
+    sanitized = sanitize_json_compatible(raw_payload)
+
+    assert sanitized["window"]["start"] == "2026-01-02T00:00:00+00:00"
+    assert sanitized["window"]["end"] == "2026-02-02T00:00:00"
+    assert sanitized["ledger"][0]["timestamp"] == "2026-03-05T12:34:56+00:00"
+    assert sanitized["ledger"][0]["value"] is None

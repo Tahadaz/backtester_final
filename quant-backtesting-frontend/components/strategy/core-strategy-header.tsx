@@ -6,7 +6,6 @@ import { Archive, ChartColumnIncreasing, Copy, Save } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { HorizonSelector } from "@/components/strategy/horizon-selector"
 
 const STATUS_LABELS: Record<string, { label: string; variant: "default" | "secondary" | "outline" }> = {
   draft: { label: "Draft", variant: "secondary" },
@@ -20,8 +19,6 @@ interface CoreStrategyHeaderProps {
   onNameChange: (name: string) => void
   sidePolicy: string
   onSidePolicyChange: (policy: string) => void
-  horizon: string
-  onHorizonChange: (horizon: string) => void
   status: string
   focusedStock: string | null
   basket: string[]
@@ -38,8 +35,6 @@ export function CoreStrategyHeader({
   onNameChange,
   sidePolicy,
   onSidePolicyChange,
-  horizon,
-  onHorizonChange,
   status,
   focusedStock,
   basket,
@@ -125,9 +120,6 @@ export function CoreStrategyHeader({
             Long / Short
           </ToggleGroupItem>
         </ToggleGroup>
-
-        <HorizonSelector value={horizon} onChange={onHorizonChange} />
-
         {basket.length > 0 ? (
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-muted-foreground">Stock:</span>

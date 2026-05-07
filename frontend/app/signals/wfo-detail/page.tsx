@@ -212,6 +212,7 @@ function WfoDetailContent() {
                     <th className="px-3 py-2 text-left font-medium">OOS</th>
                     <th className="px-3 py-2 text-right font-medium">IS Return</th>
                     <th className="px-3 py-2 text-right font-medium">OOS Return</th>
+                    <th className="px-3 py-2 text-right font-medium">OOS Sharpe</th>
                     <th className="px-3 py-2 text-left font-medium">Gagnant</th>
                     <th className="px-3 py-2 text-right font-medium">PROM</th>
                     <th className="px-3 py-2 text-center font-medium">Profil</th>
@@ -243,9 +244,12 @@ function WfoDetailContent() {
                           {(fold.oos_return * 100).toFixed(2)}%
                         </span>
                       </td>
+                      <td className="px-3 py-2 text-right font-mono">
+                        {fold.oos_sharpe != null ? fold.oos_sharpe.toFixed(2) : "—"}
+                      </td>
                       <td className="px-3 py-2">
-                        <span className="font-mono text-[10px] text-muted-foreground truncate max-w-[150px] block">
-                          {fold.winner_variant_id || "—"}
+                        <span className="font-mono text-[10px] text-muted-foreground truncate max-w-[150px] block" title={fold.winner_variant_id}>
+                          {fold.winner_description || fold.winner_variant_id || "—"}
                         </span>
                       </td>
                       <td className="px-3 py-2 text-right font-mono">
@@ -268,6 +272,7 @@ function WfoDetailContent() {
                 <tfoot>
                   <tr className="border-t-2 bg-secondary/20 font-medium">
                     <td colSpan={3} className="px-3 py-2">Resume</td>
+                    <td className="px-3 py-2 text-right font-mono text-[10px]">—</td>
                     <td className="px-3 py-2 text-right font-mono text-[10px]">—</td>
                     <td className="px-3 py-2 text-right font-mono text-[10px]">—</td>
                     <td className="px-3 py-2">

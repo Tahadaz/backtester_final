@@ -1,0 +1,122 @@
+\chapter{Version initiale de la page Signaux}
+
+\section{Rôle de l'interface dans la chaîne méthodologique}
+La page \texttt{/signals} constitue l'interface d'analyse détaillée de la couche
+signal. Dans la version étudiée ici, elle prend en charge le passage entre le
+résultat algorithmique produit par le pipeline A-G et l'interprétation humaine
+nécessaire à la décision. Elle n'est donc ni une simple vue technique de
+contrôle, ni un tableau de synthèse minimaliste : elle joue le rôle d'interface
+explicative.
+
+Sur le plan applicatif, cette page est structurée autour de
+\texttt{frontend/app/signals/page.tsx},
+\texttt{frontend/components/strategy/legacy-signals-view.tsx} et
+\texttt{frontend/components/strategy/legacy-technical-analysis-panel.tsx}. Le
+code conserve le terme \texttt{legacy} pour des raisons d'implémentation, mais la
+présente étude parle de \emph{version initiale} ou de \emph{première version}
+de la page Signaux.
+
+\section{Organisation générale de l'écran}
+L'écran se compose de deux ensembles. Le premier regroupe les contrôles de
+contexte : sélection du symbole, choix de l'horizon et réglage éventuel du
+\emph{cooldown}. Le second rassemble le contenu d'analyse. Cette séparation
+permet de distinguer le paramétrage de la consultation du résultat.
+
+Le choix de l'horizon occupe une place centrale dans cette interface. Un même
+symbole peut en effet faire apparaître des lectures différentes selon que l'on
+observe un régime de court terme, de moyen terme ou de long terme. La page ne se
+contente donc pas d'afficher un signal ; elle rappelle implicitement que tout
+résultat doit être rapporté à son horizon d'évaluation.
+
+\section{Navigation par niveaux de lecture}
+La première version de la page Signaux repose sur une navigation progressive en
+plusieurs niveaux. Cette structuration n'est pas seulement ergonomique ; elle est
+la traduction visuelle du pipeline méthodologique.
+
+\subsection{Niveau 0 : vue d'ensemble agrégée}
+Au premier niveau, l'utilisateur accède à un consensus général construit à partir
+des familles effectivement disponibles. Cette vue répond à une question simple :
+\emph{quelle est l'orientation globale du titre à l'horizon choisi ?}
+
+Le score affiché à ce niveau est une synthèse, non un verdict opaque. Il sert de
+porte d'entrée analytique. En pratique, il est calculé à partir des scores de
+familles chargés pour le titre courant. Sa représentation sous forme de barre de
+score permet une lecture immédiate de la polarité du consensus.
+
+\subsection{Niveau 1 : lecture par catégories et par familles}
+Le deuxième niveau expose les familles sous une organisation thématique :
+tendance, momentum, oscillation et volume. Pour chaque famille, la page présente
+un score, une étiquette interprétative et un éventuel état provisoire.
+
+Ce niveau est fondamental du point de vue du rapport. Il matérialise la
+contrainte d'explicabilité posée plus haut : un signal global ne doit jamais être
+accepté comme une boîte noire. En affichant séparément les familles, la page
+rend visible le fait qu'un consensus peut résulter d'une convergence forte entre
+plusieurs lectures, ou au contraire d'une compensation partielle entre signaux de
+natures différentes.
+
+\subsection{Niveau 2 : inspection détaillée d'une famille}
+Le troisième niveau est consacré à une famille donnée. Il fait apparaître
+l'entonnoir de sélection du pipeline, depuis les variantes testées jusqu'aux
+représentants retenus, ainsi que le score de famille et la liste des
+représentants avec leurs poids.
+
+Cette vue est particulièrement importante car elle relie l'interface à la
+méthodologie. Le passage
+\[
+\text{testées} \rightarrow \text{viables} \rightarrow \text{compétitives} \rightarrow \text{représentatives}
+\]
+reprend exactement l'ordre des couches C, D et E. L'utilisateur voit donc non
+seulement le résultat final, mais également le chemin de filtrage qui y conduit.
+
+\section{Correspondance entre l'écran et le pipeline A-G}
+La valeur de la page Signaux tient en grande partie à sa capacité à mettre en
+scène le pipeline sans l'appauvrir. Cette correspondance peut être résumée ainsi.
+\begin{itemize}
+\item Les couches A à E sont visibles à travers les compteurs de l'entonnoir.
+\item La couche F apparaît à travers les signaux courants des représentants.
+\item La couche G apparaît à travers le score de famille et l'étiquette finale.
+\end{itemize}
+
+Autrement dit, l'écran ne montre pas seulement un résultat consolidé ; il expose
+la logique de construction de ce résultat. Cette propriété rend l'interface plus
+adaptée à un environnement professionnel qu'une simple liste de signaux non
+justifiés.
+
+\section{Gestion des états incomplets et honnêteté de restitution}
+Une caractéristique importante de la page est la manière dont elle gère les cas
+incomplets. Lorsqu'une famille n'est pas disponible, lorsqu'un résultat est
+provisoire ou lorsqu'il n'existe pas suffisamment de données, l'interface le
+signale explicitement.
+
+Ce choix est loin d'être purement visuel. Il exprime une règle méthodologique :
+un système de signalisation sérieux doit assumer les limites de ses résultats.
+Forcer une orientation sur des bases insuffisantes reviendrait à dégrader la
+qualité scientifique du pipeline lors de la restitution.
+
+\section{Services applicatifs mobilisés}
+La page interroge les services applicatifs dédiés à la couche signal, notamment
+par les mécanismes associés à \texttt{useFamilyEnsemble(...)}. Le chargement des
+familles est effectué en parallèle, ce qui permet une consultation fluide tout
+en conservant une séparation stricte entre calcul et affichage.
+
+Ce point est important dans le mémoire : la page Signaux n'effectue pas elle-même
+la recherche quantitative. Elle consomme des résultats déjà produits selon le
+pipeline défini dans le coeur applicatif, puis les restitue selon une logique de
+lecture progressive.
+
+\section{Apport fonctionnel de la page Signaux}
+En définitive, la première version de la page Signaux apporte trois bénéfices
+majeurs.
+\begin{enumerate}
+\item Elle permet une lecture immédiate du consensus global.
+\item Elle rend possible une décomposition par familles cohérente avec la
+structure économique du moteur de signaux.
+\item Elle autorise un audit analytique jusqu'au niveau des représentants,
+condition indispensable pour une utilisation crédible dans un contexte
+professionnel.
+\end{enumerate}
+
+Ainsi, la page Signaux constitue l'interface privilégiée de compréhension du
+moteur de signaux : elle ne remplace pas la méthode, mais elle la rend lisible,
+contrôlable et exploitable.

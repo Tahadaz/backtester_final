@@ -6,7 +6,7 @@ run_family_ensemble_full() orchestrates layers A → B → C → D → E → F �
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 
@@ -39,6 +39,10 @@ _MIN_TEST_BARS_VALID = 20
 _PREFERRED_ADAPTIVE_TEST = 21
 _TARGET_ADAPTIVE_WINDOWS = 3
 _MAX_FALLBACK_VARIANTS = 5
+_FAMILY_HISTORY_MODES = {"static_current_reps", "dynamic_point_in_time"}
+UNAVAILABLE_SIGNAL_LABEL = "Pas disponible"
+
+FamilyHistoryMode = Literal["static_current_reps", "dynamic_point_in_time"]
 
 # ---------------------------------------------------------------------------
 # Layer G — Combine representative signals
@@ -51,11 +55,11 @@ def combine_family_signals(
 ) -> tuple[float, str, list[dict[str, Any]]]:
     """Reliability-weighted ensemble → (family_score_pct, label, per_rep)."""
     if not signals:
-        return 0.0, "Neutre", []
+        return 0.0, UNAVAILABLE_SIGNAL_LABEL, []
 
     total_weight = sum(s.reliability_weight for s in signals)
     if total_weight <= 0:
-        return 0.0, "Neutre", []
+        return 0.0, UNAVAILABLE_SIGNAL_LABEL, []
 
     score_raw = sum(s.signal * s.reliability_weight for s in signals) / total_weight
     score_pct = 100.0 * score_raw
@@ -67,6 +71,7 @@ def combine_family_signals(
         nw = s.reliability_weight / total_weight
         per_rep.append({
             "variant_id": s.variant_id,
+            "family": family,
             "signal": s.signal,
             "signal_label": s.signal_label,
             "reliability_weight": s.reliability_weight,
@@ -80,6 +85,14 @@ def combine_family_signals(
     return score_pct, label, per_rep
 
 
+def family_signal_is_available(signal: FamilyCombinedSignal) -> bool:
+    """A family score is usable only when strict representatives exist."""
+    try:
+        return int(signal.representative_count or 0) > 0
+    except Exception:
+        return False
+
+
 # ---------------------------------------------------------------------------
 # Per-bar family consensus score
 # ---------------------------------------------------------------------------
@@ -89,7 +102,14 @@ def compute_family_score_timeseries(
     close: np.ndarray,
     *,
     volume: np.ndarray | None = None,
+    high: np.ndarray | None = None,
+    low: np.ndarray | None = None,
     cooldown_bars: int = 0,
+    family_history_mode: FamilyHistoryMode = "static_current_reps",
+    symbol: str | None = None,
+    horizon: str | None = None,
+    timeframe: str | None = None,
+    signal_cost_bps: float = 10.0,
 ) -> np.ndarray:
     """Per-bar family consensus score from representative variants.
 
@@ -100,25 +120,35 @@ def compute_family_score_timeseries(
     """
     from .variant_detail import compute_variant_signal_array
 
+    mode = str(family_history_mode or "static_current_reps").strip().lower()
+    if mode not in _FAMILY_HISTORY_MODES:
+        raise ValueError(f"Unsupported family_history_mode: {family_history_mode!r}")
+
     n = len(close)
     if n == 0:
         return np.zeros(0, dtype="float64")
 
-    # Collect representative variants + weights
-    reps = [
-        s for s in detail.all_summaries
-        if s.variant.variant_id in detail.representative_ids
-    ]
-    use_equal_weight = False
+    if mode == "dynamic_point_in_time":
+        family_id = str(detail.signal.family)
+        run_symbol = str(symbol or detail.signal.symbol or "").strip()
+        if not run_symbol:
+            raise ValueError("symbol is required for dynamic_point_in_time family history mode.")
+        run_horizon = str(horizon or detail.signal.horizon or "medium")
+        run_timeframe = str(timeframe or detail.signal.timeframe or "1D")
+        return _compute_dynamic_family_score_timeseries(
+            family=family_id,
+            close=close,
+            volume=volume,
+            high=high,
+            low=low,
+            symbol=run_symbol,
+            horizon=run_horizon,
+            timeframe=run_timeframe,
+            signal_cost_bps=float(signal_cost_bps),
+            cooldown_bars=cooldown_bars,
+        )
 
-    if not reps:
-        # Fallback mode (live_signal_only) — equal weights
-        reps = [
-            s for s in detail.all_summaries
-            if s.variant.variant_id in detail.fallback_variant_ids
-        ]
-        use_equal_weight = True
-
+    reps, use_equal_weight = _selected_representatives(detail)
     if not reps:
         return np.zeros(n, dtype="float64")
 
@@ -128,7 +158,7 @@ def compute_family_score_timeseries(
     for s in reps:
         w = 1.0 if use_equal_weight else max(s.reliability_score, 1e-9)
         sig = compute_variant_signal_array(
-            close, s.variant, volume=volume, cooldown_bars=cooldown_bars,
+            close, s.variant, volume=volume, high=high, low=low, cooldown_bars=cooldown_bars,
         )
         weighted_sum += w * sig
         total_weight += w
@@ -137,6 +167,88 @@ def compute_family_score_timeseries(
         return np.zeros(n, dtype="float64")
 
     return (weighted_sum / total_weight) * 100.0
+
+
+def _selected_representatives(
+    detail: EnsemblePipelineDetail,
+) -> tuple[list[VariantRobustnessSummary], bool]:
+    reps = [
+        s for s in detail.all_summaries
+        if s.variant.variant_id in detail.representative_ids
+    ]
+    use_equal_weight = False
+
+    if not reps:
+        reps = [
+            s for s in detail.all_summaries
+            if s.variant.variant_id in detail.fallback_variant_ids
+        ]
+        use_equal_weight = True
+
+    return reps, use_equal_weight
+
+
+def _compute_dynamic_family_score_timeseries(
+    *,
+    family: str,
+    close: np.ndarray,
+    volume: np.ndarray | None,
+    high: np.ndarray | None,
+    low: np.ndarray | None,
+    symbol: str,
+    horizon: str,
+    timeframe: str,
+    signal_cost_bps: float,
+    cooldown_bars: int,
+) -> np.ndarray:
+    from .variant_detail import compute_variant_signal_array
+
+    n = len(close)
+    if n == 0:
+        return np.zeros(0, dtype="float64")
+
+    out = np.zeros(n, dtype="float64")
+    for idx in range(n):
+        close_slice = close[:idx + 1]
+        volume_slice = volume[:idx + 1] if volume is not None else None
+        high_slice = high[:idx + 1] if high is not None else None
+        low_slice = low[:idx + 1] if low is not None else None
+        pit_detail = run_family_ensemble_full(
+            family,
+            close_slice,
+            volume=volume_slice,
+            high=high_slice,
+            low=low_slice,
+            symbol=symbol,
+            horizon=horizon,
+            timeframe=timeframe,
+            cost_bps=signal_cost_bps,
+            cooldown_bars=cooldown_bars,
+        )
+        reps, use_equal_weight = _selected_representatives(pit_detail)
+        if not reps:
+            continue
+
+        weighted_value = 0.0
+        total_weight = 0.0
+        for summary in reps:
+            weight = 1.0 if use_equal_weight else max(summary.reliability_score, 1e-9)
+            variant_signal = compute_variant_signal_array(
+                close_slice,
+                summary.variant,
+                volume=volume_slice,
+                high=high_slice,
+                low=low_slice,
+                cooldown_bars=cooldown_bars,
+            )
+            if len(variant_signal) == 0:
+                continue
+            weighted_value += weight * float(variant_signal[-1])
+            total_weight += weight
+        if total_weight > 0:
+            out[idx] = (weighted_value / total_weight) * 100.0
+
+    return out
 
 
 def _score_to_label(score_pct: float, family: str | None = None) -> str:
@@ -178,7 +290,8 @@ def _build_warning_message(
 
 def _resolve_methodology_context(horizon: str, available_bars: int) -> MethodologyContext:
     nominal = _nominal_window(horizon)
-    nominal_min_bars = nominal.train + nominal.test + 1
+    # Require at least _TARGET_ADAPTIVE_WINDOWS (3) nominal windows to use robust mode
+    nominal_min_bars = nominal.train + (_TARGET_ADAPTIVE_WINDOWS * nominal.test) + 1
     if available_bars >= nominal_min_bars:
         return MethodologyContext(
             methodology_mode="robust_oos_ensemble",
@@ -238,6 +351,8 @@ def _current_signal_entry(
     close: np.ndarray,
     *,
     volume: np.ndarray | None = None,
+    high: np.ndarray | None = None,
+    low: np.ndarray | None = None,
     reliability_weight: float = 0.0,
     cooldown_bars: int = 0,
     selection_status: str,
@@ -246,11 +361,14 @@ def _current_signal_entry(
         variant,
         close,
         volume=volume,
+        high=high,
+        low=low,
         reliability_weight=reliability_weight,
         cooldown_bars=cooldown_bars,
     )
     entry = {
         "variant_id": current.variant_id,
+        "family": variant.family,
         "signal": current.signal,
         "signal_label": current.signal_label,
         "reliability_weight": current.reliability_weight,
@@ -259,6 +377,7 @@ def _current_signal_entry(
         "current_close": current.current_close,
         "indicator_value": current.indicator_value,
         "explanation": current.explanation,
+        "description": variant.description,
         "params": dict(variant.params),
         "archetype": variant.archetype,
         "selection_status": selection_status,
@@ -285,6 +404,8 @@ def _fallback_from_summaries(
     close: np.ndarray,
     *,
     volume: np.ndarray | None = None,
+    high: np.ndarray | None = None,
+    low: np.ndarray | None = None,
     cooldown_bars: int = 0,
     selection_status: str,
 ) -> tuple[list[VariantCurrentSignal], list[dict[str, Any]], set[str]]:
@@ -302,6 +423,8 @@ def _fallback_from_summaries(
             summary.variant,
             close,
             volume=volume,
+            high=high,
+            low=low,
             reliability_weight=summary.reliability_score,
             cooldown_bars=cooldown_bars,
             selection_status=selection_status,
@@ -318,11 +441,17 @@ def _fallback_live_only(
     close: np.ndarray,
     *,
     volume: np.ndarray | None = None,
+    high: np.ndarray | None = None,
+    low: np.ndarray | None = None,
     cooldown_bars: int = 0,
 ) -> tuple[list[VariantCurrentSignal], list[dict[str, Any]], set[str], dict[str, str], list[VariantRobustnessSummary]]:
     ranked = sorted(
         candidates,
-        key=lambda c: (abs(float(compute_signal_array(close, c, volume=volume)[-1])), -variant_min_history(c), c.variant_id),
+        key=lambda c: (
+            abs(float(compute_signal_array(close, c, volume=volume, high=high, low=low)[-1])),
+            -variant_min_history(c),
+            c.variant_id,
+        ),
         reverse=True,
     )[:_MAX_FALLBACK_VARIANTS]
 
@@ -335,7 +464,7 @@ def _fallback_live_only(
         if is_rsi_level_variant(candidate):
             _signal_val, signal_label = latest_rsi_variant_signal(close, candidate)
         else:
-            sig_arr = compute_signal_array(close, candidate, volume=volume)
+            sig_arr = compute_signal_array(close, candidate, volume=volume, high=high, low=low)
             signal_label = variant_signal_label(candidate.family, float(sig_arr[-1]))
         labels[candidate.variant_id] = signal_label
         summaries.append(VariantRobustnessSummary(
@@ -358,6 +487,8 @@ def _fallback_live_only(
             candidate,
             close,
             volume=volume,
+            high=high,
+            low=low,
             reliability_weight=1.0,
             cooldown_bars=cooldown_bars,
             selection_status="live_only_fallback",
@@ -380,6 +511,8 @@ def run_family_ensemble_full(
     close: np.ndarray,
     *,
     volume: np.ndarray | None = None,
+    high: np.ndarray | None = None,
+    low: np.ndarray | None = None,
     symbol: str,
     horizon: str = "medium",
     timeframe: str = "1D",
@@ -399,6 +532,10 @@ def run_family_ensemble_full(
         close = close[-max_bars:]
         if volume is not None:
             volume = volume[-max_bars:]
+        if high is not None:
+            high = high[-max_bars:]
+        if low is not None:
+            low = low[-max_bars:]
 
     st = FAMILY_SIGNAL_TYPE.get(family, "trend")
     cat = next((k for k, v in CATEGORY_FAMILIES.items() if family in v), "tendance")
@@ -415,7 +552,7 @@ def run_family_ensemble_full(
             horizon=horizon,
             timeframe=timeframe,
             family_score_pct=0.0,
-            family_signal_label="Neutre",
+            family_signal_label=UNAVAILABLE_SIGNAL_LABEL,
             tested_count=tested_count,
             viable_count=0,
             competitive_count=0,
@@ -447,6 +584,8 @@ def run_family_ensemble_full(
             candidates,
             close,
             volume=volume,
+            high=high,
+            low=low,
             cooldown_bars=cooldown_bars,
         )
         score_pct, label, _ = combine_family_signals(fallback_signals, family)
@@ -462,7 +601,7 @@ def run_family_ensemble_full(
             horizon=horizon,
             timeframe=timeframe,
             family_score_pct=round(score_pct, 2),
-            family_signal_label=label,
+            family_signal_label=UNAVAILABLE_SIGNAL_LABEL,
             tested_count=tested_count,
             viable_count=0,
             competitive_count=0,
@@ -503,6 +642,8 @@ def run_family_ensemble_full(
             cost_bps,
             cooldown_bars=cooldown_bars,
             volume=volume,
+            high=high,
+            low=low,
             window_config=(
                 methodology.effective_window
                 if methodology.methodology_mode == "adaptive_oos_ensemble"
@@ -532,14 +673,14 @@ def run_family_ensemble_full(
                 cooldown_bars=cooldown_bars,
             )
         else:
-            sig_arr = compute_signal_array(close, c, volume=volume)
+            sig_arr = compute_signal_array(close, c, volume=volume, high=high, low=low)
             signal_label = variant_signal_label(c.family, float(sig_arr[-1]))
         current_signal_labels[c.variant_id] = signal_label
 
     # Layer E: redundancy reduction
     if survivors:
         representatives, redundancy_info, correlation_matrix = reduce_redundancy(
-            survivors, close, volume=volume,
+            survivors, close, volume=volume, high=high, low=low,
         )
     else:
         representatives, redundancy_info, correlation_matrix = [], {}, {}
@@ -551,17 +692,22 @@ def run_family_ensemble_full(
         representatives,
         close,
         volume=volume,
+        high=high,
+        low=low,
         cooldown_bars=cooldown_bars,
     )
 
     # Layer G: ensemble combination
     score_pct, label, per_rep = combine_family_signals(current_signals, family)
+    if representative_count == 0:
+        label = UNAVAILABLE_SIGNAL_LABEL
 
     # Enrich per_rep with variant params and archetype for frontend display
     rep_lookup = {r.variant.variant_id: r.variant for r in representatives}
     for entry in per_rep:
         vdef = rep_lookup.get(entry["variant_id"])
         if vdef:
+            entry["family"] = vdef.family
             entry["params"] = dict(vdef.params)
             entry["archetype"] = vdef.archetype
         entry["selection_status"] = "selected"
@@ -636,6 +782,8 @@ def run_family_ensemble(
     close: np.ndarray,
     *,
     volume: np.ndarray | None = None,
+    high: np.ndarray | None = None,
+    low: np.ndarray | None = None,
     symbol: str,
     horizon: str = "medium",
     timeframe: str = "1D",
@@ -644,7 +792,7 @@ def run_family_ensemble(
 ) -> FamilyCombinedSignal:
     """Full A→G pipeline for any family (returns signal only)."""
     detail = run_family_ensemble_full(
-        family, close, volume=volume, symbol=symbol, horizon=horizon,
+        family, close, volume=volume, high=high, low=low, symbol=symbol, horizon=horizon,
         timeframe=timeframe, cost_bps=cost_bps, cooldown_bars=cooldown_bars,
     )
     return detail.signal
@@ -653,6 +801,9 @@ def run_family_ensemble(
 def run_sma_ensemble_full(
     close: np.ndarray,
     *,
+    volume: np.ndarray | None = None,
+    high: np.ndarray | None = None,
+    low: np.ndarray | None = None,
     symbol: str,
     horizon: str = "medium",
     timeframe: str = "1D",
@@ -661,7 +812,7 @@ def run_sma_ensemble_full(
 ) -> EnsemblePipelineDetail:
     """Full A→G pipeline for the SMA family (backward-compat wrapper)."""
     return run_family_ensemble_full(
-        "sma", close, symbol=symbol, horizon=horizon,
+        "sma", close, volume=volume, high=high, low=low, symbol=symbol, horizon=horizon,
         timeframe=timeframe, cost_bps=cost_bps, cooldown_bars=cooldown_bars,
     )
 
@@ -669,6 +820,9 @@ def run_sma_ensemble_full(
 def run_sma_ensemble(
     close: np.ndarray,
     *,
+    volume: np.ndarray | None = None,
+    high: np.ndarray | None = None,
+    low: np.ndarray | None = None,
     symbol: str,
     horizon: str = "medium",
     timeframe: str = "1D",
@@ -677,7 +831,7 @@ def run_sma_ensemble(
 ) -> FamilyCombinedSignal:
     """Full A→G pipeline for the SMA family (convenience wrapper)."""
     detail = run_sma_ensemble_full(
-        close, symbol=symbol, horizon=horizon,
+        close, volume=volume, high=high, low=low, symbol=symbol, horizon=horizon,
         timeframe=timeframe, cost_bps=cost_bps, cooldown_bars=cooldown_bars,
     )
     return detail.signal

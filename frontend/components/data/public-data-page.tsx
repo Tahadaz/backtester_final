@@ -91,23 +91,23 @@ export function PublicDataPage() {
                     <TableCell className="text-muted-foreground">{stock.display_name ?? "-"}</TableCell>
                     <TableCell className="text-muted-foreground">{stock.sector ?? "-"}</TableCell>
                     <TableCell>
-                      <SignalBadge label={stock.per_family.sma?.label ?? null} />
+                      <SignalBadge label={stock.scores.signal_engine.per_family.sma?.label ?? null} />
                     </TableCell>
                     <TableCell>
-                      <SignalBadge label={stock.per_family.macd?.label ?? null} />
+                      <SignalBadge label={stock.scores.signal_engine.per_family.macd?.label ?? null} />
                     </TableCell>
                     <TableCell>
-                      <SignalBadge label={stock.per_family.rsi?.label ?? null} />
+                      <SignalBadge label={stock.scores.signal_engine.per_family.rsi?.label ?? null} />
                     </TableCell>
                     <TableCell>
-                      <SignalBadge label={stock.per_family.obv?.label ?? null} />
+                      <SignalBadge label={stock.scores.signal_engine.per_family.obv?.label ?? null} />
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <SignalBadge label={stock.aggregate_signal_label} />
-                        {stock.aggregate_score_pct != null && (
+                        <SignalBadge label={stock.scores.signal_engine.aggregate_signal_label} />
+                        {stock.scores.signal_engine.aggregate_score_pct != null && (
                           <span className="font-mono text-xs font-semibold">
-                            {formatScore(stock.aggregate_score_pct)}
+                            {formatScore(stock.scores.signal_engine.aggregate_score_pct)}
                           </span>
                         )}
                       </div>

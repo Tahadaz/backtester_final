@@ -1,0 +1,415 @@
+%% ============================================================
+%%  Chapitre 1 — Contexte, Problématique et État de l'Art
+%% ============================================================
+\chapter{Contexte, Problématique et État de l'Art}
+\label{ch:contexte}
+
+\section{Présentation de l'organisme d'accueil — BMCE Capital}
+\label{sec:bmce}
+
+\subsection{Le Groupe Bank of Africa}
+
+BMCE Capital s'inscrit dans l'écosystème du Groupe \textbf{Bank of Africa (BOA)},
+l'un des groupes bancaires panafricains les plus importants, présent dans plus de
+30~pays. BOA est la maison mère de BMCE Bank of Africa au Maroc, elle-même détentrice
+de BMCE Capital, la branche dédiée à la banque d'investissement et aux marchés de
+capitaux.
+
+\subsection{BMCE Capital — Banque d'Investissement et Marchés}
+
+BMCE Capital regroupe l'ensemble des activités de marché du groupe~:
+
+\begin{itemize}
+    \item \textbf{BMCE Capital Markets}~: activités de trading sur les marchés
+    actions, taux, devises et produits dérivés~;
+    \item \textbf{BMCE Capital Gestion}~: gestion d'actifs (OPCVM, fonds dédiés)~;
+    \item \textbf{BMCE Capital Bourse}~: société de bourse, intermédiation boursière~;
+    \item \textbf{BMCE Capital Research}~: recherche actions et analyse économique.
+\end{itemize}
+
+Ce projet de fin d'études a été réalisé au sein de la \textbf{Salle des Marchés de
+BMCE Capital Markets}, au pôle \textit{Equity Trading}. Cette salle gère les flux
+d'ordres sur les marchés actions marocains et suit l'évolution du MASI en temps réel.
+
+\subsection{Positionnement et cadre réglementaire}
+
+BMCE Capital opère sous la supervision de l'Autorité Marocaine du Marché des Capitaux
+(AMMC) et de la Bourse de Casablanca. Les activités de trading s'inscrivent dans un
+cadre réglementaire strict~: gestion des risques de marché, conformité des ordres,
+règlement-livraison via Maroclear.
+
+\medskip
+
+\figuretodo{bmce_organigramme}{Positionnement de BMCE Capital dans le Groupe Bank of Africa
+(activités, filiales, salle des marchés)}
+
+%% ============================================================
+\section{Le Marché Actions Marocain (MASI)}
+\label{sec:masi}
+
+\subsection{La Bourse de Casablanca}
+
+Fondée en 1929, la Bourse de Casablanca est la principale place boursière du Maroc et
+l'une des plus importantes du continent africain. Elle est gérée par la société
+\textit{Bourse de Casablanca SA} sous tutelle de l'AMMC. Le marché actions est organisé
+en deux compartiments~: le marché principal (grandes capitalisations) et le marché
+alternatif (PME).
+
+\subsection{Le MASI — Moroccan All Shares Index}
+
+Le \textbf{MASI} (Moroccan All Shares Index) est l'indice de référence du marché actions
+marocain. Il mesure l'évolution globale du marché de toutes les valeurs cotées à la
+Bourse de Casablanca, pondérées par leur flottant.
+
+Les mouvements du MASI sont pilotés par plusieurs facteurs~\cite{rapport_s1}~:
+
+\begin{itemize}
+    \item Les \textbf{grandes capitalisations}~: IAM (Maroc Telecom), Attijariwafa Bank,
+    BCP, BMCE Bank, Lafarge Holcim Maroc, Cosumar et HPS concentrent une part
+    disproportionnée du poids de l'indice~;
+    \item Les \textbf{volumes et flux}~: la liquidité est un facteur critique, certaines
+    valeurs étant quasi-illiquides malgré leur cotation~;
+    \item Les \textbf{catalyseurs macro}~: résultats d'entreprises, politique monétaire
+    de Bank Al-Maghrib, cours des matières premières, actualité politique régionale.
+\end{itemize}
+
+\begin{table}[H]
+\centering
+\caption{Les principales capitalisations boursières du MASI (ordre indicatif)}
+\label{tab:grandes_cap}
+\begin{tabularx}{\linewidth}{@{}lYY@{}}
+\toprule
+\textbf{Valeur} & \textbf{Secteur} & \textbf{Caractéristique clé} \\
+\midrule
+Maroc Telecom (IAM)         & Télécommunications & Valeur de référence, forte liquidité \\
+Attijariwafa Bank            & Finance / Banque   & Plus grande banque par actifs \\
+BCP                          & Finance / Banque   & Réseau et positions institutionnelles \\
+BMCE Bank of Africa          & Finance / Banque   & Présence panafricaine \\
+Lafarge Holcim Maroc         & Ciment             & Proxy du secteur construction \\
+Cosumar                      & Agroalimentaire    & Leader sucre au Maroc \\
+HPS                          & Technologies       & Fintech, forte croissance \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Cycle d'un ordre — du trader à l'exécution}
+
+Le cycle d'un ordre boursier au Maroc suit une chaîne d'acteurs réglementée, depuis
+la décision du trader jusqu'au transfert effectif des titres et des liquidités.
+Comprendre ce cycle est essentiel pour situer le rôle de la plateforme développée~:
+celle-ci intervient \textit{en amont} de ce cycle, au stade de la prise de décision.
+
+\begin{description}
+    \item[\textbf{Étape 1 — Décision d'investissement (Salle des Marchés).}]
+    Le trader identifie une opportunité sur l'un des 93 titres du MASI~: signal
+    technique, publication de résultats, flux de marché. Il détermine la direction
+    (achat/vente), le volume et le type d'ordre (au marché, à cours limité, etc.).
+    C'est à cette étape qu'intervient le dashboard développé dans ce projet.
+
+    \item[\textbf{Étape 2 — Saisie et contrôle interne.}]
+    L'ordre est saisi dans le système de gestion d'ordres (OMS — \textit{Order
+    Management System}) de BMCE Capital. Des contrôles automatiques vérifient les
+    limites de risque (exposition maximale, VaR, concentration sectorielle) et de
+    conformité (AMMC, politique interne). Si l'ordre dépasse une limite, il est
+    bloqué ou soumis à validation manuelle.
+
+    \item[\textbf{Étape 3 — Transmission à la Bourse de Casablanca.}]
+    BMCE Capital Bourse, en tant que société de bourse agréée, transmet l'ordre
+    au système central de négociation de la Bourse de Casablanca via un protocole
+    standardisé. La transmission est quasi-instantanée pour les ordres électroniques.
+
+    \item[\textbf{Étape 4 — Exécution~: confrontation des ordres.}]
+    La Bourse de Casablanca fonctionne selon un mode de \textit{fixing} (deux
+    fixings journaliers~: 11h00 et 15h30) ou de cotation continue pour les valeurs
+    les plus liquides. Le moteur de matching confronte les ordres d'achat et de
+    vente selon la priorité prix-temps~: le meilleur prix passe en premier, à égalité
+    de prix, l'ordre le plus ancien passe en premier.
+
+    \item[\textbf{Étape 5 — Confirmation d'exécution.}]
+    Un avis d'opéré est immédiatement retourné à BMCE Capital Bourse, puis transmis
+    au trader. L'ordre est exécuté totalement, partiellement, ou reste en attente
+    selon les conditions de marché.
+
+    \item[\textbf{Étape 6 — Règlement-Livraison via Maroclear (J+2).}]
+    Maroclear, le dépositaire central marocain, assure le règlement en espèces et
+    la livraison des titres à J+2 (deux jours ouvrés après l'exécution). Ce délai
+    est la norme internationale (standard T+2). Le vendeur reçoit les espèces, l'acheteur
+    reçoit les titres inscrits dans son compte-titres.
+\end{description}
+
+\begin{figure}[H]
+\centering
+\placeholder{Schéma flux d'ordre~: Trader (BMCE Capital) → OMS + Contrôle risque/compliance → BMCE Capital Bourse → Bourse de Casablanca (Matching) → Confirmation → Maroclear (Règlement-Livraison J+2). Flèches bidirectionnelles avec les systèmes de surveillance de l'AMMC.}
+\caption{Cycle d'un ordre~: du trader à l'exécution et au règlement-livraison (T+2).
+Source~: élaboré par l'auteur à partir du rapport de stage Semaine~1 \cite{rapport_s1}.}
+\label{fig:cycle_ordre}
+\end{figure}
+
+Ce cycle, bien que standardisé, s'effectue en temps réel sur les marchés liquides.
+La décision d'investissement à l'étape~1 est le maillon critique~: une analyse trop
+longue conduit à rater l'opportunité ou à entrer à un mauvais prix. C'est précisément
+ce goulot d'étranglement que la plateforme est conçue pour lever.
+
+%% ============================================================
+\section{Problématique 1 --- Identifier les Opportunités sous Pression}
+\label{sec:pb1}
+
+\subsection{Le constat du desk}
+
+La principale contrainte opérationnelle identifiée lors de la phase d'immersion à la
+Salle des Marchés peut se résumer ainsi~\cite{rapport_s1}~:
+
+\begin{itemize}
+    \item \textbf{Information dispersée}~: graphiques prix, indicateurs (RSI, MACD,
+    Ichimoku, moyennes mobiles…), volume, volatilité et actualités sont accessibles
+    sur des outils distincts~;
+    \item \textbf{Temps limité}~: sur un marché en temps réel, une analyse trop longue
+    conduit à rater l'opportunité ou à entrer à un mauvais prix~;
+    \item \textbf{Difficulté d'explication}~: justifier rapidement \emph{pourquoi}
+    une décision d'achat ou de vente est prise — aux collègues, au risk manager, à
+    la compliance — est difficile sans un cadre structuré~;
+    \item \textbf{Manque de cohérence}~: en l'absence d'un cadre commun, deux
+    traders peuvent analyser le même titre différemment et arriver à des conclusions
+    opposées.
+\end{itemize}
+
+\subsection{Le besoin formalisé}
+
+\begin{figure}[H]
+\centering
+\placeholder{Schéma triaxial : 3 axes du besoin desk : (1) VITESSE — lire le marché en quelques secondes, (2) TRAÇABILITÉ — raisons et signaux visibles, (3) ACTION — niveaux stop/TP et sizing. Triangle ou radar chart.}
+\caption{Les trois axes du besoin opérationnel identifiés à la Salle des Marchés de BMCE Capital.}
+\label{fig:besoin_desk}
+\end{figure}
+
+L'hypothèse centrale formulée dès la Semaine~1 du stage est la suivante~:
+
+\begin{quote}
+\textit{«~Réduire la friction de lecture du marché permet des décisions plus rapides
+et plus cohérentes~; l'objectif est de passer de la "lecture" à la "décision"
+en moins de 30 secondes par titre.~»}~\cite{rapport_s1}
+\end{quote}
+
+Cette hypothèse définit le \textbf{cahier des charges fonctionnel} du dashboard final
+(Chapitre~\ref{ch:dashboard}).
+
+%% ============================================================
+\section{Problématique 2 --- Le Fléau de l'Overfitting}
+\label{sec:pb2}
+
+\subsection{Le data-snooping et les tests multiples}
+
+La deuxième problématique est de nature statistique. Si l'on teste $k$ configurations
+de paramètres sur un même historique de données, le nombre attendu de faux positifs —
+des stratégies qui semblent fonctionner mais ne le sont que par chance — sous un seuil
+de significativité $\alpha$ est~:
+
+\begin{equation}
+E[\text{Faux Positifs}] = \alpha \cdot k
+\label{eq:faux_positifs}
+\end{equation}
+
+Avec $k = 1000$ tests et $\alpha = 5\,\%$, on s'attend à \textbf{50 stratégies
+apparemment significatives qui ne fonctionnent que par hasard}. Harvey et al.
+(2016)~\cite{harvey2016} quantifient ce problème dans le contexte des facteurs
+de risque financiers~: sur les 316 facteurs publiés dans la littérature académique
+entre 1967 et 2016, la plupart ne survivent pas à une correction pour tests multiples.
+
+\medskip
+
+López de Prado~\cite{lopezdeprado2018} formalise ce risque en backtesting~:
+
+\begin{quote}
+\textit{«~Even if your backtest is flawless, it is probably wrong. Why? Because only
+an expert can produce a flawless backtest. Becoming an expert means that you have run
+tens of thousands of backtests over the years. In conclusion, this is not the first
+backtest you produce, so we need to account for the possibility [of selection bias
+on multiple tests].~»} — López de Prado (2018), Ch.~11, p.~152--153.
+\end{quote}
+
+\subsection{Le biais de survie et le look-ahead bias}
+
+En plus du biais de sélection sur tests multiples, deux autres sources d'overfitting
+contaminent fréquemment les backtests financiers~:
+
+\begin{itemize}
+    \item \textbf{Biais de survie} (\textit{survivorship bias})~: tester une stratégie
+    uniquement sur des entreprises qui ont survécu jusqu'à aujourd'hui, ignorant les
+    faillites et radiations~;
+    \item \textbf{Look-ahead bias}~: utiliser, même involontairement, des informations
+    futures lors du calcul des signaux (ex. normalisation sur l'ensemble de l'historique
+    avant split train/test).
+\end{itemize}
+
+\subsection{Illustration concrète — Semaine 3}
+
+Lors des premières expériences de backtesting (Semaine~3 du stage~\cite{rapport_s3}),
+une SMA optimisée sur 20 ans de données IAM avec une fenêtre de quelques jours produisait
+des milliers de transactions sur la période~: les paramètres étaient parfaitement ajustés
+à l'historique, mais inutilisables en conditions réelles. Ce constat a directement motivé
+l'adoption de la Walk-Forward Analysis comme méthodologie centrale du projet.
+
+%% ============================================================
+\section{Étude des Solutions Existantes}
+\label{sec:existant}
+
+\subsection{Benchmark des plateformes d'analyse technique}
+
+Une étude comparative de 15 plateformes web utilisées par les décideurs d'analyse
+technique a été conduite en Semaine~1~\cite{rapport_s1}. Les plateformes étudiées
+incluent TradingView, Investing.com, MarketWatch, Bloomberg Terminal (version
+simplifiée), Boursorama, Saxo Bank et plusieurs plateformes de brokers marocains.
+
+\begin{table}[H]
+\centering
+\caption{Matrice comparative des principales plateformes d'analyse technique}
+\label{tab:benchmark}
+\begin{tabularx}{\linewidth}{@{}lYYYYY@{}}
+\toprule
+\textbf{Plateforme} &
+\textbf{Couverture MASI} &
+\textbf{Drill-down} &
+\textbf{Backtest OOS} &
+\textbf{Explicabilité} &
+\textbf{Consensus auto} \\
+\midrule
+TradingView         & Partielle  & Oui      & Non       & Faible  & Non \\
+Investing.com       & Oui        & Non      & Non       & Faible  & Partiel \\
+Bloomberg Terminal  & Limitée    & Oui      & Non       & Moyenne & Non \\
+Saxo Bank           & Non        & Moyenne  & Non       & Faible  & Non \\
+Plateformes brokers & Partielle  & Non      & Non       & Nulle   & Non \\
+\textbf{Notre plateforme} & \textbf{Oui (93 tickers)} & \textbf{Oui} & \textbf{OOS (WFO)} & \textbf{Haute} & \textbf{Oui (A→G)} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Lacunes identifiées}
+
+L'analyse révèle qu'aucune solution du marché ne combine simultanément~:
+
+\begin{enumerate}
+    \item Une couverture complète du marché marocain (MASI, 93 tickers)~;
+    \item Un mécanisme de backtesting \emph{hors-échantillon} rigoureux~;
+    \item Un drill-down explicatif par indicateur avec mesures de robustesse~;
+    \item Un consensus automatique fondé sur une évaluation statistique multi-fenêtres.
+\end{enumerate}
+
+Cette lacune justifie le développement d'une solution sur-mesure.
+
+%% ============================================================
+\section{Cadre Théorique Retenu}
+\label{sec:cadre}
+
+\subsection{Le paradigme méta-stratégie (López de Prado, 2018)}
+
+López de Prado~\cite{lopezdeprado2018} propose un modèle de \og ligne de production \fg{}
+pour la recherche quantitative, opposé au modèle du chercheur solitaire qui développe
+des stratégies de bout en bout~:
+
+\begin{quote}
+\textit{«~Amateurs develop individual strategies, believing that there is such a thing
+as a magical formula for riches. In contrast, professionals develop methods to mass-produce
+strategies. The money is not in making a car, it is in making a car factory.~»}
+— López de Prado (2018), Ch.~1, p.~11.
+\end{quote}
+
+Ce paradigme identifie cinq stations spécialisées dans une chaîne de production
+quantitative. Notre plateforme implémente les quatre premières~:
+
+\begin{figure}[H]
+\centering
+\placeholder{Schéma "chaîne de production quantitative" : 5 blocs horizontaux numérotés : (1) Data Curators → (2) Feature Analysts → (3) Strategists → (4) Backtesting → (5) Portfolio Oversight. Indiquer que notre plateforme couvre 1 à 4. Flèches et couleurs différenciées. Inspiré de López de Prado (2018) Ch.1.}
+\caption{La chaîne de production quantitative selon López de Prado (2018).
+Notre plateforme implémente les stations 1 à 4. La station 5 (Portfolio Oversight)
+constitue une perspective de développement futur.}
+\label{fig:metastrategie}
+\end{figure}
+
+\subsection{La Walk-Forward Analysis (Pardo, 2008)}
+
+Robert Pardo~\cite{pardo2008} est l'auteur de référence sur la validation rigoureuse
+des stratégies algorithmiques. Sa Walk-Forward Analysis (WFA) est présentée comme~:
+
+\begin{quote}
+\textit{«~The closest possible simulation of the way in which an optimizable trading
+strategy is typically used in real time.~»} — Pardo (2008), Ch.~11, p.~237.
+\end{quote}
+
+Son critère d'acceptation, le \textbf{Walk-Forward Efficiency} (WFE), est au cœur
+du moteur de backtest développé dans ce projet (Chapitre~\ref{ch:wfo}).
+
+\subsection{Complémentarité des deux approches}
+
+Le cadre de López de Prado définit \emph{l'architecture} de la recherche (ce qu'il
+faut construire et dans quel ordre), tandis que Pardo fournit \emph{la méthodologie
+de validation} (comment mesurer si ça fonctionne vraiment). Ces deux référentiels
+sont complémentaires et constituent le socle théorique de l'ensemble du projet.
+
+%% ============================================================
+\section{Objectifs et Périmètre du Projet}
+\label{sec:objectifs}
+
+\subsection{Objectifs scientifiques}
+
+\begin{enumerate}
+    \item Concevoir un pipeline d'évaluation de stabilité d'indicateurs techniques défensif
+    contre les tests multiples.
+    \item Implémenter une Walk-Forward Analysis conforme à Pardo (2008) sur données MASI.
+    \item Produire un score de robustesse multi-composante fondé sur des métriques
+    complémentaires (Sharpe, stabilité, cohérence, drawdown).
+\end{enumerate}
+
+\subsection{Objectifs techniques}
+
+\begin{enumerate}
+    \item Construire une plateforme web full-stack industrialisable (Next.js, FastAPI,
+    PostgreSQL, MinIO, RQ).
+    \item Optimiser le noyau quantitatif pour supporter des milliers de trials
+    d'optimisation par run (Numba JIT, caching multi-niveaux).
+    \item Fournir un tableau de bord décisionnel par ticker avec score, drill-down
+    et niveaux actionnables.
+\end{enumerate}
+
+\subsection{Périmètre}
+
+\begin{itemize}
+    \item \textbf{Univers}~: 93 tickers MASI (actions), Bourse de Casablanca.
+    \item \textbf{Fréquence}~: journalière (données OHLCV \textit{1D}).
+    \item \textbf{Indicateurs}~: 20 familles réparties en 4 catégories (Tendance,
+    Momentum, Oscillation, Volume), cf. Chapitre~\ref{ch:signaux}.
+    \item \textbf{Hors périmètre}~: multi-fréquences intraday, produits dérivés,
+    gestion de portefeuille multi-actifs (perspectives futures).
+\end{itemize}
+
+\subsection{Démarche de développement}
+
+Le projet a suivi une approche itérative en 9 semaines, documentée dans des rapports
+hebdomadaires~\cite{rapport_s1,rapport_s2,rapport_s3,rapport_s4,rapport_s5,rapport_s9}~:
+
+\begin{itemize}
+    \item \textbf{Semaines 1--2}~: étude du marché MASI, benchmark solutions,
+    conception du backtester prototype.
+    \item \textbf{Semaines 3--4}~: premiers tests SMA, identification des
+    problèmes d'overfitting, automatisation du reporting.
+    \item \textbf{Semaine 5}~: migration prototype Streamlit → stack full-stack
+    industrialisable, recentrage méthodologique.
+    \item \textbf{Semaines 6--8}~: construction des pages Données et Signaux,
+    implémentation du Signal Engine A→G.
+    \item \textbf{Semaine 9}~: pages Stratégie et Backtest WFO, pricer de futures,
+    tableau de bord final.
+\end{itemize}
+
+%% ============================================================
+\section*{Conclusion du chapitre}
+
+Ce chapitre a établi le cadre dans lequel s'inscrit le projet~: un desk de trading
+institutionnel (BMCE Capital) confronté à deux problèmes complémentaires — la rapidité
+d'identification des opportunités de marché et la rigueur de validation des stratégies.
+L'étude des solutions existantes révèle un manque sur le marché marocain, qu'aucune
+plateforme ne couvre simultanément. Le cadre théorique de López de Prado et Pardo
+fournit les fondements méthodologiques sur lesquels repose l'architecture de la
+plateforme développée. Les chapitres suivants détaillent successivement le moteur de
+signaux (Chapitre~\ref{ch:signaux}), le moteur de backtest WFO (Chapitre~\ref{ch:wfo}),
+l'architecture technique (Chapitre~\ref{ch:architecture}) et le tableau de bord final
+(Chapitre~\ref{ch:dashboard}).
+rd}).

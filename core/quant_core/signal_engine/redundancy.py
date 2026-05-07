@@ -16,6 +16,8 @@ def reduce_redundancy(
     close: np.ndarray,
     *,
     volume: np.ndarray | None = None,
+    high: np.ndarray | None = None,
+    low: np.ndarray | None = None,
     max_corr: float = 0.85,
     max_reps: int = 10,
 ) -> tuple[
@@ -42,7 +44,7 @@ def reduce_redundancy(
 
     # Pre-compute signal arrays
     sig_arrays: list[np.ndarray] = [
-        compute_signal_array(close, s.variant, volume=volume) for s in ranked
+        compute_signal_array(close, s.variant, volume=volume, high=high, low=low) for s in ranked
     ]
     variant_ids = [s.variant.variant_id for s in ranked]
 

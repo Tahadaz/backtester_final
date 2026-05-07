@@ -1,0 +1,75 @@
+# Factor channel-tag mapping for Moroccan equity sectors
+#
+# channel_tags define which macro factors are theoretically relevant
+# to which MASI sectors. Used to prioritize IC screening and to
+# annotate the /analytics/factors frontend tab.
+#
+# Schema:
+#   factors:
+#     <canonical_id>:
+#       description: human-readable
+#       tags: [sector slugs]           # which sectors this factor primarily affects
+#       direction_hypothesis: string   # qualitative expected sign of IC
+
+factors:
+  VIX:
+    description: "CBOE Volatility Index — global risk appetite"
+    tags: [all]
+    direction_hypothesis: >
+      High VIX → risk-off → negative for MASI (especially banks and large-caps).
+      IC expected to be negative: rising VIX precedes negative 1-day forward returns.
+
+  SP500:
+    description: "S&P 500 — global equity beta"
+    tags: [all]
+    direction_hypothesis: >
+      SP500 returns positively correlated with MASI via global risk appetite channel.
+      Expected positive IC across all sectors.
+
+  BRENT:
+    description: "Brent Crude futures — energy/materials channel"
+    tags: [materials, mining, chemicals]
+    direction_hypothesis: >
+      Rising Brent costs for oil-importing Morocco is a mixed signal.
+      Positive for extractive sectors (mining, phosphates) that benefit from
+      higher commodity prices; neutral or negative for industrials/consumers.
+
+  DXY:
+    description: "US Dollar Index — EM capital flows"
+    tags: [all]
+    direction_hypothesis: >
+      Strong USD historically associated with EM outflows and tighter MAD
+      liquidity. Expected negative IC especially for financials.
+
+  EURUSD:
+    description: "EUR/USD — MAD peg proxy"
+    tags: [all]
+    direction_hypothesis: >
+      MAD is pegged ~60% EUR / 40% USD. EURUSD weakness (USD strength) tightens
+      MAD liquidity and is negative for import-dependent sectors.
+      Expected to be the highest-IC factor for Moroccan equities.
+
+  US10Y:
+    description: "10-Year US Treasury yield — global discount rate"
+    tags: [banks, insurance, real_estate]
+    direction_hypothesis: >
+      Rising US10Y → tighter global financial conditions → negative for yield-
+      sensitive sectors (banks, insurance). Less direct for industrials.
+
+# MASI sector taxonomy
+sectors:
+  banks:          "Banques"
+  insurance:      "Assurances"
+  real_estate:    "Immobilier"
+  materials:      "Matériaux de construction"
+  mining:         "Mines"
+  chemicals:      "Chimie / OCP group"
+  industrials:    "Industrie"
+  telecom:        "Télécoms"
+  utilities:      "Services aux collectivités"
+  distribution:   "Grande distribution"
+  agri_food:      "Agroalimentaire"
+  pharma:         "Pharmacie"
+  it:             "Technologie"
+  transport:      "Transport"
+  holding:        "Holdings diversifiés"

@@ -94,6 +94,8 @@ function stateClasses(state: string) {
       return "border-sky-300 bg-sky-100 text-sky-950"
     case "tentative_market_holiday":
       return "border-fuchsia-300 bg-fuchsia-100 text-fuchsia-950"
+    case "no_trading_day":
+      return "border-cyan-300 bg-cyan-100 text-cyan-950"
     case "weekend":
       return "border-slate-300 bg-slate-100 text-slate-700"
     default:
@@ -102,6 +104,7 @@ function stateClasses(state: string) {
 }
 
 function stateLabel(day: CalendarDay) {
+  if (day.state === "no_trading_day") return "Sans transactions"
   if (day.holiday_name) {
     return day.holiday_certainty === "tentative" ? `Tentatif: ${day.holiday_name}` : day.holiday_name
   }
@@ -120,6 +123,7 @@ function CalendarLegend() {
   const items = [
     { label: "Donnees presentes", classes: "bg-emerald-100 border-emerald-300" },
     { label: "Donnees partielles", classes: "bg-yellow-50 border-yellow-400" },
+    { label: "Sans transactions", classes: "bg-cyan-100 border-cyan-300" },
     { label: "Jour de bourse manquant", classes: "bg-amber-100 border-amber-400" },
     { label: "Weekend", classes: "bg-slate-100 border-slate-300" },
     { label: "Ferie confirme", classes: "bg-sky-100 border-sky-300" },
@@ -148,6 +152,7 @@ function buildMonthSummaries(calendar: AvailabilityCalendar) {
       missing: number
       holidays: number
       tentative: number
+      noTrading: number
       weekend: number
     }
   >()
@@ -161,6 +166,7 @@ function buildMonthSummaries(calendar: AvailabilityCalendar) {
         missing: 0,
         holidays: 0,
         tentative: 0,
+        noTrading: 0,
         weekend: 0,
       })
     }
@@ -172,6 +178,7 @@ function buildMonthSummaries(calendar: AvailabilityCalendar) {
     if (day.state === "missing_expected_day") summary.missing += 1
     if (day.state === "market_holiday") summary.holidays += 1
     if (day.state === "tentative_market_holiday") summary.tentative += 1
+    if (day.state === "no_trading_day") summary.noTrading += 1
     if (day.state === "weekend") summary.weekend += 1
   }
 
@@ -203,6 +210,7 @@ function YearStripOverview({
     const summary = summaries.get(value)
     if (!summary) return "border-slate-200 text-slate-500"
     if (summary.missing > 0) return "border-amber-400 bg-amber-50 text-amber-950"
+    if (summary.noTrading > 0) return "border-cyan-300 bg-cyan-50 text-cyan-950"
     if (summary.holidays > 0 || summary.tentative > 0) {
       return "border-sky-300 bg-sky-50 text-sky-950"
     }
@@ -258,6 +266,7 @@ function YearStripOverview({
               </div>
               <div className="mt-2 flex items-center gap-3 text-[11px]">
                 <span>{summary?.present ?? 0} jrs</span>
+                <span className="text-cyan-800">{summary?.noTrading ?? 0} sans trx</span>
                 <span className="text-amber-800">{summary?.missing ?? 0} gap</span>
               </div>
             </button>
@@ -366,6 +375,10 @@ function AvailabilityCalendarView({
             <div className="text-lg font-semibold text-yellow-950">{summary?.partial ?? 0}</div>
           </div>
         )}
+        <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2">
+          <div className="text-[11px] uppercase tracking-wide text-cyan-800">Sans transactions</div>
+          <div className="text-lg font-semibold text-cyan-950">{summary?.noTrading ?? 0}</div>
+        </div>
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
           <div className="text-[11px] uppercase tracking-wide text-amber-800">Manquants</div>
           <div className="text-lg font-semibold text-amber-950">{summary?.missing ?? 0}</div>
@@ -412,6 +425,11 @@ function AvailabilityCalendarView({
                 {day.state === "missing_expected_day" && (
                   <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-semibold text-white">
                     GAP
+                  </span>
+                )}
+                {day.state === "no_trading_day" && (
+                  <span className="rounded-full bg-cyan-600 px-1.5 py-0.5 text-[9px] font-semibold text-white">
+                    NO
                   </span>
                 )}
                 {isPartial && (
@@ -492,8 +510,13 @@ function formatRanges(ranges: DateRange[], limit: number): string {
 function DataQualityReport({ calendar, onFocusDates }: { calendar: AvailabilityCalendar; onFocusDates?: (dates: string[]) => void }) {
   const fieldGaps: Record<string, string[]> = {}
   const missingDays: string[] = []
+  const noTradingDays: string[] = []
 
   for (const day of calendar.days) {
+    if (day.state === "no_trading_day") {
+      noTradingDays.push(day.date.slice(0, 10))
+      continue
+    }
     if (day.has_data && day.missing_fields && day.missing_fields.length > 0) {
       for (const field of day.missing_fields) {
         ;(fieldGaps[field] ??= []).push(day.date.slice(0, 10))
@@ -506,7 +529,7 @@ function DataQualityReport({ calendar, onFocusDates }: { calendar: AvailabilityC
 
   const fieldEntries = Object.entries(fieldGaps).sort((a, b) => b[1].length - a[1].length)
   const totalPartialDays = new Set(Object.values(fieldGaps).flat()).size
-  const hasIssues = fieldEntries.length > 0 || missingDays.length > 0
+  const hasIssues = fieldEntries.length > 0 || missingDays.length > 0 || noTradingDays.length > 0
 
   const [expanded, setExpanded] = useState(true)
 
@@ -573,6 +596,26 @@ function DataQualityReport({ calendar, onFocusDates }: { calendar: AvailabilityC
                   onClick={() => onFocusDates([...new Set(Object.values(fieldGaps).flat())])}
                 >
                   Corriger dans le tableau
+                </button>
+              )}
+            </div>
+          )}
+
+          {noTradingDays.length > 0 && (
+            <div>
+              <p className="text-sm font-medium text-cyan-800">
+                {noTradingDays.length} seance{noTradingDays.length > 1 ? "s" : ""} sans
+                transactions
+              </p>
+              <p className="mt-1 text-xs text-cyan-700">
+                {formatRanges(collapseToRanges(noTradingDays, calendar.days), 10)}
+              </p>
+              {onFocusDates && (
+                <button
+                  className="mt-2 text-xs font-medium text-cyan-700 underline hover:text-cyan-900"
+                  onClick={() => onFocusDates(noTradingDays)}
+                >
+                  Voir dans le tableau
                 </button>
               )}
             </div>

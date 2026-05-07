@@ -1,0 +1,62 @@
+\chapter{Station Data}
+
+\section{Role de la station Data}
+La station Data fournit la base de verite utilisee par toutes les autres
+stations. Sans donnees propres, ni le moteur de signaux ni la validation WFO ne
+peuvent produire des conclusions fiables.
+
+\section{Pipeline d'ingestion et de normalisation}
+Le pipeline Data couvre :
+\begin{enumerate}
+\item l'import de donnees (fichiers, refresh provider),
+\item la detection/normalisation de format,
+\item la fusion incrementale sans doublons,
+\item la publication en format canonique OHLCV.
+\end{enumerate}
+
+Le Tableau~\ref{tab:data-pipeline} detaille les etapes.
+
+\begin{table}[H]
+\centering
+\caption{Pipeline de la station Data}
+\label{tab:data-pipeline}
+\begin{tabular}{p{3cm}p{4cm}p{7.4cm}}
+\toprule
+\textbf{Etape} & \textbf{Entree} & \textbf{Sortie} \\
+\midrule
+Ingestion & Excel / provider web & Trames brutes date-prix-volume \\
+Normalisation & Colonnes heterogenes & Schema OHLCV unifie \\
+Validation & Serie temporelle brute & Serie nettoyee, ordonnee, dedoublonnee \\
+Publication & Serie nettoyee & Objet canonique \texttt{market\_data\_store/\{symbol\}/1D} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Le Tableau~\ref{tab:data-pipeline} montre que la normalisation est un prealable
+technique a toute interpretation de signal.
+
+\section{Fraicheur et qualite des donnees}
+La station Data suit deux dimensions : la disponibilite et la fraicheur. Une
+metrique operationnelle simple peut etre exprimee par :
+\begin{equation}
+Q_d = \alpha \cdot C_d + (1-\alpha)\cdot F_d
+\label{eq:data-quality}
+\end{equation}
+ou $C_d$ represente la completude journaliere et $F_d$ la fraicheur relative.
+L'equation~\ref{eq:data-quality} sert de score de pilotage interne.
+
+\section{Specificites du marche marocain}
+Le contexte marocain impose un traitement explicite :
+\begin{itemize}
+\item calendrier de jours feries de la place de Casablanca,
+\item variations de formats de fichiers historiques,
+\item heterogeneite de liquidite entre titres.
+\end{itemize}
+Ces contraintes sont gerees avant la station Signaux pour eviter
+d'interpreter comme signal un artefact de donnees.
+
+\section{Interfaces exposees}
+La station Data expose des endpoints de consultation (catalogue, disponibilite,
+historique OHLCV) et des endpoints d'action (upload, refresh). Cette separation
+limite les effets de bord et facilite le monitoring.
+

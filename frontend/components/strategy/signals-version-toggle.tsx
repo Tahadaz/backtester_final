@@ -2,8 +2,7 @@
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-
-export type SignalsPageView = "expanded" | "legacy"
+import type { SignalsPageView } from "@/components/strategy/signals-view-layout"
 
 type SignalsVersionToggleProps = {
   value: SignalsPageView
@@ -21,6 +20,11 @@ const OPTIONS: Array<{ value: SignalsPageView; label: string; description: strin
     label: "Legacy",
     description: "Version pre-expansion",
   },
+  {
+    value: "factor_x_ta",
+    label: "Factor × TA",
+    description: "Econometric selection",
+  },
 ]
 
 export function SignalsVersionToggle({
@@ -34,7 +38,7 @@ export function SignalsVersionToggle({
           Signal Page Version
         </p>
         <p className="text-sm text-muted-foreground">
-          Bascule entre la vue legacy et la vue expanded.
+          Bascule entre la vue legacy, expanded et Factor × TA.
         </p>
       </div>
 

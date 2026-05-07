@@ -1,0 +1,385 @@
+\chapter{Méthodologie de détection des signaux}
+
+\section{Positionnement général de la méthode}
+La couche signal met en oeuvre une chaîne de recherche appliquée dont l'objectif
+est de transformer une famille d'indicateurs techniques en un signal final
+robuste, interprétable et réutilisable. Cette chaîne ne cherche donc pas à
+sélectionner arbitrairement une configuration gagnante, mais à soumettre un
+ensemble de variantes à un processus progressif d'évaluation, de qualification,
+de sélection et d'agrégation.
+
+La documentation interne du projet formalise cette logique sous la forme d'un
+pipeline en sept couches, notées de A à G. Cette structuration répond à trois
+problèmes classiques de la recherche quantitative : le biais de sélection,
+l'instabilité temporelle et la redondance informationnelle. Elle permet aussi de
+maintenir une continuité entre méthode statistique et restitution produit.
+
+\section{Fondement théorique : pourquoi un pipeline et non un meilleur indicateur}
+Choisir directement la meilleure variante observée sur un historique est une
+procédure fragile. Si l'on teste un grand nombre de variantes, certaines
+obtiendront de bons résultats par simple hasard. C'est précisément l'un des
+enseignements majeurs de la littérature sur le \emph{data snooping} et le
+sur-ajustement \cite{white2000,bailey2014}. Dans le contexte présent, chaque
+famille produit un univers de variantes, dont certaines peuvent sembler
+performantes sans pour autant révéler une vraie structure informative.
+
+L'idée centrale est donc la suivante : plutôt que de retenir un « meilleur »
+indicateur, il faut éliminer successivement les variantes manifestement faibles,
+puis agréger les survivantes non redondantes. Cette logique rejoint l'esprit des
+méthodes d'ensemble, pour lesquelles la combinaison de plusieurs estimateurs
+raisonnablement bons est souvent plus robuste qu'un estimateur isolé
+\cite{breiman1996}.
+
+\section{Taxonomie des familles et lecture économique}
+Dans le périmètre effectivement exploité par l'interface initiale, quatre
+familles sont utilisées : \texttt{sma}, \texttt{macd}, \texttt{rsi} et
+\texttt{obv}. Elles sont choisies non pour multiplier artificiellement les
+signaux, mais parce qu'elles couvrent des dimensions économiques distinctes
+\cite{murphy1999,elder1993}.
+
+\begin{table}[H]
+\centering
+\caption{Familles retenues et rôle économique associé}
+\label{tab:signal-families}
+\begin{tabular}{p{2.2cm}p{3cm}p{4.8cm}p{4.2cm}}
+\toprule
+\textbf{Famille} & \textbf{Catégorie} & \textbf{Question traitée} & \textbf{Exemple de règle} \\
+\midrule
+\texttt{sma} & Tendance & Le prix évolue-t-il au-dessus ou au-dessous de son niveau moyen ? & \(s_t=\mathrm{sign}(C_t-\mathrm{SMA}_n(t))\) \\
+\texttt{macd} & Momentum & L'accélération de la tendance devient-elle favorable ou défavorable ? & \(s_t=\mathrm{sign}(\mathrm{MACD}_t-\mathrm{Signal}_t)\) \\
+\texttt{rsi} & Oscillation & Le marché est-il dans une zone d'excès susceptible de se corriger ? & \(s_t=+1\) si \(\mathrm{RSI}_t<\theta_{bas}\) \\
+\texttt{obv} & Volume & Les flux de volume confirment-ils le mouvement observé sur les prix ? & \(s_t=\mathrm{sign}(\mathrm{OBV}_t-\mathrm{EMA}(\mathrm{OBV})_t)\) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Cette diversité est importante : une famille de tendance et une famille
+oscillatoire ne racontent pas la même chose. Le score final ne représente donc
+pas une répétition de la même idée sous plusieurs formes, mais une combinaison
+raisonnée de perspectives différentes sur un même titre.
+
+\section{Le rôle structurant de l'horizon}
+L'horizon n'est pas un simple paramètre d'affichage. Il conditionne à la fois la
+géométrie des fenêtres d'évaluation, la profondeur historique exploitée et les
+grilles paramétriques testées au sein de chaque famille. Le projet adopte les
+conventions suivantes :
+\begin{itemize}
+\item \textbf{court terme} : thèse de quelques jours à quelques semaines, avec
+1 an de contexte et des fenêtres de test trimestrielles ;
+\item \textbf{moyen terme} : thèse de plusieurs semaines à plusieurs mois, avec
+2 ans de contexte et des fenêtres semestrielles ;
+\item \textbf{long terme} : thèse structurelle de plusieurs mois à un an et plus,
+avec 3 ans de contexte et des fenêtres annuelles.
+\end{itemize}
+
+D'un point de vue mathématique, la configuration par horizon peut être résumée
+par le quadruplet
+\[
+H = (L_{train},L_{test},L_{step},Y_{max})
+\]
+où \(L_{train}\) est la longueur de mise en contexte, \(L_{test}\) la longueur
+de test hors échantillon, \(L_{step}\) l'avance entre deux fenêtres, et
+\(Y_{max}\) la profondeur historique maximale exprimée en années.
+
+Le recours à des grilles de paramètres différentes selon l'horizon est lui aussi
+fondamental. Pour une moyenne mobile, le paramètre est directement lié à une
+mémoire temporelle. Pour un oscillateur borné comme le RSI, en revanche,
+augmenter indéfiniment la période finit par comprimer l'indicateur autour de sa
+zone centrale ; il faut alors ajuster simultanément la période et les seuils de
+surachat/survente. Cette attention portée au calibrage par horizon constitue
+l'un des éléments de soin méthodologique les plus importants du projet.
+
+\subsection{Grilles candidates effectivement utilisées pour les quatre familles livrées}
+Le soin apporté aux horizons apparaît concrètement dans les grilles de
+paramètres. Pour les quatre familles effectivement restituées dans l'interface,
+les bandes explorées peuvent être résumées comme suit.
+
+\begin{table}[H]
+\centering
+\caption{Grilles paramétriques des familles déployées}
+\label{tab:implemented-grids}
+\begin{tabular}{p{2cm}p{3.2cm}p{3.3cm}p{3.3cm}}
+\toprule
+\textbf{Famille} & \textbf{Court terme} & \textbf{Moyen terme} & \textbf{Long terme} \\
+\midrule
+\texttt{sma} & fenêtres rapides, de 3 à 90 barres & fenêtres intermédiaires, de 10 à 250 barres & fenêtres structurelles, de 20 à 400 barres \\
+\texttt{macd} & couples rapides autour de \((6\!-\!15,16\!-\!26,7\!-\!9)\) & voisinage du canonique \((12,26,9)\) avec lenteurs jusqu'à 30 & couples lents allant jusqu'à \((20,35,12)\) \\
+\texttt{rsi} & périodes 5 à 15, seuils \((30,70)\), \((25,75)\), \((20,80)\) & périodes 7 à 30, mêmes seuils & périodes 10 à 40, mêmes seuils avec lecture plus rare \\
+\texttt{obv} & EMA de référence sur la même bande que \texttt{sma} court terme & EMA de référence sur la même bande que \texttt{sma} moyen terme & EMA de référence sur la même bande que \texttt{sma} long terme \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Le Tableau~\ref{tab:implemented-grids} montre bien que la question n'est pas
+seulement de « tester beaucoup de paramètres », mais de tester des paramètres
+cohérents avec une intention temporelle donnée. La même famille n'exprime donc
+pas la même hypothèse économique lorsqu'elle est évaluée en court terme ou en
+long terme.
+
+\section{Vue d'ensemble du pipeline A-G}
+Le pipeline peut se résumer ainsi :
+\begin{align*}
+\text{A} &: \text{génération des candidats},\\
+\text{B} &: \text{évaluation hors échantillon},\\
+\text{C} &: \text{scoring de robustesse},\\
+\text{D} &: \text{filtrage des survivants},\\
+\text{E} &: \text{réduction de redondance},\\
+\text{F} &: \text{calcul du signal courant},\\
+\text{G} &: \text{agrégation finale en score de famille}.
+\end{align*}
+
+La sortie de la couche G constitue ensuite l'entrée logique des interfaces de
+restitution. Les sous-sections suivantes détaillent chacune de ces couches.
+
+\section{Couche A : génération structurée de l'univers candidat}
+Pour chaque couple \((f,h)\), où \(f\) désigne une famille et \(h\) un horizon,
+la couche A génère un ensemble déterministe de variantes :
+\[
+\mathcal{V}_{f,h} = \{v_1, v_2, \dots, v_{30}\}.
+\]
+
+Le choix d'un ensemble de 30 variantes par famille répond à un compromis entre
+couverture paramétrique, coût computationnel et maîtrise du risque de faux
+positifs. Une grille trop étroite conduirait à une exploration insuffisante,
+tandis qu'une grille exhaustive augmenterait le coût du \emph{multiple testing}
+\cite{harvey2016}.
+
+Pour les familles simples, comme \texttt{sma} ou \texttt{obv}, chaque variante
+est essentiellement définie par une fenêtre ou une période de lissage. Pour les
+familles multi-paramètres, comme \texttt{macd}, la variante est un triplet de la
+forme
+\[
+v = (p_{fast},p_{slow},p_{sig}), \qquad p_{fast}<p_{slow}.
+\]
+
+Les grilles ne sont pas arbitraires. Elles sont choisies de manière à respecter
+la signification économique des horizons. Ainsi, un \texttt{MACD}(12,26,9)
+appartient naturellement à une lecture de moyen terme, alors qu'une variante
+beaucoup plus rapide sera plus adaptée au court terme. Cette calibration est
+explicitement documentée dans la couche signal et constitue un garde-fou contre
+les choix paramétriques opportunistes.
+
+\section{Couche B : évaluation hors échantillon par fenêtres roulantes}
+La couche B est le coeur empirique de la méthode. Pour chaque variante
+\(v \in \mathcal{V}_{f,h}\), on calcule un tableau de signaux causaux
+\(s_t(v) \in \{-1,0,+1\}\), puis on l'évalue sur une suite de fenêtres
+hors échantillon.
+
+Soit une série de clôtures \((C_t)_{t=1}^{T}\). Pour un horizon donné, les
+fenêtres sont construites en respectant l'ordre chronologique :
+\[
+W_k = [t_k,\, t_k+L_{train}) \cup [t_k+L_{train},\, t_k+L_{train}+L_{test}).
+\]
+
+La première partie de \(W_k\) fournit le contexte de calcul ; la seconde seule
+sert à l'évaluation. Le pas d'avancement vaut \(L_{step}=L_{test}\), ce qui
+évite tout recouvrement entre les fenêtres de test. Cette géométrie suit les
+recommandations de l'analyse Walk-Forward pour les séries temporelles
+\cite{pardo2008,tashman2000}.
+
+Pour une fenêtre valide, les rendements journaliers sont calculés par
+\[
+r_{t+1}=\frac{C_{t+1}}{C_t}-1.
+\]
+Si \(p_t\) désigne la position effective induite par le signal au temps \(t\),
+le rendement net s'écrit
+\begin{equation}
+R^{net}_{t+1} = p_t\,r_{t+1} - \kappa\,|p_t-p_{t-1}|,
+\label{eq:net-return}
+\end{equation}
+où \(\kappa=\texttt{cost\_bps}/10^4\) représente le coût proportionnel de
+transaction. L'équation~\ref{eq:net-return} traduit un point essentiel : la
+méthode ne mesure pas une qualité abstraite de signal, mais une qualité
+évaluée \emph{après} coût de rotation. Une variante très instable est donc
+naturellement pénalisée.
+
+\subsection{Différence entre signaux d'état et signaux d'action}
+Toutes les familles ne produisent pas la même sémantique immédiate. Certaines,
+comme \texttt{sma} ou \texttt{obv}, expriment directement un \emph{état} de
+position : le marché est lu comme haussier, baissier ou neutre. D'autres, comme
+\texttt{rsi}, expriment plutôt une \emph{intention d'action} à partir d'un excès
+de marché. Dans ce second cas, le signal élémentaire est converti en position
+effective avant évaluation, selon une logique de maintien jusqu'au prochain
+événement significatif.
+
+Si \(a_t\in\{-1,0,+1\}\) désigne un signal d'action, la position utilisée dans
+l'évaluation peut être représentée de manière récursive par
+\begin{equation}
+p_t =
+\begin{cases}
+a_t, & \text{si } a_t \neq 0,\\
+p_{t-1}, & \text{sinon.}
+\end{cases}
+\label{eq:actions-to-positions}
+\end{equation}
+
+L'équation~\ref{eq:actions-to-positions} rappelle qu'un oscillateur n'est pas
+interprété comme une simple suite de signaux indépendants, mais comme une
+instruction qui produit un état de position jusqu'à la prochaine révision.
+
+Sur chaque fenêtre, plusieurs métriques sont produites. Le ratio de Sharpe
+annualisé s'écrit
+\begin{equation}
+\mathrm{Sharpe}_k = \frac{\mu_k}{\sigma_k}\sqrt{252},
+\label{eq:sharpe-window}
+\end{equation}
+où \(\mu_k\) et \(\sigma_k\) désignent respectivement la moyenne et l'écart
+type des rendements nets dans la fenêtre \(k\). On calcule également le rendement
+cumulé, le nombre de changements de position et le \emph{maximum drawdown}. Une
+fenêtre n'est conservée que si elle contient au moins 20 barres effectivement
+évaluables.
+
+\section{Couche C : scoring de robustesse multi-critère}
+Une variante ne peut pas être classée sur son seul Sharpe moyen. La couche C
+synthétise donc l'ensemble des résultats hors échantillon dans un score de
+robustesse composite. Avant cela, un filtre de viabilité est appliqué : une
+variante n'est étudiée plus loin que si elle possède au moins trois fenêtres
+valides et si la fraction de fenêtres à Sharpe positif atteint un seuil minimal.
+
+Formellement, si \(n_{valid}\) désigne le nombre de fenêtres valides et
+\(\pi^{+}\) la fraction de fenêtres dont le Sharpe est positif, la viabilité
+s'écrit
+\begin{equation}
+\mathrm{Viable}(v)=\mathbf{1}\{n_{valid}\geq 3\}\,\mathbf{1}\{\pi^{+}\geq 0.40\}.
+\label{eq:viability-gate}
+\end{equation}
+
+Pour les variantes viables, quatre composantes normalisées sont ensuite calculées.
+\begin{align}
+S_{sh}(v) &= \mathrm{clip}\!\left(\frac{\overline{Sh}(v)+0.5}{2},0,1\right), \\
+S_{st}(v) &= \pi^{+}(v), \\
+S_{co}(v) &= \mathrm{clip}\!\left(1-\frac{\sigma_{Sh}(v)}{|\overline{Sh}(v)|+0.1},0,1\right), \\
+S_{dd}(v) &= \mathrm{clip}\!\left(1-\frac{\overline{DD}(v)}{0.30},0,1\right).
+\end{align}
+
+Le score final de robustesse est alors donné par
+\begin{equation}
+\mathcal{R}(v)=0.35\,S_{sh}(v)+0.30\,S_{st}(v)+0.20\,S_{co}(v)+0.15\,S_{dd}(v).
+\label{eq:robustness-score}
+\end{equation}
+
+L'équation~\ref{eq:robustness-score} donne la priorité à la qualité de
+performance hors échantillon et à la stabilité temporelle, tout en conservant un
+contrôle explicite sur la cohérence et sur la profondeur des pertes. Cette
+construction réduit le risque de classement artificiel par un unique indicateur,
+ce qui rejoint les critiques formulées contre les approches mono-métriques
+\cite{bailey2014}.
+
+\section{Couche D : filtrage des survivants compétitifs}
+La couche D vise à réduire l'ensemble des variantes scorées à un sous-ensemble de
+survivants véritablement compétitifs. Cette réduction se fait en deux temps.
+
+D'abord, on impose un plancher absolu :
+\[
+\mathcal{V}^{floor}_{f,h}=\{v\in \mathcal{V}_{f,h} : \mathcal{R}(v)\geq 0.25\}.
+\]
+Ce plancher empêche de retenir la « moins mauvaise » variante d'une cohorte
+faible.
+
+Ensuite, les variantes restantes sont ordonnées par score décroissant et l'on
+conserve la fraction supérieure de la cohorte. Si \(q=0.40\) désigne la part
+éliminée, l'ensemble des survivants peut se noter
+\[
+\mathcal{V}^{surv}_{f,h}=\mathrm{Top}_{1-q}(\mathcal{V}^{floor}_{f,h}).
+\]
+
+La logique de cette couche n'est pas de trancher définitivement entre les
+meilleures variantes, mais de préparer l'étape suivante en éliminant les cas
+clairement insuffisants. Le pipeline accepte donc une certaine pluralité de
+survivants, à condition qu'ils soient de qualité minimale.
+
+\section{Couche E : réduction de redondance par corrélation}
+Même après filtrage, plusieurs survivants peuvent porter une information quasi
+identique. C'est le cas, par exemple, de variantes proches d'une même famille de
+moyennes mobiles. La couche E élimine ce double comptage informationnel.
+
+Pour chaque survivant \(v\), on considère son vecteur de signaux causaux
+\(\mathbf{s}(v)\). On calcule ensuite la corrélation de Pearson entre paires de
+survivants :
+\begin{equation}
+\rho(v_i,v_j)=\frac{\mathrm{Cov}(\mathbf{s}(v_i),\mathbf{s}(v_j))}{\sigma(\mathbf{s}(v_i))\sigma(\mathbf{s}(v_j))}.
+\label{eq:pearson-signals}
+\end{equation}
+
+L'algorithme est glouton. Les survivants sont triés par score décroissant. On
+sélectionne d'abord la variante la plus fiable, puis chaque variante suivante
+n'est retenue que si sa corrélation absolue avec tous les représentants déjà
+choisis reste sous un seuil fixé. Formellement, une variante \(v\) est admise
+dans l'ensemble des représentants \(\mathcal{V}^{rep}_{f,h}\) si
+\begin{equation}
+\max_{u\in\mathcal{V}^{rep}_{f,h}} |\rho(v,u)| \leq 0.85.
+\label{eq:redundancy-threshold}
+\end{equation}
+
+Cette étape matérialise un principe simple : l'ensemble final doit combiner des
+signaux suffisamment bons \emph{et} suffisamment distincts. Elle rapproche la
+construction d'ensemble d'une logique de diversification informationnelle,
+proche dans son esprit de la diversification en portefeuille \cite{markowitz1952}.
+
+\section{Couche F : calcul du signal courant des représentants}
+Une fois les représentants choisis, la couche F calcule pour chacun d'eux le
+signal courant, c'est-à-dire le verdict associé à la dernière barre disponible.
+Si \(v\) est un représentant et \(T\) la date la plus récente, on extrait
+simplement
+\[
+s^{cur}(v)=s_T(v) \in \{-1,0,+1\}.
+\]
+
+Cette couche est distincte de la couche B pour une raison importante : la couche
+B juge la qualité historique du signal, tandis que la couche F interroge son
+état actuel. Une variante peut avoir une bonne robustesse historique et émettre,
+au dernier instant, un signal neutre ; inversement, une variante active au temps
+présent ne sera jamais utilisée si sa robustesse passée est insuffisante.
+
+À ce niveau, chaque représentant est enrichi par une étiquette textuelle adaptée
+à sa catégorie : \emph{haussier / baissier}, \emph{survendu / suracheté},
+\emph{accumulation / distribution}, etc. Le projet ne réduit donc pas toutes les
+familles à une simple sémantique « achat / vente » ; il préserve la lecture
+économique propre à chaque type d'indicateur.
+
+\section{Couche G : agrégation finale en score de famille}
+La dernière couche combine les représentants en un score unique de famille. Si
+\(\mathcal{V}^{rep}_{f,h}=\{v_1,\dots,v_m\}\), le score brut est donné par
+\begin{equation}
+\mathcal{S}_{f,h}=\frac{\sum_{i=1}^{m} \mathcal{R}(v_i)\,s^{cur}(v_i)}{\sum_{i=1}^{m} \mathcal{R}(v_i)}.
+\label{eq:family-ensemble-raw}
+\end{equation}
+
+Le score affiché dans l'interface est ensuite exprimé en pourcentage sur
+l'intervalle \([-100,100]\) :
+\begin{equation}
+\mathrm{Score}_{f,h}^{(\%)} = 100\times \mathcal{S}_{f,h}.
+\label{eq:family-ensemble-pct}
+\end{equation}
+
+Les équations~\ref{eq:family-ensemble-raw} et
+\ref{eq:family-ensemble-pct} montrent deux choses. Premièrement, les
+représentants les plus robustes ont mécaniquement plus de poids dans la
+synthèse. Deuxièmement, un score proche de zéro n'est pas un échec du système :
+il traduit simplement une absence de consensus suffisant entre les représentants.
+
+L'étiquette finale de famille résulte alors d'un découpage de l'axe des scores
+en zones sémantiques. Pour une famille de tendance, par exemple, une zone
+fortement positive sera interprétée comme \emph{très haussière}, une zone proche
+de zéro comme \emph{neutre}, et une zone fortement négative comme
+\emph{très baissière}. Pour une famille oscillatoire, le vocabulaire associé est
+naturellement différent.
+
+\section{Discussion sur la cohérence d'ensemble}
+Le pipeline A-G présente plusieurs propriétés importantes du point de vue d'un
+mémoire d'ingénierie quantitative.
+\begin{itemize}
+\item Il est \textbf{causal} : le calcul des signaux et l'évaluation respectent
+strictement l'ordre temporel.
+\item Il est \textbf{modulaire} : l'ajout d'une nouvelle famille ne modifie pas
+la structure des couches C à G.
+\item Il est \textbf{horizon-aware} : les paramètres testés et la géométrie des
+fenêtres changent avec la thèse temporelle étudiée.
+\item Il est \textbf{explicable} : chaque score final peut être redescendu vers
+les représentants et vers les filtres qui ont éliminé les autres variantes.
+\end{itemize}
+
+Cette dernière propriété est particulièrement importante dans le cadre du projet.
+La page Signaux et le tableau de bord ne sont pas de simples écrans de sortie ;
+ils prolongent directement la philosophie du pipeline en exposant les résultats
+selon le même ordre logique : consensus, familles, représentants.

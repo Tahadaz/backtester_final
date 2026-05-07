@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 from redis import Redis
-from rq import Queue
-from rq.job import Job
+try:
+    from rq import Queue
+    from rq.job import Job
+except ValueError:  # pragma: no cover - Windows test environments lack fork context
+    Queue = Job = None  # type: ignore[assignment]
 
 from ..config import settings
 from .. import auth

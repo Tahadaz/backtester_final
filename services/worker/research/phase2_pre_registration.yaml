@@ -1,0 +1,113 @@
+freeze_date: "2026-04-30"
+commit_hash: "<run: git rev-parse HEAD at commit time — fill before first Phase 2 backtest>"
+methodology: >
+  Cross-product (TA × factor condition) AND-composed variants.
+  Each variant fires the underlying TA signal only when the factor condition
+  is True on the same evaluation date (lag-aligned via precede_open rule).
+  HOLD emitted when condition is False; open positions held until explicit TA exit.
+  Evaluated through the unchanged A-G signal engine + WFO pipeline.
+
+universe:
+  seed: [ATW, BCP, BMCE, IAM, CDM, ADDH, COSU, WAA]
+  auto_expand:
+    min_bars: 252
+    min_price_mad: 5.0
+
+horizons: [1, 2, 3, 5, 10]
+
+evaluation_costs:
+  spread_bps: 0.0
+  commission_bps: 33.0
+
+fdr_q: 0.10
+fdr_universes: "two independent BH sets per stock: TA-only and Factor×TA"
+bootstrap_samples: 500
+bootstrap_method: "stationary (Politis & Romano 1994)"
+
+alignment:
+  lag_rule: "precede_open"
+  max_staleness: 3
+
+# Pre-registered factor conditions
+# Form definitions:
+#   zscore:   rolling z-score of factor vs threshold
+#   momentum: N-day percentage return vs threshold
+#   change:   absolute N-day change vs threshold
+#   level:    raw value vs threshold
+#   direction: sign of 1-day change (lookback ignored, threshold=0)
+factor_conditions:
+  vix_z20_below_neg1:
+    factor_ticker: "^VIX"
+    form: zscore
+    lookback: 20
+    threshold: -1.0
+    direction: below
+    interpretation: "Compressed VIX — risk-on environment"
+    citation: "Ilmanen (2011), Expected Returns, Ch.15"
+
+  vix_z20_above_pos2:
+    factor_ticker: "^VIX"
+    form: zscore
+    lookback: 20
+    threshold: 2.0
+    direction: above
+    interpretation: "Spiking VIX — risk-off; TA sell signals more reliable"
+    citation: "Ilmanen (2011), Expected Returns, Ch.15"
+
+  spx_mom5_above_zero:
+    factor_ticker: "^GSPC"
+    form: momentum
+    lookback: 5
+    threshold: 0.0
+    direction: above
+    interpretation: "SP500 5d up-momentum — global equity tailwind"
+    citation: "Ilmanen (2011), Expected Returns, Ch.15"
+
+  brent_mom20_above_zero:
+    factor_ticker: "BZ=F"
+    form: momentum
+    lookback: 20
+    threshold: 0.0
+    direction: above
+    interpretation: "Rising Brent — tailwind for materials/mining sector"
+    citation: "economic channel (BRENT → extractive)"
+    channel_gate: [materials, mining, chemicals]
+
+  dxy_mom20_below_zero:
+    factor_ticker: "DX-Y.NYB"
+    form: momentum
+    lookback: 20
+    threshold: 0.0
+    direction: below
+    interpretation: "Weakening DXY — EM capital inflow tailwind"
+    citation: "Hau & Rey (2006), JF"
+
+  eurusd_mom20_above_zero:
+    factor_ticker: "EURUSD=X"
+    form: momentum
+    lookback: 20
+    threshold: 0.0
+    direction: above
+    interpretation: "Strengthening EUR — MAD appreciation tailwind"
+    citation: "MAD peg channel (~60% EUR, 40% USD)"
+
+  ust10_change5_above_20bp:
+    factor_ticker: "^TNX"
+    form: change
+    lookback: 5
+    threshold: 0.0020
+    direction: above
+    interpretation: "US10Y tightening shock — headwind for yield-sensitive sectors"
+    citation: "Campbell & Shiller (1988), JF"
+    channel_gate: [banks, insurance, real_estate]
+
+# Cross-product cardinality budget
+# ~8-10 conditions × ~100 TA variants = ~800-1000 naive per stock
+# Channel gating reduces to ~30-50 applicable per stock (3-4 factors per sector)
+# Two independent FDR universes at q=0.10 within each stock
+
+# Headline claim criterion (incremental value)
+# A factor-conditioned variant is "value-adding" only if:
+#   bootstrap 95% CI lower bound on (Sharpe_fx_ta - Sharpe_native_ta_baseline) > 0
+#   Stationary bootstrap, >= 5000 resamples
+# DSR for headline claims uses combined trial count across both FDR universes

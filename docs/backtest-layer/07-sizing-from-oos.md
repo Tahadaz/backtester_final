@@ -8,6 +8,13 @@
 
 The strategy page allows users to manually input win rate and win/loss ratio for Kelly sizing — with the honest label "a calibrer" (to be calibrated). WFO provides that calibration: win rate and W/L ratio are computed from concatenated OOS trades, producing position sizing grounded in observed out-of-sample performance rather than manual estimates.
 
+Phase 1 uses this information in two distinct ways:
+
+1. **Execution-time Kelly estimate** — used during walk-forward execution without lookahead
+2. **Authoritative OOS Kelly report** — computed from concatenated OOS trades of the winning configuration after the WFO run completes
+
+The distinction matters. Pardo-style walk-forward discipline does not allow the engine to use future OOS outcomes to size the very OOS window being tested.
+
 ---
 
 ## Data Source: Concatenated OOS Trades
@@ -185,3 +192,67 @@ Pardo (2008) does not discuss Kelly criterion. He uses PROM for parameter select
 4. **Solves a real problem** — the "a calibrer" fields on the strategy page were an honest acknowledgment that win rate and W/L ratio should come from data, not guesses. WFO provides that data.
 
 The alternative — leaving sizing as manual input — is strictly worse. It introduces human bias (overconfidence in win rate, underestimation of losses) into the one parameter that most directly controls risk of ruin.
+
+## Phase 1 Kelly execution rule
+
+For `kelly_wfo`, the implemented sizing rule is:
+
+```
+final size = Kelly(from WFO) x modifier
+```
+
+Where:
+
+- the raw Kelly number is always WFO-derived
+- the modifier is the separate risk dial
+- the modifier may be manual or WFO-optimized
+
+If a window does not have enough usable information to estimate Kelly safely, execution falls back to that rule's `manual_pct` and records a warning.
+
+---
+
+## Sizing Value Lifecycle
+
+The sizing values follow an explicit three-state lifecycle across the strategy and backtest pages:
+
+### State 1 — Before WFO (Strategy Page)
+
+The strategy page stores placeholder sizing values:
+
+```ts
+sizing: {
+  mode: "manual",
+  win_rate: null,        // displayed as "À calibrer"
+  wl_ratio: null,        // displayed as "À calibrer"
+  kelly_fraction: null
+}
+```
+
+The user can optionally enter manual estimates, but the system encourages calibration via WFO.
+
+### State 2 — After WFO (Backtest Results)
+
+WFO computes sizing from concatenated OOS trades:
+
+```ts
+backtest_result.sizing: {
+  win_rate: 0.58,
+  wl_ratio: 1.42,
+  kelly_fraction: 0.167,
+  half_kelly: 0.084,
+  n_trades: 47,
+  source: "wfo_oos"
+}
+```
+
+Displayed in backtest results Section 3 (Sizing Results). This value is **run-local** — it belongs to the backtest run, not the strategy.
+
+### State 3 — Apply Back to Strategy (User Action)
+
+The backtest results page offers an explicit "Appliquer le sizing" action. When clicked:
+
+1. The computed `win_rate`, `wl_ratio`, and `kelly_fraction` are written to the strategy's sizing fields
+2. The strategy status changes to `modified`
+3. The user must save the strategy to persist the change
+
+This is a deliberate user action, not automatic. Rationale: auto-persisting would overwrite the user's draft without consent, and different WFO runs may produce different sizing values.

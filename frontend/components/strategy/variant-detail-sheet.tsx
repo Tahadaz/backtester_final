@@ -10,6 +10,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { Badge } from "@/components/ui/badge"
+import { signalVariantLabel } from "@/lib/signal-variant-label"
 
 export function VariantDetailSheet({
   variant,
@@ -27,7 +28,7 @@ export function VariantDetailSheet({
       <SheetContent className="sm:max-w-md overflow-y-auto">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2 text-sm">
-            {variant.variant_id}
+            {signalVariantLabel(variant)}
             <SignalBadge value={variant.signal} size="sm" />
           </SheetTitle>
         </SheetHeader>
@@ -99,6 +100,26 @@ export function VariantDetailSheet({
             <p className="text-sm text-muted-foreground leading-relaxed rounded-md border p-3 bg-muted/30">
               {variant.explanation}
             </p>
+
+            {variant.variant_id.startsWith("fx_") && (
+              <div className="mt-4 space-y-2 border-t pt-4">
+                <h4 className="text-xs font-semibold text-blue-600 uppercase tracking-wide">
+                  Détails Factor
+                </h4>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="flex justify-between rounded-md border px-3 py-2 bg-blue-50/30">
+                    <span className="text-muted-foreground">Statut</span>
+                    <Badge variant="outline" className="text-[10px] border-blue-200 text-blue-700 font-semibold">
+                      ACTIF
+                    </Badge>
+                  </div>
+                  <div className="flex justify-between rounded-md border px-3 py-2 bg-blue-50/30">
+                    <span className="text-muted-foreground">Origine</span>
+                    <span className="font-mono font-semibold text-blue-700">Macro</span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </SheetContent>

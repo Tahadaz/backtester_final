@@ -12,6 +12,7 @@ import { SignalScoreBar } from "./signal-score-bar"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
+import { buildWfoDetailHref } from "@/lib/signals-page-utils"
 
 type WfoSignalColumnProps = {
   data: WfoSummaryResponse | null
@@ -19,6 +20,7 @@ type WfoSignalColumnProps = {
   error: string | null
   symbol: string
   horizon: string
+  variant: "legacy" | "expanded" | "factor_x_ta"
   onRefresh?: () => void
 }
 
@@ -50,19 +52,20 @@ export function WfoSignalColumn({
   error,
   symbol,
   horizon,
+  variant,
   onRefresh,
 }: WfoSignalColumnProps) {
   const router = useRouter()
   const [isRefreshing, setIsRefreshing] = useState(false)
 
   const navigateToDetail = (category: string) => {
-    router.push(`/signals/wfo-detail?symbol=${encodeURIComponent(symbol)}&horizon=${encodeURIComponent(horizon)}&category=${encodeURIComponent(category)}`)
+    router.push(buildWfoDetailHref({ symbol, horizon, category, variant }))
   }
 
   const handleRefresh = async () => {
     setIsRefreshing(true)
     try {
-      await triggerWfoComputation({ symbol, horizon })
+      await triggerWfoComputation({ symbol, horizon, variant })
       onRefresh?.()
     } catch (err) {
       console.error("Failed to trigger WFO:", err)

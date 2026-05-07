@@ -4,7 +4,7 @@ import { useState } from "react"
 import { ChevronDown, ChevronRight, Play, RefreshCw, Settings } from "lucide-react"
 import { useWfoConfig } from "@/hooks/use-wfo-config"
 import { useWfoSummary } from "@/hooks/use-wfo-summary"
-import { triggerWfoComputation } from "@/lib/api"
+import { fetchWfoBatchStatus, triggerAllWfo, triggerWfoComputation } from "@/lib/api"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils"
 type WfoMethodologyTabProps = {
   symbol: string
   horizon: string
+  variant: "legacy" | "expanded" | "factor_x_ta"
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -33,12 +34,31 @@ const GRADE_COLORS: Record<string, string> = {
   F: "bg-red-500 text-white",
 }
 
-export function WfoMethodologyTab({ symbol, horizon }: WfoMethodologyTabProps) {
+function asRecord(value: unknown): Record<string, any> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, any>)
+    : null
+}
+
+function formatTriplet(config: Record<string, any> | null): string {
+  if (!config) return "Auto"
+  const train = config.train_bars
+  const oos = config.oos_bars
+  const step = config.step_bars
+  if (train == null || oos == null || step == null) return "Auto"
+  return `${train}/${oos}/${step}`
+}
+
+export function WfoMethodologyTab({ symbol, horizon, variant }: WfoMethodologyTabProps) {
   const { data: config, isLoading: configLoading } = useWfoConfig()
-  const { data: wfoData, isLoading: wfoLoading, refresh: wfoRefresh } = useWfoSummary(symbol, horizon)
+  const { data: wfoData, isLoading: wfoLoading, refresh: wfoRefresh } = useWfoSummary(symbol, horizon, variant)
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set())
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
   const [isTriggering, setIsTriggering] = useState(false)
+  const [isTriggeringAll, setIsTriggeringAll] = useState(false)
+  const [batchStatus, setBatchStatus] = useState<{
+    total: number; succeeded: number; running: number; failed: number; pending: number
+  } | null>(null)
 
   // Editable overrides
   const horizonConfig = config?.horizons?.[horizon]
@@ -48,6 +68,12 @@ export function WfoMethodologyTab({ symbol, horizon }: WfoMethodologyTabProps) {
   const [costBps, setCostBps] = useState<number | null>(null)
   const [maxReps, setMaxReps] = useState<number | null>(null)
   const [maxCorr, setMaxCorr] = useState<number | null>(null)
+  const policyDefaults = config?.window_policy_defaults
+  const scoringDefaults = config?.scoring
+  const maxRepresentativesDefault = scoringDefaults?.max_representatives
+  const maxCorrelationDefault = scoringDefaults?.max_correlation
+  const trainBand = policyDefaults?.train_bands?.[horizon]
+  const manualWindowOverride = trainBars != null || oosBars != null || stepBars != null
 
   const toggleStep = (id: string) => {
     setExpandedSteps((prev) => {
@@ -73,10 +99,16 @@ export function WfoMethodologyTab({ symbol, horizon }: WfoMethodologyTabProps) {
       await triggerWfoComputation({
         symbol,
         horizon,
+        variant,
         categories,
         train_bars: trainBars ?? undefined,
         oos_bars: oosBars ?? undefined,
         step_bars: stepBars ?? undefined,
+        window_policy: manualWindowOverride ? "manual_override" : policyDefaults?.default_policy,
+        top_k_folds: policyDefaults?.top_k_folds,
+        min_walk_forwards: policyDefaults?.min_walk_forwards,
+        strict_fallback_enabled: policyDefaults?.strict_fallback_enabled,
+        strict_fallback_floor: policyDefaults?.strict_fallback_floor,
         cost_bps: costBps ?? undefined,
         max_reps: maxReps ?? undefined,
         max_corr: maxCorr ?? undefined,
@@ -87,6 +119,44 @@ export function WfoMethodologyTab({ symbol, horizon }: WfoMethodologyTabProps) {
       console.error("WFO trigger failed:", err)
     } finally {
       setIsTriggering(false)
+    }
+  }
+
+  const handleTriggerAll = async () => {
+    setIsTriggeringAll(true)
+    try {
+      await triggerAllWfo({
+        variants: [variant],
+        train_bars: trainBars ?? undefined,
+        oos_bars: oosBars ?? undefined,
+        step_bars: stepBars ?? undefined,
+        window_policy: manualWindowOverride ? "manual_override" : policyDefaults?.default_policy,
+        top_k_folds: policyDefaults?.top_k_folds,
+        min_walk_forwards: policyDefaults?.min_walk_forwards,
+        strict_fallback_enabled: policyDefaults?.strict_fallback_enabled,
+        strict_fallback_floor: policyDefaults?.strict_fallback_floor,
+        cost_bps: costBps ?? undefined,
+        max_reps: maxReps ?? undefined,
+        max_corr: maxCorr ?? undefined,
+      })
+      // Start polling batch status every 5s
+      const poll = setInterval(async () => {
+        try {
+          const status = await fetchWfoBatchStatus()
+          setBatchStatus(status)
+          if (status.running === 0 && status.pending === 0) {
+            clearInterval(poll)
+            setIsTriggeringAll(false)
+          }
+        } catch {
+          // ignore transient errors
+        }
+      }, 5000)
+      const initial = await fetchWfoBatchStatus()
+      setBatchStatus(initial)
+    } catch (err) {
+      console.error("WFO trigger-all failed:", err)
+      setIsTriggeringAll(false)
     }
   }
 
@@ -118,6 +188,10 @@ export function WfoMethodologyTab({ symbol, horizon }: WfoMethodologyTabProps) {
           <p className="text-xs text-muted-foreground">
             Le Walk-Forward Optimization (WFO) evalue systematiquement chaque indicateur technique
             sur des fenetres glissantes train/test pour produire un signal robuste et valide hors echantillon.
+          </p>
+          <p className="text-[11px] text-amber-700">
+            Les representants restent figes pendant la semaine. Les mises a jour quotidiennes
+            rafraichissent seulement leur signal courant, leur valeur courante et leur contribution.
           </p>
         </CardHeader>
         <CardContent className="space-y-1 pb-4">
@@ -185,6 +259,26 @@ export function WfoMethodologyTab({ symbol, horizon }: WfoMethodologyTabProps) {
           </div>
         </CardHeader>
         <CardContent className="pb-4">
+          <div className="mb-3 flex flex-wrap gap-2">
+            <Badge variant={manualWindowOverride ? "secondary" : "outline"} className="text-[10px]">
+              {manualWindowOverride ? "Override manuel" : "Auto strict"}
+            </Badge>
+            {trainBand && (
+              <Badge variant="outline" className="text-[10px]">
+                Bande train: {trainBand.min}-{trainBand.max}
+              </Badge>
+            )}
+            {policyDefaults?.ratio_anchors && (
+              <Badge variant="outline" className="text-[10px]">
+                Ratio OOS/IS: {policyDefaults.ratio_anchors.map((v) => v.toFixed(2)).join(" / ")}
+              </Badge>
+            )}
+            {policyDefaults && (
+              <Badge variant="outline" className="text-[10px]">
+                Min folds: {policyDefaults.min_walk_forwards} | Top K: {policyDefaults.top_k_folds}
+              </Badge>
+            )}
+          </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             <div>
               <Label className="text-[10px] text-muted-foreground">Train (barres IS)</Label>
@@ -242,27 +336,31 @@ export function WfoMethodologyTab({ symbol, horizon }: WfoMethodologyTabProps) {
               <Input
                 type="number"
                 className="h-7 text-xs mt-1"
-                placeholder="5"
+                placeholder={String(maxRepresentativesDefault ?? 1)}
                 min={1}
                 max={20}
                 value={maxReps ?? ""}
                 onChange={(e) => setMaxReps(e.target.value ? Number(e.target.value) : null)}
               />
-              <p className="text-[9px] text-muted-foreground mt-0.5">Defaut: 5</p>
+              <p className="text-[9px] text-muted-foreground mt-0.5">
+                Defaut: {maxRepresentativesDefault ?? 1}
+              </p>
             </div>
             <div>
               <Label className="text-[10px] text-muted-foreground">Max correlation</Label>
               <Input
                 type="number"
                 className="h-7 text-xs mt-1"
-                placeholder="0.85"
+                placeholder={String(maxCorrelationDefault ?? 0.85)}
                 step={0.05}
                 min={0}
                 max={1}
                 value={maxCorr ?? ""}
                 onChange={(e) => setMaxCorr(e.target.value ? Number(e.target.value) : null)}
               />
-              <p className="text-[9px] text-muted-foreground mt-0.5">Defaut: 0.85</p>
+              <p className="text-[9px] text-muted-foreground mt-0.5">
+                Defaut: {maxCorrelationDefault ?? 0.85}
+              </p>
             </div>
           </div>
         </CardContent>
@@ -343,6 +441,27 @@ export function WfoMethodologyTab({ symbol, horizon }: WfoMethodologyTabProps) {
                         </div>
                       )
                     })}
+                    {catData?.config && (() => {
+                      const configUsed = asRecord(catData.config)
+                      const selectedConfig = asRecord(configUsed?.selected_config) ?? configUsed
+                      return (
+                        <div className="rounded bg-muted/30 px-3 py-2 text-[10px] text-muted-foreground">
+                          <div className="flex flex-wrap gap-2">
+                            <Badge variant="outline" className="text-[9px]">
+                              {String(configUsed?.window_policy_used ?? "strict_fold_driven")}
+                            </Badge>
+                            <Badge variant="outline" className="text-[9px]">
+                              Config: {formatTriplet(selectedConfig)}
+                            </Badge>
+                            {configUsed?.fallback_applied ? (
+                              <Badge variant="outline" className="text-[9px] border-amber-300 text-amber-700">
+                                Fallback min folds: {String(configUsed?.effective_min_walk_forwards ?? "--")}
+                              </Badge>
+                            ) : null}
+                          </div>
+                        </div>
+                      )
+                    })()}
                     <Button
                       variant="outline"
                       size="sm"
@@ -419,37 +538,64 @@ export function WfoMethodologyTab({ symbol, horizon }: WfoMethodologyTabProps) {
 
       {/* Section 5: Trigger */}
       <Card className="border-primary/20 bg-primary/5">
-        <CardContent className="py-4 flex items-center justify-between gap-4">
-          <div>
-            <p className="text-xs font-bold">Lancer le calcul WFO</p>
-            <p className="text-[10px] text-muted-foreground">
-              {symbol} / {horizon}
-              {(trainBars || oosBars || stepBars || costBps || maxReps || maxCorr)
-                ? " (parametres personnalises)"
-                : " (parametres par defaut)"}
-            </p>
+        <CardContent className="py-4 space-y-3">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-bold">Lancer le calcul WFO</p>
+              <p className="text-[10px] text-muted-foreground">
+                {symbol} / {horizon}
+                {manualWindowOverride || costBps || maxReps || maxCorr
+                  ? " (parametres personnalises)"
+                  : " (auto strict par defaut)"}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs"
+                disabled={wfoLoading}
+                onClick={wfoRefresh}
+              >
+                <RefreshCw className={cn("h-3 w-3 mr-1", wfoLoading && "animate-spin")} />
+                Rafraichir
+              </Button>
+              <Button
+                size="sm"
+                className="text-xs"
+                disabled={isTriggering}
+                onClick={() => handleTrigger()}
+              >
+                <Play className="h-3 w-3 mr-1" />
+                Lancer tout
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                className="text-xs"
+                disabled={isTriggeringAll}
+                onClick={handleTriggerAll}
+              >
+                <Play className="h-3 w-3 mr-1" />
+                Lancer WFO global (tous les titres)
+              </Button>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-xs"
-              disabled={wfoLoading}
-              onClick={wfoRefresh}
-            >
-              <RefreshCw className={cn("h-3 w-3 mr-1", wfoLoading && "animate-spin")} />
-              Rafraichir
-            </Button>
-            <Button
-              size="sm"
-              className="text-xs"
-              disabled={isTriggering}
-              onClick={() => handleTrigger()}
-            >
-              <Play className="h-3 w-3 mr-1" />
-              Lancer tout
-            </Button>
-          </div>
+          {batchStatus && (
+            <div className="space-y-1">
+              <p className="text-[10px] text-muted-foreground">
+                {batchStatus.succeeded}/{batchStatus.total} terminés
+                {batchStatus.running > 0 && ` · ${batchStatus.running} en cours`}
+                {batchStatus.failed > 0 && ` · ${batchStatus.failed} échoués`}
+              </p>
+              <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary transition-all"
+                  style={{ width: batchStatus.total > 0 ? `${(batchStatus.succeeded / batchStatus.total) * 100}%` : "0%" }}
+                />
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

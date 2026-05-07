@@ -4,13 +4,15 @@ import { Suspense, useEffect, useMemo, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { ExpandedSignalsView } from "@/components/strategy/expanded-signals-view"
 import { LegacySignalsView } from "@/components/strategy/legacy-signals-view"
+import { FactorXTaSignalsView } from "@/components/strategy/factor-x-ta-signals-view"
 import { PublicSignalsPage } from "@/components/strategy/public-signals-page"
-import { SignalsVersionToggle, type SignalsPageView } from "@/components/strategy/signals-version-toggle"
+import { SignalsVersionToggle } from "@/components/strategy/signals-version-toggle"
+import type { SignalsPageView } from "@/components/strategy/signals-view-layout"
 
 const isPublicDashboardOnly = process.env.NEXT_PUBLIC_DASHBOARD_PUBLIC_ONLY === "true"
 
 const validHorizons = new Set(["short", "medium", "long"])
-const validViews = new Set<SignalsPageView>(["expanded", "legacy"])
+const validViews = new Set<SignalsPageView>(["expanded", "legacy", "factor_x_ta"])
 
 function PrivateSignalsPage() {
   const router = useRouter()
@@ -59,6 +61,13 @@ function PrivateSignalsPage() {
       <div className="min-h-0 flex-1">
         {view === "legacy" ? (
           <LegacySignalsView
+            selectedSymbol={selectedSymbol}
+            onSelectSymbol={setSelectedSymbol}
+            horizon={horizon}
+            onHorizonChange={setHorizon}
+          />
+        ) : view === "factor_x_ta" ? (
+          <FactorXTaSignalsView
             selectedSymbol={selectedSymbol}
             onSelectSymbol={setSelectedSymbol}
             horizon={horizon}

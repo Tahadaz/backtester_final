@@ -2,10 +2,17 @@
 
 import { useMemo, useState } from "react"
 import { ChevronDown, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react"
-import type { DashboardIndex, DashboardStock } from "@/lib/dashboard-types"
-import { FAMILY_LABELS, FAMILY_ORDER, aggregateScoreLabel, familyScoreLabel } from "@/lib/dashboard-constants"
+import type {
+  DashboardBreadth,
+  DashboardScoreSource,
+  DashboardIndex,
+  DashboardStock,
+  FamilyScore,
+} from "@/lib/dashboard-types"
+import { FAMILY_LABELS, FAMILY_ORDER, aggregateScoreLabel, familyScoreLabel, formatScore } from "@/lib/dashboard-constants"
 import { FamilyCell } from "./family-cell"
 import { SignalBadge } from "./signal-badge"
+import { buildDashboardIndexPayload, normalizeDashboardIndexName } from "./index-tab-utils.mjs"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -18,27 +25,42 @@ interface IndexTabProps {
   customDefinitions: Array<{ id: string; name: string; symbols: string[] }>
   readOnly: boolean
   actionError?: string | null
+  scoreSource?: DashboardScoreSource
   onCreate?: (payload: { name: string; symbols: string[] }) => Promise<void>
   onUpdate?: (id: string, payload: { name: string; symbols: string[] }) => Promise<void>
   onDelete?: (id: string) => Promise<void>
 }
 
+interface IndexMemberSourceScore {
+  signal_label: string | null
+  aggregate_score_pct: number | null
+  per_family: Record<string, FamilyScore>
+}
+
 interface IndexMember {
   symbol: string
   display_name: string | null
-  signal_label: string | null
+  scores: {
+    signal_engine: IndexMemberSourceScore
+    wfo: IndexMemberSourceScore | null
+  }
+}
+
+interface IndexScoreBlock {
+  aggregate_signal_label: string | null
   aggregate_score_pct: number | null
-  per_family: DashboardStock["per_family"]
+  per_family: Record<string, FamilyScore>
+  breadth: DashboardBreadth
 }
 
 interface ComputedIndex {
   id: string
   name: string
   stock_count: number
-  aggregate_signal_label: string | null
-  aggregate_score_pct: number | null
-  per_family: DashboardIndex["per_family"]
-  breadth: DashboardIndex["breadth"]
+  scores: {
+    signal_engine: IndexScoreBlock
+    wfo: IndexScoreBlock | null
+  }
   members: IndexMember[]
   editable: boolean
 }
@@ -67,22 +89,22 @@ function round2(value: number): number {
   return Math.round(value * 100) / 100
 }
 
-function breadthFromMembers(members: IndexMember[]) {
+function breadthFromLabels(labels: Array<string | null>): DashboardBreadth {
   let achat = 0
   let neutre = 0
   let vente = 0
   let indisponible = 0
 
-  for (const member of members) {
-    if (!member.signal_label) {
+  for (const label of labels) {
+    if (!label) {
       indisponible += 1
       continue
     }
-    if (member.signal_label.includes("Achat")) {
+    if (label.includes("Achat")) {
       achat += 1
       continue
     }
-    if (member.signal_label.includes("Vente")) {
+    if (label.includes("Vente")) {
       vente += 1
       continue
     }
@@ -92,11 +114,46 @@ function breadthFromMembers(members: IndexMember[]) {
   return { achat, neutre, vente, indisponible }
 }
 
+function computeScoreBlock(
+  members: IndexMember[],
+  source: "signal_engine" | "wfo",
+): IndexScoreBlock | null {
+  const aggregateValues = members
+    .map((member) => member.scores[source]?.aggregate_score_pct)
+    .filter((value): value is number => typeof value === "number")
+
+  const aggregateScore = average(aggregateValues)
+  const perFamily: Record<string, FamilyScore> = {}
+
+  for (const family of FAMILY_ORDER) {
+    const familyValues = members
+      .map((member) => member.scores[source]?.per_family[family]?.score_pct)
+      .filter((value): value is number => typeof value === "number")
+
+    const familyAvg = average(familyValues)
+    if (familyAvg == null) continue
+
+    perFamily[family] = {
+      score_pct: round2(familyAvg),
+      label: familyScoreLabel(family, familyAvg),
+    }
+  }
+
+  const labels = members.map((member) => member.scores[source]?.signal_label ?? null)
+
+  return {
+    aggregate_signal_label: aggregateScore == null ? null : aggregateScoreLabel(aggregateScore),
+    aggregate_score_pct: aggregateScore == null ? null : round2(aggregateScore),
+    per_family: perFamily,
+    breadth: breadthFromLabels(labels),
+  }
+}
+
 function BreadthBar({
   breadth,
   total,
 }: {
-  breadth: DashboardIndex["breadth"]
+  breadth: DashboardBreadth
   total: number
 }) {
   const pctAchat = total > 0 ? (breadth.achat / total) * 100 : 0
@@ -122,12 +179,42 @@ function BreadthBar({
   )
 }
 
+function renderIndexHeaderSignal(index: ComputedIndex, scoreSource: DashboardScoreSource) {
+  if (scoreSource === "both") {
+    return (
+      <div className="space-y-1">
+        <div className="flex items-center justify-end gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">SE</span>
+          <SignalBadge label={index.scores.signal_engine.aggregate_signal_label} />
+          <span className="font-mono text-xs font-semibold text-foreground">
+            {formatScore(index.scores.signal_engine.aggregate_score_pct)}
+          </span>
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t pt-1">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">WFO</span>
+          <SignalBadge label={index.scores.wfo?.aggregate_signal_label ?? null} />
+          <span className="font-mono text-xs font-semibold text-foreground">
+            {formatScore(index.scores.wfo?.aggregate_score_pct ?? null)}
+          </span>
+        </div>
+      </div>
+    )
+  }
+
+  if (scoreSource === "wfo") {
+    return <SignalBadge label={index.scores.wfo?.aggregate_signal_label ?? null} />
+  }
+
+  return <SignalBadge label={index.scores.signal_engine.aggregate_signal_label} />
+}
+
 export function IndexTab({
   baseIndex,
   stocks,
   customDefinitions,
   readOnly,
   actionError,
+  scoreSource = "both",
   onCreate,
   onUpdate,
   onDelete,
@@ -142,6 +229,15 @@ export function IndexTab({
   const [editSearch, setEditSearch] = useState("")
   const [editSymbols, setEditSymbols] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const createNameTrimmed = normalizeDashboardIndexName(createName)
+  const editNameTrimmed = normalizeDashboardIndexName(editName)
+  const createNameInvalid = showCreate && createNameTrimmed.length === 0
+  const editNameInvalid = Boolean(editingId) && editNameTrimmed.length === 0
+  const createPayload = buildDashboardIndexPayload(createName, createSymbols)
+  const editPayload = buildDashboardIndexPayload(editName, editSymbols)
+  const canSubmitCreate = Boolean(onCreate) && !isSubmitting && createPayload !== null
+  const canSubmitEdit = Boolean(editingId) && Boolean(onUpdate) && !isSubmitting && editPayload !== null
 
   const stockCatalog = useMemo(
     () =>
@@ -166,72 +262,70 @@ export function IndexTab({
   )
 
   const computedIndices = useMemo<ComputedIndex[]>(() => {
-    const masiMembers: IndexMember[] = stocks.map((stock) => ({
-      symbol: stock.symbol,
-      display_name: stock.display_name,
-      signal_label: stock.aggregate_signal_label,
-      aggregate_score_pct: stock.aggregate_score_pct,
-      per_family: stock.per_family,
-    }))
+    const makeMember = (stock: DashboardStock | undefined, symbolFallback?: string): IndexMember => ({
+      symbol: stock?.symbol ?? symbolFallback ?? "",
+      display_name: stock?.display_name ?? null,
+      scores: {
+        signal_engine: {
+          signal_label: stock?.scores.signal_engine.aggregate_signal_label ?? null,
+          aggregate_score_pct: stock?.scores.signal_engine.aggregate_score_pct ?? null,
+          per_family: stock?.scores.signal_engine.per_family ?? {},
+        },
+        wfo: stock?.scores.wfo
+          ? {
+              signal_label: stock.scores.wfo.aggregate_signal_label,
+              aggregate_score_pct: stock.scores.wfo.aggregate_score_pct,
+              per_family: stock.scores.wfo.per_family,
+            }
+          : null,
+      },
+    })
+
+    const masiMembers = stocks.map((stock) => makeMember(stock))
 
     const base: ComputedIndex = {
       id: MASI_KEY,
       name: baseIndex.name || "MASI",
-      stock_count: baseIndex.stock_count,
-      aggregate_signal_label: baseIndex.aggregate_signal_label,
-      aggregate_score_pct: baseIndex.aggregate_score_pct,
-      per_family: baseIndex.per_family,
-      breadth: baseIndex.breadth,
+      stock_count: stocks.length,
+      scores: {
+        signal_engine:
+          computeScoreBlock(masiMembers, "signal_engine") ?? {
+            aggregate_signal_label: null,
+            aggregate_score_pct: null,
+            per_family: {},
+            breadth: { achat: 0, neutre: 0, vente: 0, indisponible: stocks.length },
+          },
+        wfo: computeScoreBlock(masiMembers, "wfo"),
+      },
       members: masiMembers,
       editable: false,
     }
 
     const custom = customDefinitions.map((definition) => {
       const symbols = normalizeSymbols(definition.symbols)
-      const members: IndexMember[] = symbols.map((symbol) => {
-        const stock = stockBySymbol.get(symbol)
-        return {
-          symbol,
-          display_name: stock?.display_name ?? null,
-          signal_label: stock?.aggregate_signal_label ?? null,
-          aggregate_score_pct: stock?.aggregate_score_pct ?? null,
-          per_family: stock?.per_family ?? {},
-        }
-      })
-
-      const aggregateValues = members
-        .map((member) => member.aggregate_score_pct)
-        .filter((value): value is number => typeof value === "number")
-      const aggregateScore = average(aggregateValues)
-
-      const perFamily: DashboardIndex["per_family"] = {}
-      for (const family of FAMILY_ORDER) {
-        const familyValues = members
-          .map((member) => member.per_family[family]?.score_pct)
-          .filter((value): value is number => typeof value === "number")
-        const familyAvg = average(familyValues)
-        if (familyAvg == null) continue
-        perFamily[family] = {
-          score_pct: round2(familyAvg),
-          label: familyScoreLabel(family, familyAvg),
-        }
-      }
+      const members = symbols.map((symbol) => makeMember(stockBySymbol.get(symbol), symbol))
 
       return {
         id: definition.id,
         name: definition.name,
         stock_count: symbols.length,
-        aggregate_signal_label: aggregateScore == null ? null : aggregateScoreLabel(aggregateScore),
-        aggregate_score_pct: aggregateScore == null ? null : round2(aggregateScore),
-        per_family: perFamily,
-        breadth: breadthFromMembers(members),
+        scores: {
+          signal_engine:
+            computeScoreBlock(members, "signal_engine") ?? {
+              aggregate_signal_label: null,
+              aggregate_score_pct: null,
+              per_family: {},
+              breadth: { achat: 0, neutre: 0, vente: 0, indisponible: symbols.length },
+            },
+          wfo: computeScoreBlock(members, "wfo"),
+        },
         members,
         editable: true,
       } satisfies ComputedIndex
     })
 
     return [base, ...custom]
-  }, [baseIndex, customDefinitions, stockBySymbol, stocks])
+  }, [baseIndex.name, customDefinitions, stockBySymbol, stocks])
 
   function symbolOptions(query: string) {
     const normalized = query.trim().toLowerCase()
@@ -252,10 +346,10 @@ export function IndexTab({
   }
 
   async function submitCreate() {
-    if (!onCreate || isSubmitting) return
+    if (!onCreate || isSubmitting || createPayload == null) return
     setIsSubmitting(true)
     try {
-      await onCreate({ name: createName, symbols: createSymbols })
+      await onCreate(createPayload)
       setCreateName("")
       setCreateSearch("")
       setCreateSymbols([])
@@ -273,10 +367,10 @@ export function IndexTab({
   }
 
   async function submitEdit() {
-    if (!editingId || !onUpdate || isSubmitting) return
+    if (!editingId || !onUpdate || isSubmitting || editPayload == null) return
     setIsSubmitting(true)
     try {
-      await onUpdate(editingId, { name: editName, symbols: editSymbols })
+      await onUpdate(editingId, editPayload)
       setEditingId(null)
       setEditName("")
       setEditSearch("")
@@ -311,9 +405,9 @@ export function IndexTab({
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <CardTitle className="text-base">Indices personnalisés</CardTitle>
+                <CardTitle className="text-base">Indices personnalises</CardTitle>
                 <p className="text-sm text-muted-foreground">
-                  Créez des indices à partir d&apos;une liste manuelle d&apos;actions.
+                  Creez des indices a partir d'une liste manuelle d'actions.
                 </p>
               </div>
               <Button
@@ -333,7 +427,11 @@ export function IndexTab({
                 value={createName}
                 onChange={(event) => setCreateName(event.target.value)}
                 placeholder="Nom de l'indice"
+                aria-invalid={createNameInvalid}
               />
+              {createNameInvalid && (
+                <p className="text-xs text-destructive">Le nom de l'indice ne peut pas etre vide.</p>
+              )}
               <Input
                 value={createSearch}
                 onChange={(event) => setCreateSearch(event.target.value)}
@@ -353,7 +451,12 @@ export function IndexTab({
                 ))}
               </div>
               <div className="flex items-center gap-2">
-                <Button type="button" size="sm" onClick={submitCreate} disabled={isSubmitting}>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={submitCreate}
+                  disabled={!canSubmitCreate}
+                >
                   Enregistrer
                 </Button>
                 <Button
@@ -369,7 +472,7 @@ export function IndexTab({
                 >
                   Annuler
                 </Button>
-                <span className="text-xs text-muted-foreground">{createSymbols.length} symbole(s) sélectionné(s)</span>
+                <span className="text-xs text-muted-foreground">{createSymbols.length} symbole(s) selectionne(s)</span>
               </div>
             </CardContent>
           )}
@@ -401,7 +504,7 @@ export function IndexTab({
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <SignalBadge label={index.aggregate_signal_label} />
+                    {renderIndexHeaderSignal(index, scoreSource)}
                     {!readOnly && index.editable && !isEditing && (
                       <>
                         <Button
@@ -439,7 +542,11 @@ export function IndexTab({
                       value={editName}
                       onChange={(event) => setEditName(event.target.value)}
                       placeholder="Nom de l'indice"
+                      aria-invalid={editNameInvalid}
                     />
+                    {editNameInvalid && (
+                      <p className="text-xs text-destructive">Le nom de l'indice ne peut pas etre vide.</p>
+                    )}
                     <Input
                       value={editSearch}
                       onChange={(event) => setEditSearch(event.target.value)}
@@ -459,7 +566,12 @@ export function IndexTab({
                       ))}
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button type="button" size="sm" onClick={submitEdit} disabled={isSubmitting}>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={submitEdit}
+                        disabled={!canSubmitEdit}
+                      >
                         Enregistrer
                       </Button>
                       <Button
@@ -475,7 +587,7 @@ export function IndexTab({
                       >
                         Annuler
                       </Button>
-                      <span className="text-xs text-muted-foreground">{editSymbols.length} symbole(s) sélectionné(s)</span>
+                      <span className="text-xs text-muted-foreground">{editSymbols.length} symbole(s) selectionne(s)</span>
                     </div>
                   </div>
                 )}
@@ -484,14 +596,51 @@ export function IndexTab({
                   {FAMILY_ORDER.map((family) => (
                     <div key={`${index.id}-${family}`} className="space-y-1">
                       <p className="text-sm font-medium">{FAMILY_LABELS[family]}</p>
-                      <FamilyCell score={index.per_family[family]} />
+
+                      {scoreSource === "both" ? (
+                        <div className="space-y-1">
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">SE</p>
+                            <FamilyCell score={index.scores.signal_engine.per_family[family]} />
+                          </div>
+                          <div className="border-t pt-1">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">WFO</p>
+                            <FamilyCell score={index.scores.wfo?.per_family[family] ?? null} />
+                          </div>
+                        </div>
+                      ) : scoreSource === "wfo" ? (
+                        <FamilyCell score={index.scores.wfo?.per_family[family] ?? null} />
+                      ) : (
+                        <FamilyCell score={index.scores.signal_engine.per_family[family]} />
+                      )}
                     </div>
                   ))}
                 </div>
 
                 <div className="space-y-2">
                   <p className="text-sm font-medium">Largeur de marche</p>
-                  <BreadthBar breadth={index.breadth} total={index.stock_count} />
+                  {scoreSource === "both" ? (
+                    <div className="space-y-2">
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">SE</p>
+                        <BreadthBar breadth={index.scores.signal_engine.breadth} total={index.stock_count} />
+                      </div>
+                      <div className="border-t pt-1">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">WFO</p>
+                        <BreadthBar
+                          breadth={index.scores.wfo?.breadth ?? { achat: 0, neutre: 0, vente: 0, indisponible: index.stock_count }}
+                          total={index.stock_count}
+                        />
+                      </div>
+                    </div>
+                  ) : scoreSource === "wfo" ? (
+                    <BreadthBar
+                      breadth={index.scores.wfo?.breadth ?? { achat: 0, neutre: 0, vente: 0, indisponible: index.stock_count }}
+                      total={index.stock_count}
+                    />
+                  ) : (
+                    <BreadthBar breadth={index.scores.signal_engine.breadth} total={index.stock_count} />
+                  )}
                 </div>
               </CardContent>
 
@@ -504,7 +653,7 @@ export function IndexTab({
                           <TableRow>
                             <TableHead>Symbole</TableHead>
                             <TableHead>Nom</TableHead>
-                            <TableHead>Décision</TableHead>
+                            <TableHead>Decision</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -520,7 +669,22 @@ export function IndexTab({
                                 <TableCell className="font-mono font-medium">{member.symbol}</TableCell>
                                 <TableCell className="text-muted-foreground">{member.display_name ?? "-"}</TableCell>
                                 <TableCell>
-                                  <SignalBadge label={member.signal_label} />
+                                  {scoreSource === "both" ? (
+                                    <div className="space-y-1">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">SE</span>
+                                        <SignalBadge label={member.scores.signal_engine.signal_label} />
+                                      </div>
+                                      <div className="flex items-center gap-2 border-t pt-1">
+                                        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">WFO</span>
+                                        <SignalBadge label={member.scores.wfo?.signal_label ?? null} />
+                                      </div>
+                                    </div>
+                                  ) : scoreSource === "wfo" ? (
+                                    <SignalBadge label={member.scores.wfo?.signal_label ?? null} />
+                                  ) : (
+                                    <SignalBadge label={member.scores.signal_engine.signal_label} />
+                                  )}
                                 </TableCell>
                               </TableRow>
                             ))

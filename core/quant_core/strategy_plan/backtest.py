@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
-from typing import Any
+from typing import Any, Callable
 
 import math
 
@@ -17,14 +17,17 @@ from core.quant_core.plots import (
     make_cumreturn_vs_benchmark_plot,
     make_drawdown_plot,
     make_monthly_heatmap_plot,
+    make_yearly_return_bar_plot,
 )
+from core.quant_core.data import drop_incomplete_ohlcv_rows
 from core.quant_core.portfolio import CostModel
 from core.quant_core.results import ResultsAnalyzer
-from core.quant_core.signal_engine.ensemble import (
-    compute_family_score_timeseries,
-    run_family_ensemble_full,
-)
+from core.quant_core.signal_engine.ensemble import FamilyHistoryMode
 from core.quant_core.strategy_plan.allocation import compute_strategy_allocation
+from core.quant_core.strategy_plan.score_sources import (
+    build_stock_config_from_enabled_families,
+    compute_strategy_score_frame,
+)
 
 
 @dataclass
@@ -44,6 +47,14 @@ class _StockFill:
     available_quantity: float
     position_value_cost: float
     reason: str
+    entry_rule: str = ""
+    exit_rule: str = ""
+    trigger_display: str = ""
+    trend_score: float = 0.0
+    momentum_score: float = 0.0
+    oscillation_score: float = 0.0
+    volume_score: float = 0.0
+    consensus_score: float = 0.0
 
 
 @dataclass
@@ -58,6 +69,10 @@ class _StockSimulation:
     trade_performance: list[dict[str, Any]]
     buy_hold_cum: pd.Series
     bars_window: pd.DataFrame
+
+
+class BacktestCanceled(Exception):
+    """Raised when a cooperative backtest cancellation is requested."""
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
@@ -132,6 +147,7 @@ def _normalize_strategy_config(raw: dict[str, Any]) -> dict[str, Any]:
     logic = raw.get("logic") if isinstance(raw.get("logic"), dict) else {}
     risk = raw.get("risk") if isinstance(raw.get("risk"), dict) else {}
     bet = raw.get("bet_sizing") if isinstance(raw.get("bet_sizing"), dict) else {}
+    per_stock_raw = raw.get("per_stock") if isinstance(raw.get("per_stock"), dict) else {}
     if not bet:
         bet = logic.get("bet_sizing") if isinstance(logic.get("bet_sizing"), dict) else {}
     legacy_manual_ladder = bet if _is_legacy_ladder(bet) else None
@@ -167,6 +183,51 @@ def _normalize_strategy_config(raw: dict[str, Any]) -> dict[str, Any]:
                 if capital_mad > 0:
                     manual_overrides[str(symbol)] = capital_mad
 
+    per_stock: dict[str, Any] = {}
+    for symbol, value in per_stock_raw.items():
+        if not isinstance(value, dict):
+            continue
+        signal_override_raw = value.get("signal") if isinstance(value.get("signal"), dict) else {}
+        signal_construction_raw = value.get("signal_construction") if isinstance(value.get("signal_construction"), dict) else {}
+        risk_override_raw = value.get("risk") if isinstance(value.get("risk"), dict) else {}
+        per_stock[str(symbol).strip().upper()] = {
+            "signal": {
+                "enabled_families": [
+                    str(item).strip().lower()
+                    for item in list(
+                        signal_override_raw.get("enabled_families")
+                        or signal.get("enabled_families")
+                        or logic.get("enabled_families")
+                        or ["sma", "rsi", "macd", "obv"]
+                    )
+                    if str(item).strip()
+                ],
+            },
+            "signal_construction": signal_construction_raw,
+            "entry_rules": list(value.get("entry_rules") or []) if isinstance(value.get("entry_rules"), list) else [],
+            "exit_rules": list(value.get("exit_rules") or []) if isinstance(value.get("exit_rules"), list) else [],
+            "risk": {
+                "max_holding_bars": max(
+                    _safe_int(risk_override_raw.get("max_holding_bars"), _safe_int(risk.get("max_holding_bars"), 30)),
+                    0,
+                ),
+                "stop_atr_multiplier": _safe_float(
+                    risk_override_raw.get("stop_atr_multiplier"),
+                    _safe_float(risk.get("stop_atr_multiplier"), 1.5),
+                ),
+                "take_profit_rr": _safe_float(
+                    risk_override_raw.get("take_profit_rr"),
+                    _safe_float(risk.get("take_profit_rr"), 1.5),
+                ),
+                "time_stop_enabled": bool(
+                    risk_override_raw.get("time_stop_enabled", risk.get("time_stop_enabled", True))
+                ),
+                "trailing_stop_enabled": bool(
+                    risk_override_raw.get("trailing_stop_enabled", risk.get("trailing_stop_enabled", False))
+                ),
+            },
+        }
+
     return {
         "capital": {
             "total_capital_mad": max(_safe_float(capital.get("total_capital_mad"), 1_000_000.0), 0.0),
@@ -191,11 +252,11 @@ def _normalize_strategy_config(raw: dict[str, Any]) -> dict[str, Any]:
         "risk": {
             "max_holding_bars": max(_safe_int(risk.get("max_holding_bars"), 30), 0),
             "stop_atr_multiplier": _safe_float(risk.get("stop_atr_multiplier"), 1.5),
-            "stop_buffer_pct": _safe_float(risk.get("stop_buffer_pct"), 0.005),
             "take_profit_rr": _safe_float(risk.get("take_profit_rr"), 1.5),
             "time_stop_enabled": bool(risk.get("time_stop_enabled", True)),
             "trailing_stop_enabled": bool(risk.get("trailing_stop_enabled", False)),
         },
+        "per_stock": per_stock,
     }
 
 
@@ -233,42 +294,242 @@ def _compute_consensus_scores(
     *,
     symbol: str,
     ohlcv: pd.DataFrame,
+    stock_config: dict[str, Any] | None = None,
     enabled_families: list[str],
     horizon: str,
     timeframe: str,
     signal_cost_bps: float,
     cooldown_bars: int,
+    family_history_mode: FamilyHistoryMode = "static_current_reps",
 ) -> pd.Series:
-    close = ohlcv["Close"].astype(float).to_numpy(dtype="float64")
-    volume = ohlcv["Volume"].astype(float).to_numpy(dtype="float64") if "Volume" in ohlcv.columns else None
+    resolved_stock_config = (
+        stock_config
+        if isinstance(stock_config, dict) and stock_config
+        else build_stock_config_from_enabled_families(enabled_families)
+    )
+    frame = compute_strategy_score_frame(
+        stock_config=resolved_stock_config,
+        ohlcv=ohlcv,
+        symbol=symbol,
+        horizon=horizon,
+        timeframe=timeframe,
+        signal_cost_bps=signal_cost_bps,
+        cooldown_bars=cooldown_bars,
+        family_history_mode=family_history_mode,
+    )
+    return frame["consensus_score"].reindex(ohlcv.index).fillna(0.0).astype(float)
 
-    family_series: list[pd.Series] = []
-    for family in enabled_families:
-        if family == "obv" and volume is None:
+
+def _compute_score_frame(
+    *,
+    symbol: str,
+    ohlcv: pd.DataFrame,
+    stock_config: dict[str, Any] | None = None,
+    enabled_families: list[str],
+    horizon: str,
+    timeframe: str,
+    signal_cost_bps: float,
+    cooldown_bars: int,
+    family_history_mode: FamilyHistoryMode = "static_current_reps",
+) -> pd.DataFrame:
+    resolved_stock_config = (
+        stock_config
+        if isinstance(stock_config, dict) and stock_config
+        else build_stock_config_from_enabled_families(enabled_families)
+    )
+    return compute_strategy_score_frame(
+        stock_config=resolved_stock_config,
+        ohlcv=ohlcv,
+        symbol=symbol,
+        horizon=horizon,
+        timeframe=timeframe,
+        signal_cost_bps=signal_cost_bps,
+        cooldown_bars=cooldown_bars,
+        family_history_mode=family_history_mode,
+    )
+
+
+def _rule_threshold_value(value: Any, default: float = 0.0) -> float:
+    if isinstance(value, dict):
+        return _safe_float(value.get("value"), default)
+    return _safe_float(value, default)
+
+
+def _rule_param_value(value: Any, default: float = 0.0) -> float:
+    if isinstance(value, dict):
+        return _safe_float(value.get("value"), default)
+    return _safe_float(value, default)
+
+
+def _fraction_from_percent(value: Any, default: float = 0.0) -> float:
+    return max(0.0, min(1.0, _safe_float(value, default) / 100.0))
+
+
+def _rule_kelly_fraction(sizing: dict[str, Any]) -> float | None:
+    raw = sizing.get("execution_kelly_fraction")
+    value = _safe_float(raw, float("nan"))
+    if not math.isfinite(value) or value <= 0.0:
+        return None
+    return value
+
+
+def _entry_rule_fraction(rule: dict[str, Any]) -> float:
+    sizing = rule.get("sizing") if isinstance(rule.get("sizing"), dict) else {}
+    mode = str(sizing.get("mode") or "manual").strip().lower()
+    if mode == "wfo":
+        return _fraction_from_percent(_rule_param_value(sizing.get("size_pct"), sizing.get("manual_pct")), 0.0)
+    if mode == "kelly_wfo":
+        execution_kelly = _rule_kelly_fraction(sizing)
+        if execution_kelly is None:
+            return _fraction_from_percent(sizing.get("manual_pct"), 0.0)
+        modifier = max(0.0, _rule_param_value(sizing.get("kelly_modifier"), 0.5))
+        return max(0.0, min(1.0, execution_kelly * modifier))
+    return _fraction_from_percent(sizing.get("manual_pct"), 0.0)
+
+
+def _exit_rule_fraction(rule: dict[str, Any]) -> float:
+    sizing = rule.get("sizing") if isinstance(rule.get("sizing"), dict) else {}
+    mode = str(sizing.get("mode") or "manual").strip().lower()
+    if mode == "wfo":
+        return _fraction_from_percent(_rule_param_value(sizing.get("reduction_pct"), sizing.get("manual_pct")), 0.0)
+    if mode == "kelly_wfo":
+        execution_kelly = _rule_kelly_fraction(sizing)
+        if execution_kelly is None:
+            return _fraction_from_percent(sizing.get("manual_pct"), 0.0)
+        modifier = max(0.0, _rule_param_value(sizing.get("kelly_modifier"), 0.5))
+        return max(0.0, min(1.0, execution_kelly * modifier))
+    return _fraction_from_percent(sizing.get("manual_pct"), 0.0)
+
+
+def _condition_matches(snapshot: dict[str, float], condition: dict[str, Any]) -> bool:
+    variable = str(condition.get("variable") or "consensus_score")
+    operator = str(condition.get("operator") or ">=")
+    left = _safe_float(snapshot.get(variable), 0.0)
+    right = _rule_threshold_value(condition.get("threshold"), 0.0)
+    if operator == ">":
+        return left > right
+    if operator == ">=":
+        return left >= right
+    if operator == "<":
+        return left < right
+    if operator == "<=":
+        return left <= right
+    return False
+
+
+def _rule_triggered(snapshot: dict[str, float], rule: dict[str, Any]) -> bool:
+    conditions = [item for item in list(rule.get("conditions") or []) if isinstance(item, dict)]
+    if not conditions:
+        return False
+    return all(_condition_matches(snapshot, condition) for condition in conditions)
+
+
+def _rule_reference(rule: dict[str, Any], fallback: str) -> str:
+    option = str(rule.get("config_option") or "").strip().upper()
+    label = str(rule.get("label") or fallback).strip()
+    if option and label:
+        return f"{option} - {label}"
+    if option:
+        return option
+    if label:
+        return label
+    return fallback
+
+
+def _rule_trigger_display(
+    *,
+    side: str,
+    snapshot: dict[str, float],
+    risk_reason: str | None,
+    rule: dict[str, Any] | None,
+    close_t: float,
+    stop_loss: float | None,
+    take_profit: float | None,
+    holding_bars: int,
+    max_holding_bars: int,
+) -> str:
+    if risk_reason == "stop_loss":
+        comparator = "<=" if str(side).upper() == "BUY" else ">="
+        barrier = _safe_float(stop_loss, 0.0)
+        return f"SL ({close_t:.1f} {comparator} {barrier:.1f})"
+    if risk_reason == "take_profit":
+        comparator = ">=" if str(side).upper() == "BUY" else "<="
+        barrier = _safe_float(take_profit, 0.0)
+        return f"TP ({close_t:.1f} {comparator} {barrier:.1f})"
+    if risk_reason == "time_stop":
+        return f"TS ({max(holding_bars, max_holding_bars)} bars)"
+    if not rule:
+        return ""
+
+    option = str(rule.get("config_option") or "").strip().upper()
+    letter = option or str(rule.get("label") or "").strip()
+    prefix = "Entry" if str(side).upper() == "BUY" else "Exit"
+    conditions = [item for item in list(rule.get("conditions") or []) if isinstance(item, dict)]
+    if not conditions:
+        return f"{prefix} {letter}".strip()
+    variable = str(conditions[0].get("variable") or "").strip()
+    value = _safe_float(snapshot.get(variable), float("nan"))
+    if math.isfinite(value):
+        return f"{prefix} {letter} ({value:.1f})"
+    return f"{prefix} {letter}".strip()
+
+
+def _entry_target_fraction(
+    *,
+    snapshot: dict[str, float],
+    entry_rules: list[dict[str, Any]],
+    previous_fraction: float,
+    side_policy: str,
+    max_fraction: float,
+) -> tuple[float, dict[str, Any] | None]:
+    if not entry_rules:
+        return previous_fraction, None
+    triggered: list[dict[str, Any]] = [rule for rule in entry_rules if _rule_triggered(snapshot, rule)]
+    if not triggered:
+        return previous_fraction, None
+
+    desired_fraction = min(
+        max_fraction,
+        sum(
+            max(0.0, _entry_rule_fraction(rule))
+            for rule in triggered
+            if isinstance(rule, dict)
+        ),
+    )
+    if desired_fraction <= 0:
+        return previous_fraction, None
+
+    direction = 1.0
+    consensus_score = snapshot.get("consensus_score", 0.0)
+    if side_policy == "long_short" and consensus_score < 0:
+        direction = -1.0
+    target = direction * max(abs(previous_fraction), desired_fraction)
+    return target, triggered[-1]
+
+
+def _apply_exit_rules(
+    *,
+    snapshot: dict[str, float],
+    exit_rules: list[dict[str, Any]],
+    target_fraction: float,
+) -> tuple[float, dict[str, Any] | None]:
+    if not exit_rules or target_fraction == 0.0:
+        return target_fraction, None
+    remaining = abs(target_fraction)
+    direction = math.copysign(1.0, target_fraction)
+    triggered_rule: dict[str, Any] | None = None
+    for rule in exit_rules:
+        if not isinstance(rule, dict) or not _rule_triggered(snapshot, rule):
             continue
-        detail = run_family_ensemble_full(
-            family,
-            close,
-            volume=volume,
-            symbol=symbol,
-            horizon=horizon,
-            timeframe=timeframe,
-            cost_bps=signal_cost_bps,
-            cooldown_bars=cooldown_bars,
-        )
-        score_arr = compute_family_score_timeseries(
-            detail,
-            close,
-            volume=volume,
-            cooldown_bars=cooldown_bars,
-        )
-        family_series.append(pd.Series(score_arr, index=ohlcv.index, name=family))
-
-    if not family_series:
-        return pd.Series(0.0, index=ohlcv.index, dtype="float64")
-
-    scores = pd.concat(family_series, axis=1).astype(float)
-    return scores.mean(axis=1).fillna(0.0)
+        reduction = _exit_rule_fraction(rule)
+        remaining *= max(0.0, 1.0 - reduction)
+        triggered_rule = rule
+        if remaining <= 1e-9:
+            remaining = 0.0
+            break
+    if triggered_rule is None:
+        return target_fraction, None
+    return direction * remaining, triggered_rule
 
 
 def _compute_atr_series(ohlcv: pd.DataFrame, window: int = 14) -> pd.Series:
@@ -461,7 +722,10 @@ def _derive_calibrated_bet_sizing(
     risk: dict[str, Any],
     signal_cost_bps: float,
     cooldown_bars: int,
+    family_history_mode: FamilyHistoryMode,
     bet_sizing_config: dict[str, Any],
+    per_stock: dict[str, Any] | None = None,
+    cancel_check: Callable[[], bool] | None = None,
 ) -> dict[str, Any]:
     lookback_bars = max(_safe_int(bet_sizing_config.get("calibration_lookback_bars"), 756), 60)
     min_observations = max(_safe_int(bet_sizing_config.get("min_observations"), 200), 1)
@@ -474,6 +738,8 @@ def _derive_calibrated_bet_sizing(
     window_end: str | None = None
 
     for symbol in basket:
+        if cancel_check is not None and cancel_check():
+            raise BacktestCanceled("Strategy backtest canceled by user.")
         full_bars = bars_by_symbol[symbol].copy().sort_index()
         full_bars.index = pd.to_datetime(full_bars.index)
         aligned_start_ts = _align_timestamp_to_index(start_ts, full_bars.index)
@@ -490,14 +756,20 @@ def _derive_calibrated_bet_sizing(
         if window_end is None or pre_bars.index.max().isoformat() > window_end:
             window_end = pre_bars.index.max().date().isoformat()
 
+        stock_overrides = (per_stock or {}).get(symbol, {}) if isinstance((per_stock or {}).get(symbol, {}), dict) else {}
+        stock_signal = stock_overrides.get("signal") if isinstance(stock_overrides.get("signal"), dict) else {}
+        stock_signal_construction = stock_overrides.get("signal_construction") if isinstance(stock_overrides.get("signal_construction"), dict) else {}
+        stock_risk = stock_overrides.get("risk") if isinstance(stock_overrides.get("risk"), dict) else {}
         scores = _compute_consensus_scores(
             symbol=symbol,
             ohlcv=pre_bars,
-            enabled_families=enabled_families,
+            stock_config={"signal_construction": stock_signal_construction} if stock_signal_construction else None,
+            enabled_families=list(stock_signal.get("enabled_families") or enabled_families),
             horizon=horizon,
             timeframe=timeframe,
             signal_cost_bps=signal_cost_bps,
             cooldown_bars=cooldown_bars,
+            family_history_mode=family_history_mode,
         ).reindex(pre_bars.index).fillna(0.0).astype(float)
         atr_series = _compute_atr_series(pre_bars)
 
@@ -514,7 +786,7 @@ def _derive_calibrated_bet_sizing(
                 atr_series=atr_series,
                 observation_index=i,
                 side=side,
-                risk=risk,
+                risk=stock_risk if stock_risk else risk,
                 cost_model=cost_model,
             )
             if observation is None:
@@ -757,10 +1029,8 @@ def _build_barriers(
     if position == 0 or avg_entry_price <= 0:
         return None, None
     stop_mult = max(_safe_float(risk.get("stop_atr_multiplier"), 1.5), 0.0)
-    stop_buffer_pct = max(_safe_float(risk.get("stop_buffer_pct"), 0.005), 0.0)
     take_profit_rr = max(_safe_float(risk.get("take_profit_rr"), 1.5), 0.0)
-    stop_distance = atr * stop_mult + (avg_entry_price * stop_buffer_pct)
-    stop_distance = max(stop_distance, avg_entry_price * 0.0025)
+    stop_distance = atr * stop_mult
     if position > 0:
         stop_loss = avg_entry_price - stop_distance
         take_profit = avg_entry_price + stop_distance * take_profit_rr
@@ -791,11 +1061,18 @@ def _volume_gate_allows(
 def _trade_reason(
     *,
     risk_reason: str | None,
+    rule_reason: str | None,
     target_fraction: float,
     previous_fraction: float,
 ) -> str:
     if risk_reason:
         return risk_reason
+    if rule_reason and previous_fraction == 0.0 and target_fraction != 0.0:
+        return f"entry_rule:{rule_reason}"
+    if rule_reason and previous_fraction != 0.0 and abs(target_fraction) < abs(previous_fraction):
+        return f"exit_rule:{rule_reason}"
+    if rule_reason and abs(target_fraction) > abs(previous_fraction):
+        return f"entry_rule:{rule_reason}"
     if previous_fraction == 0.0 and target_fraction != 0.0:
         return "signal_entry"
     if previous_fraction != 0.0 and target_fraction == 0.0:
@@ -853,6 +1130,7 @@ def _make_price_trade_figure(
                         row.get("prix_execution_open_jour"),
                         row.get("signal_score"),
                         row.get("cost"),
+                        row.get("trigger_display"),
                     ]
                     for row in rows
                 ],
@@ -862,6 +1140,7 @@ def _make_price_trade_figure(
                     "<br>Price=%{customdata[1]:,.2f}"
                     "<br>Signal=%{customdata[2]:.1f}"
                     "<br>Cost=%{customdata[3]:,.2f}"
+                    "<br>Trigger=%{customdata[4]}"
                     "<extra></extra>"
                 ),
             )
@@ -885,9 +1164,12 @@ def _simulate_stock(
     symbol: str,
     bars: pd.DataFrame,
     score_series: pd.Series,
+    score_frame: pd.DataFrame | None,
     allocated_capital: float,
     side_policy: str,
     exposure_ladder: list[dict[str, Any]],
+    entry_rules: list[dict[str, Any]] | None,
+    exit_rules: list[dict[str, Any]] | None,
     risk: dict[str, Any],
     cost_model: CostModel,
     cooldown_bars: int,
@@ -915,6 +1197,13 @@ def _simulate_stock(
     adv_window = max(_safe_int(volume_gate.get("adv_window"), 20), 1)
     adv20 = volume_series.rolling(adv_window, min_periods=1).mean()
     scores = score_series.reindex(window.index).fillna(0.0).astype(float)
+    snapshots = (
+        score_frame.reindex(window.index).fillna(0.0).astype(float)
+        if isinstance(score_frame, pd.DataFrame)
+        else pd.DataFrame({"consensus_score": scores}, index=window.index)
+    )
+    max_fraction = min(1.0, max(_safe_float(risk.get("max_position_pct"), 100.0), 0.0) / 100.0)
+    has_rule_logic = bool(entry_rules or exit_rules)
 
     cash = float(allocated_capital)
     position = 0
@@ -935,13 +1224,25 @@ def _simulate_stock(
         t1 = pd.Timestamp(window.index[i + 1])
         close_t = _safe_float(window["Close"].iloc[i])
         close_t1 = _safe_float(window["Close"].iloc[i + 1])
-        open_t1 = _safe_float(window["Open"].iloc[i + 1], close_t1)
+        open_t1 = _safe_float(window["Open"].iloc[i + 1], 0.0)
         volume_t1 = _safe_float(volume_series.iloc[i + 1], 0.0)
         adv_t1 = _safe_float(adv20.iloc[i + 1], 0.0)
         atr_t = _safe_float(atr_series.iloc[i], 0.0)
         score_t = _safe_float(scores.iloc[i], 0.0)
+        snapshot = {
+            "trend_score": _safe_float(snapshots["trend_score"].iloc[i], 0.0) if "trend_score" in snapshots.columns else 0.0,
+            "momentum_score": _safe_float(snapshots["momentum_score"].iloc[i], 0.0) if "momentum_score" in snapshots.columns else 0.0,
+            "oscillation_score": _safe_float(snapshots["oscillation_score"].iloc[i], 0.0) if "oscillation_score" in snapshots.columns else 0.0,
+            "volume_score": _safe_float(snapshots["volume_score"].iloc[i], 0.0) if "volume_score" in snapshots.columns else 0.0,
+            "consensus_score": _safe_float(snapshots["consensus_score"].iloc[i], score_t),
+        }
 
         risk_reason: str | None = None
+        rule_reason: str | None = None
+        entry_rule_ref: str | None = None
+        exit_rule_ref: str | None = None
+        entry_rule_match: dict[str, Any] | None = None
+        exit_rule_match: dict[str, Any] | None = None
         if position != 0:
             if position > 0:
                 if stop_loss is not None and close_t <= stop_loss:
@@ -961,11 +1262,30 @@ def _simulate_stock(
             ):
                 risk_reason = "time_stop"
 
-        target_fraction = _bucket_target_fraction(
-            score_t,
-            side_policy=side_policy,
-            exposure_ladder=exposure_ladder,
-        )
+        if has_rule_logic:
+            target_fraction, entry_match = _entry_target_fraction(
+                snapshot=snapshot,
+                entry_rules=[rule for rule in list(entry_rules or []) if isinstance(rule, dict)],
+                previous_fraction=previous_fraction,
+                side_policy=side_policy,
+                max_fraction=max_fraction,
+            )
+            target_fraction, exit_match = _apply_exit_rules(
+                snapshot=snapshot,
+                exit_rules=[rule for rule in list(exit_rules or []) if isinstance(rule, dict)],
+                target_fraction=target_fraction,
+            )
+            entry_rule_match = entry_match
+            exit_rule_match = exit_match
+            entry_rule_ref = _rule_reference(entry_match, "entry_rule") if isinstance(entry_match, dict) else None
+            exit_rule_ref = _rule_reference(exit_match, "exit_rule") if isinstance(exit_match, dict) else None
+            rule_reason = exit_rule_ref or entry_rule_ref
+        else:
+            target_fraction = _bucket_target_fraction(
+                score_t,
+                side_policy=side_policy,
+                exposure_ladder=exposure_ladder,
+            )
         if risk_reason:
             target_fraction = 0.0
 
@@ -982,6 +1302,11 @@ def _simulate_stock(
             target_shares = 0
 
         delta = target_shares - position
+        if delta != 0 and (open_t1 <= 0.0 or close_t1 <= 0.0 or volume_t1 <= 0.0):
+            delta = 0
+            target_shares = position
+            target_fraction = previous_fraction
+
         if delta != 0 and abs(target_shares) > abs(position):
             if not _volume_gate_allows(
                 enabled=bool(volume_gate.get("enabled", False)),
@@ -1096,9 +1421,33 @@ def _simulate_stock(
                 position_value_cost=float(abs(position) * avg_entry_price),
                 reason=_trade_reason(
                     risk_reason=risk_reason,
+                    rule_reason=rule_reason,
                     target_fraction=target_fraction,
                     previous_fraction=previous_fraction,
                 ),
+                entry_rule=entry_rule_ref or "",
+                exit_rule=(
+                    "SL" if risk_reason == "stop_loss"
+                    else "TP" if risk_reason == "take_profit"
+                    else "TS" if risk_reason == "time_stop"
+                    else (exit_rule_ref or "")
+                ),
+                trigger_display=_rule_trigger_display(
+                    side=side,
+                    snapshot=snapshot,
+                    risk_reason=risk_reason,
+                    rule=entry_rule_match if side == "BUY" else exit_rule_match,
+                    close_t=close_t,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                    holding_bars=holding_bars,
+                    max_holding_bars=_safe_int(risk.get("max_holding_bars"), 0),
+                ),
+                trend_score=snapshot.get("trend_score", 0.0),
+                momentum_score=snapshot.get("momentum_score", 0.0),
+                oscillation_score=snapshot.get("oscillation_score", 0.0),
+                volume_score=snapshot.get("volume_score", 0.0),
+                consensus_score=snapshot.get("consensus_score", score_t),
             )
             fills.append(
                 {
@@ -1111,6 +1460,14 @@ def _simulate_stock(
                     "cost": fill.cost,
                     "signal_score": fill.signal_score,
                     "reason": fill.reason,
+                    "entry_rule": fill.entry_rule,
+                    "exit_rule": fill.exit_rule,
+                    "trigger_display": fill.trigger_display,
+                    "trend_score": fill.trend_score,
+                    "momentum_score": fill.momentum_score,
+                    "oscillation_score": fill.oscillation_score,
+                    "volume_score": fill.volume_score,
+                    "consensus_score": fill.consensus_score,
                 }
             )
             ledger_rows.append(
@@ -1130,6 +1487,14 @@ def _simulate_stock(
                     "cost": round(fill.cost, 4),
                     "signal_score": round(fill.signal_score, 2),
                     "reason": fill.reason,
+                    "entry_rule": fill.entry_rule,
+                    "exit_rule": fill.exit_rule,
+                    "trigger_display": fill.trigger_display,
+                    "trend_score": round(fill.trend_score, 2),
+                    "momentum_score": round(fill.momentum_score, 2),
+                    "oscillation_score": round(fill.oscillation_score, 2),
+                    "volume_score": round(fill.volume_score, 2),
+                    "consensus_score": round(fill.consensus_score, 2),
                 }
             )
 
@@ -1214,9 +1579,23 @@ def run_strategy_plan_backtest(
     cost_model_raw: dict[str, Any],
     volume_gate: dict[str, Any],
     cooldown_bars: int,
+    family_history_mode: FamilyHistoryMode = "static_current_reps",
+    cancel_check: Callable[[], bool] | None = None,
 ) -> dict[str, Any]:
+    def _raise_if_canceled() -> None:
+        if cancel_check is not None and cancel_check():
+            raise BacktestCanceled("Strategy backtest canceled by user.")
+
     config = _normalize_strategy_config(config_json or {})
-    basket = [symbol for symbol in config["universe"]["basket"] if symbol in bars_by_symbol]
+    bars_by_symbol = {
+        symbol: drop_incomplete_ohlcv_rows(frame)
+        for symbol, frame in (bars_by_symbol or {}).items()
+    }
+    basket = [
+        symbol
+        for symbol in config["universe"]["basket"]
+        if symbol in bars_by_symbol and not bars_by_symbol[symbol].empty
+    ]
     if not basket:
         raise ValueError("Selected strategy has no basket symbols with market data.")
 
@@ -1240,7 +1619,10 @@ def run_strategy_plan_backtest(
         risk=config["risk"],
         signal_cost_bps=signal_cost_bps,
         cooldown_bars=cooldown_bars,
+        family_history_mode=family_history_mode,
         bet_sizing_config=config["bet_sizing"],
+        per_stock=config.get("per_stock"),
+        cancel_check=cancel_check,
     )
     exposure_ladder = list(calibration.get("ladder") or _default_fallback_ladder())
 
@@ -1266,6 +1648,7 @@ def run_strategy_plan_backtest(
     stocks: list[_StockSimulation] = []
     skipped_symbols: list[str] = []
     for symbol in basket:
+        _raise_if_canceled()
         bars = bars_by_symbol[symbol].copy().sort_index()
         bars.index = pd.to_datetime(bars.index)
         aligned_start_ts = _align_timestamp_to_index(start_ts, bars.index)
@@ -1278,24 +1661,34 @@ def run_strategy_plan_backtest(
         full_bars = bars_by_symbol[symbol].copy().sort_index()
         full_bars.index = pd.to_datetime(full_bars.index)
         full_bars = full_bars.loc[full_bars.index <= _align_timestamp_to_index(end_ts, full_bars.index)]
-        scores = _compute_consensus_scores(
+        stock_overrides = config.get("per_stock", {}).get(symbol, {}) if isinstance(config.get("per_stock"), dict) else {}
+        stock_signal = stock_overrides.get("signal") if isinstance(stock_overrides.get("signal"), dict) else {}
+        stock_signal_construction = stock_overrides.get("signal_construction") if isinstance(stock_overrides.get("signal_construction"), dict) else {}
+        stock_risk = stock_overrides.get("risk") if isinstance(stock_overrides.get("risk"), dict) else {}
+        score_frame = _compute_score_frame(
             symbol=symbol,
             ohlcv=full_bars,
-            enabled_families=config["signal"]["enabled_families"],
+            stock_config={"signal_construction": stock_signal_construction} if stock_signal_construction else None,
+            enabled_families=list(stock_signal.get("enabled_families") or config["signal"]["enabled_families"]),
             horizon=horizon,
             timeframe=timeframe,
             signal_cost_bps=signal_cost_bps,
             cooldown_bars=cooldown_bars,
+            family_history_mode=family_history_mode,
         )
+        scores = score_frame["consensus_score"]
 
         stock_sim = _simulate_stock(
             symbol=symbol,
             bars=bars,
             score_series=scores,
+            score_frame=score_frame,
             allocated_capital=allocation_by_symbol.get(symbol, 0.0),
             side_policy=side_policy,
             exposure_ladder=exposure_ladder,
-            risk=config["risk"],
+            entry_rules=stock_overrides.get("entry_rules") if isinstance(stock_overrides.get("entry_rules"), list) else [],
+            exit_rules=stock_overrides.get("exit_rules") if isinstance(stock_overrides.get("exit_rules"), list) else [],
+            risk=stock_risk if stock_risk else config["risk"],
             cost_model=cost_model,
             cooldown_bars=max(int(cooldown_bars), 0),
             volume_gate=volume_gate,
@@ -1336,6 +1729,7 @@ def run_strategy_plan_backtest(
     trade_performance = analyzer._trade_performance_summary(trade_ledger)
     drawdown = analyzer._drawdown_from_equity(portfolio_equity)
     monthly = analyzer._monthly_return_matrix(portfolio_returns)
+    yearly = analyzer._yearly_returns(portfolio_returns)
     headline = analyzer._headline_metrics(portfolio_returns, drawdown, None)
     perf_records = _frame_to_metric_records(trade_performance)
     perf_map = {str(row["metric"]): row["value"] for row in perf_records}
@@ -1374,12 +1768,16 @@ def run_strategy_plan_backtest(
             "monthly_heatmap": _normalize_plotly_payload(
                 make_monthly_heatmap_plot(monthly).to_plotly_json(),
             ) if not monthly.empty else {"data": [], "layout": {}},
+            "yearly_barplot": _normalize_plotly_payload(
+                make_yearly_return_bar_plot(yearly).to_plotly_json(),
+            ) if not yearly.empty else {"data": [], "layout": {}},
         },
     }
 
     stock_payloads: list[dict[str, Any]] = []
     for sim in stocks:
         allocation_row = next((row for row in allocation_rows if row["symbol"] == sim.symbol), None)
+        stock_cum = sim.equity / float(sim.equity.iloc[0]) - 1.0 if len(sim.equity) > 0 and sim.equity.iloc[0] != 0 else sim.equity * 0.0
         stock_payloads.append(
             {
                 "symbol": sim.symbol,
@@ -1389,6 +1787,9 @@ def run_strategy_plan_backtest(
                     bars_window=sim.bars_window,
                     ledger_rows=sim.per_fill_ledger,
                     symbol=sim.symbol,
+                ),
+                "cumreturn_vs_benchmark": _normalize_plotly_payload(
+                    make_cumreturn_vs_benchmark_plot(stock_cum, sim.buy_hold_cum).to_plotly_json(),
                 ),
                 "trade_ledger": sim.per_fill_ledger,
                 "trade_performance": sim.trade_performance,
@@ -1433,6 +1834,7 @@ def run_strategy_plan_backtest(
                 "adv_window": _safe_int(volume_gate.get("adv_window"), 20),
             },
             "cooldown_bars": int(cooldown_bars),
+            "family_history_mode": str(family_history_mode),
             "benchmark": "initial allocated basket buy-and-hold",
             "skipped_symbols": skipped_symbols,
             "bet_sizing_mode": str(config["bet_sizing"].get("mode", "auto_calibrated")),

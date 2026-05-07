@@ -5,8 +5,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from quant_core.engine import DataConfig, _MARKET_DATA_CACHE, load_marketdata  # noqa: E402
-from quant_core.optimize import ParamDef, _iter_random, _trial_params_key  # noqa: E402
+from core.quant_core.engine import DataConfig, _MARKET_DATA_CACHE, load_marketdata  # noqa: E402
+from core.quant_core.optimize import ParamDef, _iter_random, _trial_params_key  # noqa: E402
 
 
 def test_iter_random_deduplicates_trials() -> None:

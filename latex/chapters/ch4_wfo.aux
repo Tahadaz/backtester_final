@@ -1,0 +1,214 @@
+\relax 
+\providecommand\zref@newlabel[2]{}
+\providecommand\hyper@newdestlabel[2]{}
+\@writefile{toc}{\contentsline {chapter}{\numberline {4}Moteur de Backtest par Walk-Forward Analysis}{44}{chapter.232}\protected@file@percent }
+\@writefile{lof}{\addvspace {10\p@ }}
+\@writefile{lot}{\addvspace {10\p@ }}
+\newlabel{ch:wfo}{{4}{44}{Moteur de Backtest par Walk-Forward Analysis}{chapter.232}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4.1}Pourquoi la Walk-Forward Analysis~?}{44}{section.233}\protected@file@percent }
+\newlabel{sec:pourquoi_wfa}{{4.1}{44}{Pourquoi la Walk-Forward Analysis~?}{section.233}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1.1}Le problème central du backtesting classique}{44}{subsection.234}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1.2}La WFA comme simulation réaliste}{44}{subsection.235}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1.3}Motivation pratique — Semaine 3}{45}{subsection.240}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4.2}La Fonction Objectif PROM}{45}{section.241}\protected@file@percent }
+\newlabel{sec:prom}{{4.2}{45}{La Fonction Objectif PROM}{section.241}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2.1}Pourquoi pas le net profit~?}{45}{subsection.242}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2.2}Définition formelle du PROM}{45}{subsection.243}\protected@file@percent }
+\newlabel{eq:prom}{{4.1}{45}{Définition formelle du PROM}{equation.244}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {4.1}{\ignorespaces \xpg@aux {}{french}\ignorespaces Comparaison des fonctions objectif sur un exemple MASI (données illustratives)}}{46}{table.245}\protected@file@percent }
+\newlabel{tab:objectif_compare}{{4.1}{46}{\texorpdfstring {\xpg@aux {\xpg@current@opts }{\languagename }}{}\ignorespaces Comparaison des fonctions objectif sur un exemple MASI (données illustratives)}{table.245}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4.3}Le Pipeline WFO Complet}{46}{section.246}\protected@file@percent }
+\newlabel{sec:pipeline_wfo}{{4.3}{46}{Le Pipeline WFO Complet}{section.246}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3.1}Vue d'ensemble}{46}{subsection.247}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4.1}{\ignorespaces \xpg@aux {}{french}\ignorespaces Pipeline complet de la Walk-Forward Analysis. La période test finale (en rouge) est exclue de tout processus d'optimisation.}}{47}{figure.254}\protected@file@percent }
+\newlabel{fig:wfo_pipeline}{{4.1}{47}{\texorpdfstring {\xpg@aux {\xpg@current@opts }{\languagename }}{}\ignorespaces Pipeline complet de la Walk-Forward Analysis. La période test finale (en rouge) est exclue de tout processus d'optimisation}{figure.254}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3.2}Step 1 --- Génération des Variantes}{47}{subsection.255}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {4.2}{\ignorespaces \xpg@aux {}{french}\ignorespaces Calibration des pas de scan selon la taille du range (Pardo, Ch.~10)}}{47}{table.256}\protected@file@percent }
+\newlabel{tab:scan_steps}{{4.2}{47}{\texorpdfstring {\xpg@aux {\xpg@current@opts }{\languagename }}{}\ignorespaces Calibration des pas de scan selon la taille du range (Pardo, Ch.~10)}{table.256}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {4.3}{\ignorespaces \xpg@aux {}{french}\ignorespaces Plages de paramètres par horizon temporal}}{48}{table.257}\protected@file@percent }
+\newlabel{tab:params_horizons}{{4.3}{48}{\texorpdfstring {\xpg@aux {\xpg@current@opts }{\languagename }}{}\ignorespaces Plages de paramètres par horizon temporal}{table.257}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3.3}Steps 2 et 3 --- Optimisation IS et Neighbor Averaging}{48}{subsection.258}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3.4}Steps 4 à 6 --- Rolling OOS et Agrégation}{48}{subsection.259}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3.5}Step 7 --- Critère d'Acceptation WFE}{48}{subsection.260}\protected@file@percent }
+\newlabel{eq:wfe}{{4.2}{48}{Step 7 --- Critère d'Acceptation WFE}{equation.261}{}}
+\newlabel{eq:wfe_critere}{{4.3}{48}{Step 7 --- Critère d'Acceptation WFE}{equation.262}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {4.2}{\ignorespaces \xpg@aux {}{french}\ignorespaces Barplot du WFE par action pour un exemple de portefeuille MASI. Ligne horizontale rouge à WFE $= 50\,\%$. Actions acceptées (vert) vs rejetées (rouge).}}{49}{figure.263}\protected@file@percent }
+\newlabel{fig:wfe_barplot}{{4.2}{49}{\texorpdfstring {\xpg@aux {\xpg@current@opts }{\languagename }}{}\ignorespaces Barplot du WFE par action pour un exemple de portefeuille MASI. Ligne horizontale rouge à WFE $= 50\,\%$. Actions acceptées (vert) vs rejetées (rouge)}{figure.263}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3.6}Steps 8 et 9 --- Paramètres Finaux et Période Test}{49}{subsection.264}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4.4}Validation Statistique}{49}{section.265}\protected@file@percent }
+\newlabel{sec:validation_stat}{{4.4}{49}{Validation Statistique}{section.265}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4.1}Deflated Sharpe Ratio}{49}{subsection.266}\protected@file@percent }
+\newlabel{eq:dsr}{{4.4}{49}{Deflated Sharpe Ratio}{equation.267}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4.2}Validation par Monte Carlo}{49}{subsection.268}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4.3}{\ignorespaces \xpg@aux {}{french}\ignorespaces Distribution des Sharpe ratios Monte Carlo (10\,000 simulations bootstrap) pour la stratégie gagnante sur IAM. Ligne rouge : Sharpe OOS observé. Zone grise : zone de non-significativité. p-value affichée.}}{50}{figure.269}\protected@file@percent }
+\newlabel{fig:montecarlo_dist}{{4.3}{50}{\texorpdfstring {\xpg@aux {\xpg@current@opts }{\languagename }}{}\ignorespaces Distribution des Sharpe ratios Monte Carlo (10\,000 simulations bootstrap) pour la stratégie gagnante sur IAM. Ligne rouge : Sharpe OOS observé. Zone grise : zone de non-significativité. p-value affichée}{figure.269}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4.3}Kelly Sizing depuis les Trades OOS}{50}{subsection.270}\protected@file@percent }
+\newlabel{eq:kelly}{{4.5}{50}{Kelly Sizing depuis les Trades OOS}{equation.271}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4.5}Optimisations Techniques}{50}{section.272}\protected@file@percent }
+\newlabel{sec:optim_perf}{{4.5}{50}{Optimisations Techniques}{section.272}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.5.1}Le goulot d'étranglement}{50}{subsection.273}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.5.2}Kernel Numba JIT}{50}{subsection.274}\protected@file@percent }
+\newlabel{lst:numba_kernel}{{4.1}{50}{Kernel Numba JIT pour le calcul de métriques par trial}{lstlisting.275}{}}
+\@writefile{lol}{\contentsline {lstlisting}{\numberline {4.1}Kernel Numba JIT pour le calcul de métriques par trial}{50}{lstlisting.275}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.5.3}Hoisting de l'Indicateur Bank}{51}{subsection.288}\protected@file@percent }
+\newlabel{lst:hoisting}{{4.2}{51}{Hoisting de l'indicateur bank avant la boucle de trials}{lstlisting.289}{}}
+\@writefile{lol}{\contentsline {lstlisting}{\numberline {4.2}Hoisting de l'indicateur bank avant la boucle de trials}{51}{lstlisting.289}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.5.4}Résultats de l'Optimisation}{52}{subsection.303}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {4.4}{\ignorespaces \xpg@aux {}{french}\ignorespaces Benchmarks avant/après optimisation technique (IAM, 1000 trials, machine de référence)}}{52}{table.304}\protected@file@percent }
+\newlabel{tab:benchmarks}{{4.4}{52}{\texorpdfstring {\xpg@aux {\xpg@current@opts }{\languagename }}{}\ignorespaces Benchmarks avant/après optimisation technique (IAM, 1000 trials, machine de référence)}{table.304}{}}
+\@setckpt{chapters/ch4_wfo}{
+\setcounter{page}{53}
+\setcounter{equation}{5}
+\setcounter{enumi}{6}
+\setcounter{enumii}{0}
+\setcounter{enumiii}{0}
+\setcounter{enumiv}{0}
+\setcounter{footnote}{0}
+\setcounter{mpfootnote}{0}
+\setcounter{part}{0}
+\setcounter{chapter}{4}
+\setcounter{section}{5}
+\setcounter{subsection}{4}
+\setcounter{subsubsection}{0}
+\setcounter{paragraph}{0}
+\setcounter{subparagraph}{0}
+\setcounter{figure}{3}
+\setcounter{table}{4}
+\setcounter{footdir@label}{0}
+\setcounter{tmpA}{0}
+\setcounter{tmpB}{0}
+\setcounter{tmpC}{0}
+\setcounter{tmpD}{0}
+\setcounter{tmpE}{0}
+\setcounter{tmpF}{0}
+\setcounter{Hijriday}{0}
+\setcounter{Hijrimonth}{0}
+\setcounter{Hijriyear}{0}
+\setcounter{float@type}{8}
+\setcounter{LT@tables}{2}
+\setcounter{LT@chunks}{4}
+\setcounter{parentequation}{0}
+\setcounter{lofdepth}{1}
+\setcounter{lotdepth}{1}
+\setcounter{lstnumber}{14}
+\setcounter{section@level}{0}
+\setcounter{Item}{53}
+\setcounter{Hfootnote}{0}
+\setcounter{Hy@AnnotLevel}{0}
+\setcounter{bookmark@seq@number}{125}
+\setcounter{tabx@nest}{0}
+\setcounter{listtotal}{0}
+\setcounter{listcount}{0}
+\setcounter{liststart}{0}
+\setcounter{liststop}{0}
+\setcounter{citecount}{0}
+\setcounter{citetotal}{0}
+\setcounter{multicitecount}{0}
+\setcounter{multicitetotal}{0}
+\setcounter{instcount}{0}
+\setcounter{maxnames}{3}
+\setcounter{minnames}{1}
+\setcounter{maxitems}{3}
+\setcounter{minitems}{1}
+\setcounter{citecounter}{0}
+\setcounter{maxcitecounter}{0}
+\setcounter{savedcitecounter}{0}
+\setcounter{uniquelist}{0}
+\setcounter{uniquename}{0}
+\setcounter{refsection}{0}
+\setcounter{refsegment}{0}
+\setcounter{maxextratitle}{0}
+\setcounter{maxextratitleyear}{0}
+\setcounter{maxextraname}{0}
+\setcounter{maxextradate}{0}
+\setcounter{maxextraalpha}{0}
+\setcounter{abbrvpenalty}{50}
+\setcounter{highnamepenalty}{50}
+\setcounter{lownamepenalty}{25}
+\setcounter{maxparens}{3}
+\setcounter{parenlevel}{0}
+\setcounter{blx@maxsection}{0}
+\setcounter{mincomprange}{10}
+\setcounter{maxcomprange}{100000}
+\setcounter{mincompwidth}{1}
+\setcounter{afterword}{0}
+\setcounter{savedafterword}{0}
+\setcounter{annotator}{0}
+\setcounter{savedannotator}{0}
+\setcounter{author}{0}
+\setcounter{savedauthor}{0}
+\setcounter{bookauthor}{0}
+\setcounter{savedbookauthor}{0}
+\setcounter{commentator}{0}
+\setcounter{savedcommentator}{0}
+\setcounter{editor}{0}
+\setcounter{savededitor}{0}
+\setcounter{editora}{0}
+\setcounter{savededitora}{0}
+\setcounter{editorb}{0}
+\setcounter{savededitorb}{0}
+\setcounter{editorc}{0}
+\setcounter{savededitorc}{0}
+\setcounter{foreword}{0}
+\setcounter{savedforeword}{0}
+\setcounter{holder}{0}
+\setcounter{savedholder}{0}
+\setcounter{introduction}{0}
+\setcounter{savedintroduction}{0}
+\setcounter{namea}{0}
+\setcounter{savednamea}{0}
+\setcounter{nameb}{0}
+\setcounter{savednameb}{0}
+\setcounter{namec}{0}
+\setcounter{savednamec}{0}
+\setcounter{translator}{0}
+\setcounter{savedtranslator}{0}
+\setcounter{shortauthor}{0}
+\setcounter{savedshortauthor}{0}
+\setcounter{shorteditor}{0}
+\setcounter{savedshorteditor}{0}
+\setcounter{labelname}{0}
+\setcounter{savedlabelname}{0}
+\setcounter{institution}{0}
+\setcounter{savedinstitution}{0}
+\setcounter{lista}{0}
+\setcounter{savedlista}{0}
+\setcounter{listb}{0}
+\setcounter{savedlistb}{0}
+\setcounter{listc}{0}
+\setcounter{savedlistc}{0}
+\setcounter{listd}{0}
+\setcounter{savedlistd}{0}
+\setcounter{liste}{0}
+\setcounter{savedliste}{0}
+\setcounter{listf}{0}
+\setcounter{savedlistf}{0}
+\setcounter{location}{0}
+\setcounter{savedlocation}{0}
+\setcounter{organization}{0}
+\setcounter{savedorganization}{0}
+\setcounter{origlocation}{0}
+\setcounter{savedoriglocation}{0}
+\setcounter{origpublisher}{0}
+\setcounter{savedorigpublisher}{0}
+\setcounter{publisher}{0}
+\setcounter{savedpublisher}{0}
+\setcounter{language}{0}
+\setcounter{savedlanguage}{0}
+\setcounter{origlanguage}{0}
+\setcounter{savedoriglanguage}{0}
+\setcounter{pageref}{0}
+\setcounter{savedpageref}{0}
+\setcounter{textcitecount}{0}
+\setcounter{textcitetotal}{0}
+\setcounter{textcitemaxnames}{0}
+\setcounter{biburlbigbreakpenalty}{100}
+\setcounter{biburlbreakpenalty}{200}
+\setcounter{biburlnumpenalty}{9000}
+\setcounter{biburlucpenalty}{8000}
+\setcounter{biburllcpenalty}{7000}
+\setcounter{smartand}{1}
+\setcounter{bbx:relatedcount}{0}
+\setcounter{bbx:relatedtotal}{0}
+\setcounter{lstlisting}{2}
+}

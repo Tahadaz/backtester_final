@@ -1,0 +1,234 @@
+from __future__ import annotations
+
+import datetime as dt
+from types import SimpleNamespace
+
+import numpy as np
+import pandas as pd
+
+from services.api.app.models import StockMaster, WfoGlobalSignal, WfoSignalSummary
+from services.worker.tasks import wfo_signal_batch as wfo_batch_mod
+
+
+class _FakeQuery:
+    def __init__(self, rows):
+        self._rows = list(rows)
+
+    def filter_by(self, **kwargs):
+        rows = [
+            row
+            for row in self._rows
+            if all(getattr(row, key, None) == value for key, value in kwargs.items())
+        ]
+        return _FakeQuery(rows)
+
+    def first(self):
+        return self._rows[0] if self._rows else None
+
+    def all(self):
+        return list(self._rows)
+
+
+class _FakeDB:
+    def __init__(self, rows_by_model=None):
+        self.rows_by_model = {**(rows_by_model or {})}
+
+    def add(self, row):
+        self.rows_by_model.setdefault(type(row), [])
+        if row not in self.rows_by_model[type(row)]:
+            self.rows_by_model[type(row)].append(row)
+
+    def query(self, model):
+        return _FakeQuery(self.rows_by_model.get(model, []))
+
+    def commit(self):
+        return None
+
+    def rollback(self):
+        return None
+
+    def close(self):
+        return None
+
+
+def _ohlcv_frame() -> pd.DataFrame:
+    dates = pd.date_range("2026-01-01", periods=30, freq="D")
+    close = np.linspace(100.0, 120.0, len(dates))
+    return pd.DataFrame(
+        {
+            "Open": close,
+            "High": close + 1.0,
+            "Low": close - 1.0,
+            "Close": close,
+            "Volume": np.linspace(1000.0, 1200.0, len(dates)),
+        },
+        index=dates,
+    )
+
+
+def _summary_row(symbol: str, category: str, horizon: str, variant: str, family: str) -> WfoSignalSummary:
+    return WfoSignalSummary(
+        symbol=symbol,
+        category=category,
+        horizon=horizon,
+        variant=variant,
+        status="succeeded",
+        representatives_json=[
+            {
+                "family": family,
+                "archetype": "price_vs_sma",
+                "variant_id": f"{family}_v1",
+                "params": {"window": 10},
+                "description": f"{family} rep",
+                "normalized_weight": 1.0,
+                "signal": 0.0,
+                "signal_label": "Neutre",
+            }
+        ],
+    )
+
+
+def test_build_config_json_defaults_max_reps_to_one():
+    payload = wfo_batch_mod._build_config_json(
+        horizon="short",
+        category="tendance",
+        close_len=500,
+        pool_size=10,
+        overrides={},
+    )
+    assert payload["max_reps"] == 1
+
+
+def test_refresh_wfo_uses_persisted_representatives_without_reselection(monkeypatch):
+    rows = [
+        _summary_row("AAA", "tendance", "short", "expanded", "sma"),
+        _summary_row("AAA", "momentum", "short", "expanded", "macd"),
+        _summary_row("AAA", "oscillation", "short", "expanded", "rsi"),
+        _summary_row("AAA", "volume", "short", "expanded", "obv"),
+    ]
+    fake_db = _FakeDB({WfoSignalSummary: rows, WfoGlobalSignal: []})
+
+    monkeypatch.setattr(wfo_batch_mod, "SessionLocal", lambda: fake_db)
+    monkeypatch.setattr(wfo_batch_mod, "load_ohlcv_for_symbol", lambda *_a, **_k: _ohlcv_frame())
+    monkeypatch.setattr(wfo_batch_mod, "drop_incomplete_ohlcv_rows", lambda df: df)
+    monkeypatch.setattr(
+        wfo_batch_mod,
+        "build_current_signal",
+        lambda variant, close, **kwargs: SimpleNamespace(
+            signal=1.0,
+            signal_label="HAUSSIER",
+            current_close=float(close[-1]),
+            indicator_value=None,
+            explanation="refreshed",
+            reliability_weight=float(kwargs.get("reliability_weight", 1.0)),
+        ),
+    )
+    monkeypatch.setattr(
+        wfo_batch_mod,
+        "_get_sr_levels",
+        lambda close, high, low, volume, horizon: (None, None, None, None, 0.0),
+    )
+    monkeypatch.setattr(
+        wfo_batch_mod,
+        "compute_global_wfo_signal",
+        lambda *args, **kwargs: SimpleNamespace(
+            status="succeeded",
+            global_score_pct=50.0,
+            raw_score_pct=50.0,
+            signal_label="Achat",
+            recommendation="achat",
+            weights={"tendance": 0.25, "momentum": 0.25, "oscillation": 0.25, "volume": 0.25},
+            sr_modifier=1.0,
+            sr_support=None,
+            sr_resistance=None,
+            sr_support_method=None,
+            sr_resistance_method=None,
+            best_category="tendance",
+            best_category_score=50.0,
+            categories_viable=4,
+            consensus_wfe_pct=60.0,
+            consensus_robustness=0.7,
+        ),
+    )
+
+    def _unexpected_full_compute(*_args, **_kwargs):
+        raise AssertionError("refresh path should not trigger full WFO recompute")
+
+    monkeypatch.setattr(wfo_batch_mod, "run_wfo_for_symbol_horizon", _unexpected_full_compute)
+
+    result = wfo_batch_mod.refresh_wfo_for_symbol_horizon("AAA", "short", "expanded")
+
+    assert result["status"] == "succeeded"
+    assert result["mode"] == "representatives_refresh"
+    assert result["refreshed_categories"] == 4
+    assert result["failed_categories"] == 0
+
+    expected_close = float(_ohlcv_frame()["Close"].iloc[-1])
+    for row in fake_db.rows_by_model[WfoSignalSummary]:
+        assert row.status == "succeeded"
+        assert len(row.representatives_json) == 1
+        rep = row.representatives_json[0]
+        assert rep["signal"] == 1.0
+        assert rep["current_close"] == expected_close
+
+
+def test_run_weekly_wfo_batch_only_processes_weekly_stale_tuples(monkeypatch):
+    now = dt.datetime(2026, 4, 25, 19, 0, tzinfo=dt.timezone.utc)
+    fake_db = _FakeDB(
+        {
+            StockMaster: [StockMaster(symbol="AAA", is_active=True)],
+            WfoGlobalSignal: [
+                WfoGlobalSignal(
+                    symbol="AAA",
+                    horizon="short",
+                    variant="legacy",
+                    computed_at=now - dt.timedelta(days=8),
+                ),
+                WfoGlobalSignal(
+                    symbol="AAA",
+                    horizon="short",
+                    variant="expanded",
+                    computed_at=now - dt.timedelta(days=2),
+                ),
+                WfoGlobalSignal(
+                    symbol="AAA",
+                    horizon="medium",
+                    variant="legacy",
+                    computed_at=now - dt.timedelta(days=2),
+                ),
+                WfoGlobalSignal(
+                    symbol="AAA",
+                    horizon="medium",
+                    variant="expanded",
+                    computed_at=now - dt.timedelta(days=2),
+                ),
+                WfoGlobalSignal(
+                    symbol="AAA",
+                    horizon="long",
+                    variant="legacy",
+                    computed_at=now - dt.timedelta(days=2),
+                ),
+                WfoGlobalSignal(
+                    symbol="AAA",
+                    horizon="long",
+                    variant="expanded",
+                    computed_at=now - dt.timedelta(days=2),
+                ),
+            ],
+        }
+    )
+    calls: list[tuple[str, str, str]] = []
+
+    monkeypatch.setattr(wfo_batch_mod, "SessionLocal", lambda: fake_db)
+    monkeypatch.setattr(
+        wfo_batch_mod,
+        "run_wfo_for_symbol_horizon",
+        lambda db, symbol, horizon, *, overrides=None, variant="expanded": calls.append(
+            (symbol, horizon, variant)
+        ),
+    )
+
+    result = wfo_batch_mod.run_weekly_wfo_batch(now=now)
+
+    assert result == {"total": 1, "succeeded": 1, "failed": 0}
+    assert calls == [("AAA", "short", "legacy")]

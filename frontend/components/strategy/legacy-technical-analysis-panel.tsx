@@ -1,10 +1,14 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Activity, BarChart3, Info, TrendingUp } from "lucide-react"
-import { useFamilyEnsemble, useRegimeConsensus } from "@/hooks/use-api"
+import { useRegimeConsensus } from "@/hooks/use-api"
 import { useWfoSummary } from "@/hooks/use-wfo-summary"
-import type { FamilyCombinedSignal } from "@/lib/api"
+import {
+  FamilyCombinedSignalSchema,
+  fetchSignalEngineResultWithBootstrap,
+  type FamilyCombinedSignal,
+} from "@/lib/api"
 import { formatNumber } from "@/lib/format"
 import { MethodologyModal } from "@/components/strategy/methodology-modal"
 import { RegimeDetailPanel } from "@/components/strategy/regime-detail-panel"
@@ -60,6 +64,70 @@ const CATEGORIES: LegacyCategory[] = [
 ]
 
 const ALL_FAMILIES = CATEGORIES.flatMap((category) => category.families)
+const LEGACY_FAMILIES: LegacyFamilyId[] = ["sma", "rsi", "macd", "obv"]
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null
+  return value as Record<string, unknown>
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : []
+}
+
+function asNumber(value: unknown, fallback = 0): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback
+}
+
+function asString(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value : fallback
+}
+
+function asBoolean(value: unknown, fallback = false): boolean {
+  return typeof value === "boolean" ? value : fallback
+}
+
+function persistedFamilyToSignal(
+  family: LegacyFamilyId,
+  symbol: string,
+  horizon: string,
+  raw: unknown,
+): FamilyCombinedSignal | null {
+  const payload = asRecord(raw)
+  if (!payload) return null
+  const detail = asRecord(payload.family_detail) ?? {}
+  const representatives = asArray(detail.representatives).length > 0
+    ? asArray(detail.representatives)
+    : asArray(payload.representatives)
+
+  const candidate = {
+    family: asString(detail.family, family),
+    symbol: asString(detail.symbol, symbol),
+    horizon: asString(detail.horizon, horizon),
+    timeframe: asString(detail.timeframe, "1D"),
+    family_score_pct: asNumber(detail.family_score_pct, asNumber(payload.family_score_pct, 0)),
+    family_signal_label: asString(detail.family_signal_label, asString(payload.signal_label, "Pas disponible")),
+    tested_count: asNumber(detail.tested_count, asNumber(payload.tested_count, 0)),
+    viable_count: asNumber(detail.viable_count, asNumber(payload.viable_count, 0)),
+    competitive_count: asNumber(detail.competitive_count, asNumber(payload.competitive_count, 0)),
+    representative_count: asNumber(detail.representative_count, asNumber(payload.representative_count, representatives.length)),
+    representatives,
+    fallback_variants: asArray(detail.fallback_variants),
+    score_explanation: asString(detail.score_explanation, ""),
+    methodology_status: asString(detail.methodology_status, "robust_oos_ensemble"),
+    methodology_mode: asString(detail.methodology_mode, asString(detail.methodology_status, "robust_oos_ensemble")),
+    available_bars: asNumber(detail.available_bars, 0),
+    nominal_window: asRecord(detail.nominal_window) ?? { train: 0, test: 0, step: 0, target_windows: 0 },
+    effective_window: asRecord(detail.effective_window) ?? { train: 0, test: 0, step: 0, target_windows: 0 },
+    warning_message: asString(detail.warning_message, asString(payload.warning_message, "")),
+    is_provisional: asBoolean(detail.is_provisional, asBoolean(payload.is_provisional, false)),
+    as_of: asString(detail.as_of, asString(payload.data_as_of, "")),
+    latest_close: typeof detail.latest_close === "number" ? detail.latest_close : null,
+    best_variant_id: asString(detail.best_variant_id, ""),
+  }
+  const parsed = FamilyCombinedSignalSchema.safeParse(candidate)
+  return parsed.success ? parsed.data : null
+}
 
 function labelBadgeClass(label: string): string {
   const lower = label.toLowerCase()
@@ -91,28 +159,85 @@ export function LegacyTechnicalAnalysisPanel({
   horizon: string
   cooldownBars?: number
 }) {
-  const sma = useFamilyEnsemble("sma", symbol, horizon, undefined, cooldownBars)
-  const rsi = useFamilyEnsemble("rsi", symbol, horizon, undefined, cooldownBars)
-  const macd = useFamilyEnsemble("macd", symbol, horizon, undefined, cooldownBars)
-  const obv = useFamilyEnsemble("obv", symbol, horizon, undefined, cooldownBars)
   const regime = useRegimeConsensus(symbol, horizon, cooldownBars)
-  const { data: wfoData, isLoading: wfoLoading, error: wfoError, refresh: wfoRefresh } = useWfoSummary(symbol, horizon)
+  const { data: wfoData, isLoading: wfoLoading, error: wfoError, refresh: wfoRefresh } = useWfoSummary(symbol, horizon, "legacy")
 
-  const familyData: Record<string, { data?: FamilyCombinedSignal; isLoading: boolean; error: unknown }> = {
-    sma,
-    rsi,
-    macd,
-    obv,
-  }
+  const [familyData, setFamilyData] = useState<Record<LegacyFamilyId, { data?: FamilyCombinedSignal; isLoading: boolean; error: unknown }>>({
+    sma: { data: undefined, isLoading: true, error: null },
+    rsi: { data: undefined, isLoading: true, error: null },
+    macd: { data: undefined, isLoading: true, error: null },
+    obv: { data: undefined, isLoading: true, error: null },
+  })
+  const requestTokenRef = useRef(0)
 
   const [level, setLevel] = useState(0)
-  const [selectedFamily, setSelectedFamily] = useState<string | null>(null)
+  const [selectedFamily, setSelectedFamily] = useState<LegacyFamilyId | null>(null)
   const [methodologyOpen, setMethodologyOpen] = useState(false)
+  const [persistedFallbackNotice, setPersistedFallbackNotice] = useState<string | null>(null)
 
   useEffect(() => {
     setLevel(0)
     setSelectedFamily(null)
   }, [symbol, horizon])
+
+  useEffect(() => {
+    const token = ++requestTokenRef.current
+    let pollTimer: ReturnType<typeof setTimeout> | null = null
+    const markLoading = () => {
+      setFamilyData((prev) => ({
+        sma: { ...prev.sma, isLoading: true, error: null },
+        rsi: { ...prev.rsi, isLoading: true, error: null },
+        macd: { ...prev.macd, isLoading: true, error: null },
+        obv: { ...prev.obv, isLoading: true, error: null },
+      }))
+    }
+
+    const loadAutoResolved = async (isInitial: boolean) => {
+      if (isInitial) markLoading()
+      try {
+        const result = await fetchSignalEngineResultWithBootstrap(symbol, horizon, "legacy")
+        if (requestTokenRef.current !== token) return
+        const payload = asRecord(result.families) ?? {}
+        const next: Record<LegacyFamilyId, { data?: FamilyCombinedSignal; isLoading: boolean; error: unknown }> = {
+          sma: { data: persistedFamilyToSignal("sma", symbol, horizon, payload.sma) ?? undefined, isLoading: false, error: null as unknown },
+          rsi: { data: persistedFamilyToSignal("rsi", symbol, horizon, payload.rsi) ?? undefined, isLoading: false, error: null as unknown },
+          macd: { data: persistedFamilyToSignal("macd", symbol, horizon, payload.macd) ?? undefined, isLoading: false, error: null as unknown },
+          obv: { data: persistedFamilyToSignal("obv", symbol, horizon, payload.obv) ?? undefined, isLoading: false, error: null as unknown },
+        }
+
+        const isStale = result.resolution_mode === "stale_cache" || result.is_stale
+        const notice: string | null = isStale
+          ? "Données provisoires : recalcul en cours, mise à jour automatique dans quelques instants."
+          : null
+        setPersistedFallbackNotice(notice)
+        setFamilyData(next)
+
+        if (isStale) {
+          pollTimer = setTimeout(() => {
+            if (requestTokenRef.current === token) void loadAutoResolved(false)
+          }, 15000)
+        }
+      } catch (error) {
+        if (requestTokenRef.current !== token) return
+        const message =
+          error instanceof Error && error.message
+            ? error.message
+            : "Erreur lors du chargement des signaux persistes"
+        setPersistedFallbackNotice(null)
+        setFamilyData({
+          sma: { data: undefined, isLoading: false, error: message },
+          rsi: { data: undefined, isLoading: false, error: message },
+          macd: { data: undefined, isLoading: false, error: message },
+          obv: { data: undefined, isLoading: false, error: message },
+        })
+      }
+    }
+
+    void loadAutoResolved(true)
+    return () => {
+      if (pollTimer) clearTimeout(pollTimer)
+    }
+  }, [horizon, symbol])
 
   const loadedFamilies = ALL_FAMILIES.filter((family) => familyData[family.id].data)
   const anyLoading = ALL_FAMILIES.some((family) => familyData[family.id].isLoading)
@@ -139,7 +264,7 @@ export function LegacyTechnicalAnalysisPanel({
             Erreur lors du chargement du signal
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            {sma.error instanceof Error ? sma.error.message : "Erreur inconnue"}
+            {typeof familyData.sma.error === "string" ? familyData.sma.error : "Erreur inconnue"}
           </p>
         </CardContent>
       </Card>
@@ -156,7 +281,7 @@ export function LegacyTechnicalAnalysisPanel({
   const aggregateIsProvisional = loadedFamilies.some(
     (family) => familyData[family.id].data?.is_provisional,
   )
-  const aggregateMeta = sma.data ?? rsi.data ?? macd.data ?? obv.data
+  const aggregateMeta = familyData.sma.data ?? familyData.rsi.data ?? familyData.macd.data ?? familyData.obv.data
 
   if (level === 2 && selectedFamily && familyData[selectedFamily]?.data) {
     return (
@@ -175,6 +300,13 @@ export function LegacyTechnicalAnalysisPanel({
 
   return (
     <div className="space-y-5">
+      {persistedFallbackNotice && (
+        <Card className="border-amber-300 bg-amber-50/70">
+          <CardContent className="py-3 text-xs text-amber-900">
+            {persistedFallbackNotice}
+          </CardContent>
+        </Card>
+      )}
       {level === 0 && (
         <Card
           className="cursor-pointer transition-colors hover:border-primary/50"
@@ -388,6 +520,7 @@ export function LegacyTechnicalAnalysisPanel({
                 error={wfoError}
                 symbol={symbol}
                 horizon={horizon}
+                variant="legacy"
                 onRefresh={wfoRefresh}
               />
             </div>

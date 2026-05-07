@@ -35,17 +35,18 @@ For each representative:
 def variant_signal_label(family: str, signal_value: float) -> str
 ```
 
-| Family | Signal = +1 | Signal = -1 | Signal = 0 |
-|--------|------------|------------|-----------|
-| SMA | HAUSSIER | BAISSIER | NEUTRE |
-| MACD | HAUSSIER | BAISSIER | NEUTRE |
-| RSI | SURVENDU | SURACHETÉ | NORMAL |
-| OBV | ACCUMULATION | DISTRIBUTION | NEUTRE |
+| Signal Type | Families | Signal = +1 | Signal = -1 | Signal = 0 |
+|------------|---------|------------|------------|-----------|
+| `trend` | SMA, EMA, EMA Cross, Ichimoku, PSAR | HAUSSIER | BAISSIER | NEUTRE |
+| `momentum` | MACD, ROC, TRIX, ADX, TSI | MOMENTUM HAUSSIER | MOMENTUM BAISSIER | NEUTRE |
+| `oscillator` | RSI, Stochastic, CCI, MFI, UO | SURVENDU | SURACHETÉ | NORMAL |
+| `volume` | OBV, CMF, A/D, VWAP, Force Index | ACCUMULATION | DISTRIBUTION | NEUTRE |
 
-**Design rationale**: Labels match the economic interpretation of each family:
-- Trend signals (SMA, MACD): bullish/bearish direction
-- Oscillators (RSI): overbought/oversold extremes
-- Volume (OBV): accumulation/distribution pressure
+**Design rationale**: Labels match the economic interpretation of each category:
+- Trend signals: bullish/bearish direction
+- Momentum signals: speed/force of price movement
+- Oscillators: overbought/oversold extremes
+- Volume: accumulation/distribution pressure
 
 ### VariantCurrentSignal Dataclass
 
@@ -107,7 +108,7 @@ score_pct = 49.0%
 def signal_type_label(score_pct: float, signal_type: str | None) -> str
 ```
 
-**Trend (SMA, MACD)**:
+**Trend (SMA, EMA, EMA Cross, Ichimoku, PSAR)**:
 
 | Score Range | Label |
 |-------------|-------|
@@ -117,7 +118,17 @@ def signal_type_label(score_pct: float, signal_type: str | None) -> str
 | -50 to -15 | Baissier |
 | < -50 | Très baissier |
 
-**Oscillator (RSI)**:
+**Momentum (MACD, ROC, TRIX, ADX, TSI)**:
+
+| Score Range | Label |
+|-------------|-------|
+| > 50 | Fort momentum haussier |
+| 15 to 50 | Momentum haussier |
+| -15 to 15 | Pas de momentum |
+| -50 to -15 | Momentum baissier |
+| < -50 | Fort momentum baissier |
+
+**Oscillator (RSI, Stochastic, CCI, MFI, UO)**:
 
 | Score Range | Label |
 |-------------|-------|
@@ -127,7 +138,7 @@ def signal_type_label(score_pct: float, signal_type: str | None) -> str
 | -50 to -15 | Suracheté |
 | < -50 | Très suracheté |
 
-**Volume (OBV)**:
+**Volume (OBV, CMF, A/D, VWAP, Force Index)**:
 
 | Score Range | Label |
 |-------------|-------|
@@ -155,25 +166,34 @@ def signal_type_label(score_pct: float, signal_type: str | None) -> str
 
 ```python
 FAMILY_SIGNAL_TYPE = {
-    "sma": "trend",
-    "macd": "trend",
-    "rsi": "oscillator",
-    "obv": "volume",
+    # Tendance
+    "sma": "trend", "ema": "trend", "ema_cross": "trend",
+    "ichimoku": "trend", "psar": "trend",
+    # Momentum
+    "macd": "momentum", "roc": "momentum", "trix": "momentum",
+    "adx": "momentum", "tsi": "momentum",
+    # Oscillation
+    "rsi": "oscillator", "stochastic": "oscillator", "cci": "oscillator",
+    "mfi": "oscillator", "uo": "oscillator",
+    # Volume
+    "obv": "volume", "cmf": "volume", "ad": "volume",
+    "vwap": "volume", "fi": "volume",
 }
 
 CATEGORY_FAMILIES = {
-    "tendance": ["sma", "macd"],
-    "oscillation": ["rsi"],
-    "volume": ["obv"],
+    "tendance": ["sma", "ema", "ema_cross", "ichimoku", "psar"],
+    "momentum": ["macd", "roc", "trix", "adx", "tsi"],
+    "oscillation": ["rsi", "stochastic", "cci", "mfi", "uo"],
+    "volume": ["obv", "cmf", "ad", "vwap", "fi"],
 }
 ```
 
 This taxonomy is used by:
-- The frontend to group families into categories (Tendance, Oscillation, Volume)
-- The label system to produce type-appropriate labels
+- The frontend to group families into categories (Tendance, Momentum, Oscillation, Volume)
+- The label system to produce type-appropriate labels (4 signal types × 5 label levels)
 - The batch scores endpoint to compute per-category scores
 
-**Reference**: Murphy (1999) — technical indicators are classified into trend-following (lagging), oscillators (mean-reverting), and volume-based (confirming).
+**Reference**: Murphy (1999) — technical indicators are classified into trend-following (lagging), momentum (speed), oscillators (mean-reverting), and volume-based (confirming).
 
 ---
 
@@ -227,7 +247,7 @@ class EnsemblePipelineDetail:
 ```python
 @dataclass
 class FamilyCombinedSignal:
-    family: str                    # "sma", "rsi", "macd", "obv"
+    family: str                    # any of the 20 family IDs
     symbol: str
     horizon: str
     timeframe: str
@@ -265,29 +285,32 @@ The batch scores endpoint computes an **aggregate score** across all 4 families 
 
 For each symbol, the batch endpoint:
 
-1. Runs `run_family_ensemble_full()` for each of the 4 families (sma, rsi, macd, obv)
+1. Runs `run_family_ensemble_full()` for each of the 20 families (or subset of enabled families)
 2. Computes **per-category** scores by averaging family scores within each category:
-   - Tendance = mean(SMA score, MACD score)
-   - Oscillation = RSI score (only family)
-   - Volume = OBV score (only family)
-3. Computes **aggregate score** = mean of all 4 family scores (equal weight across families)
+   - Tendance = mean(SMA, EMA, EMA Cross, Ichimoku, PSAR scores)
+   - Momentum = mean(MACD, ROC, TRIX, ADX, TSI scores)
+   - Oscillation = mean(RSI, Stochastic, CCI, MFI, UO scores)
+   - Volume = mean(OBV, CMF, A/D, VWAP, Force Index scores)
+3. Computes **aggregate score** = mean of all 4 category scores (equal weight across categories)
 4. Assigns aggregate label via `signal_type_label(None, aggregate_score_pct)` → "Achat fort" / "Achat" / "Neutre" / "Vente" / "Vente forte"
 
-### Why Equal Weights Across Families?
+### Why Equal Weights Across Categories?
 
-Currently, all 4 families contribute equally to the aggregate. This is a deliberate choice:
+All 4 categories contribute equally to the aggregate. This is a deliberate choice:
 - We have no *a priori* reason to believe trend signals are more informative than volume signals for Moroccan equities
 - Feature importance analysis (planned) would provide empirical weights
 - Equal weighting is the maximally uninformative prior — it makes the fewest assumptions
+- Within each category, all 5 families also contribute equally
 
 ### Category Grouping Rationale
 
-The 3 categories (Tendance, Oscillation, Volume) group families by **signal type** (Murphy 1999, Elder 1993):
-- **Tendance**: trend-following indicators that perform well in directional markets
-- **Oscillation**: mean-reversion indicators that perform well in ranging markets
-- **Volume**: confirmation indicators that validate price moves with trading activity
+The 4 categories (Tendance, Momentum, Oscillation, Volume) group families by **signal type** (Murphy 1999, Elder 1993):
+- **Tendance**: trend-following indicators — direction of market
+- **Momentum**: speed/acceleration indicators — force of price movement
+- **Oscillation**: mean-reversion indicators — statistical extremes
+- **Volume**: confirmation indicators — buying/selling pressure
 
-This grouping ensures the frontend can display a balanced view: "what does trend analysis say? what does oscillation analysis say? what does volume analysis say?" — three independent perspectives on the same market condition.
+This grouping ensures the frontend can display a balanced view: four independent perspectives on the same market condition. The redundancy reduction (Layer E) within each family ensures that the 5 indicators per category contribute complementary, not redundant, information.
 
 ---
 

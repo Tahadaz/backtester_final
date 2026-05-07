@@ -114,14 +114,42 @@ Computes the raw indicator values for chart overlay:
 
 ### Overlay Indicators (on price chart)
 
-**SMA (`price_vs_sma`)**: Returns SMA array → drawn as line over candlesticks
+**SMA (`price_vs_sma`)**: SMA line over candlesticks
 ```python
 {"type": "overlay", "name": "SMA-20", "values": sma_array}
 ```
 
-**SMA Cross (`sma_cross`)**: Two SMA lines
+**EMA (`price_vs_ema`)**: EMA line over candlesticks
+```python
+{"type": "overlay", "name": "EMA-20", "values": ema_array}
+```
+
+**EMA Cross (`ema_cross`)**: Two EMA lines
+```python
+{"type": "overlay_dual", "name": "EMA(12,26)", "fast": fast_ema, "slow": slow_ema}
+```
+
+**SMA Cross (`sma_cross`)**: Two SMA lines (existing archetype)
 ```python
 {"type": "overlay_dual", "name": "SMA(10,20)", "fast": fast_sma, "slow": slow_sma}
+```
+
+**Ichimoku (`ichi_cloud`)**: Tenkan/Kijun lines + cloud shading
+```python
+{"type": "overlay_cloud", "name": "Ichimoku(9,26,52)",
+ "tenkan": tenkan_array, "kijun": kijun_array,
+ "senkou_a": senkou_a_array, "senkou_b": senkou_b_array}
+```
+
+**PSAR (`psar_trend`)**: SAR dots on price chart
+```python
+{"type": "overlay_dots", "name": "PSAR(0.02,0.20)", "values": sar_array}
+```
+
+**VWAP (`vwap_dev`)**: VWAP line with threshold bands
+```python
+{"type": "overlay_band", "name": "VWAP(20,1.0%)",
+ "center": vwap_array, "upper": upper_array, "lower": lower_array}
 ```
 
 ### Secondary Y-Axis Indicators (subplot below price)
@@ -132,10 +160,60 @@ Computes the raw indicator values for chart overlay:
  "thresholds": [30, 70], "y_range": [0, 100]}
 ```
 
+**Stochastic (`stoch_level`)**:
+```python
+{"type": "secondary_yaxis", "name": "Stoch(14,3)",
+ "k_line": k_array, "d_line": d_array,
+ "thresholds": [20, 80], "y_range": [0, 100]}
+```
+
+**CCI (`cci_level`)**:
+```python
+{"type": "secondary_yaxis", "name": "CCI(20)", "values": cci_array,
+ "thresholds": [-100, 100]}
+```
+
+**MFI (`mfi_level`)**:
+```python
+{"type": "secondary_yaxis", "name": "MFI(14)", "values": mfi_array,
+ "thresholds": [20, 80], "y_range": [0, 100]}
+```
+
+**UO (`uo_level`)**:
+```python
+{"type": "secondary_yaxis", "name": "UO(7,14,28)", "values": uo_array,
+ "thresholds": [30, 70], "y_range": [0, 100]}
+```
+
 **MACD (`macd_cross`)**:
 ```python
 {"type": "secondary_yaxis", "name": "MACD(12,26,9)",
  "macd_line": macd, "signal_line": signal, "histogram": hist}
+```
+
+**ROC (`roc_zero`)**:
+```python
+{"type": "secondary_yaxis", "name": "ROC(12)", "values": roc_array,
+ "thresholds": [0]}
+```
+
+**TRIX (`trix_zero`)**:
+```python
+{"type": "secondary_yaxis", "name": "TRIX(15)", "values": trix_array,
+ "thresholds": [0]}
+```
+
+**ADX (`adx_trend`)**:
+```python
+{"type": "secondary_yaxis", "name": "ADX(14)",
+ "plus_di": plus_di_array, "minus_di": minus_di_array, "adx": adx_array,
+ "thresholds": [25]}
+```
+
+**TSI (`tsi_zero`)**:
+```python
+{"type": "secondary_yaxis", "name": "TSI(25,13)", "values": tsi_array,
+ "thresholds": [0]}
 ```
 
 **OBV (`obv_trend`)**:
@@ -143,6 +221,32 @@ Computes the raw indicator values for chart overlay:
 {"type": "secondary_yaxis", "name": "OBV-EMA(20)",
  "obv": obv_array, "ema_values": ema_array}
 ```
+
+**CMF (`cmf_flow`)**:
+```python
+{"type": "secondary_yaxis", "name": "CMF(21)", "values": cmf_array,
+ "thresholds": [-0.05, 0.05]}
+```
+
+**A/D Line (`ad_trend`)**:
+```python
+{"type": "secondary_yaxis", "name": "A/D-EMA(20)",
+ "ad_line": ad_array, "ema_values": ad_ema_array}
+```
+
+**Force Index (`fi_trend`)**:
+```python
+{"type": "secondary_yaxis", "name": "FI-EMA(13)", "values": fi_ema_array,
+ "thresholds": [0]}
+```
+
+### New Plot Types
+
+Three new overlay types support the expanded indicator set:
+
+- **`overlay_cloud`**: For Ichimoku — draws two lines (tenkan, kijun) and a filled cloud area between senkou_a and senkou_b (green when senkou_a > senkou_b, red otherwise)
+- **`overlay_dots`**: For PSAR — draws dot markers at SAR values (green dots below price, red above)
+- **`overlay_band`**: For VWAP — draws center line with shaded upper/lower band
 
 ---
 

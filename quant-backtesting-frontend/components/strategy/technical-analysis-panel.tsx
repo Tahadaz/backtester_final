@@ -1,11 +1,12 @@
 "use client"
 
 import { useState } from "react"
-import { useFamilyEnsemble } from "@/hooks/use-api"
+import { useFamilyEnsemble, useRegimeConsensus } from "@/hooks/use-api"
 import type { FamilyCombinedSignal } from "@/lib/api"
 import { SignalScoreBar } from "./signal-score-bar"
 import { SmaFamilyDrilldown } from "./sma-family-drilldown"
 import { MethodologyModal } from "./methodology-modal"
+import { RegimeDetailPanel } from "./regime-detail-panel"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -59,6 +60,9 @@ const ALL_FAMILIES = CATEGORIES.flatMap((c) => c.families)
 // Label -> badge color mapping (type-specific labels)
 function labelBadgeClass(label: string): string {
   const l = label.toLowerCase()
+  if (l.includes("disponible")) {
+    return "text-muted-foreground border-muted-foreground/30"
+  }
   if (
     l.includes("haussier") ||
     l.includes("survendu") ||
@@ -78,6 +82,10 @@ function labelBadgeClass(label: string): string {
   return "text-muted-foreground"
 }
 
+function isFamilyAvailable(data: FamilyCombinedSignal | undefined): data is FamilyCombinedSignal {
+  return Boolean(data && data.representative_count > 0)
+}
+
 export function TechnicalAnalysisPanel({
   symbol,
   horizon,
@@ -91,12 +99,13 @@ export function TechnicalAnalysisPanel({
   const rsi = useFamilyEnsemble("rsi", symbol, horizon, undefined, cooldownBars)
   const macd = useFamilyEnsemble("macd", symbol, horizon, undefined, cooldownBars)
   const obv = useFamilyEnsemble("obv", symbol, horizon, undefined, cooldownBars)
+  const regime = useRegimeConsensus(symbol, horizon, cooldownBars)
 
   const familyData: Record<string, { data?: FamilyCombinedSignal; isLoading: boolean; error: unknown }> = {
     sma, rsi, macd, obv,
   }
 
-  // Drill-down state: 0=overview, 1=categories, 2=family-drilldown
+  // Drill-down state: 0=overview, 1=categories, 2=family-drilldown, 3=regime detail
   const [level, setLevel] = useState(0)
   const [selectedFamily, setSelectedFamily] = useState<string | null>(null)
   const [methodologyOpen, setMethodologyOpen] = useState(false)
@@ -110,7 +119,7 @@ export function TechnicalAnalysisPanel({
     setSelectedFamily(null)
   }
 
-  const loadedFamilies = ALL_FAMILIES.filter((f) => familyData[f.id].data)
+  const loadedFamilies = ALL_FAMILIES.filter((f) => isFamilyAvailable(familyData[f.id].data))
   const anyLoading = ALL_FAMILIES.some((f) => familyData[f.id].isLoading)
   const allError = ALL_FAMILIES.every((f) => familyData[f.id].error)
 
@@ -165,6 +174,10 @@ export function TechnicalAnalysisPanel({
         onBack={() => setLevel(1)}
       />
     )
+  }
+
+  if (level === 3 && regime.data) {
+    return <RegimeDetailPanel data={regime.data} onBack={() => setLevel(1)} />
   }
 
   return (
@@ -232,6 +245,22 @@ export function TechnicalAnalysisPanel({
             </Button>
           </div>
 
+          {regime.data ? (
+            <Card className="border-dashed">
+              <CardContent className="flex flex-wrap items-center justify-between gap-3 py-3">
+                <div>
+                  <p className="text-xs font-semibold text-foreground">Regime-aware conditioning</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Experimental v0.1. Equal-weight remains the fallback if regime weighting does not improve OOS validation.
+                  </p>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => setLevel(3)}>
+                  Open Regime Detail
+                </Button>
+              </CardContent>
+            </Card>
+          ) : null}
+
           <div className="space-y-4">
             {CATEGORIES.map((cat) => {
               const Icon = cat.icon
@@ -239,7 +268,7 @@ export function TechnicalAnalysisPanel({
                 ...f,
                 fd: familyData[f.id],
               }))
-              const loadedCatFamilies = catFamilyData.filter((f) => f.fd.data)
+              const loadedCatFamilies = catFamilyData.filter((f) => isFamilyAvailable(f.fd.data))
               const catScore =
                 loadedCatFamilies.length > 0
                   ? loadedCatFamilies.reduce(
@@ -286,6 +315,7 @@ export function TechnicalAnalysisPanel({
                     <div className="space-y-1.5">
                       {catFamilyData.map((fam) => {
                         if (fam.fd.data) {
+                          const available = isFamilyAvailable(fam.fd.data)
                           return (
                             <div
                               key={fam.id}
@@ -314,10 +344,14 @@ export function TechnicalAnalysisPanel({
                                 )}
                               </div>
                               <div className="flex items-center gap-2">
-                                <span className="text-xs font-mono text-muted-foreground">
-                                  {fam.fd.data.family_score_pct >= 0 ? "+" : ""}
-                                  {fam.fd.data.family_score_pct.toFixed(1)}%
-                                </span>
+                                {available ? (
+                                  <span className="text-xs font-mono text-muted-foreground">
+                                    {fam.fd.data.family_score_pct >= 0 ? "+" : ""}
+                                    {fam.fd.data.family_score_pct.toFixed(1)}%
+                                  </span>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">-</span>
+                                )}
                                 <span className="text-[10px] text-muted-foreground">
                                   &rarr;
                                 </span>

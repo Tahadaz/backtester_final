@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 HORIZON_LOOKBACK_YEARS: dict[str, int] = {
-    "short": 5,
-    "medium": 10,
+    "short": 20,
+    "medium": 20,
     "long": 20,
 }
 

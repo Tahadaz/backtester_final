@@ -27,8 +27,8 @@ type SortDir = "asc" | "desc"
 function getSortValue(stock: DashboardStock, key: string): number | string {
   if (key === "symbol") return stock.symbol
   if (key === "sector") return stock.sector ?? ""
-  if (key === "aggregate_score_pct") return stock.aggregate_score_pct ?? -999
-  const family = stock.per_family[key]
+  if (key === "aggregate_score_pct") return stock.scores.signal_engine.aggregate_score_pct ?? -999
+  const family = stock.scores.signal_engine.per_family[key]
   return family ? family.score_pct : -999
 }
 
@@ -170,16 +170,16 @@ export function StockTable({ stocks, horizon }: StockTableProps) {
                       <p className="truncate text-xs text-slate-500 dark:text-slate-400">{stock.display_name ?? "-"}</p>
                     </Link>
                   </TableCell>
-                  {FAMILY_ORDER.map((family) => (
-                    <TableCell key={`${stock.symbol}-${family}`} className="py-4">
-                      <FamilyCell score={stock.per_family[family]} />
-                    </TableCell>
-                  ))}
+                    {FAMILY_ORDER.map((family) => (
+                      <TableCell key={`${stock.symbol}-${family}`} className="py-4">
+                        <FamilyCell score={stock.scores.signal_engine.per_family[family]} />
+                      </TableCell>
+                    ))}
                   <TableCell className="sticky right-0 z-20 min-w-[240px] border-l border-slate-200 bg-blue-50 py-4 dark:border-slate-700 dark:bg-blue-950/30">
-                    {stock.aggregate_score_pct == null ? (
+                    {stock.scores.signal_engine.aggregate_score_pct == null ? (
                       <span className="text-xs text-slate-500 dark:text-slate-400">-</span>
                     ) : (
-                      <SignalBadge label={stock.aggregate_signal_label} />
+                      <SignalBadge label={stock.scores.signal_engine.aggregate_signal_label} />
                     )}
                   </TableCell>
                 </TableRow>

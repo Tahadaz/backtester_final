@@ -1,4 +1,4 @@
-﻿export interface FamilyScore {
+export interface FamilyScore {
   score_pct: number
   label: string
 }
@@ -55,33 +55,6 @@ export interface DashboardSupportResistance {
   warning_message: string
 }
 
-export interface DashboardStock {
-  symbol: string
-  display_name: string | null
-  sector: string | null
-  aggregate_score_pct: number | null
-  aggregate_signal_label: string | null
-  expanded_aggregate_score_pct?: number | null
-  expanded_aggregate_signal_label?: string | null
-  per_family: Record<string, FamilyScore>
-  expanded_per_family?: Record<string, FamilyScore>
-  categories: Record<string, CategoryScore>
-  technical_levels?: DashboardTechnicalLevels | null
-  support_resistance?: DashboardSupportResistance | null
-  adv?: number | null
-}
-
-export interface DashboardSector {
-  sector: string
-  stock_count: number
-  aggregate_score_pct: number | null
-  aggregate_signal_label: string | null
-  expanded_aggregate_score_pct?: number | null
-  expanded_aggregate_signal_label?: string | null
-  per_family: Record<string, FamilyScore>
-  expanded_per_family?: Record<string, FamilyScore>
-}
-
 export interface DashboardBreadth {
   achat: number
   neutre: number
@@ -89,16 +62,68 @@ export interface DashboardBreadth {
   indisponible: number
 }
 
-export interface DashboardIndex {
-  name: string
-  stock_count: number
+export interface SignalEngineScores {
+  variant: "legacy" | "expanded" | "factor_x_ta"
   aggregate_score_pct: number | null
   aggregate_signal_label: string | null
   expanded_aggregate_score_pct?: number | null
   expanded_aggregate_signal_label?: string | null
   per_family: Record<string, FamilyScore>
   expanded_per_family?: Record<string, FamilyScore>
-  breadth: DashboardBreadth
+  categories?: Record<string, CategoryScore>
+  families?: Record<string, unknown>
+  technical_levels?: DashboardTechnicalLevels | null
+  support_resistance?: DashboardSupportResistance | null
+  breadth?: DashboardBreadth
+}
+
+export interface WfoTechnicalLevels {
+  support_buy_trigger: number | null
+  resistance_sell_trigger: number | null
+  support_reference: number | null
+  support_method: string
+  resistance_method: string
+  method: string
+}
+
+export interface WfoScores {
+  variant: "expanded" | "factor_x_ta"
+  aggregate_score_pct: number | null
+  aggregate_signal_label: string | null
+  per_family: Record<string, FamilyScore>
+  technical_levels?: WfoTechnicalLevels | null
+  best_category?: string
+  consensus_wfe_pct?: number | null
+  consensus_robustness?: number | null
+  status: "succeeded" | "failed" | "pending" | null
+  breadth?: DashboardBreadth
+}
+
+export interface ScoresBlock {
+  signal_engine: SignalEngineScores
+  wfo: WfoScores | null
+}
+
+export interface DashboardStock {
+  symbol: string
+  display_name: string | null
+  sector: string | null
+  scores: ScoresBlock
+  adv?: number | null
+  asset_type?: string | null      // "equity" | "commodity" | "forex" | "bond"
+  market_region?: string | null   // "masi" | "us" | "european" | "asian" | null
+}
+
+export interface DashboardSector {
+  sector: string
+  stock_count: number
+  scores: ScoresBlock
+}
+
+export interface DashboardIndex {
+  name: string
+  stock_count: number
+  scores: ScoresBlock
 }
 
 export interface DashboardData {
@@ -117,5 +142,6 @@ export interface DashboardCustomIndexDefinition {
   symbols: string[]
 }
 
+export type DashboardScoreSource = "both" | "signal_engine" | "wfo"
 export type DashboardView = "stocks" | "sectors" | "index"
 export type Horizon = "short" | "medium" | "long"

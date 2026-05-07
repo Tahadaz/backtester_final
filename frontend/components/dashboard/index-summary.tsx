@@ -10,6 +10,8 @@ interface IndexSummaryProps {
 }
 
 export function IndexSummary({ index }: IndexSummaryProps) {
+  const se = index.scores.signal_engine
+  const breadth = se.breadth ?? { achat: 0, neutre: 0, vente: 0, indisponible: index.stock_count }
   return (
     <Card>
       <CardHeader>
@@ -19,8 +21,8 @@ export function IndexSummary({ index }: IndexSummaryProps) {
             <p className="text-sm text-muted-foreground">{index.stock_count} actions analysees</p>
           </div>
           <div className="flex items-center gap-3">
-            <SignalBadge label={index.aggregate_signal_label} />
-            <span className="text-lg font-mono font-bold">{formatScore(index.aggregate_score_pct)}</span>
+            <SignalBadge label={se.aggregate_signal_label} />
+            <span className="text-lg font-mono font-bold">{formatScore(se.aggregate_score_pct)}</span>
           </div>
         </div>
       </CardHeader>
@@ -29,15 +31,15 @@ export function IndexSummary({ index }: IndexSummaryProps) {
           {FAMILY_ORDER.map((family) => (
             <div key={family} className="space-y-2">
               <p className="text-sm font-medium">{FAMILY_LABELS[family]}</p>
-              <ScoreBar score={index.per_family[family]?.score_pct ?? null} />
-              <FamilyCell score={index.per_family[family]} />
+              <ScoreBar score={se.per_family[family]?.score_pct ?? null} />
+              <FamilyCell score={se.per_family[family]} />
             </div>
           ))}
         </div>
 
         <div className="space-y-2">
           <p className="text-sm font-medium">Largeur de marche</p>
-          <BreadthBar breadth={index.breadth} total={index.stock_count} />
+          <BreadthBar breadth={breadth} total={index.stock_count} />
         </div>
       </CardContent>
     </Card>

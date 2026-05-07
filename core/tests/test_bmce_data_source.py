@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from quant_core.data import BMCEDataSource  # noqa: E402
+from core.quant_core.data import BMCEDataSource  # noqa: E402
 
 
 def test_bmce_loader_accepts_french_header_variants(tmp_path: Path) -> None:

@@ -22,6 +22,8 @@
 | 10 | [api-data-flow-and-frontend-contracts.md](./10-api-data-flow-and-frontend-contracts.md) | Request/response schemas, per-window endpoints, caching, progress reporting |
 | 11 | [implementation-roadmap.md](./11-implementation-roadmap.md) | Dependencies, implementation order, success criteria, verification steps |
 | 12 | [methodology-and-sources.md](./12-methodology-and-sources.md) | Pardo citations, Bailey & López de Prado (DSR, PBO), Kelly/Thorp references, honest limitations |
+| 13 | [strict-pardo-window-policy-adr.md](./13-strict-pardo-window-policy-adr.md) | ADR: strict fold-driven window sizing, DF constraints, fallback policy |
+| 14 | [wfo-signal-layer.md](./14-wfo-signal-layer.md) | WFO-optimized signals for the signal page: per-family ensemble optimization, global consensus, S/R modulation |
 
 ---
 
@@ -73,7 +75,7 @@ STEP 9   TEST PERIOD               Remaining data = pure out-of-sample validatio
 
 - **Strategy definition** — entry/exit rules, indicator selection, risk parameters are defined on the strategy page (Phase 2). The backtest layer evaluates strategies; it does not create them.
 - **Signal research** — indicator exploration, candidate generation, OOS signal evaluation belong to the signal-generation layer. The backtest layer uses indicators as components of a full strategy, not as standalone signals.
-- **Portfolio construction** — capital allocation across stocks uses HRP on the strategy page. The backtest layer evaluates one strategy at a time.
+- **Portfolio construction** — capital allocation across stocks is configured on the strategy page. The backtest layer evaluates one SavedStrategy at a time. When `allocation_method = WFO-optimized`, the portfolio weights become part of the WFO parameter set and are optimized alongside per-stock parameters — this is not separate portfolio construction but part of the strategy's own optimization surface.
 - **Real-time execution** — order routing, market microstructure, live position management are outside scope.
 
 The backtest layer is an **evaluation station**: it takes a fully defined strategy, subjects it to rigorous Walk-Forward Analysis, and produces a verdict — viable or not viable — backed by statistical evidence.

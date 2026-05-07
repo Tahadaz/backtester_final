@@ -15,4 +15,4 @@ COPY . /repo
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/repo
 
-CMD ["uvicorn", "services.api.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uvicorn services.api.app.main:app --host 0.0.0.0 --port 8000 --workers ${API_WORKERS:-4}"]

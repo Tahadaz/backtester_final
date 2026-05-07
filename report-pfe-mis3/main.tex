@@ -1,0 +1,68 @@
+﻿\documentclass[12pt,a4paper,oneside]{report}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{float}
+\usepackage{enumitem}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=blue,
+  citecolor=black,
+  pdftitle={Mémoire PFE - Système de détection et de restitution des signaux},
+  pdfauthor={Taha Dazine}
+}
+
+\setlist[itemize]{label=--}
+\numberwithin{equation}{chapter}
+
+\begin{document}
+\hypersetup{pageanchor=false}
+
+\input{frontmatter/titlepage}
+
+\cleardoublepage
+\pagenumbering{roman}
+\setcounter{page}{2}
+
+\input{frontmatter/dedicace}
+\input{frontmatter/remerciements}
+\input{frontmatter/resume_fr}
+
+\tableofcontents
+\cleardoublepage
+\input{frontmatter/abreviations}
+\cleardoublepage
+
+\hypersetup{pageanchor=true}
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+\input{chapters/01_introduction}
+\input{chapters/02_cadre_conceptuel}
+\input{chapters/04_methodologie_signaux}
+\input{chapters/05_page_signaux_legacy}
+\input{chapters/06_dashboard_resultats_signaux}
+\input{chapters/07_conclusion_partielle}
+
+\cleardoublepage
+\addcontentsline{toc}{chapter}{Bibliographie}
+\bibliographystyle{ieeetr}
+\bibliography{references}
+
+\input{chapters/11_webographie}
+
+\end{document}

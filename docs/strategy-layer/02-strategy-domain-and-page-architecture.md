@@ -82,11 +82,18 @@ Every numeric parameter in `signal_construction`, `entry_rules`, `exit_rules`, a
 type WFOParam<T> = {
   mode: "manual" | "wfo"
   value: T              // used when mode = "manual"
-  scan_min?: T          // used when mode = "wfo"
-  scan_max?: T          // used when mode = "wfo"
-  scan_step?: T         // used when mode = "wfo"
+  scan_min?: T          // active range for the selected strategy horizon
+  scan_max?: T
+  scan_step?: T
+  search_spaces_by_horizon?: {
+    short: { scan_min: T; scan_max: T; scan_step: T }
+    medium: { scan_min: T; scan_max: T; scan_step: T }
+    long: { scan_min: T; scan_max: T; scan_step: T }
+  }
 }
 ```
+
+The strategy still carries one strategy-wide `horizon` value. That selector lives in the **Signal Construction** section and determines which preset is surfaced in `scan_min / scan_max / scan_step` for previews, review, handoff, and WFO execution.
 
 ### `snapshot`
 
@@ -116,7 +123,7 @@ This section applies to the entire strategy and does not change when switching b
 Below the portfolio section, each stock in the basket gets its own tab. Within each tab, 6 configuration sections appear in order:
 
 1. **Strategy Type** — Trend Following or Mean Reversion
-2. **Signal Construction** — indicator type and parameters per family
+2. **Signal Construction** — indicator type, strategy horizon, and parameters per family
 3. **Entry Rules** — list of entry conditions + sizing
 4. **Exit Rules** — list of exit conditions + exposure reduction
 5. **Risk** — stop loss, take profit, cooldown, time stop, position limits

@@ -1,8 +1,13 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { fetchFamilyEnsemble, type FamilyCombinedSignal } from "@/lib/api"
-import { useRegimeConsensus } from "@/hooks/use-api"
+import {
+  FamilyCombinedSignalSchema,
+  fetchSignalEngineResultWithBootstrap,
+  type FamilyCombinedSignal,
+  type WfoSummaryResponse,
+} from "@/lib/api"
+import { useFactorSelectionActive, useRegimeConsensus } from "@/hooks/use-api"
 import { useWfoSummary } from "@/hooks/use-wfo-summary"
 import { SignalScoreBar } from "./signal-score-bar"
 import { WfoSignalColumn } from "./wfo-signal-column"
@@ -86,6 +91,75 @@ function createEnabledState(): Record<IndicatorFamilyKey, boolean> {
   ) as Record<IndicatorFamilyKey, boolean>
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null
+  return value as Record<string, unknown>
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : []
+}
+
+function asNumber(value: unknown, fallback = 0): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback
+}
+
+function asString(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value : fallback
+}
+
+function asBoolean(value: unknown, fallback = false): boolean {
+  return typeof value === "boolean" ? value : fallback
+}
+
+function persistedFamilyToSignal(
+  family: IndicatorFamilyKey,
+  symbol: string,
+  horizon: string,
+  raw: unknown,
+): FamilyCombinedSignal | null {
+  const payload = asRecord(raw)
+  if (!payload) return null
+
+  const detail = asRecord(payload.family_detail) ?? {}
+  const representatives = asArray(detail.representatives).length > 0
+    ? asArray(detail.representatives)
+    : asArray(payload.representatives)
+  const fallbackVariants = asArray(detail.fallback_variants)
+
+  const candidate = {
+    family: asString(detail.family, family),
+    symbol: asString(detail.symbol, symbol),
+    horizon: asString(detail.horizon, horizon),
+    timeframe: asString(detail.timeframe, "1D"),
+    family_score_pct: asNumber(detail.family_score_pct, asNumber(payload.family_score_pct, 0)),
+    family_signal_label: asString(detail.family_signal_label, asString(payload.signal_label, "Pas disponible")),
+    tested_count: asNumber(detail.tested_count, asNumber(payload.tested_count, 0)),
+    viable_count: asNumber(detail.viable_count, asNumber(payload.viable_count, 0)),
+    competitive_count: asNumber(detail.competitive_count, asNumber(payload.competitive_count, 0)),
+    representative_count: asNumber(detail.representative_count, asNumber(payload.representative_count, representatives.length)),
+    representatives,
+    fallback_variants: fallbackVariants,
+    score_explanation: asString(detail.score_explanation, ""),
+    methodology_status: asString(detail.methodology_status, "robust_oos_ensemble"),
+    methodology_mode: asString(detail.methodology_mode, asString(detail.methodology_status, "robust_oos_ensemble")),
+    available_bars: asNumber(detail.available_bars, 0),
+    nominal_window: asRecord(detail.nominal_window) ?? { train: 0, test: 0, step: 0, target_windows: 0 },
+    effective_window: asRecord(detail.effective_window) ?? { train: 0, test: 0, step: 0, target_windows: 0 },
+    warning_message: asString(detail.warning_message, asString(payload.warning_message, "")),
+    is_provisional: asBoolean(detail.is_provisional, asBoolean(payload.is_provisional, false)),
+    as_of: asString(detail.as_of, asString(payload.data_as_of, "")),
+    latest_close:
+      typeof detail.latest_close === "number"
+        ? detail.latest_close
+        : null,
+    best_variant_id: asString(detail.best_variant_id, ""),
+  }
+
+  const parsed = FamilyCombinedSignalSchema.safeParse(candidate)
+  return parsed.success ? parsed.data : null
+}
+
 function labelBadgeClass(label: string): string {
   const l = label.toLowerCase()
   if (l.includes("disponible")) {
@@ -114,27 +188,224 @@ function isFamilyAvailable(data: FamilyCombinedSignal | null | undefined): data 
   return Boolean(data && data.representative_count > 0)
 }
 
+function fmtLevel(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return "--"
+  return formatNumber(value)
+}
+
+function resolveSupportResistanceLevels(data: Record<string, unknown> | null | undefined) {
+  const record = data ?? {}
+  const hasOptimal = record.optimal_status === "ready"
+  const supportValue = hasOptimal
+    ? (typeof record.optimal_support === "number" ? record.optimal_support : null)
+    : (typeof record.preview_support === "number"
+        ? record.preview_support
+        : (typeof record.final_support === "number" ? record.final_support : null))
+  const resistanceValue = hasOptimal
+    ? (typeof record.optimal_resistance === "number" ? record.optimal_resistance : null)
+    : (typeof record.preview_resistance === "number"
+        ? record.preview_resistance
+        : (typeof record.final_resistance === "number" ? record.final_resistance : null))
+  const supportSource = hasOptimal
+    ? (typeof record.selected_support_method_id === "string" ? record.selected_support_method_id : null)
+    : (typeof record.preview_support_method_id === "string"
+        ? record.preview_support_method_id
+        : (typeof record.selected_support_method_id === "string" ? record.selected_support_method_id : null))
+  const resistanceSource = hasOptimal
+    ? (typeof record.selected_resistance_method_id === "string" ? record.selected_resistance_method_id : null)
+    : (typeof record.preview_resistance_method_id === "string"
+        ? record.preview_resistance_method_id
+        : (typeof record.selected_resistance_method_id === "string" ? record.selected_resistance_method_id : null))
+  const closeValue = typeof record.current_close === "number" ? record.current_close : null
+
+  return {
+    close: closeValue,
+    supportValue,
+    resistanceValue,
+    supportSource,
+    resistanceSource,
+  }
+}
+
+function SignalEngineConsensusCard({
+  aggregateScore,
+  aggregateIsProvisional,
+  aggregateMeta,
+  supportResistance,
+  loadedFamilyCount,
+  enabledFamilyCount,
+}: {
+  aggregateScore: number | null
+  aggregateIsProvisional: boolean
+  aggregateMeta: FamilyCombinedSignal | null
+  supportResistance: Record<string, unknown> | null | undefined
+  loadedFamilyCount?: number
+  enabledFamilyCount?: number
+}) {
+  const levels = resolveSupportResistanceLevels(supportResistance)
+
+  return (
+    <Card className="border-primary/20 bg-primary/5">
+      <CardHeader className="pb-2 pt-4 px-4">
+        <CardTitle className="text-sm font-bold">Consensus Signal Engine (A&rarr;G)</CardTitle>
+      </CardHeader>
+      <CardContent className="pb-4 px-4 space-y-3">
+        <div className="flex flex-col items-center gap-1">
+          <SignalScoreBar value={aggregateScore} size="lg" className="w-full max-w-xs" />
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap justify-center">
+          {typeof loadedFamilyCount === "number" && typeof enabledFamilyCount === "number" && (
+            <Badge variant="outline" className="text-[10px]">
+              {loadedFamilyCount}/{enabledFamilyCount} familles actives
+            </Badge>
+          )}
+          {levels.close != null && (
+            <Badge variant="outline" className="text-[10px] text-muted-foreground">
+              Cloture {fmtLevel(levels.close)}
+            </Badge>
+          )}
+          {aggregateIsProvisional && (
+            <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-800">
+              Provisoire
+            </Badge>
+          )}
+          {aggregateMeta?.as_of && (
+            <Badge variant="outline" className="text-[10px] text-muted-foreground">
+              {aggregateMeta.as_of}
+            </Badge>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 text-[10px]">
+          <div className="flex flex-col border rounded p-1.5 bg-emerald-50/60">
+            <span className="text-emerald-700 font-medium uppercase tracking-tight">Support</span>
+            <span className="font-mono font-bold text-emerald-700">{fmtLevel(levels.supportValue)}</span>
+            <span className="text-[9px] truncate text-emerald-700/80">{levels.supportSource ?? "--"}</span>
+          </div>
+          <div className="flex flex-col border rounded p-1.5 bg-red-50/60">
+            <span className="text-red-700 font-medium uppercase tracking-tight">Resistance</span>
+            <span className="font-mono font-bold text-red-700">{fmtLevel(levels.resistanceValue)}</span>
+            <span className="text-[9px] truncate text-red-700/80">{levels.resistanceSource ?? "--"}</span>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function WfoConsensusCard({
+  data,
+  isLoading,
+  error,
+}: {
+  data: WfoSummaryResponse | null
+  isLoading: boolean
+  error: string | null
+}) {
+  if (isLoading && !data) {
+    return (
+      <Card className="border-primary/20 bg-primary/5">
+        <CardHeader className="pb-2 pt-4 px-4">
+          <CardTitle className="text-sm font-bold">Consensus WFO optimise</CardTitle>
+        </CardHeader>
+        <CardContent className="pb-4 px-4 space-y-2">
+          <Skeleton className="h-14 w-full" />
+          <Skeleton className="h-10 w-full" />
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (error) {
+    return (
+      <Card className="border-destructive/50 bg-destructive/5">
+        <CardHeader className="pb-2 pt-4 px-4">
+          <CardTitle className="text-sm font-bold">Consensus WFO optimise</CardTitle>
+        </CardHeader>
+        <CardContent className="pb-4 px-4">
+          <p className="text-xs text-destructive">Erreur WFO: {error}</p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const global = data?.global_signal
+  const isReady = global?.status === "succeeded"
+
+  return (
+    <Card className="border-primary/20 bg-primary/5">
+      <CardHeader className="pb-2 pt-4 px-4">
+        <CardTitle className="text-sm font-bold">Consensus WFO optimise</CardTitle>
+      </CardHeader>
+      <CardContent className="pb-4 px-4 space-y-3">
+        {isReady ? (
+          <>
+            <div className="flex flex-col items-center gap-1">
+              <SignalScoreBar value={global?.global_score_pct ?? null} size="lg" className="w-full max-w-xs" />
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap justify-center">
+              {global?.recommendation && (
+                <Badge variant="outline" className="capitalize text-[10px] font-bold">
+                  {global.recommendation.replace("_", " ")}
+                </Badge>
+              )}
+              {global?.data_as_of && (
+                <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                  {global.data_as_of}
+                </Badge>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-[10px]">
+              <div className="flex flex-col border rounded p-1.5 bg-emerald-50/60">
+                <span className="text-emerald-700 font-medium uppercase tracking-tight">Support</span>
+                <span className="font-mono font-bold text-emerald-700">{fmtLevel(global?.sr_support_level)}</span>
+                <span className="text-[9px] truncate text-emerald-700/80">{global?.sr_support_method ?? "--"}</span>
+              </div>
+              <div className="flex flex-col border rounded p-1.5 bg-red-50/60">
+                <span className="text-red-700 font-medium uppercase tracking-tight">Resistance</span>
+                <span className="font-mono font-bold text-red-700">{fmtLevel(global?.sr_resistance_level)}</span>
+                <span className="text-[9px] truncate text-red-700/80">{global?.sr_resistance_method ?? "--"}</span>
+              </div>
+            </div>
+          </>
+        ) : (
+          <p className="text-xs text-muted-foreground italic">Aucun consensus WFO disponible.</p>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 export function TechnicalAnalysisPanel({
   symbol,
   horizon,
   cooldownBars,
+  variant,
 }: {
   symbol: string
   horizon: string
   cooldownBars?: number
+  variant?: "legacy" | "expanded" | "factor_x_ta"
 }) {
-  const regime = useRegimeConsensus(symbol, horizon, cooldownBars)
-  const { data: wfoData, isLoading: wfoLoading, error: wfoError, refresh: wfoRefresh } = useWfoSummary(symbol, horizon)
+  const regime = useRegimeConsensus(symbol, horizon, cooldownBars, variant)
+  const { data: wfoData, isLoading: wfoLoading, error: wfoError, refresh: wfoRefresh } = useWfoSummary(symbol, horizon, variant ?? "expanded")
   const [familyData, setFamilyData] = useState<Record<IndicatorFamilyKey, FamilyState>>(() =>
     createFamilyState(),
   )
+  const [supportResistanceSnapshot, setSupportResistanceSnapshot] = useState<Record<string, unknown> | null>(null)
   const [enabledFamilies, setEnabledFamilies] = useState<Record<IndicatorFamilyKey, boolean>>(() =>
     createEnabledState(),
   )
   const [level, setLevel] = useState(0)
   const [selectedFamily, setSelectedFamily] = useState<IndicatorFamilyKey | null>(null)
   const [methodologyOpen, setMethodologyOpen] = useState(false)
+  const [persistedFallbackNotice, setPersistedFallbackNotice] = useState<string | null>(null)
   const requestTokenRef = useRef(0)
+  const isFactorXTa = variant === "factor_x_ta"
+  const { data: factorSelectionActive } = useFactorSelectionActive(isFactorXTa ? symbol : null, horizon)
 
   useEffect(() => {
     setLevel(0)
@@ -143,56 +414,84 @@ export function TechnicalAnalysisPanel({
 
   useEffect(() => {
     const token = ++requestTokenRef.current
-    setFamilyData((prev) => {
-      const next = { ...prev }
-      for (const family of INDICATOR_FAMILY_ORDER) {
-        next[family] = {
-          ...next[family],
-          isLoading: true,
-          error: null,
-        }
-      }
-      return next
-    })
-
-    void Promise.allSettled(
-      INDICATOR_FAMILY_ORDER.map((family) =>
-        fetchFamilyEnsemble({
-          family,
-          symbol,
-          horizon,
-          cooldown_bars: cooldownBars,
-          timeframe: "1D",
-        }),
-      ),
-    ).then((results) => {
-      if (requestTokenRef.current !== token) return
+    let pollTimer: ReturnType<typeof setTimeout> | null = null
+    const markLoading = () => {
       setFamilyData((prev) => {
         const next = { ...prev }
-        INDICATOR_FAMILY_ORDER.forEach((family, index) => {
-          const result = results[index]
-          if (result.status === "fulfilled") {
-            next[family] = {
-              data: result.value,
-              isLoading: false,
-              error: null,
-            }
-          } else {
-            const message =
-              result.reason instanceof Error && result.reason.message
-                ? result.reason.message
-                : "Erreur lors du chargement du signal"
+        for (const family of INDICATOR_FAMILY_ORDER) {
+          next[family] = {
+            ...next[family],
+            isLoading: true,
+            error: null,
+          }
+        }
+        return next
+      })
+    }
+
+    const loadAutoResolved = async (isInitial: boolean) => {
+      if (isInitial) markLoading()
+      try {
+        const result = await fetchSignalEngineResultWithBootstrap(symbol, horizon, variant ?? "expanded")
+        if (requestTokenRef.current !== token) return
+        const familiesPayload = asRecord(result.families) ?? {}
+        const next = createFamilyState()
+
+        INDICATOR_FAMILY_ORDER.forEach((family) => {
+          const persisted = persistedFamilyToSignal(
+            family,
+            symbol,
+            horizon,
+            familiesPayload[family],
+          )
+          next[family] = {
+            data: persisted,
+            isLoading: false,
+            error: null,
+          }
+        })
+
+        const isStale = result.resolution_mode === "stale_cache" || result.is_stale
+        const notice: string | null = isStale
+          ? "Données provisoires : recalcul en cours, mise à jour automatique dans quelques instants."
+          : null
+
+        setSupportResistanceSnapshot(asRecord(result.support_resistance))
+        setPersistedFallbackNotice(notice)
+        setFamilyData(next)
+
+        if (isStale) {
+          pollTimer = setTimeout(() => {
+            if (requestTokenRef.current === token) void loadAutoResolved(false)
+          }, 15000)
+        }
+      } catch (error) {
+        if (requestTokenRef.current !== token) return
+        const message =
+          error instanceof Error && error.message
+            ? error.message
+            : "Erreur lors du chargement des signaux persistes"
+        setPersistedFallbackNotice(null)
+        setSupportResistanceSnapshot(null)
+        setFamilyData((prev) => {
+          const next = { ...prev }
+          for (const family of INDICATOR_FAMILY_ORDER) {
             next[family] = {
               data: null,
               isLoading: false,
               error: message,
             }
           }
+          return next
         })
-        return next
-      })
-    })
-  }, [cooldownBars, horizon, symbol])
+      }
+    }
+
+    void loadAutoResolved(true)
+    return () => {
+      if (pollTimer) clearTimeout(pollTimer)
+    }
+  }, [horizon, symbol, variant])
 
   const enabledLoadedFamilies = useMemo(
     () =>
@@ -242,6 +541,19 @@ export function TechnicalAnalysisPanel({
       (value): value is FamilyCombinedSignal => Boolean(value),
     ) ??
     null
+  const factorXTaEmptyNotice = useMemo(() => {
+    if (!isFactorXTa || anyEnabledLoading || enabledLoadedFamilies.length > 0) return null
+    const activeRows = factorSelectionActive ?? []
+    if (activeRows.length === 0) {
+      return "Aucun facteur macro utilisable n'a franchi le score IC composite pour ce titre et cet horizon."
+    }
+    if (activeRows.some((row) => row.low_confidence || row.selected_reason === "low_confidence")) {
+      const factors = activeRows.map((row) => row.factor_canonical_id).join(", ")
+      return `Facteur(s) retenu(s) en basse confiance (${factors}), mais aucun representant Factor×TA robuste n'a survecu.`
+    }
+    const factors = activeRows.map((row) => row.factor_canonical_id).join(", ")
+    return `Facteur(s) retenu(s) (${factors}), mais les conditions macro × TA n'ont produit aucun representant robuste.`
+  }, [anyEnabledLoading, enabledLoadedFamilies.length, factorSelectionActive, isFactorXTa])
 
   if (anyEnabledLoading && enabledLoadedFamilies.length === 0) {
     return (
@@ -275,6 +587,7 @@ export function TechnicalAnalysisPanel({
         data={familyData[selectedFamily].data!}
         family={selectedFamily}
         cooldownBars={cooldownBars}
+        variant={variant}
         onBack={() => setLevel(1)}
       />
     )
@@ -286,50 +599,54 @@ export function TechnicalAnalysisPanel({
 
   return (
     <div className="space-y-5">
-      {level === 0 && (
-        <Card
-          className="cursor-pointer hover:border-primary/50 transition-colors"
-          onClick={() => setLevel(1)}
-        >
-          <CardContent className="flex flex-col items-center py-6 gap-2">
-            <SignalScoreBar
-              value={aggregateScore}
-              size="lg"
-              label="Consensus des signaux - Analyse Technique"
-              className="w-full max-w-xs"
-            />
-            <div className="mt-1">
-              <SignalAgreementBadge
-                engineScore={aggregateScore}
-                wfoScore={wfoData?.global_signal?.global_score_pct ?? null}
-                wfoGrade={wfoData?.global_signal?.best_category ? wfoData.categories[wfoData.global_signal.best_category]?.robustness_grade ?? null : null}
-              />
-            </div>
-            <div className="flex items-center gap-2 mt-2 flex-wrap justify-center">
-              <Badge variant="outline" className="text-[10px]">
-                {enabledLoadedFamilies.length}/{enabledFamiliesCount} familles actives
-              </Badge>
-              {aggregateIsProvisional && (
-                <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-800">
-                  Provisoire
-                </Badge>
-              )}
-              {aggregateMeta?.latest_close != null && (
-                <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                  Cloture {formatNumber(aggregateMeta.latest_close)}
-                </Badge>
-              )}
-              {aggregateMeta && (
-                <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                  {aggregateMeta.as_of}
-                </Badge>
-              )}
-            </div>
-            <p className="text-[10px] text-muted-foreground mt-1">
-              Cliquez pour voir le detail par categorie
-            </p>
+      {persistedFallbackNotice && (
+        <Card className="border-amber-300 bg-amber-50/70">
+          <CardContent className="py-3 text-xs text-amber-900">
+            {persistedFallbackNotice}
           </CardContent>
         </Card>
+      )}
+      {factorXTaEmptyNotice && (
+        <Card className="border-sky-200 bg-sky-50/70">
+          <CardContent className="py-3 text-xs text-sky-900">
+            {factorXTaEmptyNotice}
+          </CardContent>
+        </Card>
+      )}
+      {level === 0 && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <button type="button" className="text-left" onClick={() => setLevel(1)}>
+              <SignalEngineConsensusCard
+                aggregateScore={aggregateScore}
+                aggregateIsProvisional={aggregateIsProvisional}
+                aggregateMeta={aggregateMeta}
+                supportResistance={supportResistanceSnapshot}
+                loadedFamilyCount={enabledLoadedFamilies.length}
+                enabledFamilyCount={enabledFamiliesCount}
+              />
+            </button>
+            <button type="button" className="text-left" onClick={() => setLevel(1)}>
+              <WfoConsensusCard
+                data={wfoData}
+                isLoading={wfoLoading}
+                error={wfoError}
+              />
+            </button>
+          </div>
+
+          <div className="flex items-center justify-center">
+            <SignalAgreementBadge
+              engineScore={aggregateScore}
+              wfoScore={wfoData?.global_signal?.global_score_pct ?? null}
+              wfoGrade={wfoData?.global_signal?.best_category ? wfoData.categories[wfoData.global_signal.best_category]?.robustness_grade ?? null : null}
+            />
+          </div>
+
+          <p className="text-[10px] text-muted-foreground text-center">
+            Cliquez pour voir le detail par categorie
+          </p>
+        </div>
       )}
 
       {level === 1 && (
@@ -354,7 +671,7 @@ export function TechnicalAnalysisPanel({
             </Button>
           </div>
 
-          <SupportResistanceDrilldown symbol={symbol} horizon={horizon} cooldownBars={cooldownBars} />
+          <SupportResistanceDrilldown symbol={symbol} horizon={horizon} cooldownBars={cooldownBars} variant={variant} />
 
           {regime.data ? (
             <Card className="border-dashed">
@@ -374,6 +691,15 @@ export function TechnicalAnalysisPanel({
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="space-y-4">
+              <SignalEngineConsensusCard
+                aggregateScore={aggregateScore}
+                aggregateIsProvisional={aggregateIsProvisional}
+                aggregateMeta={aggregateMeta}
+                supportResistance={supportResistanceSnapshot}
+                loadedFamilyCount={enabledLoadedFamilies.length}
+                enabledFamilyCount={enabledFamiliesCount}
+              />
+
               <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3 px-1">
                 Signal Engine (A&rarr;G)
               </h3>
@@ -531,6 +857,7 @@ export function TechnicalAnalysisPanel({
                 error={wfoError}
                 symbol={symbol}
                 horizon={horizon}
+                variant={variant ?? "expanded"}
                 onRefresh={wfoRefresh}
               />
             </div>

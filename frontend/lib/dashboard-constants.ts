@@ -11,20 +11,20 @@ export const VIEWS = [
 ] as const
 
 export const FAMILY_LABELS: Record<string, string> = {
-  trend: "Tendance",
+  tendance: "Tendance",
   momentum: "Momentum",
   oscillation: "Oscillation",
   volume: "Volume",
 }
 
 export const FAMILY_SHORT_LABELS: Record<string, string> = {
-  trend: "Tendance",
+  tendance: "Tendance",
   momentum: "Momentum",
   oscillation: "Oscillation",
   volume: "Volume",
 }
 
-export const FAMILY_ORDER = ["trend", "momentum", "oscillation", "volume"] as const
+export const FAMILY_ORDER = ["tendance", "momentum", "oscillation", "volume"] as const
 
 const GREEN_STRONG = "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
 const GREEN = "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"

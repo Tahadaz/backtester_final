@@ -1234,7 +1234,7 @@ export async function pollIngestStatus(datasetId: string): Promise<IngestStatusR
  */
 export async function waitForIngestCompletion(
   datasetId: string,
-  { intervalMs = 1500, timeoutMs = 30_000 } = {},
+  { intervalMs = 1500, timeoutMs = 300_000 } = {},
 ): Promise<IngestStatusResponse> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
@@ -1489,6 +1489,7 @@ export const AvailabilityCalendarSchema = z.object({
   weekend_days: z.number().default(0),
   market_holiday_days: z.number().default(0),
   tentative_market_holiday_days: z.number().default(0),
+  no_trading_days: z.number().default(0),
   partial_days: z.number().default(0),
 })
 export type AvailabilityCalendarDay = z.infer<typeof AvailabilityCalendarDaySchema>
@@ -1819,6 +1820,20 @@ export const FamilyCombinedSignalSchema = z.object({
 })
 export type FamilyCombinedSignal = z.infer<typeof FamilyCombinedSignalSchema>
 
+export const IndicatorSeriesResponseSchema = z.object({
+  symbol: z.string(),
+  indicator: z.string(),
+  params: z.record(z.number()),
+  dates: z.array(z.string()),
+  close: z.array(z.number().nullable().optional()),
+  indicator_values: z.array(z.number().nullable().optional()),
+  indicator_overlay: z.array(z.number().nullable().optional()).nullable(),
+  current_score: z.number(),
+  current_label: z.string(),
+  atr: z.number().nullable(),
+})
+export type IndicatorSeriesResponse = z.infer<typeof IndicatorSeriesResponseSchema>
+
 export async function fetchSmaEnsemble(body: {
   symbol: string
   horizon: string
@@ -1859,6 +1874,25 @@ export async function fetchFamilyEnsemble(body: {
     body: JSON.stringify(payload),
   })
   return FamilyCombinedSignalSchema.parse(raw)
+}
+
+export async function fetchIndicatorSeries(body: {
+  symbol: string
+  indicator: string
+  params: Record<string, number>
+  timeframe?: string
+}): Promise<IndicatorSeriesResponse> {
+  const payload: Record<string, unknown> = {
+    symbol: body.symbol,
+    indicator: body.indicator,
+    params: body.params,
+    timeframe: body.timeframe ?? "1D",
+  }
+  const raw = await request<unknown>("/strategy/signal/indicator-series", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+  return IndicatorSeriesResponseSchema.parse(raw)
 }
 
 // ── Signal Engine — Variant Detail ──────────────────────────────────────────
@@ -2309,6 +2343,368 @@ export async function fetchStrategy(id: string): Promise<SavedStrategy> {
   return SavedStrategySchema.parse(raw)
 }
 
+export const ReviewStockReadinessSchema = z.object({
+  symbol: z.string(),
+  has_signal: z.boolean().default(false),
+  has_entry_rules: z.boolean().default(false),
+  has_exit_rules: z.boolean().default(false),
+  has_risk: z.boolean().default(false),
+  wfo_param_count: z.number().default(0),
+  ready: z.boolean().default(false),
+  warnings: z.array(z.string()).default([]),
+  blocking_issues: z.array(z.string()).default([]),
+})
+export type ReviewStockReadiness = z.infer<typeof ReviewStockReadinessSchema>
+
+export const StrategyReviewSchema = z.object({
+  total_wfo_param_count: z.number().default(0),
+  wfo_param_severity: z.string().default("ok"),
+  pardo_df_ok: z.boolean().default(true),
+  pardo_df_message: z.string().default(""),
+  stocks: z.array(ReviewStockReadinessSchema).default([]),
+  global_warnings: z.array(z.string()).default([]),
+  blocking_issues: z.array(z.string()).default([]),
+  ready: z.boolean().default(false),
+})
+export type StrategyReview = z.infer<typeof StrategyReviewSchema>
+
+export const WfoParamManifestEntrySchema = z.object({
+  stock: z.string(),
+  section: z.string(),
+  param_path: z.string(),
+  scan_min: z.number(),
+  scan_max: z.number(),
+  scan_step: z.number(),
+})
+export type WfoParamManifestEntry = z.infer<typeof WfoParamManifestEntrySchema>
+
+export const StrategyHandoffSchema = z.object({
+  strategy_id: z.string(),
+  strategy_name: z.string(),
+  portfolio: z.record(z.unknown()).default({}),
+  stocks: z.record(z.unknown()).default({}),
+  wfo_params: z.object({
+    params: z.array(WfoParamManifestEntrySchema).default([]),
+  }).default({ params: [] }),
+  total_wfo_param_count: z.number().default(0),
+  warnings: z.array(z.string()).default([]),
+  ready: z.boolean().default(false),
+  blocking_issues: z.array(z.string()).default([]),
+  schema_version: z.number().default(3),
+  app_domain: z.string().default("four_pages"),
+})
+export type StrategyHandoff = z.infer<typeof StrategyHandoffSchema>
+
+export const ActiveScoreChipSchema = z.object({
+  score_key: z.string(),
+  label: z.string(),
+  family: z.string(),
+  source_kind: z.string(),
+  score: z.number().nullable().optional(),
+  signal_label: z.string().nullable().optional(),
+})
+export type ActiveScoreChip = z.infer<typeof ActiveScoreChipSchema>
+
+const PreviewZoneRepSchema = z.object({
+  variant_id: z.string().optional(),
+  weight: z.number().default(0),
+  label: z.string().default(""),
+  indicator: z.record(z.string(), z.any()).nullable().optional(),
+})
+
+const ConstructedSignalSourceSchema = z.object({
+  score_key: z.string(),
+  label: z.string(),
+  family: z.string(),
+  source_kind: z.string(),
+  source_mode_label: z.string().default(""),
+  scores: z.array(z.number()).default([]),
+  representatives: z.array(PreviewZoneRepSchema).default([]),
+  indicator: z.record(z.any()).nullable().optional(),
+  wfo_start_indicator: z.record(z.any()).nullable().optional(),
+  wfo_end_indicator: z.record(z.any()).nullable().optional(),
+  wfo_param_names: z.array(z.string()).default([]),
+  wfo_range_active: z.boolean().default(false),
+})
+
+export const ConstructedSignalChartSchema = z.object({
+  symbol: z.string(),
+  horizon: z.string(),
+  bars: z.array(OhlcvBarSchema),
+  sources: z.array(ConstructedSignalSourceSchema).default([]),
+})
+export type ConstructedSignalChart = z.infer<typeof ConstructedSignalChartSchema>
+
+export const SignalConstructionPreviewSchema = z.object({
+  active_scores: z.array(ActiveScoreChipSchema).default([]),
+  score_snapshot: z.record(z.number().nullable()).default({}),
+  variable_catalog: z.array(z.record(z.string())).default([]),
+  zone_chart: ConstructedSignalChartSchema.default({ symbol: "", horizon: "", bars: [], sources: [] }),
+  explain: z.string().default(""),
+})
+export type SignalConstructionPreview = z.infer<typeof SignalConstructionPreviewSchema>
+
+export const RulePreviewRowSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  config_option: z.string().default("A"),
+  condition_count: z.number().default(0),
+  triggered: z.boolean().default(false),
+  conditions: z.array(z.string()).default([]),
+})
+export type RulePreviewRow = z.infer<typeof RulePreviewRowSchema>
+
+export const RulePreviewSchema = z.object({
+  symbol: z.string(),
+  score_snapshot: z.record(z.number().nullable()).default({}),
+  rules: z.array(RulePreviewRowSchema).default([]),
+  explain: z.string().default(""),
+})
+export type RulePreview = z.infer<typeof RulePreviewSchema>
+
+export const RiskPreviewSchema = z.object({
+  symbol: z.string(),
+  current_close: z.number().nullable().optional(),
+  atr_14: z.number().nullable().optional(),
+  stop_loss: z.number().nullable().optional(),
+  take_profit: z.number().nullable().optional(),
+  rr_ratio: z.number().nullable().optional(),
+  cooldown_bars: z.number().default(0),
+  time_stop_bars: z.number().nullable().optional(),
+  explain: z.string().default(""),
+})
+export type RiskPreview = z.infer<typeof RiskPreviewSchema>
+
+export type FamilyHistoryMode = "static_current_reps" | "dynamic_point_in_time"
+
+export async function fetchStrategyReview(body: {
+  config_json?: Record<string, unknown>
+  horizon?: string
+}): Promise<StrategyReview> {
+  const raw = await request<unknown>("/strategy/plan/review", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+  return StrategyReviewSchema.parse(raw)
+}
+
+export async function fetchStrategyHandoff(strategyId: string): Promise<StrategyHandoff> {
+  const raw = await request<unknown>(`/strategy/plan/strategies/${strategyId}/handoff`, {
+    method: "POST",
+  })
+  return StrategyHandoffSchema.parse(raw)
+}
+
+export async function fetchSignalConstructionPreview(body: {
+  symbol: string
+  horizon?: string
+  timeframe?: string
+  stock_config?: Record<string, unknown>
+  cost_bps?: number
+  cooldown_bars?: number
+  family_history_mode?: FamilyHistoryMode
+}): Promise<SignalConstructionPreview> {
+  const raw = await request<unknown>("/strategy/plan/signal-construction/preview", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+  return SignalConstructionPreviewSchema.parse(raw)
+}
+
+export async function fetchEntryRulesPreview(body: {
+  symbol: string
+  horizon?: string
+  timeframe?: string
+  stock_config?: Record<string, unknown>
+  cost_bps?: number
+  cooldown_bars?: number
+}): Promise<RulePreview> {
+  const raw = await request<unknown>("/strategy/plan/entry-rules/preview", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+  return RulePreviewSchema.parse(raw)
+}
+
+export async function fetchExitRulesPreview(body: {
+  symbol: string
+  horizon?: string
+  timeframe?: string
+  stock_config?: Record<string, unknown>
+  cost_bps?: number
+  cooldown_bars?: number
+}): Promise<RulePreview> {
+  const raw = await request<unknown>("/strategy/plan/exit-rules/preview", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+  return RulePreviewSchema.parse(raw)
+}
+
+export async function fetchRiskPreview(body: {
+  symbol: string
+  horizon?: string
+  timeframe?: string
+  stock_config?: Record<string, unknown>
+  cost_bps?: number
+  cooldown_bars?: number
+}): Promise<RiskPreview> {
+  const raw = await request<unknown>("/strategy/plan/risk/preview", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+  return RiskPreviewSchema.parse(raw)
+}
+
+export const StrategyBacktestRunStockSummarySchema = z.object({
+  symbol: z.string(),
+  status: z.string().default("queued"),
+  summary: z.record(z.unknown()).default({}),
+  error_text: z.string().nullable().optional(),
+})
+export type StrategyBacktestRunStockSummary = z.infer<typeof StrategyBacktestRunStockSummarySchema>
+
+export const StrategyBacktestRunSchema = z.object({
+  run_id: z.string(),
+  title: z.string(),
+  strategy_id: z.string(),
+  strategy_name: z.string(),
+  mode: z.string().default("direct"),
+  status: z.string().default("queued"),
+  horizon: z.string().default("medium"),
+  strategy_snapshot: z.record(z.unknown()).default({}),
+  data_snapshot: z.record(z.unknown()).default({}),
+  request: z.record(z.unknown()).default({}),
+  summary: z.record(z.unknown()).default({}),
+  result: z.record(z.unknown()).default({}),
+  progress: z.record(z.unknown()).default({}),
+  stocks: z.array(StrategyBacktestRunStockSummarySchema).default([]),
+  error_text: z.string().nullable().optional(),
+  created_at: z.string(),
+  started_at: z.string().nullable().optional(),
+  completed_at: z.string().nullable().optional(),
+})
+export type StrategyBacktestRun = z.infer<typeof StrategyBacktestRunSchema>
+
+export const StrategyBacktestRunCreateSchema = z.object({
+  run_id: z.string(),
+  status: z.string(),
+  mode: z.string(),
+  title: z.string(),
+  reused: z.boolean().default(false),
+})
+export type StrategyBacktestRunCreate = z.infer<typeof StrategyBacktestRunCreateSchema>
+
+export const StrategyBacktestRunListItemSchema = z.object({
+  run_id: z.string(),
+  title: z.string(),
+  strategy_id: z.string(),
+  strategy_name: z.string(),
+  mode: z.string().default("direct"),
+  status: z.string().default("queued"),
+  horizon: z.string().default("medium"),
+  start_date: z.string().nullable().optional(),
+  end_date: z.string().nullable().optional(),
+  basket_count: z.number().default(0),
+  summary: z.record(z.unknown()).default({}),
+  created_at: z.string(),
+  completed_at: z.string().nullable().optional(),
+})
+export type StrategyBacktestRunListItem = z.infer<typeof StrategyBacktestRunListItemSchema>
+
+export const StrategyBacktestStockDetailSchema = z.object({
+  run_id: z.string(),
+  symbol: z.string(),
+  status: z.string(),
+  summary: z.record(z.unknown()).default({}),
+  result: z.record(z.unknown()).default({}),
+  error_text: z.string().nullable().optional(),
+})
+export type StrategyBacktestStockDetail = z.infer<typeof StrategyBacktestStockDetailSchema>
+
+export async function createStrategyBacktestRun(body: {
+  strategy_id: string
+  mode?: "direct" | "wfo"
+  start_date?: string | null
+  end_date?: string | null
+  timeframe?: string
+  family_history_mode?: FamilyHistoryMode
+  cost_model: {
+    brokerage_bps: number
+    comm_bourse_bps: number
+    reg_liv_bps: number
+    slippage_bps: number
+    tva_rate: number
+  }
+  volume_gate: {
+    enabled: boolean
+    kind: "min_abs" | "min_ratio_adv"
+    min_volume_abs: number
+    min_volume_ratio_adv: number
+    adv_window: number
+  }
+  cooldown_bars: number
+  wfo_config?: {
+    window_policy?: "strict_fold_driven" | "legacy_ratio_scan"
+    top_k_folds?: number
+    strict_fallback_enabled?: boolean
+    strict_fallback_floor?: number
+    is_oos_ratios?: number[]
+    min_walk_forwards?: number
+    test_period_start?: string | null
+    test_period_end?: string | null
+    n_monte_carlo_paths?: number
+    monte_carlo_block_length?: number | null
+  }
+}): Promise<StrategyBacktestRunCreate> {
+  const raw = await request<unknown>("/backtest/strategy-runs", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+  return StrategyBacktestRunCreateSchema.parse(raw)
+}
+
+export async function fetchStrategyBacktestRun(runId: string): Promise<StrategyBacktestRun> {
+  const raw = await request<unknown>(`/backtest/strategy-runs/${runId}`)
+  return StrategyBacktestRunSchema.parse(raw)
+}
+
+export async function fetchStrategyBacktestRuns(params?: {
+  strategy_id?: string | null
+  status?: string | null
+  mode?: string | null
+  q?: string | null
+  limit?: number | null
+}): Promise<StrategyBacktestRunListItem[]> {
+  const qs = new URLSearchParams()
+  if (params?.strategy_id) qs.set("strategy_id", params.strategy_id)
+  if (params?.status) qs.set("status", params.status)
+  if (params?.mode) qs.set("mode", params.mode)
+  if (params?.q) qs.set("q", params.q)
+  if (params?.limit != null) qs.set("limit", String(params.limit))
+  const raw = await request<unknown>(`/backtest/strategy-runs${qs.toString() ? `?${qs.toString()}` : ""}`)
+  return z.array(StrategyBacktestRunListItemSchema).parse(raw)
+}
+
+export async function fetchStrategyBacktestStockDetail(runId: string, symbol: string): Promise<StrategyBacktestStockDetail> {
+  const raw = await request<unknown>(`/backtest/strategy-runs/${runId}/stocks/${encodeURIComponent(symbol)}`)
+  return StrategyBacktestStockDetailSchema.parse(raw)
+}
+
+export async function renameStrategyBacktestRun(runId: string, title: string): Promise<StrategyBacktestRun> {
+  const raw = await request<unknown>(`/backtest/strategy-runs/${runId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ title }),
+  })
+  return StrategyBacktestRunSchema.parse(raw)
+}
+
+export async function deleteStrategyBacktestRun(runId: string): Promise<void> {
+  await request<unknown>(`/backtest/strategy-runs/${runId}`, {
+    method: "DELETE",
+  })
+}
+
 export const StrategyBacktestMetricRowSchema = z.object({
   metric: z.string(),
   value: z.unknown(),
@@ -2383,6 +2779,7 @@ export async function fetchStrategyBacktest(body: {
   start_date: string
   end_date: string
   timeframe?: string
+  family_history_mode?: FamilyHistoryMode
   cost_model: {
     brokerage_bps: number
     comm_bourse_bps: number
@@ -2519,6 +2916,7 @@ export async function fetchSignalZoneChart(body: {
   timeframe?: string
   cost_bps?: number
   cooldown_bars?: number
+  family_history_mode?: FamilyHistoryMode
 }): Promise<SignalZoneChart> {
   const raw = await request<unknown>("/strategy/signal/zone-chart", {
     method: "POST",
@@ -2630,3 +3028,161 @@ export async function fetchSizing(body: {
   })
   return SizingResultSchema.parse(raw)
 }
+
+// ---------------------------------------------------------------------------
+// Signal Engine Persistence + Backtest MC — added 2026-04-20
+// ---------------------------------------------------------------------------
+
+const MCEnvelopeSchema = z.object({
+  p05: z.array(z.number()),
+  p25: z.array(z.number()),
+  p50: z.array(z.number()),
+  p75: z.array(z.number()),
+  p95: z.array(z.number()),
+})
+
+const MCStatBandSchema = z.object({
+  p05: z.number().nullable(),
+  p50: z.number().nullable(),
+  p95: z.number().nullable(),
+})
+
+const MCStatsSchema = z.object({
+  total_return: MCStatBandSchema,
+  cagr: MCStatBandSchema,
+  sharpe: MCStatBandSchema,
+  max_drawdown: MCStatBandSchema,
+  var95: z.number().nullable(),
+  cvar95: z.number().nullable(),
+  prob_positive_terminal: z.number().nullable(),
+})
+
+const BacktestMetricsSchema = z.object({
+  total_return: z.number().nullable(),
+  cagr: z.number().nullable(),
+  sharpe: z.number().nullable(),
+  max_drawdown: z.number().nullable(),
+  win_rate: z.number().nullable(),
+  n_trades: z.number().nullable(),
+})
+
+export const SignalBacktestResultSchema = z.object({
+  source: z.string(),
+  scope: z.string(),
+  scope_key: z.string(),
+  status: z.string(),
+  window_start: z.string().nullable(),
+  window_end: z.string().nullable(),
+  n_bars: z.number().nullable(),
+  n_trades: z.number().nullable(),
+  equity: z.array(z.number()).nullable(),
+  dates: z.array(z.string()).nullable(),
+  metrics: BacktestMetricsSchema,
+  mc: z.object({
+    method: z.string(),
+    n_paths: z.number(),
+    envelope: MCEnvelopeSchema.nullable(),
+    stats: MCStatsSchema.nullable(),
+  }),
+  computed_at: z.string().nullable(),
+  data_as_of: z.string().nullable(),
+  is_stale: z.boolean(),
+})
+
+export const SignalBacktestResponseSchema = z.object({
+  symbol: z.string(),
+  horizon: z.string(),
+  variant: z.string(),
+  market_data_as_of: z.string().nullable(),
+  results: z.array(SignalBacktestResultSchema),
+})
+
+export type SignalBacktestResult = z.infer<typeof SignalBacktestResultSchema>
+export type SignalBacktestResponse = z.infer<typeof SignalBacktestResponseSchema>
+
+export const SignalEngineResultSchema = z.object({
+  symbol: z.string(),
+  horizon: z.string(),
+  variant: z.string(),
+  status: z.string(),
+  aggregate_score_pct: z.number().nullable(),
+  expanded_aggregate_score_pct: z.number().nullable(),
+  signal_label: z.string().nullable(),
+  per_category: z.record(z.unknown()).nullable(),
+  per_family: z.record(z.unknown()).nullable(),
+  technical_levels: z.record(z.unknown()).nullable(),
+  support_resistance: z.record(z.unknown()).nullable(),
+  computed_at: z.string().nullable(),
+  data_as_of: z.string().nullable(),
+  is_stale: z.boolean(),
+  market_data_as_of: z.string().nullable(),
+  families: z.record(z.unknown()),
+})
+
+export type SignalEngineResult = z.infer<typeof SignalEngineResultSchema>
+
+export async function fetchSignalBacktestResults(
+  symbol: string,
+  horizon: string,
+  opts?: { variant?: string; source?: string; scope?: string }
+): Promise<SignalBacktestResponse> {
+  const params = new URLSearchParams({ symbol, horizon, variant: opts?.variant ?? "expanded" })
+  if (opts?.source) params.set("source", opts.source)
+  if (opts?.scope) params.set("scope", opts.scope)
+  const raw = await request<unknown>(`/strategy/backtest-mc?${params}`)
+  return SignalBacktestResponseSchema.parse(raw)
+}
+
+export async function triggerSignalBacktest(body: {
+  symbol: string
+  horizon: string
+  variant?: string
+  window_start?: string
+  window_end?: string
+  mc_config?: Record<string, unknown>
+}): Promise<{ job_id: string; status: string }> {
+  return request("/strategy/backtest-mc/trigger", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+}
+
+export async function triggerSignalEngine(body: {
+  symbol: string
+  horizon: string
+  variant?: string
+}): Promise<{ job_id: string; status: string }> {
+  return request("/strategy/engine/trigger", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+}
+
+export async function fetchSignalEngineResult(
+  symbol: string,
+  horizon: string,
+  variant = "expanded"
+): Promise<SignalEngineResult> {
+  const params = new URLSearchParams({ symbol, horizon, variant })
+  const raw = await request<unknown>(`/strategy/engine/result?${params}`)
+  return SignalEngineResultSchema.parse(raw)
+}
+
+export async function fetchSignalEngineBatchStatus(
+  symbol: string,
+  horizon: string,
+  variant = "expanded"
+): Promise<{ symbol: string; horizon: string; variant: string; jobs: unknown[] }> {
+  const params = new URLSearchParams({ symbol, horizon, variant })
+  return request(`/strategy/engine/batch-status?${params}`)
+}
+
+export async function fetchSignalBacktestBatchStatus(
+  symbol: string,
+  horizon: string,
+  variant = "expanded"
+): Promise<{ symbol: string; horizon: string; variant: string; job_type: string; jobs: unknown[] }> {
+  const params = new URLSearchParams({ symbol, horizon, variant })
+  return request(`/strategy/backtest-mc/batch-status?${params}`)
+}
+

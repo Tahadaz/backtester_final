@@ -6,10 +6,12 @@ import type {
   Artifact,
   BatchScore,
   Dataset,
+  FamilyHistoryMode,
   FamilyCombinedSignal,
   RegimeConsensus,
   FillRow,
   LeaderboardRow,
+  IndicatorSeriesResponse,
   LevelsResult,
   MarketCatalogRow,
   MarketHealth,
@@ -27,8 +29,16 @@ import type {
   RunWalkForward,
   SavedStrategy,
   SavedStrategyListItem,
+  StrategyHandoff,
+  StrategyBacktestRun,
+  StrategyBacktestRunListItem,
+  StrategyBacktestStockDetail,
+  StrategyReview,
   StrategyAllocation,
   ExecutionPlan,
+  SignalConstructionPreview,
+  RulePreview,
+  RiskPreview,
   SignalConsensus,
   SignalZoneChart,
   SizingResult,
@@ -44,15 +54,25 @@ import {
   fetchExecution,
   fetchRegimeConsensus,
   fetchFamilyEnsemble,
+  fetchIndicatorSeries,
   fetchSizing,
   fetchLevels,
   fetchMasiTickers,
+  fetchSignalConstructionPreview,
+  fetchEntryRulesPreview,
+  fetchExitRulesPreview,
+  fetchRiskPreview,
   fetchSignalConsensus,
   fetchSignalZoneChart,
   fetchSmaEnsemble,
   fetchStrategies,
   fetchStrategy,
   fetchStrategyAllocation,
+  fetchStrategyBacktestRun,
+  fetchStrategyBacktestRuns,
+  fetchStrategyBacktestStockDetail,
+  fetchStrategyHandoff,
+  fetchStrategyReview,
   fetchUniverse,
   fetchVariantBacktest,
   fetchVariantDetail,
@@ -368,6 +388,29 @@ export function useFamilyEnsemble(family: string | null, symbol: string | null, 
   )
 }
 
+export function useIndicatorSeries(
+  symbol: string | null,
+  indicator: string,
+  params: Record<string, number>,
+  enabled: boolean = true,
+) {
+  const key =
+    symbol && enabled
+      ? `/strategy/signal/indicator-series?s=${symbol}&i=${indicator}&p=${encodeURIComponent(JSON.stringify(params))}`
+      : null
+  return useSWR<IndicatorSeriesResponse>(
+    key,
+    () =>
+      fetchIndicatorSeries({
+        symbol: symbol!,
+        indicator,
+        params,
+        timeframe: "1D",
+      }),
+    { revalidateOnFocus: false }
+  )
+}
+
 export function useVariantBacktest(
   variantId: string | null,
   symbol: string | null,
@@ -569,7 +612,177 @@ export function useStrategy(id: string | null) {
   )
 }
 
+export function useStrategyReview(configJson: Record<string, unknown> | null, horizon: string | null) {
+  const key =
+    configJson && horizon
+      ? `/strategy/plan/review?h=${horizon}&cfg=${encodeURIComponent(JSON.stringify(configJson))}`
+      : null
+  return useSWR<StrategyReview>(
+    key,
+    () => fetchStrategyReview({ config_json: configJson!, horizon: horizon! }),
+    { revalidateOnFocus: false }
+  )
+}
+
+export function useStrategyHandoff(strategyId: string | null) {
+  return useSWR<StrategyHandoff>(
+    strategyId ? `/strategy/plan/strategies/${strategyId}/handoff` : null,
+    () => fetchStrategyHandoff(strategyId!),
+    { revalidateOnFocus: false }
+  )
+}
+
 // ── Signal Consensus ─────────────────────────────────────────────────────────
+
+export function useSignalConstructionPreview(
+  symbol: string | null,
+  horizon: string | null,
+  stockConfig: Record<string, unknown> | null,
+  options?: { timeframe?: string; costBps?: number; cooldownBars?: number; familyHistoryMode?: FamilyHistoryMode },
+) {
+  const historyMode = options?.familyHistoryMode ?? "static_current_reps"
+  const key =
+    symbol && horizon && stockConfig
+      ? `/strategy/plan/signal-construction/preview?s=${symbol}&h=${horizon}&hm=${historyMode}&cfg=${encodeURIComponent(JSON.stringify(stockConfig))}`
+      : null
+  return useSWR<SignalConstructionPreview>(
+    key,
+    () =>
+      fetchSignalConstructionPreview({
+        symbol: symbol!,
+        horizon: horizon!,
+        timeframe: options?.timeframe,
+        stock_config: stockConfig!,
+        cost_bps: options?.costBps,
+        cooldown_bars: options?.cooldownBars,
+        family_history_mode: historyMode,
+      }),
+    { revalidateOnFocus: false }
+  )
+}
+
+export function useEntryRulesPreview(
+  symbol: string | null,
+  horizon: string | null,
+  stockConfig: Record<string, unknown> | null,
+  options?: { timeframe?: string; costBps?: number; cooldownBars?: number },
+) {
+  const key =
+    symbol && horizon && stockConfig
+      ? `/strategy/plan/entry-rules/preview?s=${symbol}&h=${horizon}&cfg=${encodeURIComponent(JSON.stringify(stockConfig))}`
+      : null
+  return useSWR<RulePreview>(
+    key,
+    () =>
+      fetchEntryRulesPreview({
+        symbol: symbol!,
+        horizon: horizon!,
+        timeframe: options?.timeframe,
+        stock_config: stockConfig!,
+        cost_bps: options?.costBps,
+        cooldown_bars: options?.cooldownBars,
+      }),
+    { revalidateOnFocus: false }
+  )
+}
+
+export function useExitRulesPreview(
+  symbol: string | null,
+  horizon: string | null,
+  stockConfig: Record<string, unknown> | null,
+  options?: { timeframe?: string; costBps?: number; cooldownBars?: number },
+) {
+  const key =
+    symbol && horizon && stockConfig
+      ? `/strategy/plan/exit-rules/preview?s=${symbol}&h=${horizon}&cfg=${encodeURIComponent(JSON.stringify(stockConfig))}`
+      : null
+  return useSWR<RulePreview>(
+    key,
+    () =>
+      fetchExitRulesPreview({
+        symbol: symbol!,
+        horizon: horizon!,
+        timeframe: options?.timeframe,
+        stock_config: stockConfig!,
+        cost_bps: options?.costBps,
+        cooldown_bars: options?.cooldownBars,
+      }),
+    { revalidateOnFocus: false }
+  )
+}
+
+export function useRiskPreview(
+  symbol: string | null,
+  horizon: string | null,
+  stockConfig: Record<string, unknown> | null,
+  options?: { timeframe?: string; costBps?: number; cooldownBars?: number },
+) {
+  const key =
+    symbol && horizon && stockConfig
+      ? `/strategy/plan/risk/preview?s=${symbol}&h=${horizon}&cfg=${encodeURIComponent(JSON.stringify(stockConfig))}`
+      : null
+  return useSWR<RiskPreview>(
+    key,
+    () =>
+      fetchRiskPreview({
+        symbol: symbol!,
+        horizon: horizon!,
+        timeframe: options?.timeframe,
+        stock_config: stockConfig!,
+        cost_bps: options?.costBps,
+        cooldown_bars: options?.cooldownBars,
+      }),
+    { revalidateOnFocus: false }
+  )
+}
+
+export function useStrategyBacktestRun(runId: string | null, refreshInterval?: number) {
+  return useSWR<StrategyBacktestRun>(
+    runId ? `/backtest/strategy-runs/${runId}` : null,
+    () => fetchStrategyBacktestRun(runId!),
+    {
+      revalidateOnFocus: false,
+      refreshInterval: (data) => {
+        if (!refreshInterval) return 0
+        const status = data?.status
+        if (status === "queued" || status === "running") return refreshInterval
+        return 0
+      },
+    }
+  )
+}
+
+export function useStrategyBacktestRuns(params?: {
+  strategy_id?: string | null
+  status?: string | null
+  mode?: string | null
+  q?: string | null
+  limit?: number | null
+}) {
+  const qs = new URLSearchParams()
+  if (params?.strategy_id) qs.set("strategy_id", params.strategy_id)
+  if (params?.status) qs.set("status", params.status)
+  if (params?.mode) qs.set("mode", params.mode)
+  if (params?.q) qs.set("q", params.q)
+  if (params?.limit != null) qs.set("limit", String(params.limit))
+  const key = `/backtest/strategy-runs${qs.toString() ? `?${qs.toString()}` : ""}`
+  return useSWR<StrategyBacktestRunListItem[]>(
+    key,
+    () => fetchStrategyBacktestRuns(params),
+    { revalidateOnFocus: true, refreshInterval: 5000 },
+  )
+}
+
+export function useStrategyBacktestStockDetail(runId: string | null, symbol: string | null, refreshInterval?: number) {
+  return useSWR<StrategyBacktestStockDetail>(
+    runId && symbol ? `/backtest/strategy-runs/${runId}/stocks/${symbol}` : null,
+    () => fetchStrategyBacktestStockDetail(runId!, symbol!),
+    {
+      revalidateOnFocus: false,
+      refreshInterval: () => refreshInterval ?? 0,
+    }
+  )
+}
 
 export function useSignalConsensus(
   symbol: string | null,
@@ -603,11 +816,13 @@ export function useSignalZoneChart(
   symbol: string | null,
   horizon: string,
   enabledFamilies: string[],
+  options?: { timeframe?: string; costBps?: number; cooldownBars?: number; familyHistoryMode?: FamilyHistoryMode },
 ) {
+  const historyMode = options?.familyHistoryMode ?? "static_current_reps"
   const famKey = [...enabledFamilies].sort().join(",")
   const key =
     symbol && enabledFamilies.length > 0
-      ? `/strategy/signal/zone-chart?s=${symbol}&h=${horizon}&f=${famKey}`
+      ? `/strategy/signal/zone-chart?s=${symbol}&h=${horizon}&hm=${historyMode}&f=${famKey}`
       : null
   return useSWR<SignalZoneChart>(
     key,
@@ -616,6 +831,10 @@ export function useSignalZoneChart(
         symbol: symbol!,
         horizon,
         enabled_families: enabledFamilies,
+        timeframe: options?.timeframe,
+        cost_bps: options?.costBps,
+        cooldown_bars: options?.cooldownBars,
+        family_history_mode: historyMode,
       }),
     { revalidateOnFocus: false },
   )

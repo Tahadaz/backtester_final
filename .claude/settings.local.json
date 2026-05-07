@@ -15,7 +15,15 @@
       "Bash(cd:*)",
       "Bash(curl:*)",
       "Bash(PYTHONPATH=core:. python -m pytest core/tests/test_signal_engine.py -q)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(npm run:*)",
+      "Bash(npx tsc:*)",
+      "Bash(docker exec *)",
+      "Bash(docker network *)",
+      "Bash(docker compose *)",
+      "Bash(docker-compose up *)",
+      "Bash(docker-compose down *)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\taha\\\\Downloads\\\\backtester_signal_engine_autoaccept\\\\services\" -Recurse -Depth 3 | Where-Object { $_.Name -match \"\\\\.\\(py|sql|yml|yaml\\)$\" -or $_.PSIsContainer } | Select-Object -ExpandProperty FullName | Select-Object -First 100)"
     ]
   }
 }

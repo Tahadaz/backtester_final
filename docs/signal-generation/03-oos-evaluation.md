@@ -38,41 +38,59 @@ Every signal function must satisfy:
 
 These invariants are enforced after every signal computation. Violations raise `ValueError`.
 
-### Signal Implementations
+### Signal Implementations (20 families)
 
-**SMA (`price_vs_sma`)**:
-```
-sma = rolling_mean(close, window)
-signal[i] = +1 if close[i] > sma[i], -1 if close[i] < sma[i], else 0
-warmup = window - 1 bars
-```
+#### Tendance (state signals — position level)
 
-**RSI (`rsi_level`)**:
-```
-rsi = wilder_rsi(close, period)
-signal[i] = +1 if rsi[i] < oversold    # buy on weakness
-signal[i] = -1 if rsi[i] > overbought  # sell on strength
-signal[i] = 0 otherwise
-warmup = period bars
-```
+**SMA (`price_vs_sma`)**: `signal = +1 if close > SMA(w), -1 if close < SMA(w), else 0`. Warmup: `window - 1`.
 
-Note: RSI signals are **actions** (+1 = buy action), not positions. They are converted to positions via forward-fill before return computation.
+**EMA (`price_vs_ema`)**: `signal = +1 if close > EMA(w), -1 if close < EMA(w), else 0`. Warmup: `window`.
 
-**MACD (`macd_cross`)**:
-```
-macd_line = ema(close, fast) - ema(close, slow)
-signal_line = ema(macd_line, signal)
-signal[i] = +1 if macd_line[i] > signal_line[i], -1 otherwise
-warmup = slow + signal - 1 bars
-```
+**EMA Cross (`ema_cross`)**: `signal = +1 if EMA(fast) > EMA(slow), -1 if EMA(fast) < EMA(slow), else 0`. Warmup: `slow`.
 
-**OBV (`obv_trend`)**:
-```
-obv[i] = obv[i-1] + (volume[i] if close[i] > close[i-1] else -volume[i])
-obv_ema = ema(obv, ema_period)
-signal[i] = +1 if obv[i] > obv_ema[i], -1 otherwise
-warmup = ema_period bars
-```
+**Ichimoku (`ichi_cloud`)**: `signal = +1 if (close > cloud_top AND tenkan > kijun), -1 if (close < cloud_bottom AND tenkan < kijun), else 0`. Warmup: `senkou_b`. Requires `high`, `low`.
+
+**PSAR (`psar_trend`)**: `signal = +1 if close > SAR, -1 if close < SAR`. Always directional (no 0). Warmup: 2. Requires `high`, `low`.
+
+#### Momentum (mixed — MACD is event, others are state)
+
+**MACD (`macd_cross`)**: `signal = +1 if macd_line > signal_line, -1 otherwise`. Event signal → positions via forward-fill. Warmup: `slow + signal - 1`.
+
+**ROC (`roc_zero`)**: `signal = +1 if ROC(n) > 0, -1 if ROC(n) < 0, else 0`. Warmup: `period`.
+
+**TRIX (`trix_zero`)**: `signal = +1 if TRIX(n) > 0, -1 if TRIX(n) < 0, else 0`. Warmup: `3 × (period - 1)`.
+
+**ADX (`adx_trend`)**: `signal = +1 if (+DI > -DI AND ADX > threshold), -1 if (-DI > +DI AND ADX > threshold), else 0`. Warmup: `2 × period`. Requires `high`, `low`.
+
+**TSI (`tsi_zero`)**: `signal = +1 if TSI > 0, -1 if TSI < 0, else 0`. Warmup: `long_period + short_period`.
+
+#### Oscillation (event signals — action intent, forward-filled to positions)
+
+**RSI (`rsi_level`)**: `signal = +1 if RSI < oversold, -1 if RSI > overbought, else 0`. Warmup: `period`.
+
+**Stochastic (`stoch_level`)**: `signal = +1 if (%K < 20 AND %K > %D), -1 if (%K > 80 AND %K < %D), else 0`. Warmup: `k_period + d_period`. Requires `high`, `low`.
+
+**CCI (`cci_level`)**: `signal = +1 if CCI < -100, -1 if CCI > +100, else 0`. Warmup: `period`. Requires `high`, `low`.
+
+**MFI (`mfi_level`)**: `signal = +1 if MFI < oversold, -1 if MFI > overbought, else 0`. Warmup: `period`. Requires `high`, `low`, `volume`.
+
+**UO (`uo_level`)**: `signal = +1 if UO < 30, -1 if UO > 70, else 0`. Warmup: `period_3`. Requires `high`, `low`.
+
+#### Volume (state signals — position level)
+
+**OBV (`obv_trend`)**: `signal = +1 if OBV > EMA(OBV), -1 if OBV < EMA(OBV)`. Warmup: `ema_period`. Requires `volume`.
+
+**CMF (`cmf_flow`)**: `signal = +1 if CMF > +0.05, -1 if CMF < -0.05, else 0`. Warmup: `period`. Requires `high`, `low`, `volume`.
+
+**A/D (`ad_trend`)**: `signal = +1 if A/D > EMA(A/D), -1 if A/D < EMA(A/D)`. Warmup: `ema_period`. Requires `high`, `low`, `volume`.
+
+**VWAP (`vwap_dev`)**: `signal = +1 if close > VWAP × (1+threshold), -1 if close < VWAP × (1-threshold), else 0`. Warmup: `period`. Requires `volume`.
+
+**Force Index (`fi_trend`)**: `signal = +1 if EMA(FI) > 0, -1 if EMA(FI) < 0`. Warmup: `period`. Requires `volume`.
+
+#### OHLCV Data Requirements
+
+9 of 16 new indicators require `high` and/or `low` arrays in addition to `close` and `volume`. The `compute_signal_array()` signature is extended with optional `high` and `low` kwargs. Indicators that don't need them ignore these parameters.
 
 ---
 
@@ -179,7 +197,7 @@ cost[i] = cost_factor × |position[i] - position[i-1]|
 
 **Why position-change basis?** This captures the economic reality: a signal that flips between buy and sell every day incurs enormous costs, while a signal that holds a position for weeks incurs minimal costs. The cost model naturally penalizes over-trading.
 
-**Action → Position conversion** (RSI only): RSI signals are actions (+1 = enter long, -1 = enter short, 0 = do nothing). These are forward-filled into positions before cost computation.
+**Action → Position conversion** (event-style signals): RSI, Stochastic, CCI, MFI, UO, and MACD produce action signals (+1 = enter long, -1 = enter short/exit, 0 = do nothing). These are forward-filled into positions via `_actions_to_positions()` before cost computation. All other indicators produce state signals (position levels) that are used directly.
 
 ---
 

@@ -1,3 +1,31 @@
+x-wfo-worker-base: &wfo_worker_base
+  build:
+    context: ..
+    dockerfile: services/worker/Dockerfile
+  environment:
+    REDIS_URL: redis://quant_redis:6379/0
+    DATABASE_URL: postgresql+psycopg2://app:app@quant_postgres:5432/quant
+    RUNS_QUEUE_NAME: runs
+    DEFAULTS_DISCOVERY_QUEUE_NAME: defaults_discovery
+    WORKER_QUEUES: wfo_signals
+    RUN_HEARTBEAT_INTERVAL_SECONDS: "15"
+    RUN_ORPHAN_STALE_SECONDS: "600"
+    S3_ENDPOINT: http://minio:9000
+    S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minio}
+    S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minio12345}
+    S3_BUCKET: quant-artifacts
+    S3_SECURE: "false"
+    PYTHONPATH: /repo
+  depends_on:
+    quant_postgres:
+      condition: service_healthy
+    quant_redis:
+      condition: service_healthy
+    quant_minio:
+      condition: service_healthy
+  command: python -m services.worker.worker
+  restart: unless-stopped
+
 services:
   quant_postgres:
     image: postgres:16
@@ -99,7 +127,8 @@ services:
       DATABASE_URL: postgresql+psycopg2://app:app@quant_postgres:5432/quant
       RUNS_QUEUE_NAME: runs
       DEFAULTS_DISCOVERY_QUEUE_NAME: defaults_discovery
-      WORKER_QUEUES: runs
+      WORKER_QUEUES: runs,market_refresh,signal_engine,signal_backtest,score_history
+      SIGNAL_ENGINE_REFRESH_ON_MARKET_REFRESH: "1"
       RUN_HEARTBEAT_INTERVAL_SECONDS: "15"
       RUN_ORPHAN_STALE_SECONDS: "600"
       S3_ENDPOINT: http://minio:9000
@@ -147,9 +176,12 @@ services:
     command: python -m services.worker.worker
     restart: unless-stopped
 
+  quant_worker_wfo:
+    <<: *wfo_worker_base
+
   quant_frontend:
     build:
-      context: ../quant-backtesting-frontend
+      context: ../frontend
       dockerfile: Dockerfile
     container_name: quant_frontend
     environment:

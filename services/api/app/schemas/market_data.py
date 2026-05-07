@@ -155,7 +155,14 @@ class MarketCatalogRowOut(BaseModel):
     # Derived flags
     is_tracked: bool = False
     has_canonical_data: bool = False
-    market: str = "masi"
+    market: str = "masi"          # kept for backward compat; derived from asset_type/market_region
+    asset_type: str = "equity"    # "equity" | "commodity" | "forex" | "bond"
+    market_region: Optional[str] = None  # "masi" | "us" | "european" | "asian" | null
+
+
+class AssetCategoryPatchIn(BaseModel):
+    asset_type: str    # "equity" | "commodity" | "forex" | "bond"
+    market_region: Optional[str] = None  # "masi" | "us" | "european" | "asian" | null
 
 
 # ── OHLCV Preview ─────────────────────────────────────────────────────────────
@@ -258,4 +265,5 @@ class AvailabilityCalendarOut(BaseModel):
     weekend_days: int = 0
     market_holiday_days: int = 0
     tentative_market_holiday_days: int = 0
+    no_trading_days: int = 0
     partial_days: int = 0

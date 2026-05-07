@@ -7,6 +7,7 @@
     "build": "next build",
     "build:pages": "node scripts/build-pages.js",
     "prune:pages": "node scripts/prune-pages-output.js",
+    "publish:dashboard": "powershell -ExecutionPolicy Bypass -File scripts/publish-dashboard.ps1",
     "start": "next start",
     "lint": "eslint ."
   },
@@ -63,6 +64,7 @@
     "swr": "^2.4.0",
     "tailwind-merge": "^3.3.1",
     "vaul": "^1.1.2",
+    "xlsx": "^0.18.5",
     "zod": "^3.24.1"
   },
   "devDependencies": {

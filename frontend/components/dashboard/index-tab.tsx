@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react"
 import { ChevronDown, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react"
-import type { DashboardIndex, DashboardStock } from "@/lib/dashboard-types"
+import type { DashboardBreadth, DashboardIndex, DashboardStock, FamilyScore } from "@/lib/dashboard-types"
 import { FAMILY_LABELS, FAMILY_ORDER, aggregateScoreLabel, familyScoreLabel } from "@/lib/dashboard-constants"
 import { FamilyCell } from "./family-cell"
 import { SignalBadge } from "./signal-badge"
@@ -28,7 +28,7 @@ interface IndexMember {
   display_name: string | null
   signal_label: string | null
   aggregate_score_pct: number | null
-  per_family: DashboardStock["per_family"]
+  per_family: Record<string, FamilyScore>
 }
 
 interface ComputedIndex {
@@ -37,8 +37,8 @@ interface ComputedIndex {
   stock_count: number
   aggregate_signal_label: string | null
   aggregate_score_pct: number | null
-  per_family: DashboardIndex["per_family"]
-  breadth: DashboardIndex["breadth"]
+  per_family: Record<string, FamilyScore>
+  breadth: DashboardBreadth
   members: IndexMember[]
   editable: boolean
 }
@@ -96,7 +96,7 @@ function BreadthBar({
   breadth,
   total,
 }: {
-  breadth: DashboardIndex["breadth"]
+  breadth: DashboardBreadth
   total: number
 }) {
   const pctAchat = total > 0 ? (breadth.achat / total) * 100 : 0
@@ -169,19 +169,19 @@ export function IndexTab({
     const masiMembers: IndexMember[] = stocks.map((stock) => ({
       symbol: stock.symbol,
       display_name: stock.display_name,
-      signal_label: stock.aggregate_signal_label,
-      aggregate_score_pct: stock.aggregate_score_pct,
-      per_family: stock.per_family,
+      signal_label: stock.scores.signal_engine.aggregate_signal_label,
+      aggregate_score_pct: stock.scores.signal_engine.aggregate_score_pct,
+      per_family: stock.scores.signal_engine.per_family,
     }))
 
     const base: ComputedIndex = {
       id: MASI_KEY,
       name: baseIndex.name || "MASI",
       stock_count: baseIndex.stock_count,
-      aggregate_signal_label: baseIndex.aggregate_signal_label,
-      aggregate_score_pct: baseIndex.aggregate_score_pct,
-      per_family: baseIndex.per_family,
-      breadth: baseIndex.breadth,
+      aggregate_signal_label: baseIndex.scores.signal_engine.aggregate_signal_label,
+      aggregate_score_pct: baseIndex.scores.signal_engine.aggregate_score_pct,
+      per_family: baseIndex.scores.signal_engine.per_family,
+      breadth: baseIndex.scores.signal_engine.breadth ?? breadthFromMembers(masiMembers),
       members: masiMembers,
       editable: false,
     }
@@ -193,9 +193,9 @@ export function IndexTab({
         return {
           symbol,
           display_name: stock?.display_name ?? null,
-          signal_label: stock?.aggregate_signal_label ?? null,
-          aggregate_score_pct: stock?.aggregate_score_pct ?? null,
-          per_family: stock?.per_family ?? {},
+          signal_label: stock?.scores.signal_engine.aggregate_signal_label ?? null,
+          aggregate_score_pct: stock?.scores.signal_engine.aggregate_score_pct ?? null,
+          per_family: stock?.scores.signal_engine.per_family ?? {},
         }
       })
 
@@ -204,7 +204,7 @@ export function IndexTab({
         .filter((value): value is number => typeof value === "number")
       const aggregateScore = average(aggregateValues)
 
-      const perFamily: DashboardIndex["per_family"] = {}
+      const perFamily: Record<string, FamilyScore> = {}
       for (const family of FAMILY_ORDER) {
         const familyValues = members
           .map((member) => member.per_family[family]?.score_pct)

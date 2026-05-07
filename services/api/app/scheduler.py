@@ -1,4 +1,4 @@
-"""Daily 18:00 market refresh scheduler (Africa/Casablanca timezone)."""
+"""Daily 20:00 market refresh scheduler (Africa/Casablanca timezone)."""
 from __future__ import annotations
 
 import logging
@@ -17,7 +17,7 @@ log = logging.getLogger(__name__)
 
 
 def _enqueue_daily_refresh() -> None:
-    """Create a MarketRefreshRun and enqueue the RQ job — same logic as POST /market-data/refresh."""
+    """Create a MarketRefreshRun and enqueue the RQ job - same logic as POST /market-data/refresh."""
     Session = _ensure_session_factory()
     db = Session()
     try:
@@ -59,6 +59,28 @@ def _enqueue_daily_refresh() -> None:
         db.close()
 
 
+def _enqueue_factor_monitor() -> None:
+    """Enqueue the nightly parameter drift monitor (Stage 4) for all active macro factors."""
+    try:
+        from services.api.app.queue import _get_macro_ingest_queue
+        q = _get_macro_ingest_queue()
+        job = q.enqueue("services.worker.tasks.factor_selection_monitor.run_factor_selection_monitor")
+        log.info("scheduler: enqueued factor selection monitor job=%s", job.id)
+    except Exception:
+        log.exception("scheduler: failed to enqueue factor selection monitor")
+
+
+def _enqueue_quarterly_recalibration() -> None:
+    """Enqueue full factor selection recalibration for all active stocks."""
+    try:
+        from services.api.app.queue import _get_macro_ingest_queue
+        q = _get_macro_ingest_queue()
+        job = q.enqueue("services.worker.tasks.factor_selection_quarterly.run_quarterly_factor_recalibration")
+        log.info("scheduler: enqueued quarterly factor recalibration job=%s", job.id)
+    except Exception:
+        log.exception("scheduler: failed to enqueue quarterly factor recalibration")
+
+
 _scheduler: BackgroundScheduler | None = None
 
 
@@ -72,12 +94,24 @@ def start_scheduler() -> None:
     _scheduler = BackgroundScheduler()
     _scheduler.add_job(
         _enqueue_daily_refresh,
-        trigger=CronTrigger(hour=18, minute=0, day_of_week="mon-fri", timezone="Africa/Casablanca"),
+        trigger=CronTrigger(hour=20, minute=0, day_of_week="mon-fri", timezone="Africa/Casablanca"),
         id="daily_market_refresh",
         replace_existing=True,
     )
+    _scheduler.add_job(
+        _enqueue_factor_monitor,
+        trigger=CronTrigger(hour=22, minute=0, day_of_week="mon-fri", timezone="Africa/Casablanca"),
+        id="daily_factor_monitor",
+        replace_existing=True,
+    )
+    _scheduler.add_job(
+        _enqueue_quarterly_recalibration,
+        trigger=CronTrigger(month="1,4,7,10", day=1, hour=2, minute=0, timezone="Africa/Casablanca"),
+        id="quarterly_factor_recalibration",
+        replace_existing=True,
+    )
     _scheduler.start()
-    log.info("scheduler: started — daily refresh at 18:00 Africa/Casablanca Mon-Fri")
+    log.info("scheduler: started - daily refresh @20:00, factor monitor @22:00, quarterly recalib @Jan/Apr/Jul/Oct 1st")
 
 
 def stop_scheduler() -> None:

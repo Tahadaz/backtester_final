@@ -1,34 +1,41 @@
 "use client"
 
 import type { ReactNode } from "react"
-import { Activity, BarChart3, Brain, LineChart, Settings, User } from "lucide-react"
+import Link from "next/link"
+import { Activity, BarChart2, BarChart3, Brain, LineChart, Settings, TrendingUp, User } from "lucide-react"
 import { HorizonSelector } from "@/components/strategy/horizon-selector"
 import { PlaceholderTab } from "@/components/strategy/placeholder-tab"
 import { StockSidebar } from "@/components/strategy/stock-sidebar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
+export type SignalsPageView = "expanded" | "legacy" | "factor_x_ta"
+
 type SignalsViewLayoutProps = {
   selectedSymbol: string | null
   onSelectSymbol: (symbol: string) => void
   horizon: string
+  variant: SignalsPageView
   onHorizonChange: (value: string) => void
   cooldownBars: number
   onCooldownBarsChange: (value: number) => void
   techniqueContent: ReactNode
   indicatorsContent: ReactNode
   wfoContent: ReactNode
+  backtestContent: ReactNode
 }
 
 export function SignalsViewLayout({
   selectedSymbol,
   onSelectSymbol,
   horizon,
+  variant,
   onHorizonChange,
   cooldownBars,
   onCooldownBarsChange,
   techniqueContent,
   indicatorsContent,
   wfoContent,
+  backtestContent,
 }: SignalsViewLayoutProps) {
   return (
     <div className="flex h-full overflow-hidden">
@@ -36,6 +43,7 @@ export function SignalsViewLayout({
         selectedSymbol={selectedSymbol}
         onSelect={onSelectSymbol}
         horizon={horizon}
+        variant={variant}
         cooldownBars={cooldownBars}
         className="w-[280px] shrink-0"
       />
@@ -62,6 +70,15 @@ export function SignalsViewLayout({
                 <span className="text-xs text-muted-foreground">bars</span>
               </div>
               <HorizonSelector value={horizon} onChange={onHorizonChange} />
+              {selectedSymbol && (
+                <Link
+                  href={`/analytics?symbol=${selectedSymbol}`}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors"
+                >
+                  <BarChart2 className="h-3.5 w-3.5" />
+                  Analytics
+                </Link>
+              )}
             </div>
           </div>
 
@@ -108,6 +125,14 @@ export function SignalsViewLayout({
                     <Settings className="h-3 w-3" />
                     WFO
                   </TabsTrigger>
+                  <TabsTrigger
+                    value="backtest"
+                    className="gap-1.5 text-xs h-7"
+                    disabled={!selectedSymbol}
+                  >
+                    <TrendingUp className="h-3 w-3" />
+                    Backtest & MC
+                  </TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="signaux" className="mt-3">
@@ -120,6 +145,10 @@ export function SignalsViewLayout({
 
                 <TabsContent value="wfo" className="mt-3">
                   {wfoContent}
+                </TabsContent>
+
+                <TabsContent value="backtest" className="mt-3">
+                  {backtestContent}
                 </TabsContent>
               </Tabs>
             </TabsContent>

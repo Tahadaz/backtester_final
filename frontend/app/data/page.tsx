@@ -1,14 +1,23 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { useMarketCatalog, useTrackedStocks, useMasiTickers } from "@/hooks/use-api"
-import { ApiError, refreshAllStocks, addTrackedStock, refreshSingleStock } from "@/lib/api"
+import { useMarketCatalog, useTrackedStocks, useMasiTickers, useMacroCatalog } from "@/hooks/use-api"
+import {
+  ApiError,
+  refreshAllStocks,
+  addTrackedStock,
+  refreshSingleStock,
+  enqueueAllMacroIngest,
+  enqueueMacroIngest,
+} from "@/lib/api"
 import type { MarketCatalogRow, MasiTicker } from "@/lib/api"
 import { PublicDataPage } from "@/components/data/public-data-page"
 import { StockDetailPanel } from "@/components/data/stock-detail-panel"
 import { ExcelUploadDialog } from "@/components/data/excel-upload-dialog"
 import { RefreshStatusBar } from "@/components/data/refresh-status-bar"
 import { FreshnessBadge } from "@/components/data/freshness-badge"
+import { CategoryEditDialog } from "@/components/data/category-edit-dialog"
+import { AddFactorDialog } from "@/components/data/add-factor-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -33,13 +42,30 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { FileSpreadsheet, RefreshCw, Eye, CheckCircle2, Plus, Search } from "lucide-react"
+import { FileSpreadsheet, Globe, RefreshCw, Eye, CheckCircle2, Plus, Search, Download, Pencil } from "lucide-react"
 import { toast } from "sonner"
 
-type MarketTab = "masi" | "other"
+type CategoryTab = "equity" | "commodity" | "forex" | "bond" | "crypto"
+type SubcategoryTab = "all" | "masi" | "us" | "european" | "asian"
+
+const CATEGORY_TABS: { key: CategoryTab; label: string }[] = [
+  { key: "equity", label: "Actions" },
+  { key: "commodity", label: "Matières premières" },
+  { key: "forex", label: "Devises" },
+  { key: "bond", label: "Obligations" },
+  { key: "crypto", label: "Crypto" },
+]
+
+const SUBCATEGORY_TABS: { key: SubcategoryTab; label: string }[] = [
+  { key: "all", label: "Tous" },
+  { key: "masi", label: "MASI" },
+  { key: "us", label: "US" },
+  { key: "european", label: "Europe" },
+  { key: "asian", label: "Asie" },
+]
 
 const isPublicDashboardOnly = process.env.NEXT_PUBLIC_DASHBOARD_PUBLIC_ONLY === "true"
-const DATA_PAGE_HIDDEN_STOCKS = new Set([ "TGCC", "MAJ", "MAJJ", "WORKSHEET", "INSTRUMENT"])
+const DATA_PAGE_HIDDEN_STOCKS = new Set(["MAJ", "MAJJ", "WORKSHEET", "INSTRUMENT"])
 const PRE_CLOSE_REFRESH_MESSAGE =
   "La derniere seance Bourse disponible est deja chargee. Prochaine mise a jour intraday apres 17:00 (Africa/Casablanca)."
 
@@ -58,17 +84,22 @@ function isHiddenOnDataPage(symbol?: string | null, displayName?: string | null)
 }
 
 function PrivateDataPage() {
-  const { data: catalog, isLoading, mutate: mutateCatalog } = useMarketCatalog()
+  const { data: catalog, error: catalogError, isLoading, mutate: mutateCatalog } = useMarketCatalog()
   const { mutate: mutateTracked } = useTrackedStocks()
   const { data: masiTickers } = useMasiTickers()
+  const { data: macroCatalog, mutate: mutateMacroCatalog } = useMacroCatalog()
 
-  const [marketTab, setMarketTab] = useState<MarketTab>("masi")
+  const [categoryTab, setCategoryTab] = useState<CategoryTab>("equity")
+  const [subcategoryTab, setSubcategoryTab] = useState<SubcategoryTab>("all")
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null)
+  const [editCategoryRow, setEditCategoryRow] = useState<MarketCatalogRow | null>(null)
   const [uploadOpen, setUploadOpen] = useState(false)
   const [addStockOpen, setAddStockOpen] = useState(false)
+  const [addFactorOpen, setAddFactorOpen] = useState(false)
   const [activeRefreshId, setActiveRefreshId] = useState<string | null>(null)
   const [refreshingAll, setRefreshingAll] = useState(false)
   const [refreshingSymbol, setRefreshingSymbol] = useState<string | null>(null)
+  const [isDownloading, setIsDownloading] = useState(false)
 
   const visibleCatalog = useMemo(
     () =>
@@ -86,25 +117,91 @@ function PrivateDataPage() {
   )
 
   const trackedSet = new Set(visibleCatalog.filter((r) => r.is_tracked).map((r) => r.symbol))
+  const macroFactorSet = useMemo(
+    () => new Set((macroCatalog ?? []).map((row) => row.canonical_id)),
+    [macroCatalog],
+  )
   const selectedRow: MarketCatalogRow | null =
     visibleCatalog.find((r) => r.symbol === selectedSymbol) ?? null
 
-  const allRows = visibleCatalog
-  const masiRows = useMemo(() => allRows.filter((r) => r.market === "masi"), [allRows])
-  const otherRows = useMemo(() => allRows.filter((r) => r.market !== "masi"), [allRows])
-  const rows = marketTab === "masi" ? masiRows : otherRows
+  // Counts per category for tab badges
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const r of visibleCatalog) {
+      counts[r.asset_type ?? "equity"] = (counts[r.asset_type ?? "equity"] ?? 0) + 1
+    }
+    return counts
+  }, [visibleCatalog])
+
+  // Rows for active category + subcategory
+  const filteredRows = useMemo(() => {
+    const byType = visibleCatalog.filter((r) => (r.asset_type ?? "equity") === categoryTab)
+    if (subcategoryTab === "all") return byType
+    return byType.filter((r) => r.market_region === subcategoryTab)
+  }, [visibleCatalog, categoryTab, subcategoryTab])
+
+  const subcategoryCounts = useMemo(() => {
+    if (categoryTab !== "equity") return {}
+    const equityRows = visibleCatalog.filter((r) => (r.asset_type ?? "equity") === "equity")
+    const counts: Record<string, number> = { all: equityRows.length }
+    for (const r of equityRows) {
+      if (r.market_region) {
+        counts[r.market_region] = (counts[r.market_region] ?? 0) + 1
+      }
+    }
+    return counts
+  }, [visibleCatalog, categoryTab])
 
   function mutateAll() {
     mutateCatalog()
     mutateTracked()
+    mutateMacroCatalog()
+  }
+
+  function isYahooRow(row: MarketCatalogRow) {
+    return row.source_provider === "yahoo" || row.track_source === "yahoo"
+  }
+
+  function isYahooMacroRow(row: MarketCatalogRow) {
+    return isYahooRow(row) && (macroFactorSet.has(row.symbol) || row.asset_type !== "equity")
+  }
+
+  async function handleDownloadExcel() {
+    setIsDownloading(true)
+    try {
+      const params = new URLSearchParams()
+      params.set("asset_type", categoryTab)
+      if (subcategoryTab !== "all") params.set("market_region", subcategoryTab)
+      const qs = params.toString()
+      const res = await fetch(`/api/market-data/download-excel${qs ? `?${qs}` : ""}`)
+      if (!res.ok) throw new Error("Download failed")
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      const parts = [categoryTab, subcategoryTab !== "all" ? subcategoryTab : ""]
+      a.download = `${parts.filter(Boolean).join("-")}-data.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      toast.error("Echec du telechargement Excel")
+    } finally {
+      setIsDownloading(false)
+    }
   }
 
   async function handleRefreshAll() {
     setRefreshingAll(true)
     try {
-      const res = await refreshAllStocks()
-      setActiveRefreshId(res.refresh_run_id)
-      toast.success("Mise a jour Bourse lancee pour tous les titres suivis")
+      const [stockRefresh, macroRefresh] = await Promise.all([
+        refreshAllStocks(),
+        enqueueAllMacroIngest("2010-01-01"),
+      ])
+      setActiveRefreshId(stockRefresh.refresh_run_id)
+      toast.success(
+        `Mise a jour lancee: Bourse/titres suivis + ${macroRefresh.enqueued.length} series Yahoo`,
+      )
+      setTimeout(mutateAll, 10_000)
     } catch (err: unknown) {
       if (err instanceof ApiError && err.status === 409) {
         toast.error(PRE_CLOSE_REFRESH_MESSAGE)
@@ -116,20 +213,34 @@ function PrivateDataPage() {
     }
   }
 
-  async function handleBourseRefresh(symbol: string) {
-    setRefreshingSymbol(symbol)
+  async function handleRowRefresh(row: MarketCatalogRow) {
+    setRefreshingSymbol(row.symbol)
     try {
-      if (!trackedSet.has(symbol)) {
+      if (isYahooMacroRow(row)) {
+        await enqueueMacroIngest(row.symbol, "2010-01-01")
+        toast.success(`Ingestion Yahoo lancee pour ${row.symbol}`)
+        setTimeout(mutateAll, 8_000)
+        return
+      }
+
+      if (isYahooRow(row)) {
+        const res = await refreshSingleStock(row.symbol, { source_override: "yahoo" })
+        setActiveRefreshId(res.refresh_run_id)
+        toast.success(`Mise a jour Yahoo lancee pour ${row.symbol}`)
+        return
+      }
+
+      if (!trackedSet.has(row.symbol)) {
         try {
-          await addTrackedStock({ symbol, track_source: "bourse_direct" })
+          await addTrackedStock({ symbol: row.symbol, track_source: "bourse_direct" })
           mutateTracked()
         } catch (error: unknown) {
           if (!(error instanceof Error && error.message.includes("409"))) throw error
         }
       }
-      const res = await refreshSingleStock(symbol)
+      const res = await refreshSingleStock(row.symbol)
       setActiveRefreshId(res.refresh_run_id)
-      toast.success(`Mise a jour Bourse lancee pour ${symbol}`)
+      toast.success(`Mise a jour Bourse lancee pour ${row.symbol}`)
     } catch (err: unknown) {
       if (err instanceof ApiError && err.status === 409) {
         toast.error(PRE_CLOSE_REFRESH_MESSAGE)
@@ -159,8 +270,19 @@ function PrivateDataPage() {
     }
   }
 
+  const isIndicesTab = false
+  const countWithData = filteredRows.filter((r) => r.has_canonical_data).length
 
-  const countWithData = rows.filter((r) => r.has_canonical_data).length
+  function getCategoryLabel(tab: CategoryTab) {
+    switch (tab) {
+      case "equity": return "Actions"
+      case "commodity": return "Matières premières"
+      case "forex": return "Devises"
+      case "bond": return "Obligations"
+      case "crypto": return "Crypto"
+      default: return tab
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -171,36 +293,59 @@ function PrivateDataPage() {
             Univers canonique pour les imports Excel et les mises a jour Bourse.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5"
-            onClick={() => setAddStockOpen(true)}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Ajouter un titre
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5 border-green-600 text-green-700 hover:bg-green-50 hover:text-green-800"
-            onClick={() => setUploadOpen(true)}
-          >
-            <FileSpreadsheet className="h-3.5 w-3.5" />
-            Importer Excel
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5 border-blue-600 text-blue-700 hover:bg-blue-50 hover:text-blue-800"
-            onClick={handleRefreshAll}
-            disabled={refreshingAll}
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${refreshingAll ? "animate-spin" : ""}`} />
-            Mettre a jour via Bourse
-          </Button>
-        </div>
+        {!isIndicesTab && (
+          <div className="flex items-center gap-2">
+            {categoryTab === "equity" && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => setAddStockOpen(true)}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Ajouter un titre
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 border-purple-600 text-purple-700 hover:bg-purple-50 hover:text-purple-800"
+              onClick={() => setAddFactorOpen(true)}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Ajouter un facteur
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 border-green-600 text-green-700 hover:bg-green-50 hover:text-green-800"
+              onClick={() => setUploadOpen(true)}
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5" />
+              Importer Excel
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={handleDownloadExcel}
+              disabled={isDownloading}
+            >
+              <Download className={`h-3.5 w-3.5 ${isDownloading ? "animate-pulse" : ""}`} />
+              {isDownloading ? "Telechargement..." : `Telecharger (${getCategoryLabel(categoryTab)}${subcategoryTab !== "all" ? ` / ${subcategoryTab.toUpperCase()}` : ""})`}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 border-blue-600 text-blue-700 hover:bg-blue-50 hover:text-blue-800"
+              onClick={handleRefreshAll}
+              disabled={refreshingAll}
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${refreshingAll ? "animate-spin" : ""}`} />
+              Mettre à jour
+            </Button>
+          </div>
+        )}
       </div>
 
       {activeRefreshId && <RefreshStatusBar refreshRunId={activeRefreshId} />}
@@ -219,232 +364,332 @@ function PrivateDataPage() {
         <span>Cliquer sur une ligne ouvre le graphique et le calendrier.</span>
       </div>
 
-      {/* Market tabs */}
+      {/* Level 1 — Category tabs */}
       <div className="flex gap-1 border-b">
-        {([
-          { key: "masi" as MarketTab, label: "MASI", count: masiRows.length },
-          { key: "other" as MarketTab, label: "Autres", count: otherRows.length },
-        ]).map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setMarketTab(t.key)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              marketTab === t.key
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {t.label} ({t.count})
-          </button>
-        ))}
+        {CATEGORY_TABS.map((t) => {
+          const count = categoryCounts[t.key] ?? 0
+          return (
+            <button
+              key={t.key}
+              onClick={() => {
+                setCategoryTab(t.key)
+                setSubcategoryTab("all")
+              }}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                categoryTab === t.key
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {t.label}{count > 0 ? ` (${count})` : ""}
+            </button>
+          )
+        })}
       </div>
 
-      <Card>
-        <CardHeader className="px-5 pb-3 pt-4">
-          <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-            {marketTab === "masi" ? "Actions MASI" : "Autres actifs"}
-            {!isLoading && (
-              <span className="font-normal text-muted-foreground">
-                ({countWithData} avec donnees
-                {rows.length > countWithData ? `, ${rows.length - countWithData} sans` : ""}
-                )
-              </span>
-            )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0 pb-2">
-          {isLoading ? (
-            <div className="space-y-2 p-5">
-              {[...Array(6)].map((_, i) => (
-                <Skeleton key={i} className="h-10 w-full" />
-              ))}
-            </div>
-          ) : rows.length === 0 ? (
-            <div className="flex h-32 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
-              {marketTab === "masi" ? (
-                <>
-                  <span>Aucun titre MASI. Ajoutez-en un pour commencer.</span>
-                  <Button variant="outline" size="sm" onClick={() => setAddStockOpen(true)} className="gap-1.5">
-                    <Plus className="h-3.5 w-3.5" />
-                    Ajouter un titre MASI
-                  </Button>
-                </>
-              ) : (
-                <span>Aucun actif non-MASI pour le moment.</span>
+      {/* Level 2 — Subcategory tabs (equity only) */}
+      {categoryTab === "equity" && (
+        <div className="flex gap-1 border-b border-dashed">
+          {SUBCATEGORY_TABS.map((t) => {
+            const count = subcategoryCounts[t.key] ?? 0
+            return (
+              <button
+                key={t.key}
+                onClick={() => setSubcategoryTab(t.key)}
+                className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors ${
+                  subcategoryTab === t.key
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {t.label}{t.key !== "all" ? ` (${count})` : ""}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Indices data page content — kept for reference, tab no longer shown */}
+      {/* IndicesTabContent removed: indices now surface in Actions/MASI subtab */}
+
+      {filteredRows.length >= 0 && (
+        <Card>
+          <CardHeader className="px-5 pb-3 pt-4">
+            <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+              {getCategoryLabel(categoryTab)}
+              {subcategoryTab !== "all" && (
+                <Badge variant="secondary" className="text-[10px]">
+                  {subcategoryTab.toUpperCase()}
+                </Badge>
               )}
-            </div>
-          ) : (
-            <TooltipProvider delayDuration={300}>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-20">Ticker</TableHead>
-                    <TableHead>Nom</TableHead>
-                    <TableHead>Secteur</TableHead>
-                    <TableHead>Debut</TableHead>
-                    <TableHead>Fin</TableHead>
-                    <TableHead className="hidden md:table-cell text-right">Barres</TableHead>
-                    <TableHead className="hidden md:table-cell">Source</TableHead>
-                    <TableHead>Fraicheur</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rows.map((row) => {
-                    const startDate = row.start_ts?.slice(0, 10) ?? null
-                    const endDate = row.end_ts?.slice(0, 10) ?? null
-                    const isRefreshing = refreshingSymbol === row.symbol
-                    return (
-                      <TableRow
-                        key={row.symbol}
-                        className="cursor-pointer hover:bg-slate-50"
-                        onClick={() => setSelectedSymbol(row.symbol)}
-                      >
-                        <TableCell className="font-mono font-semibold">{row.symbol}</TableCell>
+              {!isLoading && (
+                <span className="font-normal text-muted-foreground">
+                  ({countWithData} avec donnees
+                  {filteredRows.length > countWithData ? `, ${filteredRows.length - countWithData} sans` : ""}
+                  )
+                </span>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0 pb-2">
+            {isLoading ? (
+              <div className="space-y-2 p-5">
+                {[...Array(6)].map((_, i) => (
+                  <Skeleton key={i} className="h-10 w-full" />
+                ))}
+              </div>
+            ) : catalogError ? (
+              <div className="flex min-h-32 flex-col items-center justify-center gap-2 px-5 py-8 text-center">
+                <p className="text-sm font-medium text-destructive">
+                  Impossible de charger les donnees du catalogue.
+                </p>
+                <p className="max-w-xl text-sm text-muted-foreground">
+                  {catalogError instanceof Error ? catalogError.message : "Erreur proxy/API inconnue."}
+                </p>
+              </div>
+            ) : filteredRows.length === 0 ? (
+              <div className="flex h-32 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+                {categoryTab === "equity" && subcategoryTab === "all" ? (
+                  <>
+                    <span>Aucune action. Ajoutez-en une pour commencer.</span>
+                    <Button variant="outline" size="sm" onClick={() => setAddStockOpen(true)} className="gap-1.5">
+                      <Plus className="h-3.5 w-3.5" />
+                      Ajouter un titre MASI
+                    </Button>
+                  </>
+                ) : (
+                  <span>Aucun actif dans cette catégorie.</span>
+                )}
+              </div>
+            ) : (
+              <TooltipProvider delayDuration={300}>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-20">Ticker</TableHead>
+                      <TableHead>Nom</TableHead>
+                      <TableHead>Secteur</TableHead>
+                      <TableHead>Début</TableHead>
+                      <TableHead>Fin</TableHead>
+                      <TableHead className="hidden md:table-cell text-right">Barres</TableHead>
+                      <TableHead className="hidden md:table-cell">Source</TableHead>
+                      <TableHead>Fraîcheur</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredRows.map((row) => {
+                      const startDate = row.start_ts?.slice(0, 10) ?? null
+                      const endDate = row.end_ts?.slice(0, 10) ?? null
+                      const isRefreshing = refreshingSymbol === row.symbol
+                      const isWaitingForYahooCatalog = isYahooRow(row) && macroCatalog === undefined
+                      const rowRefreshLabel = isYahooRow(row)
+                        ? "Yahoo"
+                        : row.source_provider === "bmce_excel"
+                        ? "Excel"
+                        : "Bourse"
+                      return (
+                        <TableRow
+                          key={row.symbol}
+                          className="cursor-pointer hover:bg-slate-50"
+                          onClick={() => setSelectedSymbol(row.symbol)}
+                        >
+                          <TableCell className="font-mono font-semibold">{row.symbol}</TableCell>
 
-                        <TableCell className="text-sm text-muted-foreground">
-                          {row.display_name ?? "\u2014"}
-                        </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {row.display_name ?? "—"}
+                          </TableCell>
 
-                        <TableCell className="text-sm text-muted-foreground">
-                          {row.sector ?? "\u2014"}
-                        </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {row.sector ?? "—"}
+                          </TableCell>
 
-                        <TableCell className="text-xs text-muted-foreground">
-                          {startDate ?? "\u2014"}
-                        </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {startDate ?? "—"}
+                          </TableCell>
 
-                        <TableCell className="text-xs text-muted-foreground">
-                          {endDate ?? "\u2014"}
-                        </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {endDate ?? "—"}
+                          </TableCell>
 
-                        <TableCell className="hidden text-right text-xs text-muted-foreground md:table-cell">
-                          {row.row_count?.toLocaleString() ?? "\u2014"}
-                        </TableCell>
+                          <TableCell className="hidden text-right text-xs text-muted-foreground md:table-cell">
+                            {row.row_count?.toLocaleString() ?? "—"}
+                          </TableCell>
 
-                        <TableCell className="hidden md:table-cell">
-                          {row.source_provider ? (
-                            <Badge variant="outline" className="gap-0.5 text-[10px]">
-                              {row.source_provider === "bmce_excel" ? (
-                                <>
-                                  <FileSpreadsheet className="h-2.5 w-2.5 text-green-600" />
-                                  Excel
-                                </>
-                              ) : (
-                                <>
-                                  <RefreshCw className="h-2.5 w-2.5 text-blue-600" />
-                                  {row.source_provider}
-                                </>
-                              )}
-                            </Badge>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">{"\u2014"}</span>
-                          )}
-                        </TableCell>
+                          <TableCell className="hidden md:table-cell">
+                            {row.source_provider ? (
+                              <Badge variant="outline" className="gap-0.5 text-[10px]">
+                                {row.source_provider === "bmce_excel" ? (
+                                  <>
+                                    <FileSpreadsheet className="h-2.5 w-2.5 text-green-600" />
+                                    Excel
+                                  </>
+                                ) : row.source_provider === "yahoo" ? (
+                                  <>
+                                    <Globe className="h-2.5 w-2.5 text-purple-600" />
+                                    Yahoo
+                                  </>
+                                ) : (
+                                  <>
+                                    <RefreshCw className="h-2.5 w-2.5 text-blue-600" />
+                                    {row.source_provider === "bourse_direct" ? "Bourse" : row.source_provider}
+                                  </>
+                                )}
+                              </Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">{"—"}</span>
+                            )}
+                          </TableCell>
 
-                        <TableCell>
-                          {endDate ? (
-                            <FreshnessBadge dataAsOf={endDate} />
-                          ) : (
-                            <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                              Non ingere
-                            </Badge>
-                          )}
-                        </TableCell>
+                          <TableCell>
+                            {endDate ? (
+                              <FreshnessBadge dataAsOf={endDate} />
+                            ) : (
+                              <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                                Non ingere
+                              </Badge>
+                            )}
+                          </TableCell>
 
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-7 gap-1 px-2 text-[11px]"
-                                  onClick={(event) => {
-                                    event.stopPropagation()
-                                    setSelectedSymbol(row.symbol)
-                                  }}
-                                >
-                                  <Eye className="h-3.5 w-3.5" />
-                                  <span>Graphique</span>
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>Graphique &amp; calendrier</TooltipContent>
-                            </Tooltip>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 gap-1 px-2 text-[11px]"
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      setSelectedSymbol(row.symbol)
+                                    }}
+                                  >
+                                    <Eye className="h-3.5 w-3.5" />
+                                    <span>Graphique</span>
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Graphique &amp; calendrier</TooltipContent>
+                              </Tooltip>
 
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 w-7 p-0 text-green-600 hover:bg-green-50 hover:text-green-700"
-                                  onClick={(event) => {
-                                    event.stopPropagation()
-                                    setUploadOpen(true)
-                                  }}
-                                >
-                                  <FileSpreadsheet className="h-3.5 w-3.5" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>Importer Excel</TooltipContent>
-                            </Tooltip>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 w-7 p-0 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      setEditCategoryRow(row)
+                                    }}
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Modifier la catégorie</TooltipContent>
+                              </Tooltip>
 
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-7 gap-1 px-2 text-[11px] text-blue-600 border-blue-200 hover:bg-blue-50 hover:text-blue-700"
-                                  disabled={isRefreshing}
-                                  onClick={(event) => {
-                                    event.stopPropagation()
-                                    handleBourseRefresh(row.symbol)
-                                  }}
-                                >
-                                  <RefreshCw
-                                    className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`}
-                                  />
-                                  <span>Bourse</span>
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>Mettre a jour via Bourse</TooltipContent>
-                            </Tooltip>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-            </TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 w-7 p-0 text-green-600 hover:bg-green-50 hover:text-green-700"
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      setUploadOpen(true)
+                                    }}
+                                  >
+                                    <FileSpreadsheet className="h-3.5 w-3.5" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Importer Excel</TooltipContent>
+                              </Tooltip>
+
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 gap-1 px-2 text-[11px] text-blue-600 border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                                    disabled={isRefreshing || isWaitingForYahooCatalog}
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      handleRowRefresh(row)
+                                    }}
+                                  >
+                                    <RefreshCw
+                                      className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`}
+                                    />
+                                    <span>{rowRefreshLabel}</span>
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {isWaitingForYahooCatalog
+                                    ? "Chargement du catalogue Yahoo"
+                                    : `Mettre à jour via ${isYahooRow(row) ? "Yahoo" : "Bourse"}`}
+                                </TooltipContent>
+                              </Tooltip>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </TooltipProvider>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {filteredRows.length >= 0 && (
+        <>
+          <StockDetailPanel
+            row={selectedRow}
+            open={selectedSymbol !== null}
+            onClose={() => setSelectedSymbol(null)}
+            onSaved={mutateAll}
+          />
+
+          <ExcelUploadDialog
+            open={uploadOpen}
+            onClose={() => setUploadOpen(false)}
+            onUploaded={() => {
+              setUploadOpen(false)
+              mutateAll()
+            }}
+          />
+
+          <AddFactorDialog
+            open={addFactorOpen}
+            onClose={() => setAddFactorOpen(false)}
+            onAdded={() => {
+              setAddFactorOpen(false)
+              mutateAll()
+            }}
+          />
+
+          <AddStockDialog
+            open={addStockOpen}
+            onClose={() => setAddStockOpen(false)}
+            tickers={visibleMasiTickers}
+            existingSymbols={new Set(visibleCatalog.map((r) => r.symbol))}
+            onSelect={handleAddStock}
+          />
+
+          {editCategoryRow && (
+            <CategoryEditDialog
+              row={editCategoryRow}
+              open={editCategoryRow !== null}
+              onClose={() => setEditCategoryRow(null)}
+              onSaved={() => {
+                setEditCategoryRow(null)
+                mutateAll()
+              }}
+            />
           )}
-        </CardContent>
-      </Card>
-
-      <StockDetailPanel
-        row={selectedRow}
-        open={selectedSymbol !== null}
-        onClose={() => setSelectedSymbol(null)}
-        onSaved={mutateAll}
-      />
-
-      <ExcelUploadDialog
-        open={uploadOpen}
-        onClose={() => setUploadOpen(false)}
-        onUploaded={() => {
-          setUploadOpen(false)
-          mutateAll()
-        }}
-      />
-
-      <AddStockDialog
-        open={addStockOpen}
-        onClose={() => setAddStockOpen(false)}
-        tickers={visibleMasiTickers}
-        existingSymbols={new Set(allRows.map((r) => r.symbol))}
-        onSelect={handleAddStock}
-      />
-
+        </>
+      )}
     </div>
   )
 }
@@ -535,4 +780,3 @@ function AddStockDialog({
     </Dialog>
   )
 }
-

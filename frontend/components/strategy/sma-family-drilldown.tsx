@@ -7,43 +7,23 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
+import { signalVariantLabel } from "@/lib/signal-variant-label"
 
 function repLabel(rep: SignalRepresentative): string {
-  const p = rep.params as Record<string, unknown>
-  if (rep.archetype === "price_vs_sma") return `SMA-${p.window ?? "?"}`
-  if (rep.archetype === "price_vs_ema") return `EMA-${p.window ?? "?"}`
-  if (rep.archetype === "sma_cross") return `SMA(${p.fast},${p.slow})`
-  if (rep.archetype === "ema_cross") return `EMA(${p.fast},${p.slow})`
-  if (rep.archetype === "slope_confirmed") return `SMA-${p.window} Slope`
-  if (rep.archetype === "ichi_cloud") return `Ichimoku(${p.tenkan},${p.kijun},${p.senkou_b})`
-  if (rep.archetype === "psar_trend") return `PSAR(${p.af_step},${p.af_max})`
-  if (rep.archetype === "rsi_level") return `RSI(${p.period},${p.oversold}/${p.overbought})`
-  if (rep.archetype === "macd_cross") return `MACD(${p.fast},${p.slow},${p.signal})`
-  if (rep.archetype === "roc_zero") return `ROC-${p.period}`
-  if (rep.archetype === "trix_zero") return `TRIX-${p.period}`
-  if (rep.archetype === "adx_trend") return `ADX(${p.period},${p.adx_threshold})`
-  if (rep.archetype === "tsi_zero") return `TSI(${p.long_period},${p.short_period})`
-  if (rep.archetype === "stoch_level") return `Stoch(${p.k_period},${p.d_period})`
-  if (rep.archetype === "cci_level") return `CCI-${p.period}`
-  if (rep.archetype === "mfi_level") return `MFI(${p.period},${p.oversold}/${p.overbought})`
-  if (rep.archetype === "uo_level") return `UO(${p.period_1},${p.period_2},${p.period_3})`
-  if (rep.archetype === "obv_trend") return `OBV-EMA-${p.ema_period}`
-  if (rep.archetype === "cmf_flow") return `CMF-${p.period}`
-  if (rep.archetype === "ad_trend") return `AD-EMA-${p.ema_period}`
-  if (rep.archetype === "vwap_dev") return `VWAP(${p.period},${p.threshold_pct}%)`
-  if (rep.archetype === "fi_trend") return `FI-${p.period}`
-  return rep.variant_id.slice(0, 12)
+  return signalVariantLabel(rep)
 }
 
 export function SmaFamilyDrilldown({
   data,
   family,
   cooldownBars,
+  variant,
   onBack,
 }: {
   data: FamilyCombinedSignal
   family?: string
   cooldownBars?: number
+  variant?: string
   onBack: () => void
 }) {
   const router = useRouter()
@@ -56,7 +36,7 @@ export function SmaFamilyDrilldown({
           className="cursor-pointer hover:border-primary/50 transition-colors"
           onClick={() =>
             router.push(
-              `/signals/variant/${rep.variant_id}?symbol=${encodeURIComponent(data.symbol)}&horizon=${data.horizon}&cooldown=${cooldownBars ?? 0}`
+              `/signals/variant/${rep.variant_id}?symbol=${encodeURIComponent(data.symbol)}&horizon=${data.horizon}&cooldown=${cooldownBars ?? 0}&variant=${variant ?? "expanded"}`
             )
           }
         >
@@ -154,7 +134,7 @@ export function SmaFamilyDrilldown({
                   size="sm"
                   onClick={() =>
                     router.push(
-                      `/signals/variant/${data.best_variant_id}?symbol=${encodeURIComponent(data.symbol)}&horizon=${data.horizon}&cooldown=${cooldownBars ?? 0}`
+                      `/signals/variant/${data.best_variant_id}?symbol=${encodeURIComponent(data.symbol)}&horizon=${data.horizon}&cooldown=${cooldownBars ?? 0}&variant=${variant ?? "expanded"}`
                     )
                   }
                 >

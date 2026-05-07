@@ -28,6 +28,25 @@ def refresh_all_tracked_symbols(*args, **kwargs):
     return _refresh_all_tracked_symbols(*args, **kwargs)
 
 
+def execute_strategy_backtest_run(*args, **kwargs):
+    from .strategy_backtest_runs import execute_strategy_backtest_run as _execute_strategy_backtest_run
+
+    return _execute_strategy_backtest_run(*args, **kwargs)
+
+
+def ingest_macro_series(*args, **kwargs):
+    from .ingest_macro_series import ingest_macro_series as _ingest_macro_series
+
+    return _ingest_macro_series(*args, **kwargs)
+
+
+# RQ resolves dotted-string jobs by walking attributes from this package in some
+# versions. Expose the module so queued jobs using
+# "services.worker.tasks.factor_selection_full.run_factor_selection_for_symbol"
+# can be imported reliably.
+from . import factor_selection_full  # noqa: E402,F401
+
+
 class _DefaultsDiscoveryProxy:
     @staticmethod
     def execute_defaults_discovery(*args, **kwargs):
@@ -53,6 +72,8 @@ __all__ = [
     "ingest_excel_to_store",
     "refresh_single_symbol",
     "refresh_all_tracked_symbols",
+    "execute_strategy_backtest_run",
+    "ingest_macro_series",
     "defaults_discovery",
     "refresh_market_data",
 ]

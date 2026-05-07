@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
   BarChart3,
+  BarChart2,
   PlusCircle,
   BookOpen,
   Layers3,
@@ -20,6 +21,7 @@ const navItems = [
   { href: "/results", label: "Global Results", icon: Layers3 },
   { href: "/defaults-discovery", label: "Defaults Discovery", icon: SlidersHorizontal },
   { href: "/technical-study", label: "Technical Study", icon: Activity },
+  { href: "/analytics", label: "Analytics", icon: BarChart2 },
   { href: "/data", label: "Données", icon: Database },
   { href: "/glossary", label: "Glossary", icon: BookOpen },
 ]

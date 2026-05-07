@@ -11,6 +11,7 @@ import {
 } from "./indicator-config"
 import { IndicatorChart } from "./indicator-chart"
 import { IndicatorSidebar } from "./indicator-sidebar"
+import { SignalEngineGlobalTriggerCard } from "@/components/strategy/signal-engine-global-trigger-card"
 
 export type { IndicatorFamilyKey } from "./indicator-config"
 
@@ -193,21 +194,24 @@ export function IndicatorExplorer({ symbol }: { symbol: string }) {
   }
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-      <div className="min-w-0">
-        <IndicatorChart
-          priceSeries={priceSeries}
-          priceLoading={priceHistory.isLoading}
-          priceError={priceHistory.error instanceof Error ? priceHistory.error.message : null}
-          families={families}
-        />
-      </div>
-      <div className="min-w-0">
-        <IndicatorSidebar
-          families={families}
-          onToggle={setFamilyEnabled}
-          onParamChange={setFamilyParam}
-        />
+    <div className="space-y-4">
+      <SignalEngineGlobalTriggerCard />
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="min-w-0">
+          <IndicatorChart
+            priceSeries={priceSeries}
+            priceLoading={priceHistory.isLoading}
+            priceError={priceHistory.error instanceof Error ? priceHistory.error.message : null}
+            families={families}
+          />
+        </div>
+        <div className="min-w-0">
+          <IndicatorSidebar
+            families={families}
+            onToggle={setFamilyEnabled}
+            onParamChange={setFamilyParam}
+          />
+        </div>
       </div>
     </div>
   )

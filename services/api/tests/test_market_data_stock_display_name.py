@@ -159,3 +159,65 @@ def test_add_tracked_stock_uses_official_masi_sector_by_default(client_and_sessi
     with SessionLocal() as db:
         stock = db.query(models.StockMaster).filter(models.StockMaster.symbol == "CAP").one()
         assert stock.sector == "Sociétés de financement"
+
+
+def test_market_catalog_uses_official_masi_display_name_fallback_without_writing(client_and_session) -> None:
+    client, SessionLocal = client_and_session
+
+    with SessionLocal() as db:
+        db.add(
+            models.StockMaster(
+                symbol="AFI",
+                display_name="AFI",
+                sector="BTP",
+                track_source="bourse_direct",
+                is_active=True,
+            )
+        )
+        db.add(
+            models.MarketDataStore(
+                symbol="AFI",
+                timeframe="1D",
+                object_key="market_data/AFI/1D.parquet",
+                row_count=220,
+            )
+        )
+        db.commit()
+
+    response = client.get("/market-data/catalog")
+
+    assert response.status_code == 200
+    payload = response.json()
+    afi = next(row for row in payload if row["symbol"] == "AFI")
+    assert afi["display_name"] == "Afric Industries"
+
+    with SessionLocal() as db:
+        stock = db.query(models.StockMaster).filter(models.StockMaster.symbol == "AFI").one()
+        assert stock.display_name == "AFI"
+
+
+def test_list_tracked_stocks_uses_official_masi_display_name_fallback_without_writing(client_and_session) -> None:
+    client, SessionLocal = client_and_session
+
+    with SessionLocal() as db:
+        db.add(
+            models.StockMaster(
+                symbol="AFI",
+                display_name="AFI",
+                sector="BTP",
+                track_source="bourse_direct",
+                is_active=True,
+            )
+        )
+        db.commit()
+
+    response = client.get("/market-data/stocks")
+
+    assert response.status_code == 200
+    payload = response.json()
+    afi = next(row for row in payload if row["symbol"] == "AFI")
+    assert afi["display_name"] == "Afric Industries"
+
+    with SessionLocal() as db:
+        stock = db.query(models.StockMaster).filter(models.StockMaster.symbol == "AFI").one()
+        assert stock.display_name == "AFI"

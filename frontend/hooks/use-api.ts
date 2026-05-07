@@ -5,6 +5,7 @@ import type {
   AvailabilityCalendar,
   Artifact,
   BatchScore,
+  PersistedSignalEngineSummary,
   Dataset,
   FamilyHistoryMode,
   FamilyCombinedSignal,
@@ -52,10 +53,31 @@ import type {
   UploadFormatReference,
   VariantBacktest,
   VariantDetail,
+  IndicesCatalogRow,
+  IndexMasterRow,
+  SignalOverviewRow,
+  MacroCatalogRow,
+  SignalEvaluationReport,
+  FactorRelevanceMatrix,
+  AllFactorRelevanceSummary,
+  FactorSignalEval,
+  FactorLeaderboardRow,
+  FactorSelectionActiveRow,
+  FactorSelectionStage1Row,
 } from "@/lib/api"
 import {
+  getAnalyticsSignalsOverview,
+  getMacroCatalog,
+  evaluateStockSignal,
+  getFactorRelevance,
+  getAllFactorRelevanceSummary,
+  getFactorSignalEval,
+  getFactorLeaderboard,
+  fetchWfoBatchStatus,
+  fetchSignalEngineGlobalBatchStatus,
   fetchBatchScores,
   fetchExecution,
+  fetchPersistedSignalEngineSummaries,
   fetchRegimeConsensus,
   fetchFamilyEnsemble,
   fetchIndicatorSeries,
@@ -86,8 +108,23 @@ import {
   fetchUniverse,
   fetchVariantBacktest,
   fetchVariantDetail,
+  listIndicesCatalog,
+  listIndices,
+  getPredictiveAbility,
+  getCategoryCombinations,
+  fetchPredictiveHistoryBatchStatus,
+  getPredictiveAbilityLeaderboard,
+  getFactorSelectionActive,
+  getFactorSelectionStage1Cache,
 } from "@/lib/api"
-import type { MasiTicker } from "@/lib/api"
+import type {
+  MasiTicker,
+  PredictiveAbilityArgs,
+  PredictiveAbilityMatrix,
+  CategoryCombinations,
+  PredictiveHistoryStatus,
+  PredictiveLeaderboard,
+} from "@/lib/api"
 
 const API_BASE = "/api"
 
@@ -325,6 +362,22 @@ export function useRefreshRun(refreshRunId: string | null) {
   )
 }
 
+export function useIndicesCatalog() {
+  return useSWR<IndicesCatalogRow[]>(
+    "/market-data/indices/catalog",
+    () => listIndicesCatalog(),
+    { refreshInterval: 30000, revalidateOnFocus: true }
+  )
+}
+
+export function useTrackedIndices() {
+  return useSWR<IndexMasterRow[]>(
+    "/market-data/indices",
+    () => listIndices(),
+    { refreshInterval: 60000, revalidateOnFocus: true }
+  )
+}
+
 export function useMarketHealth() {
   return useSWR<MarketHealth>(
     "/market-data/health",
@@ -363,6 +416,13 @@ export function useStockOhlcvHistory(symbol: string | null, params?: { timeframe
   )
 }
 
+export function useIndexOhlcvHistory(symbol: string | null) {
+  return useSWR<OhlcvHistory>(
+    symbol ? `/market-data/indices/${encodeURIComponent(symbol)}/ohlcv-history` : null,
+    apiFetcher
+  )
+}
+
 export function useStockAvailabilityCalendar(symbol: string | null, params?: { timeframe?: string }) {
   const qs = new URLSearchParams()
   if (params?.timeframe) qs.set("timeframe", params.timeframe)
@@ -392,15 +452,16 @@ export function useFamilyEnsemble(
   horizon: string | null,
   costBps?: number,
   cooldownBars?: number,
+  variant?: string,
   enabled: boolean = true,
 ) {
   const key =
     enabled && family && symbol && horizon
-      ? `/strategy/signal/family-ensemble?f=${family}&s=${symbol}&h=${horizon}&c=${costBps ?? ""}&cd=${cooldownBars ?? ""}`
+      ? `/strategy/signal/family-ensemble?f=${family}&s=${symbol}&h=${horizon}&c=${costBps ?? ""}&cd=${cooldownBars ?? ""}&v=${variant ?? ""}`
       : null
   return useSWR<FamilyCombinedSignal>(
     key,
-    () => fetchFamilyEnsemble({ family: family!, symbol: symbol!, horizon: horizon!, cost_bps: costBps, cooldown_bars: cooldownBars }),
+    () => fetchFamilyEnsemble({ family: family!, symbol: symbol!, horizon: horizon!, cost_bps: costBps, cooldown_bars: cooldownBars, variant }),
     { revalidateOnFocus: false }
   )
 }
@@ -410,11 +471,12 @@ export function useSupportResistance(
   horizon: string | null,
   costBps?: number,
   cooldownBars?: number,
+  variant?: string,
   enabled: boolean = true,
 ) {
   const key =
     enabled && symbol && horizon
-      ? `/strategy/signal/support-resistance?s=${symbol}&h=${horizon}&c=${costBps ?? ""}&cd=${cooldownBars ?? ""}`
+      ? `/strategy/signal/support-resistance?s=${symbol}&h=${horizon}&c=${costBps ?? ""}&cd=${cooldownBars ?? ""}&v=${variant ?? ""}`
       : null
   return useSWR<SupportResistanceResponse>(
     key,
@@ -424,6 +486,7 @@ export function useSupportResistance(
         horizon: horizon!,
         cost_bps: costBps,
         cooldown_bars: cooldownBars,
+        variant,
       }),
     { revalidateOnFocus: false }
   )
@@ -435,11 +498,12 @@ export function useSupportResistanceMethodDetail(
   methodId: string | null,
   costBps?: number,
   cooldownBars?: number,
+  variant?: string,
   enabled: boolean = true,
 ) {
   const key =
     enabled && symbol && horizon && methodId
-      ? `/strategy/signal/support-resistance/method-detail?s=${symbol}&h=${horizon}&m=${methodId}&c=${costBps ?? ""}&cd=${cooldownBars ?? ""}`
+      ? `/strategy/signal/support-resistance/method-detail?s=${symbol}&h=${horizon}&m=${methodId}&c=${costBps ?? ""}&cd=${cooldownBars ?? ""}&v=${variant ?? ""}`
       : null
   return useSWR<SupportResistanceMethodDetailResponse>(
     key,
@@ -450,6 +514,7 @@ export function useSupportResistanceMethodDetail(
         method_id: methodId!,
         cost_bps: costBps,
         cooldown_bars: cooldownBars,
+        variant,
       }),
     { revalidateOnFocus: false }
   )
@@ -460,11 +525,12 @@ export function useSupportResistanceVariants(
   horizon: string | null,
   costBps?: number,
   cooldownBars?: number,
+  variant?: string,
   enabled: boolean = true,
 ) {
   const key =
     enabled && symbol && horizon
-      ? `/strategy/signal/support-resistance/variants?s=${symbol}&h=${horizon}&c=${costBps ?? ""}&cd=${cooldownBars ?? ""}`
+      ? `/strategy/signal/support-resistance/variants?s=${symbol}&h=${horizon}&c=${costBps ?? ""}&cd=${cooldownBars ?? ""}&v=${variant ?? ""}`
       : null
   return useSWR<SupportResistanceVariantsResponse>(
     key,
@@ -474,6 +540,7 @@ export function useSupportResistanceVariants(
         horizon: horizon!,
         cost_bps: costBps,
         cooldown_bars: cooldownBars,
+        variant,
       }),
     { revalidateOnFocus: false }
   )
@@ -508,10 +575,11 @@ export function useVariantBacktest(
   horizon: string | null,
   costBps?: number,
   cooldownBars?: number,
+  variant?: string,
 ) {
   const key =
     variantId && symbol && horizon
-      ? `/strategy/signal/variant-backtest?v=${variantId}&s=${symbol}&h=${horizon}&c=${costBps ?? ""}&cd=${cooldownBars ?? ""}`
+      ? `/strategy/signal/variant-backtest?v=${variantId}&s=${symbol}&h=${horizon}&c=${costBps ?? ""}&cd=${cooldownBars ?? ""}&variant=${variant ?? ""}`
       : null
   return useSWR<VariantBacktest>(
     key,
@@ -522,6 +590,7 @@ export function useVariantBacktest(
         horizon: horizon!,
         cost_bps: costBps,
         cooldown_bars: cooldownBars,
+        variant,
       }),
     { revalidateOnFocus: false }
   )
@@ -533,11 +602,12 @@ export function useSupportResistanceVariantBacktest(
   horizon: string | null,
   costBps?: number,
   cooldownBars?: number,
+  variant?: string,
   enabled: boolean = true,
 ) {
   const key =
     enabled && variantId && symbol && horizon
-      ? `/strategy/signal/support-resistance/variant-backtest?v=${variantId}&s=${symbol}&h=${horizon}&c=${costBps ?? ""}&cd=${cooldownBars ?? ""}`
+      ? `/strategy/signal/support-resistance/variant-backtest?v=${variantId}&s=${symbol}&h=${horizon}&c=${costBps ?? ""}&cd=${cooldownBars ?? ""}&variant=${variant ?? ""}`
       : null
   return useSWR<VariantBacktest>(
     key,
@@ -548,6 +618,7 @@ export function useSupportResistanceVariantBacktest(
         horizon: horizon!,
         cost_bps: costBps,
         cooldown_bars: cooldownBars,
+        variant,
       }),
     { revalidateOnFocus: false }
   )
@@ -559,10 +630,11 @@ export function useVariantDetail(
   horizon: string | null,
   costBps?: number,
   cooldownBars?: number,
+  variant?: string,
 ) {
   const key =
     variantId && symbol && horizon
-      ? `/strategy/signal/variant-detail?v=${variantId}&s=${symbol}&h=${horizon}&c=${costBps ?? ""}&cd=${cooldownBars ?? ""}`
+      ? `/strategy/signal/variant-detail?v=${variantId}&s=${symbol}&h=${horizon}&c=${costBps ?? ""}&cd=${cooldownBars ?? ""}&variant=${variant ?? ""}`
       : null
   return useSWR<VariantDetail>(
     key,
@@ -573,6 +645,7 @@ export function useVariantDetail(
         variant_id: variantId!,
         cost_bps: costBps,
         cooldown_bars: cooldownBars,
+        variant,
       }),
     { revalidateOnFocus: false }
   )
@@ -584,11 +657,12 @@ export function useSupportResistanceVariantDetail(
   horizon: string | null,
   costBps?: number,
   cooldownBars?: number,
+  variant?: string,
   enabled: boolean = true,
 ) {
   const key =
     enabled && variantId && symbol && horizon
-      ? `/strategy/signal/support-resistance/variant-detail?v=${variantId}&s=${symbol}&h=${horizon}&c=${costBps ?? ""}&cd=${cooldownBars ?? ""}`
+      ? `/strategy/signal/support-resistance/variant-detail?v=${variantId}&s=${symbol}&h=${horizon}&c=${costBps ?? ""}&cd=${cooldownBars ?? ""}&variant=${variant ?? ""}`
       : null
   return useSWR<VariantDetail>(
     key,
@@ -599,19 +673,20 @@ export function useSupportResistanceVariantDetail(
         variant_id: variantId!,
         cost_bps: costBps,
         cooldown_bars: cooldownBars,
+        variant,
       }),
     { revalidateOnFocus: false }
   )
 }
 
-export function useBatchScores(symbols: string[], horizon: string, cooldownBars?: number) {
+export function useBatchScores(symbols: string[], horizon: string, cooldownBars?: number, variant?: string) {
   const key =
     symbols.length > 0
-      ? `/strategy/signal/batch-scores?h=${horizon}&n=${symbols.length}&cd=${cooldownBars ?? ""}`
+      ? `/strategy/signal/batch-scores?h=${horizon}&n=${symbols.length}&cd=${cooldownBars ?? ""}&v=${variant ?? ""}`
       : null
   return useSWR<BatchScore[]>(
     key,
-    () => fetchBatchScores({ symbols, horizon, cooldown_bars: cooldownBars }),
+    () => fetchBatchScores({ symbols, horizon, cooldown_bars: cooldownBars, variant }),
     { revalidateOnFocus: false }
   )
 }
@@ -622,10 +697,11 @@ export function useRegimeConsensus(
   symbol: string | null,
   horizon: string | null,
   cooldownBars?: number,
+  variant?: string,
 ) {
   const key =
     symbol && horizon
-      ? `/strategy/signal/regime-consensus?s=${symbol}&h=${horizon}&cd=${cooldownBars ?? ""}`
+      ? `/strategy/signal/regime-consensus?s=${symbol}&h=${horizon}&cd=${cooldownBars ?? ""}&v=${variant ?? ""}`
       : null
   return useSWR<RegimeConsensus>(
     key,
@@ -634,6 +710,7 @@ export function useRegimeConsensus(
         symbol: symbol!,
         horizon: horizon!,
         cooldown_bars: cooldownBars,
+        variant,
       }),
     { revalidateOnFocus: false }
   )
@@ -670,6 +747,25 @@ export function useUniverse(
         sort_dir: params?.sort_dir,
       }),
     { revalidateOnFocus: false }
+  )
+}
+
+export function usePersistedSignalEngineSummaries(
+  symbols: string[],
+  horizon: string,
+  variant: string,
+) {
+  const key =
+    symbols.length > 0
+      ? `/strategy/engine/persisted-summaries?h=${horizon}&v=${variant}&n=${symbols.length}`
+      : null
+  return useSWR<PersistedSignalEngineSummary[]>(
+    key,
+    () => fetchPersistedSignalEngineSummaries({ symbols, horizon, variant }),
+    {
+      revalidateOnFocus: false,
+      refreshInterval: (data) => (data?.some((r) => r.is_stale) ? 15000 : 0),
+    }
   )
 }
 
@@ -1080,5 +1176,215 @@ export function useSizing(
         focused_symbol: params!.focused_symbol,
       }),
     { revalidateOnFocus: false }
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Analytics hooks
+// ---------------------------------------------------------------------------
+
+export function useAnalyticsSignalsOverview(symbol?: string | null, horizon?: string | null) {
+  const key = symbol
+    ? `/analytics/signals?symbol=${symbol}${horizon ? `&horizon=${horizon}` : ""}`
+    : horizon
+    ? `/analytics/signals?horizon=${horizon}`
+    : "/analytics/signals"
+  return useSWR<SignalOverviewRow[]>(
+    key,
+    () => getAnalyticsSignalsOverview(symbol ?? undefined, horizon ?? undefined),
+    { revalidateOnFocus: false }
+  )
+}
+
+export function useMacroCatalog() {
+  return useSWR<MacroCatalogRow[]>(
+    "/analytics/macro/catalog",
+    () => getMacroCatalog(),
+    { revalidateOnFocus: false, refreshInterval: 30_000 }
+  )
+}
+
+export function useSignalEvaluation(
+  symbol: string | null,
+  category: string | null,
+  horizon: string | null,
+) {
+  const key = symbol && category && horizon
+    ? `/analytics/stocks/${symbol}/evaluate/${category}/${horizon}`
+    : null
+  return useSWR<SignalEvaluationReport>(
+    key,
+    () => evaluateStockSignal(symbol!, category!, horizon!),
+    { revalidateOnFocus: false }
+  )
+}
+
+export function useFactorRelevance(
+  symbol: string | null,
+  opts?: { lagRule?: string; returnMethod?: string; lookbackDays?: number; forwardHorizon?: number }
+) {
+  const key = symbol
+    ? `/analytics/factors/${symbol}?rm=${opts?.returnMethod ?? "close_to_close"}&lb=${opts?.lookbackDays ?? 0}&fh=${opts?.forwardHorizon ?? 1}`
+    : null
+  return useSWR<FactorRelevanceMatrix>(
+    key,
+    () => getFactorRelevance(symbol!, opts),
+    { revalidateOnFocus: false }
+  )
+}
+
+export function useAllFactorRelevanceSummary() {
+  return useSWR<AllFactorRelevanceSummary[]>(
+    "/analytics/factors",
+    () => getAllFactorRelevanceSummary(),
+    { revalidateOnFocus: false }
+  )
+}
+
+export function useFactorSignalEval(
+  symbol: string | null,
+  opts?: { returnMethod?: string; lookbackDays?: number }
+) {
+  const key = symbol
+    ? `/analytics/factors/${symbol}/evaluate?rm=${opts?.returnMethod ?? "open_to_open"}&lb=${opts?.lookbackDays ?? 0}`
+    : null
+  return useSWR<FactorSignalEval[]>(
+    key,
+    () => getFactorSignalEval(symbol!, opts),
+    { revalidateOnFocus: false }
+  )
+}
+
+export function useFactorLeaderboard(opts?: {
+  lookbackDays?: number
+  forwardHorizon?: number
+  returnMethod?: string
+}) {
+  const key = `/analytics/factors/leaderboard?rm=${opts?.returnMethod ?? "close_to_close"}&lb=${opts?.lookbackDays ?? 0}&fh=${opts?.forwardHorizon ?? 1}`
+  return useSWR<FactorLeaderboardRow[]>(
+    key,
+    () => getFactorLeaderboard(opts),
+    { revalidateOnFocus: false }
+  )
+}
+
+export function useWfoBatchStatus() {
+  const { data, ...rest } = useSWR(
+    "/strategy/wfo/batch-status",
+    () => fetchWfoBatchStatus(),
+    {
+      revalidateOnFocus: false,
+      refreshInterval: (latestData) => {
+        if (!latestData) return 5000
+        const active = (latestData.pending ?? 0) + (latestData.running ?? 0)
+        return active > 0 ? 5000 : 0
+      },
+    }
+  )
+  return { data, ...rest }
+}
+
+export function useSignalEngineBatchStatus() {
+  const { data, ...rest } = useSWR(
+    "/strategy/engine/batch-status-global",
+    () => fetchSignalEngineGlobalBatchStatus(),
+    {
+      revalidateOnFocus: false,
+      refreshInterval: (latestData) => {
+        if (!latestData) return 5000
+        const active = (latestData.pending ?? 0) + (latestData.running ?? 0)
+        return active > 0 ? 5000 : 0
+      },
+    }
+  )
+  return { data, ...rest }
+}
+
+export function usePredictiveAbility(args: PredictiveAbilityArgs | null) {
+  const key = args
+    ? `/analytics/predictive-ability?symbol=${args.symbol}&source=${args.source}&horizon=${
+        args.horizon
+      }&categories=${(args.categories ?? []).join(",")}&fwd=${(
+        args.fwdHorizons ?? []
+      ).join(",")}&lookback_days=${args.lookback_days ?? 0}&return_calc_method=${
+        args.return_calc_method ?? "close_to_close"
+      }`
+    : null
+  return useSWR<PredictiveAbilityMatrix>(key, () => getPredictiveAbility(args!), {
+    revalidateOnFocus: false,
+    keepPreviousData: true,
+  })
+}
+
+export function useCategoryCombinations(
+  args: {
+    symbol: string
+    source: "engine_legacy" | "engine_expanded" | "wfo" | "factor_x_ta"
+    horizon: "short" | "medium" | "long"
+    fwd_h?: number
+    lookback_days?: number
+    return_calc_method?: string
+  } | null,
+) {
+  const key = args
+    ? `/analytics/predictive-ability/combinations?symbol=${args.symbol}&source=${
+        args.source
+      }&horizon=${args.horizon}&fwd_h=${args.fwd_h ?? 5}&lookback_days=${
+        args.lookback_days ?? 0
+      }&return_calc_method=${args.return_calc_method ?? "close_to_close"}`
+    : null
+  return useSWR<CategoryCombinations>(key, () => getCategoryCombinations(args!), {
+    revalidateOnFocus: false,
+    keepPreviousData: true,
+  })
+}
+
+export function usePredictiveAbilityLeaderboard(
+  engineHorizon: "short" | "medium" | "long",
+  lookback_days: number = 0,
+  return_calc_method: string = "close_to_close",
+) {
+  return useSWR<PredictiveLeaderboard>(
+    `/analytics/predictive-ability/leaderboard?engine_horizon=${engineHorizon}&lookback_days=${lookback_days}&return_calc_method=${return_calc_method}`,
+    () => getPredictiveAbilityLeaderboard(engineHorizon, lookback_days, return_calc_method),
+    { revalidateOnFocus: false, keepPreviousData: true },
+  )
+}
+
+export function usePredictiveHistoryBatchStatus() {
+  const { data, ...rest } = useSWR<PredictiveHistoryStatus>(
+    "/analytics/predictive-history/batch-status",
+    () => fetchPredictiveHistoryBatchStatus(),
+    {
+      revalidateOnFocus: false,
+      refreshInterval: (latestData) => {
+        if (!latestData) return 5000
+        const active = (latestData.pending ?? 0) + (latestData.running ?? 0)
+        return active > 0 ? 5000 : 0
+      },
+    }
+  )
+  return { data, ...rest }
+}
+
+export function useFactorSelectionActive(symbol: string | null, horizon?: string) {
+  const key = symbol
+    ? `/factor-selection/stocks/${symbol}/active${horizon ? `?horizon=${horizon}` : ""}`
+    : null
+  return useSWR<FactorSelectionActiveRow[]>(
+    key,
+    () => getFactorSelectionActive(symbol!, horizon),
+    { revalidateOnFocus: false, keepPreviousData: true },
+  )
+}
+
+export function useFactorSelectionStage1(symbol: string | null, horizon?: string) {
+  const key = symbol
+    ? `/factor-selection/stocks/${symbol}/stage1-cache${horizon ? `?horizon=${horizon}` : ""}`
+    : null
+  return useSWR<FactorSelectionStage1Row[]>(
+    key,
+    () => getFactorSelectionStage1Cache(symbol!, horizon),
+    { revalidateOnFocus: false, keepPreviousData: true },
   )
 }

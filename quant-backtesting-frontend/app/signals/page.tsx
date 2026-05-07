@@ -3,10 +3,12 @@
 import { useState } from "react"
 import { StockSidebar } from "@/components/strategy/stock-sidebar"
 import { HorizonSelector } from "@/components/strategy/horizon-selector"
+import { IndicatorExplorer } from "@/components/strategy/indicator-explorer"
 import { TechnicalAnalysisPanel } from "@/components/strategy/technical-analysis-panel"
 import { PlaceholderTab } from "@/components/strategy/placeholder-tab"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Activity, BarChart3, Brain, User } from "lucide-react"
+import { Activity, BarChart3, Brain, LineChart, TrendingUp, User } from "lucide-react"
+import { BacktestMCPanel } from "@/components/signals/backtest-mc-panel"
 
 export default function SignalsPage() {
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null)
@@ -56,6 +58,14 @@ export default function SignalsPage() {
                 <Activity className="h-3.5 w-3.5" />
                 Analyse Technique
               </TabsTrigger>
+              <TabsTrigger value="indicateurs" className="gap-1.5 text-xs" disabled={!selectedSymbol}>
+                <LineChart className="h-3.5 w-3.5" />
+                Indicateurs
+              </TabsTrigger>
+              <TabsTrigger value="backtest" className="gap-1.5 text-xs" disabled={!selectedSymbol}>
+                <TrendingUp className="h-3.5 w-3.5" />
+                Backtest & Monte Carlo
+              </TabsTrigger>
               <TabsTrigger value="fondamentale" className="gap-1.5 text-xs" disabled>
                 <BarChart3 className="h-3.5 w-3.5" />
                 Fondamentale
@@ -79,6 +89,36 @@ export default function SignalsPage() {
                     <Activity className="h-10 w-10 text-muted-foreground/30 mx-auto" />
                     <p className="text-sm text-muted-foreground">
                       Selectionnez un titre pour afficher l&apos;analyse
+                    </p>
+                  </div>
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="indicateurs" className="mt-4">
+              {selectedSymbol ? (
+                <IndicatorExplorer symbol={selectedSymbol} />
+              ) : (
+                <div className="flex h-[300px] items-center justify-center">
+                  <div className="text-center space-y-2">
+                    <LineChart className="h-10 w-10 text-muted-foreground/30 mx-auto" />
+                    <p className="text-sm text-muted-foreground">
+                      Selectionnez un titre pour afficher les indicateurs
+                    </p>
+                  </div>
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="backtest" className="mt-4">
+              {selectedSymbol ? (
+                <BacktestMCPanel symbol={selectedSymbol} horizon={horizon} />
+              ) : (
+                <div className="flex h-[300px] items-center justify-center">
+                  <div className="text-center space-y-2">
+                    <TrendingUp className="h-10 w-10 text-muted-foreground/30 mx-auto" />
+                    <p className="text-sm text-muted-foreground">
+                      Selectionnez un titre pour afficher le backtest
                     </p>
                   </div>
                 </div>

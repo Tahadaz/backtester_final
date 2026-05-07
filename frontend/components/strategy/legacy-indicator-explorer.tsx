@@ -5,6 +5,7 @@ import { useStockOhlcvHistory } from "@/hooks/use-api"
 import { fetchIndicatorSeries, type IndicatorSeriesResponse } from "@/lib/api"
 import { LegacyIndicatorChart } from "@/components/strategy/legacy-indicator-chart"
 import { LegacyIndicatorSidebar } from "@/components/strategy/legacy-indicator-sidebar"
+import { SignalEngineGlobalTriggerCard } from "@/components/strategy/signal-engine-global-trigger-card"
 
 export type LegacyIndicatorFamilyKey = "sma" | "rsi" | "macd" | "obv"
 
@@ -222,21 +223,24 @@ export function LegacyIndicatorExplorer({ symbol }: { symbol: string }) {
   }
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
-      <div className="min-w-0">
-        <LegacyIndicatorChart
-          priceSeries={priceSeries}
-          priceLoading={priceHistory.isLoading}
-          priceError={priceHistory.error instanceof Error ? priceHistory.error.message : null}
-          families={families}
-        />
-      </div>
-      <div className="min-w-0">
-        <LegacyIndicatorSidebar
-          families={families}
-          onToggle={setFamilyEnabled}
-          onParamChange={setFamilyParam}
-        />
+    <div className="space-y-4">
+      <SignalEngineGlobalTriggerCard />
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="min-w-0">
+          <LegacyIndicatorChart
+            priceSeries={priceSeries}
+            priceLoading={priceHistory.isLoading}
+            priceError={priceHistory.error instanceof Error ? priceHistory.error.message : null}
+            families={families}
+          />
+        </div>
+        <div className="min-w-0">
+          <LegacyIndicatorSidebar
+            families={families}
+            onToggle={setFamilyEnabled}
+            onParamChange={setFamilyParam}
+          />
+        </div>
       </div>
     </div>
   )

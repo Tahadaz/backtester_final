@@ -20,6 +20,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 import { ArrowLeft, ChevronDown, ChevronRight, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { signalVariantLabel } from "@/lib/signal-variant-label"
+import { ICStatsChip } from "@/components/signals/ic-stats-chip"
 import type { VariantDetail, VariantSummary, VariantBacktest, PlotlyFigure } from "@/lib/api"
 
 type Tab = "comparaison" | "oos" | "fiabilite"
@@ -35,19 +37,7 @@ const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
 }
 
 function variantLabel(v: VariantSummary): string {
-  const p = v.params as Record<string, unknown>
-  if (v.archetype === "sr_combo") {
-    const supportId = String(p.support_method_id ?? "support")
-    const resistanceId = String(p.resistance_method_id ?? "resistance")
-    return `${supportId} -> ${resistanceId}`
-  }
-  if (v.archetype === "price_vs_sma") return `SMA-${p.window ?? "?"}`
-  if (v.archetype === "sma_cross") return `SMA(${p.fast},${p.slow})`
-  if (v.archetype === "slope_confirmed") return `SMA-${p.window} Slope`
-  if (v.archetype === "rsi_level") return `RSI-${p.period} (${p.oversold}/${p.overbought})`
-  if (v.archetype === "macd_cross") return `MACD(${p.fast},${p.slow},${p.signal})`
-  if (v.archetype === "obv_trend") return `OBV-EMA-${p.ema_period}`
-  return v.variant_id.slice(0, 12)
+  return signalVariantLabel(v)
 }
 
 function formatNumber(n: number): string {
@@ -128,15 +118,17 @@ export default function VariantDetailPage() {
   const variantId = decodeURIComponent(params.id as string)
   const symbol = searchParams.get("symbol")
   const horizon = searchParams.get("horizon") ?? "medium"
+  const variant = searchParams.get("variant") ?? "expanded"
   const srMode = pathname.includes("/signals/sr-variant/")
 
-  const standardDetail = useVariantDetail(srMode ? null : variantId, symbol, horizon, costBps, cooldownBars)
+  const standardDetail = useVariantDetail(srMode ? null : variantId, symbol, horizon, costBps, cooldownBars, variant)
   const srDetail = useSupportResistanceVariantDetail(
     srMode ? variantId : null,
     symbol,
     horizon,
     costBps,
     cooldownBars,
+    variant,
     srMode,
   )
   const data = srMode ? srDetail.data : standardDetail.data
@@ -216,6 +208,9 @@ export default function VariantDetailPage() {
                   {STATUS_BADGE[data.selection_status]?.label ?? data.selection_status}
                 </Badge>
               )}
+              {!srMode && symbol && (
+                <ICStatsChip symbol={symbol} horizon={horizon} archetype={data.archetype} />
+              )}
             </div>
           </div>
         </div>
@@ -275,6 +270,7 @@ export default function VariantDetailPage() {
           costBps={costBps}
           cooldownBars={cooldownBars}
           srMode={srMode}
+          variant={variant}
         />
       )}
       {tab === "oos" && <OOSTab data={data} />}
@@ -293,6 +289,7 @@ function ComparisonTab({
   costBps,
   cooldownBars,
   srMode,
+  variant,
 }: {
   data: VariantDetail
   currentId: string
@@ -301,6 +298,7 @@ function ComparisonTab({
   costBps: number
   cooldownBars: number
   srMode: boolean
+  variant: string
 }) {
   const [sortBy, setSortBy] = useState<SortKey>("reliability_score")
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -410,6 +408,7 @@ function ComparisonTab({
                       costBps={costBps}
                       cooldownBars={cooldownBars}
                       srMode={srMode}
+                      variant={variant}
                       onToggle={() => setExpandedId(isExpanded ? null : v.variant_id)}
                     />
                   )
@@ -493,6 +492,7 @@ function VariantRow({
   costBps,
   cooldownBars,
   srMode,
+  variant,
   onToggle,
 }: {
   v: VariantSummary
@@ -504,6 +504,7 @@ function VariantRow({
   costBps: number
   cooldownBars: number
   srMode: boolean
+  variant: string
   onToggle: () => void
 }) {
   return (
@@ -587,6 +588,7 @@ function VariantRow({
               costBps={costBps}
               cooldownBars={cooldownBars}
               srMode={srMode}
+              variant={variant}
             />
           </td>
         </tr>
@@ -604,6 +606,7 @@ function VariantDetailPanel({
   costBps,
   cooldownBars,
   srMode,
+  variant,
 }: {
   variantId: string
   symbol: string
@@ -611,14 +614,16 @@ function VariantDetailPanel({
   costBps: number
   cooldownBars: number
   srMode: boolean
+  variant: string
 }) {
-  const standardBacktest = useVariantBacktest(srMode ? null : variantId, symbol, horizon, costBps, cooldownBars)
+  const standardBacktest = useVariantBacktest(srMode ? null : variantId, symbol, horizon, costBps, cooldownBars, variant)
   const srBacktest = useSupportResistanceVariantBacktest(
     srMode ? variantId : null,
     symbol,
     horizon,
     costBps,
     cooldownBars,
+    variant,
     srMode,
   )
   const data = srMode ? srBacktest.data : standardBacktest.data

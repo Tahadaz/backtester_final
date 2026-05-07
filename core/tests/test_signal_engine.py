@@ -6,7 +6,7 @@ All tests use synthetic numpy data — no DB, S3, or API required.
 import numpy as np
 import pytest
 
-from quant_core.signal_engine.candidates import generate_candidates
+from quant_core.signal_engine.candidates import generate_candidates, variant_min_history
 from quant_core.signal_engine.domain import HORIZON_PARAMS, VariantDef
 from quant_core.signal_engine.ensemble import combine_family_signals, run_sma_ensemble, run_family_ensemble_full
 from quant_core.signal_engine.oos_eval import apply_cooldown, compute_signal_array, evaluate_variant_oos
@@ -406,8 +406,24 @@ class TestLowDataModes:
         assert detail.signal.methodology_mode == "live_signal_only"
         assert detail.signal.is_provisional is True
         assert detail.signal.representative_count == 0
+        assert detail.signal.family_signal_label == "Pas disponible"
         assert len(detail.signal.fallback_variants) > 0
         assert set(v["variant_id"] for v in detail.signal.fallback_variants).isdisjoint(detail.representative_ids)
+
+    def test_no_representatives_returns_unavailable_label(self, monkeypatch):
+        def no_representatives(*args, **kwargs):
+            return [], {}, {}
+
+        monkeypatch.setattr(
+            "quant_core.signal_engine.ensemble.reduce_redundancy",
+            no_representatives,
+        )
+        detail = run_family_ensemble_full(
+            "sma", _uptrend(500), symbol="TEST", horizon="short",
+        )
+        assert detail.signal.representative_count == 0
+        assert detail.signal.family_signal_label == "Pas disponible"
+        assert detail.signal.score_explanation
 
     def test_robust_mode_stays_unchanged_when_history_is_sufficient(self):
         close = _uptrend(500)
@@ -636,4 +652,233 @@ class TestSignalTypeLabels:
         assert variant_signal_label("rsi", 0.0) == "NORMAL"
         assert variant_signal_label("obv", 1.0) == "ACCUMULATION"
         assert variant_signal_label("obv", -1.0) == "DISTRIBUTION"
-        assert variant_signal_label("macd", 1.0) == "HAUSSIER"
+        assert variant_signal_label("macd", 1.0) == "MOMENTUM HAUSSIER"
+
+
+def test_momentum_signal_labels() -> None:
+    from quant_core.signal_engine.domain import signal_type_label, variant_signal_label
+
+    assert signal_type_label("momentum", 60) == "Fort momentum haussier"
+    assert signal_type_label("momentum", 0) == "Pas de momentum"
+    assert signal_type_label("momentum", -60) == "Fort momentum baissier"
+    assert variant_signal_label("roc", 1.0) == "MOMENTUM HAUSSIER"
+    assert variant_signal_label("roc", -1.0) == "MOMENTUM BAISSIER"
+    assert variant_signal_label("roc", 0.0) == "NEUTRE"
+
+
+_EXPANDED_FAMILIES = (
+    "sma", "ema", "ema_cross", "ichimoku", "psar",
+    "macd", "roc", "trix", "adx", "tsi",
+    "rsi", "stochastic", "cci", "mfi", "uo",
+    "obv", "cmf", "ad", "vwap", "fi",
+)
+
+
+def _oscillating_uptrend(n: int = 1500) -> np.ndarray:
+    base = np.linspace(100.0, 180.0, n)
+    cycle = 5.0 * np.sin(np.linspace(0.0, 30.0, n))
+    return base + cycle
+
+
+def _make_high_low(close: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    spread = 1.5 + 0.3 * np.sin(np.linspace(0.0, 10.0, len(close)))
+    return close + spread, close - spread
+
+
+class TestExpandedFamilyCoverage:
+    @pytest.mark.parametrize("family", _EXPANDED_FAMILIES)
+    @pytest.mark.parametrize("horizon", ["short", "medium", "long"])
+    def test_all_families_generate_thirty_candidates(self, family, horizon):
+        candidates = generate_candidates(family, horizon)
+        assert len(candidates) == 30, f"{family}/{horizon}: got {len(candidates)}"
+
+    @pytest.mark.parametrize("family", _EXPANDED_FAMILIES)
+    @pytest.mark.parametrize("horizon", ["short", "medium", "long"])
+    def test_all_families_candidate_ids_are_deterministic(self, family, horizon):
+        first = generate_candidates(family, horizon)
+        second = generate_candidates(family, horizon)
+        assert [candidate.variant_id for candidate in first] == [candidate.variant_id for candidate in second]
+
+    @pytest.mark.parametrize("family", _EXPANDED_FAMILIES)
+    @pytest.mark.parametrize("horizon", ["short", "medium", "long"])
+    def test_all_families_warmup_fits_train_budget(self, family, horizon):
+        candidates = generate_candidates(family, horizon)
+        train_window = HORIZON_PARAMS[horizon]["train"]
+        assert max(variant_min_history(candidate) for candidate in candidates) < train_window
+
+    @pytest.mark.parametrize("family", _EXPANDED_FAMILIES)
+    def test_all_families_signal_contract(self, family):
+        close = _oscillating_uptrend(900)
+        high, low = _make_high_low(close)
+        volume = _make_volume(len(close))
+        variant = generate_candidates(family, "medium")[0]
+
+        sig = compute_signal_array(close, variant, volume=volume, high=high, low=low)
+
+        assert len(sig) == len(close)
+        assert set(np.unique(sig)) <= {-1.0, 0.0, 1.0}
+        assert not np.any(np.isnan(sig))
+
+    @pytest.mark.parametrize("family", _EXPANDED_FAMILIES)
+    def test_all_families_ensemble_end_to_end(self, family):
+        close = _oscillating_uptrend(1500)
+        high, low = _make_high_low(close)
+        volume = _make_volume(len(close))
+
+        detail = run_family_ensemble_full(
+            family,
+            close,
+            volume=volume,
+            high=high,
+            low=low,
+            symbol="TEST",
+            horizon="medium",
+        )
+
+        assert detail.signal.family == family
+        assert detail.signal.tested_count == 30
+        assert -100.0 <= detail.signal.family_score_pct <= 100.0
+
+
+class TestRecalibrationAnchors:
+    def test_sma_anchor_windows_land_in_expected_horizons(self):
+        medium_windows = {candidate.params["window"] for candidate in generate_candidates("sma", "medium")}
+        long_windows = {candidate.params["window"] for candidate in generate_candidates("sma", "long")}
+        assert 50 in medium_windows
+        assert 200 in long_windows
+
+    def test_macd_anchor_is_in_medium_grid(self):
+        params = {
+            (candidate.params["fast"], candidate.params["slow"], candidate.params["signal"])
+            for candidate in generate_candidates("macd", "medium")
+        }
+        assert (12, 26, 9) in params
+
+    def test_ichimoku_anchor_is_in_medium_grid(self):
+        params = {
+            (candidate.params["tenkan"], candidate.params["kijun"], candidate.params["senkou_b"])
+            for candidate in generate_candidates("ichimoku", "medium")
+        }
+        assert (9, 26, 52) in params
+
+    def test_uo_anchor_is_in_medium_grid(self):
+        params = {
+            (candidate.params["period_1"], candidate.params["period_2"], candidate.params["period_3"])
+            for candidate in generate_candidates("uo", "medium")
+        }
+        assert (7, 14, 28) in params
+
+    def test_tsi_anchor_is_in_medium_grid(self):
+        params = {
+            (candidate.params["long_period"], candidate.params["short_period"])
+            for candidate in generate_candidates("tsi", "medium")
+        }
+        assert (25, 13) in params
+
+    def test_psar_default_is_in_medium_grid(self):
+        params = {
+            (candidate.params["af_step"], candidate.params["af_max"])
+            for candidate in generate_candidates("psar", "medium")
+        }
+        assert (0.02, 0.2) in params
+
+    def test_rsi_and_adx_wilder_defaults_are_retained(self):
+        rsi_periods = {candidate.params["period"] for candidate in generate_candidates("rsi", "short")}
+        adx_params = {
+            (candidate.params["period"], candidate.params["adx_threshold"])
+            for candidate in generate_candidates("adx", "short")
+        }
+        assert 14 in rsi_periods
+        assert (14, 20) in adx_params
+
+    def test_psar_horizons_are_distinct(self):
+        short_params = {
+            (candidate.params["af_step"], candidate.params["af_max"])
+            for candidate in generate_candidates("psar", "short")
+        }
+        medium_params = {
+            (candidate.params["af_step"], candidate.params["af_max"])
+            for candidate in generate_candidates("psar", "medium")
+        }
+        long_params = {
+            (candidate.params["af_step"], candidate.params["af_max"])
+            for candidate in generate_candidates("psar", "long")
+        }
+        assert short_params != medium_params
+        assert medium_params != long_params
+        assert short_params != long_params
+
+
+# ---------------------------------------------------------------------------
+# WFO global signal label vocabulary
+# ---------------------------------------------------------------------------
+
+from quant_core.signal_engine.wfo_global import compute_global_wfo_signal
+from quant_core.signal_engine.wfo_signal import WfoCategoryResult
+
+_AGGREGATE_LABELS = {"Achat fort", "Achat", "Neutre", "Vente", "Vente forte"}
+_RECOMMENDATION_KEYS = {"achat_fort", "achat", "neutre", "vente", "vente_forte"}
+
+
+def _make_category_result(category: str, score: float, composite: float = 1.0) -> WfoCategoryResult:
+    return WfoCategoryResult(
+        category=category, symbol="TST", horizon="medium", status="succeeded",
+        score_pct=score, signal_label="", representatives=[],
+        wfe_pct=60.0, robustness_ratio=1.2, total_folds=4, profitable_folds=3,
+        mean_oos_sharpe=0.8, total_oos_pnl=0.05, worst_fold_drawdown=-0.02,
+        composite_score=composite, robustness_grade="B",
+    )
+
+
+class TestWfoGlobalSignalLabel:
+    """Guard: global signal_label must use aggregate vocabulary, not trend."""
+
+    def _run(self, score: float) -> object:
+        cat = _make_category_result("tendance", score, composite=abs(score) + 1)
+        close = np.ones(100) * 100.0
+        return compute_global_wfo_signal({"tendance": cat}, close)
+
+    def test_positive_strong_is_achat_fort(self):
+        result = self._run(60.0)
+        assert result.signal_label == "Achat fort"
+        assert result.recommendation == "achat_fort"
+
+    def test_positive_mild_is_achat(self):
+        result = self._run(30.0)
+        assert result.signal_label == "Achat"
+        assert result.recommendation == "achat"
+
+    def test_neutral_is_neutre(self):
+        result = self._run(0.0)
+        assert result.signal_label == "Neutre"
+        assert result.recommendation == "neutre"
+
+    def test_negative_mild_is_vente(self):
+        result = self._run(-30.0)
+        assert result.signal_label == "Vente"
+        assert result.recommendation == "vente"
+
+    def test_negative_strong_is_vente_forte(self):
+        result = self._run(-60.0)
+        assert result.signal_label == "Vente forte"
+        assert result.recommendation == "vente_forte"
+
+    def test_label_never_haussier_or_baissier(self):
+        for score in [80, 30, 0, -30, -80]:
+            result = self._run(float(score))
+            assert result.signal_label in _AGGREGATE_LABELS, (
+                f"score={score} → unexpected label {result.signal_label!r}"
+            )
+            assert result.recommendation in _RECOMMENDATION_KEYS
+
+    def test_multi_category_global(self):
+        cats = {
+            "tendance":   _make_category_result("tendance",   40.0, 2.0),
+            "momentum":   _make_category_result("momentum",   20.0, 1.0),
+            "oscillation":_make_category_result("oscillation", 10.0, 0.5),
+            "volume":     _make_category_result("volume",     -5.0, 0.5),
+        }
+        close = np.ones(100) * 100.0
+        result = compute_global_wfo_signal(cats, close)
+        assert result.signal_label in _AGGREGATE_LABELS
+        assert result.recommendation in _RECOMMENDATION_KEYS

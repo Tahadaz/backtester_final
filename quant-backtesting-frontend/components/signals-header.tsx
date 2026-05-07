@@ -19,7 +19,7 @@ export function SignalsHeader() {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-card/80 backdrop-blur-md">
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4">
-        <Link href="/" className="flex items-center gap-2.5">
+        <Link href="/data" className="flex items-center gap-2.5">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-xs font-black tracking-wider text-primary-foreground">
             BT
           </div>

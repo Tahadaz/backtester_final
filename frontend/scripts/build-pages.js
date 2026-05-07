@@ -18,6 +18,7 @@ const disableTargets = [
   "app/signals/sr-variants/page.tsx",
   "app/backtest/window/[runId]/page.tsx",
   "app/runs/[runId]/page.tsx",
+  "app/analytics/page.tsx", 
 ]
 
 if (fs.existsSync(outDir)) {

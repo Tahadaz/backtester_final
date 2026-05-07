@@ -5,43 +5,67 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-# ---------------------------------------------------------------------------
-# Horizon parameters (English keys only — French labels belong in UI)
-# ---------------------------------------------------------------------------
-
-HORIZON_PARAMS: dict[str, dict[str, int]] = {
-    "short":  {"train": 252, "test": 63,  "step": 63, "max_years": 5},
-    "medium": {"train": 504, "test": 126, "step": 126, "max_years": 10},
-    "long":   {"train": 756, "test": 252, "step": 252, "max_years": 20},
-}
-
-VALID_HORIZONS = frozenset(HORIZON_PARAMS)
+from core.quant_core.horizons import HORIZON_PARAMS, VALID_HORIZONS
 
 # ---------------------------------------------------------------------------
 # Signal type taxonomy (Murphy 1999, Elder 1993, Pring 2002)
 # ---------------------------------------------------------------------------
 
 FAMILY_SIGNAL_TYPE: dict[str, str] = {
+    # Trend
     "sma": "trend",
-    "macd": "trend",
+    "ema": "trend",
+    "ema_cross": "trend",
+    "ichimoku": "trend",
+    "psar": "trend",
+    # Momentum
+    "macd": "momentum",
+    "roc": "momentum",
+    "trix": "momentum",
+    "adx": "momentum",
+    "tsi": "momentum",
+    # Oscillator
     "rsi": "oscillator",
+    "stochastic": "oscillator",
+    "cci": "oscillator",
+    "mfi": "oscillator",
+    "uo": "oscillator",
+    # Volume
     "obv": "volume",
+    "cmf": "volume",
+    "ad": "volume",
+    "vwap": "volume",
+    "fi": "volume",
 }
 
 CATEGORY_FAMILIES: dict[str, list[str]] = {
-    "tendance": ["sma", "macd"],
+    "tendance": ["sma", "ema", "ema_cross", "ichimoku", "psar"],
+    "momentum": ["macd", "roc", "trix", "adx", "tsi"],
+    "oscillation": ["rsi", "stochastic", "cci", "mfi", "uo"],
+    "volume": ["obv", "cmf", "ad", "vwap", "fi"],
+}
+
+LEGACY_CATEGORY_FAMILIES: dict[str, list[str]] = {
+    "tendance": ["sma"],
+    "momentum": ["macd"],
     "oscillation": ["rsi"],
     "volume": ["obv"],
 }
 
+VARIANT_FAMILIES: dict[str, dict[str, list[str]]] = {
+    "legacy": LEGACY_CATEGORY_FAMILIES,
+    "expanded": CATEGORY_FAMILIES,
+}
+
+ALL_FAMILIES: tuple[str, ...] = tuple(
+    family
+    for category in ("tendance", "momentum", "oscillation", "volume")
+    for family in CATEGORY_FAMILIES[category]
+)
+
 
 def signal_type_label(signal_type: str, score_pct: float) -> str:
-    """Map (signal_type, score) to type-specific French label.
-
-    Trend → direction (haussier/baissier).
-    Oscillator → condition (survendu/suracheté).
-    Volume → flow (accumulation/distribution).
-    """
+    """Map (signal_type, score) to type-specific French label."""
     if signal_type == "trend":
         if score_pct > 50:
             return "Très haussier"
@@ -52,6 +76,16 @@ def signal_type_label(signal_type: str, score_pct: float) -> str:
         if score_pct >= -50:
             return "Baissier"
         return "Très baissier"
+    if signal_type == "momentum":
+        if score_pct > 50:
+            return "Fort momentum haussier"
+        if score_pct > 15:
+            return "Momentum haussier"
+        if score_pct >= -15:
+            return "Pas de momentum"
+        if score_pct >= -50:
+            return "Momentum baissier"
+        return "Fort momentum baissier"
     if signal_type == "oscillator":
         if score_pct > 50:
             return "Très survendu"
@@ -72,7 +106,6 @@ def signal_type_label(signal_type: str, score_pct: float) -> str:
         if score_pct >= -50:
             return "Distribution"
         return "Forte distribution"
-    # fallback (generic aggregate)
     if score_pct > 50:
         return "Achat fort"
     if score_pct > 15:
@@ -86,12 +119,20 @@ def signal_type_label(signal_type: str, score_pct: float) -> str:
 
 def variant_signal_label(family: str, signal_val: float) -> str:
     """Per-variant current signal label, type-specific."""
-    st = FAMILY_SIGNAL_TYPE.get(family, "trend")
+    # Factor-conditioned variants have family="{ta_family}@fx"; strip suffix.
+    base_family = family.split("@")[0] if "@" in family else family
+    st = FAMILY_SIGNAL_TYPE.get(base_family, "trend")
     if st == "trend":
         if signal_val > 0:
             return "HAUSSIER"
         if signal_val < 0:
             return "BAISSIER"
+        return "NEUTRE"
+    if st == "momentum":
+        if signal_val > 0:
+            return "MOMENTUM HAUSSIER"
+        if signal_val < 0:
+            return "MOMENTUM BAISSIER"
         return "NEUTRE"
     if st == "oscillator":
         if signal_val > 0:
@@ -108,8 +149,20 @@ def variant_signal_label(family: str, signal_val: float) -> str:
     return "BUY" if signal_val > 0 else "SELL" if signal_val < 0 else "HOLD"
 
 
-_POSITIVE_LABELS = {"HAUSSIER", "SURVENDU", "ACCUMULATION", "BUY"}
-_NEGATIVE_LABELS = {"BAISSIER", "SURACHETÉ", "DISTRIBUTION", "SELL"}
+_POSITIVE_LABELS = {
+    "HAUSSIER",
+    "MOMENTUM HAUSSIER",
+    "SURVENDU",
+    "ACCUMULATION",
+    "BUY",
+}
+_NEGATIVE_LABELS = {
+    "BAISSIER",
+    "MOMENTUM BAISSIER",
+    "SURACHETÉ",
+    "DISTRIBUTION",
+    "SELL",
+}
 
 
 def label_to_signal_value(label: str) -> float:
@@ -122,31 +175,57 @@ def label_to_signal_value(label: str) -> float:
 
 
 # ---------------------------------------------------------------------------
-# Layer A — Candidate definition
+# Layer A - Candidate definition
 # ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class FactorConditionMeta:
+    """Metadata for a factor-based conditioning rule used in Phase 2 cross-product variants.
+
+    A factor-conditioned TA variant fires its underlying signal only when this
+    condition evaluates to True on the same evaluation date (AND composition,
+    with calendar-aware lag applied upstream — see research/alignment.py).
+    """
+
+    condition_id: str    # e.g. "vix_z20_below_neg1"
+    factor_ticker: str   # e.g. "^VIX"
+    form: str            # "zscore" | "momentum" | "change" | "level" | "direction"
+    lookback: int        # bars for rolling window (1 for "direction")
+    threshold: float     # comparison threshold (0.0 for momentum/direction)
+    direction: str       # "below" | "above"
+
 
 @dataclass(frozen=True)
 class VariantDef:
     """A single signal variant in the candidate universe."""
-    variant_id: str       # deterministic hash via compute_trial_id
-    family: str           # "sma", "rsi", "macd", "obv"
-    archetype: str        # e.g. "price_vs_sma", "sma_cross", "slope_confirmed"
+
+    variant_id: str
+    family: str
+    archetype: str
     params: dict[str, Any] = field(default_factory=dict)
     description: str = ""
+    # Phase 2: optional factor condition; None for native TA variants.
+    # compare=False, hash=False so existing variant_id-based identity is unchanged.
+    factor_condition: FactorConditionMeta | None = field(
+        default=None, compare=False, hash=False
+    )
 
 
 # ---------------------------------------------------------------------------
-# Layer B — OOS window result
+# Layer B - OOS window result
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class OOSWindowResult:
     """Metrics from a single out-of-sample evaluation window."""
+
     window_index: int
-    train_start: int       # bar index (inclusive)
-    train_end: int         # bar index (exclusive)
-    test_start: int        # bar index (inclusive)
-    test_end: int          # bar index (exclusive)
+    train_start: int
+    train_end: int
+    test_start: int
+    test_end: int
     n_trades: int
     mean_return_net: float
     sharpe: float
@@ -154,14 +233,15 @@ class OOSWindowResult:
     fraction_positive_bars: float
     n_bars: int
     is_valid: bool
-    total_return: float = 0.0    # np.prod(1 + oos_returns) - 1
-    cagr: float = 0.0            # (1 + total_return)^(252/n_bars) - 1
-    pnl: float = 0.0             # 100_000 * total_return
+    total_return: float = 0.0
+    cagr: float = 0.0
+    pnl: float = 0.0
 
 
 @dataclass(frozen=True)
 class MethodologyWindow:
     """Walk-forward window definition used by the signal engine."""
+
     train: int
     test: int
     step: int
@@ -171,6 +251,7 @@ class MethodologyWindow:
 @dataclass(frozen=True)
 class MethodologyContext:
     """Describes whether the signal used robust, adaptive, or live-only mode."""
+
     methodology_mode: str
     available_bars: int
     nominal_window: MethodologyWindow
@@ -180,12 +261,14 @@ class MethodologyContext:
 
 
 # ---------------------------------------------------------------------------
-# Layer C — Robustness summary
+# Layer C - Robustness summary
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class VariantRobustnessSummary:
     """Aggregated robustness metrics for a variant across OOS windows."""
+
     variant: VariantDef
     n_oos_windows: int
     n_valid_windows: int
@@ -194,26 +277,28 @@ class VariantRobustnessSummary:
     median_sharpe: float
     fraction_positive_windows: float
     mean_max_drawdown: float
-    reliability_score: float   # [0.0, 1.0]
+    reliability_score: float
     is_viable: bool
     sharpe_score: float = 0.0
     stability_score: float = 0.0
     consistency_score: float = 0.0
     drawdown_score: float = 0.0
-    cagr: float = 0.0       # mean of window CAGRs
-    total_pnl: float = 0.0  # mean of window PnLs
+    cagr: float = 0.0
+    total_pnl: float = 0.0
 
 
 # ---------------------------------------------------------------------------
-# Layer F — Current signal
+# Layer F - Current signal
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class VariantCurrentSignal:
     """Current-bar signal for a single variant."""
+
     variant_id: str
-    signal: float              # +1.0, -1.0, or 0.0
-    signal_label: str          # type-specific: "HAUSSIER"/"SURVENDU"/"ACCUMULATION" etc.
+    signal: float
+    signal_label: str
     reliability_weight: float
     current_close: float
     indicator_value: float | None
@@ -221,18 +306,20 @@ class VariantCurrentSignal:
 
 
 # ---------------------------------------------------------------------------
-# Layer G — Family combined output
+# Layer G - Family combined output
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class FamilyCombinedSignal:
-    """Full pipeline output for one family × symbol × horizon."""
+    """Full pipeline output for one family x symbol x horizon."""
+
     family: str
     symbol: str
     horizon: str
     timeframe: str
-    family_score_pct: float        # -100.0 to +100.0
-    family_signal_label: str       # type-specific: "Haussier", "Survendu", "Accumulation", etc.
+    family_score_pct: float
+    family_signal_label: str
     tested_count: int
     viable_count: int
     competitive_count: int
@@ -240,7 +327,7 @@ class FamilyCombinedSignal:
     representatives: list[dict[str, Any]] = field(default_factory=list)
     fallback_variants: list[dict[str, Any]] = field(default_factory=list)
     score_explanation: str = ""
-    methodology_status: str = "robust_oos_ensemble"  # or "provisional"
+    methodology_status: str = "robust_oos_ensemble"
     methodology_mode: str = "robust_oos_ensemble"
     available_bars: int = 0
     nominal_window: MethodologyWindow = field(default_factory=lambda: MethodologyWindow(0, 0, 0))
@@ -249,41 +336,45 @@ class FamilyCombinedSignal:
     is_provisional: bool = False
     as_of: str = ""
     latest_close: float | None = None
-    best_variant_id: str = ""  # highest-reliability variant (for navigation when 0 reps)
-    signal_type: str = "trend"     # "trend", "oscillator", "volume"
-    category: str = "tendance"     # "tendance", "oscillation", "volume"
+    best_variant_id: str = ""
+    signal_type: str = "trend"
+    category: str = "tendance"
 
 
 # ---------------------------------------------------------------------------
 # Pipeline detail (full intermediate data for variant detail endpoint)
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class EnsemblePipelineDetail:
-    """Full intermediate data from an A→G pipeline run."""
+    """Full intermediate data from an A->G pipeline run."""
+
     signal: FamilyCombinedSignal
     all_summaries: list[VariantRobustnessSummary]
-    oos_windows: dict[str, list[OOSWindowResult]]  # variant_id → windows
+    oos_windows: dict[str, list[OOSWindowResult]]
     survivor_ids: set[str]
     representative_ids: set[str]
-    current_signal_labels: dict[str, str] = field(default_factory=dict)       # {variant_id: "BUY"/"SELL"/"HOLD"}
-    redundancy_info: dict[str, tuple[str, float]] = field(default_factory=dict)  # {eliminated_id: (corr_with_id, corr_val)}
-    correlation_matrix: dict[str, dict[str, float]] = field(default_factory=dict)  # pairwise for survivors
+    current_signal_labels: dict[str, str] = field(default_factory=dict)
+    redundancy_info: dict[str, tuple[str, float]] = field(default_factory=dict)
+    correlation_matrix: dict[str, dict[str, float]] = field(default_factory=dict)
     fallback_variant_ids: set[str] = field(default_factory=set)
 
 
 # ---------------------------------------------------------------------------
-# Layer H — Regime detection result
+# Layer H - Regime detection result
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class RegimeResult:
     """Result of OOS-validated regime detection via Kaufman Efficiency Ratio."""
+
     regime_active: bool
-    regime_label: str           # "trending" / "ranging" / "mixed" / "insufficient_data"
-    regime_weights: dict[str, float]   # family → weight (for current regime)
-    er_value: float | None      # current ER value
-    improvement: float          # mean OOS Sharpe improvement over equal-weight
-    tercile_bounds: tuple[float, float]  # (er_low, er_high) from last train window
-    window_results: list[dict[str, Any]]  # per-fold transparency
-    n_families: int             # how many families were used
+    regime_label: str
+    regime_weights: dict[str, float]
+    er_value: float | None
+    improvement: float
+    tercile_bounds: tuple[float, float]
+    window_results: list[dict[str, Any]]
+    n_families: int

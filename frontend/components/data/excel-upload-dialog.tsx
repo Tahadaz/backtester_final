@@ -34,12 +34,12 @@ export function ExcelUploadDialog({
   open,
   onClose,
   onUploaded,
-  uploadScope,
+  uploadScope = "other",
 }: {
   open: boolean
   onClose: () => void
   onUploaded: () => void
-  uploadScope: UploadScope
+  uploadScope?: UploadScope
 }) {
   const [phase, setPhase] = useState<Phase>("idle")
   const [fileResults, setFileResults] = useState<FileUploadResult[]>([])
@@ -79,14 +79,25 @@ export function ExcelUploadDialog({
 
         updateFileResult(index, { status: "processing" })
         const response = await waitForIngestCompletion(dataset_id)
-        updateFileResult(index, { status: "done", result: response })
-
         if (response.status === "done" && response.report) {
+          updateFileResult(index, { status: "done", result: response })
           const symbols = Object.entries(response.report.symbols)
           acceptedCount += symbols.filter(([, info]) => info.status !== "error").length
           rejectedCount += symbols.filter(([, info]) => info.status === "error").length
+        } else if (response.status === "done") {
+          failedFiles += 1
+          updateFileResult(index, {
+            status: "error",
+            error: "Rapport d'ingestion indisponible.",
+            result: response,
+          })
         } else {
           timedOutFiles += 1
+          updateFileResult(index, {
+            status: "processing",
+            result: response,
+            error: "Le traitement prend plus de temps que prevu. L'import continue en arriere-plan.",
+          })
         }
       } catch (err: unknown) {
         failedFiles += 1
@@ -109,7 +120,7 @@ export function ExcelUploadDialog({
       }
     }
     if (timedOutFiles > 0) {
-      toast.info(`${timedOutFiles} fichier(s) encore en traitement`)
+      toast.info(`${timedOutFiles} fichier(s) encore en traitement (import en arriere-plan)`)
     }
     if (failedFiles > 0) {
       toast.error(`${failedFiles} fichier(s) en echec d'envoi`)
@@ -262,6 +273,13 @@ function FileResultCard({ entry }: { entry: FileUploadResult }) {
         <div className="mt-2 flex items-start gap-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm">
           <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
           <p className="text-xs text-red-600">{entry.error}</p>
+        </div>
+      )}
+
+      {entry.status === "processing" && entry.error && (
+        <div className="mt-2 flex items-start gap-2 rounded border border-yellow-200 bg-yellow-50 px-3 py-2 text-sm">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-yellow-500" />
+          <p className="text-xs text-yellow-700">{entry.error}</p>
         </div>
       )}
 

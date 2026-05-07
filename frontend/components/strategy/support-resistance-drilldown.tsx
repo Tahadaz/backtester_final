@@ -22,14 +22,16 @@ export function SupportResistanceDrilldown({
   horizon,
   cooldownBars,
   costBps,
+  variant,
 }: {
   symbol: string
   horizon: string
   cooldownBars?: number
   costBps?: number
+  variant?: string
 }) {
   const router = useRouter()
-  const summary = useSupportResistance(symbol, horizon, costBps, cooldownBars)
+  const summary = useSupportResistance(symbol, horizon, costBps, cooldownBars, variant)
 
   if (summary.isLoading && !summary.data) {
     return (
@@ -75,7 +77,7 @@ export function SupportResistanceDrilldown({
       className="cursor-pointer transition-colors hover:border-primary/50"
       onClick={() =>
         router.push(
-          `/signals/sr-family?symbol=${encodeURIComponent(symbol)}&horizon=${encodeURIComponent(horizon)}&cooldown=${cooldownBars ?? 0}`,
+          `/signals/sr-family?symbol=${encodeURIComponent(symbol)}&horizon=${encodeURIComponent(horizon)}&cooldown=${cooldownBars ?? 0}&variant=${variant ?? "expanded"}`,
         )
       }
     >

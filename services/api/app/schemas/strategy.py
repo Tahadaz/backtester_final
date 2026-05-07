@@ -188,6 +188,7 @@ class StrategyBacktestRequest(BaseModel):
     cost_model: BacktestCostModelIn = Field(default_factory=BacktestCostModelIn)
     volume_gate: BacktestVolumeGateIn = Field(default_factory=BacktestVolumeGateIn)
     cooldown_bars: int = Field(default=0, ge=0, le=252)
+    family_history_mode: str = Field(default="static_current_reps", pattern=r"^(static_current_reps|dynamic_point_in_time)$")
 
 
 class MetricValueRow(BaseModel):
@@ -247,6 +248,139 @@ class StrategyBacktestResponse(BaseModel):
     assumptions: dict[str, Any] = Field(default_factory=dict)
     general_results: StrategyBacktestGeneralResults = Field(default_factory=StrategyBacktestGeneralResults)
     stocks: list[StrategyBacktestStockResults] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Strategy V2 Review / Handoff
+# ---------------------------------------------------------------------------
+
+
+class ReviewRequest(BaseModel):
+    config_json: dict[str, Any] = Field(default_factory=dict)
+    horizon: str = Field(default="medium", pattern=r"^(short|medium|long)$")
+
+
+class ReviewStockReadiness(BaseModel):
+    symbol: str
+    has_signal: bool = False
+    has_entry_rules: bool = False
+    has_exit_rules: bool = False
+    has_risk: bool = False
+    wfo_param_count: int = 0
+    ready: bool = False
+    warnings: list[str] = Field(default_factory=list)
+    blocking_issues: list[str] = Field(default_factory=list)
+
+
+class ReviewOut(BaseModel):
+    total_wfo_param_count: int = 0
+    wfo_param_severity: str = "ok"
+    pardo_df_ok: bool = True
+    pardo_df_message: str = ""
+    stocks: list[ReviewStockReadiness] = Field(default_factory=list)
+    global_warnings: list[str] = Field(default_factory=list)
+    blocking_issues: list[str] = Field(default_factory=list)
+    ready: bool = False
+
+
+class WFOParamManifestEntry(BaseModel):
+    stock: str
+    section: str
+    param_path: str
+    scan_min: float
+    scan_max: float
+    scan_step: float
+
+
+class WFOParamManifestOut(BaseModel):
+    params: list[WFOParamManifestEntry] = Field(default_factory=list)
+
+
+class HandoffOut(BaseModel):
+    strategy_id: str
+    strategy_name: str
+    portfolio: dict[str, Any] = Field(default_factory=dict)
+    stocks: dict[str, Any] = Field(default_factory=dict)
+    wfo_params: WFOParamManifestOut = Field(default_factory=WFOParamManifestOut)
+    total_wfo_param_count: int = 0
+    warnings: list[str] = Field(default_factory=list)
+    ready: bool = False
+    blocking_issues: list[str] = Field(default_factory=list)
+    schema_version: int = 3
+    app_domain: str = "four_pages"
+
+
+class SignalConstructionPreviewRequest(BaseModel):
+    symbol: str = Field(..., min_length=1)
+    horizon: str = Field(default="medium", pattern=r"^(short|medium|long)$")
+    timeframe: str = Field(default="1D", min_length=1)
+    stock_config: dict[str, Any] = Field(default_factory=dict)
+    cost_bps: float = Field(default=10.0, ge=0, le=100)
+    cooldown_bars: int = Field(default=0, ge=0)
+    family_history_mode: str = Field(default="static_current_reps", pattern=r"^(static_current_reps|dynamic_point_in_time)$")
+
+
+class ActiveScoreChipOut(BaseModel):
+    score_key: str
+    label: str
+    family: str
+    source_kind: str
+    score: float | None = None
+    signal_label: str | None = None
+
+
+class SignalConstructionPreviewOut(BaseModel):
+    active_scores: list[ActiveScoreChipOut] = Field(default_factory=list)
+    score_snapshot: dict[str, float | None] = Field(default_factory=dict)
+    variable_catalog: list[dict[str, str]] = Field(default_factory=list)
+    zone_chart: dict[str, Any] = Field(default_factory=dict)
+    explain: str = ""
+
+
+class RulePreviewRequest(BaseModel):
+    symbol: str = Field(..., min_length=1)
+    horizon: str = Field(default="medium", pattern=r"^(short|medium|long)$")
+    timeframe: str = Field(default="1D", min_length=1)
+    stock_config: dict[str, Any] = Field(default_factory=dict)
+    cost_bps: float = Field(default=10.0, ge=0, le=100)
+    cooldown_bars: int = Field(default=0, ge=0)
+
+
+class RulePreviewRow(BaseModel):
+    id: str
+    label: str
+    config_option: str = "A"
+    condition_count: int = 0
+    triggered: bool = False
+    conditions: list[str] = Field(default_factory=list)
+
+
+class RulePreviewOut(BaseModel):
+    symbol: str
+    score_snapshot: dict[str, float | None] = Field(default_factory=dict)
+    rules: list[RulePreviewRow] = Field(default_factory=list)
+    explain: str = ""
+
+
+class RiskPreviewRequest(BaseModel):
+    symbol: str = Field(..., min_length=1)
+    horizon: str = Field(default="medium", pattern=r"^(short|medium|long)$")
+    timeframe: str = Field(default="1D", min_length=1)
+    stock_config: dict[str, Any] = Field(default_factory=dict)
+    cost_bps: float = Field(default=10.0, ge=0, le=100)
+    cooldown_bars: int = Field(default=0, ge=0)
+
+
+class RiskPreviewOut(BaseModel):
+    symbol: str
+    current_close: float | None = None
+    atr_14: float | None = None
+    stop_loss: float | None = None
+    take_profit: float | None = None
+    rr_ratio: float | None = None
+    cooldown_bars: int = 0
+    time_stop_bars: int | None = None
+    explain: str = ""
 
 
 # ---------------------------------------------------------------------------

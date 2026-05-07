@@ -12,9 +12,20 @@
 **/.DS_Store
 
 node_modules
-quant-backtesting-frontend/node_modules
-quant-backtesting-frontend/.next
-quant-backtesting-frontend/.env.local
+**/node_modules
+**/.next
+**/.next-pages
+**/out
+**/out-pages
+**/.env.local
+
+# Root-level dev scratch that must never end up in any service image
+quant-backtesting-frontend
+_commit*.patch
+_execute_run*.diff
+_patch_*
+*.resolved
+worker_tail.txt
 
 docs
 original backtester

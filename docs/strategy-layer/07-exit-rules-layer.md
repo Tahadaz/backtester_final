@@ -15,6 +15,8 @@ A single exit threshold creates the same rigidity problem as a single entry thre
 
 Multiple exit levels with graduated exposure reduction enable these strategies naturally.
 
+As with entries, the A-E label is descriptive metadata. Runtime behavior is driven by the actual threshold and sizing field modes on each exit rule.
+
 ## Exit Rule Structure
 
 Each exit in the list has:
@@ -44,8 +46,16 @@ All the same score variables and operators are available.
 The exposure **reduction** for this exit, expressed as a percentage of the current position:
 
 - **Manual**: user sets an exact reduction percentage (e.g., reduce by 50%)
-- **Kelly from WFO**: computed from WFO out-of-sample results
-- **WFO-optimized**: the optimizer determines the reduction
+- **Direct WFO sizing**: the reduction itself is optimized as a normal leaf WFO parameter (`reduction_pct`)
+- **Kelly from WFO**: the raw Kelly fraction is WFO-derived, then multiplied by a modifier
+
+For `kelly_wfo`, the Phase 1 rule is:
+
+```
+final exit reduction = Kelly(from WFO) x modifier
+```
+
+The raw Kelly number is always WFO-derived. The modifier is the separate risk dial and may be manual or WFO-optimized.
 
 ## The 5 Configuration Options
 
@@ -58,6 +68,8 @@ The options mirror entry rules exactly:
 | C | WFO thresholds | Manual % reduction | N (one per threshold) |
 | D | WFO thresholds | Kelly/WFO reduction | N + 1 |
 | E | Full WFO (joint) | Full WFO (joint) | Variable |
+
+Fixed-rule direct `wfo` reduction and fixed-rule `kelly_wfo` reduction are Phase 1 runtime features. True Option E remains the later structure-discovery workflow.
 
 **Option E for exits** works the same way as for entries: WFO discovers the optimal number of exit levels, the thresholds for each, and the exposure reduction per level, all jointly optimized. PROM penalizes unnecessary exit levels.
 
@@ -135,6 +147,59 @@ WFO search space:
 The optimizer discovers that 2 exit levels work best:
 - Level 1: momentum_score < -0.3, reduce by 60%
 - Level 2: trend_score < -1.5, reduce by 100%
+
+## Default WFO Exit Threshold Presets by Horizon
+
+Exit thresholds now use the same horizon-scoped default policy as entry thresholds. The meaning is similar, but the economic interpretation is slightly different: entry thresholds answer "when is conviction strong enough to get in?", while exit thresholds answer "when has conviction weakened enough, or normalized enough, to get out?"
+
+### Continuous score thresholds
+
+For deterioration exits (`<` or `<=` on signed conviction scores):
+
+| Horizon | Default range |
+|--------|---------------|
+| Short | -2.0 to -0.5 step 0.25 |
+| Medium | -3.0 to -0.5 step 0.5 |
+| Long | -4.0 to -1.0 step 0.5 |
+
+For strength-based exits or closing short positions (`>` or `>=`):
+
+| Horizon | Default range |
+|--------|---------------|
+| Short | 0.5 to 2.0 step 0.25 |
+| Medium | 0.5 to 3.0 step 0.5 |
+| Long | 1.0 to 4.0 step 0.5 |
+
+Why these ranges make sense:
+
+- A short-horizon strategy should usually trim or exit as soon as deterioration is visible, because the thesis decays quickly.
+- A long-horizon strategy should be more tolerant of small reversals, so its default exit scan stretches further before declaring the thesis broken.
+- Using the same signed bands as entries keeps the language of conviction consistent across the page. A `-1.0` exit threshold means a real deterioration in the same score units that the entry logic used to justify the trade.
+
+### Oscillation thresholds
+
+For normalization/profit-taking exits from oversold entries (`>` or `>=`):
+
+| Horizon | Default range |
+|--------|---------------|
+| Short | 65 to 90 step 5 |
+| Medium | 60 to 85 step 5 |
+| Long | 55 to 80 step 5 |
+
+For capitulation-style exits or closing short mean-reversion trades (`<` or `<=`):
+
+| Horizon | Default range |
+|--------|---------------|
+| Short | 10 to 35 step 5 |
+| Medium | 15 to 40 step 5 |
+| Long | 20 to 45 step 5 |
+
+Why these ranges make sense:
+
+- For long mean-reversion trades, the most common exit question is "how far has RSI normalized?" The upper bands therefore anchor around familiar regions such as 55, 60, 70, and 80.
+- Short horizons can wait for sharper snap-backs, so they allow higher normalization levels.
+- Long horizons should not require extremely rare oscillator extremes to take profit. Their band relaxes toward the center because longer-period oscillators normalize more slowly and rarely print the most extreme readings.
+- A step of `5` matches the natural semantics traders already use for bounded oscillators and avoids the false precision problem described in the WFO methodology.
 
 ## Exit vs Risk Layer
 

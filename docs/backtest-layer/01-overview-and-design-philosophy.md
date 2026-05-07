@@ -4,7 +4,7 @@
 
 ## Purpose
 
-The backtest page is the **evaluation station** of the platform — not a configuration station. Strategy definition (indicator selection, entry/exit rules, risk parameters, sizing preferences) happens on the strategy page (Phase 2). The backtest page takes a fully defined strategy and subjects it to rigorous statistical testing.
+The backtest page is the **evaluation station** of the platform — not a strategy-definition station. Strategy definition (indicator selection, entry/exit rules, risk parameters, sizing preferences) happens on the strategy page (Phase 2). The backtest page takes a fully defined strategy and subjects it to rigorous statistical testing.
 
 This distinction matters because it enforces a clean separation of concerns:
 

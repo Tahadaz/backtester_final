@@ -89,9 +89,14 @@ type FamilyConfig = {
 type WFOParam<T> = {
   mode: "manual" | "wfo"
   value: T                            // used when mode = "manual"
-  scan_min?: T                        // used when mode = "wfo"
-  scan_max?: T                        // used when mode = "wfo"
-  scan_step?: T                       // used when mode = "wfo"
+  scan_min?: T                        // active range for the selected horizon
+  scan_max?: T
+  scan_step?: T
+  search_spaces_by_horizon?: {
+    short: { scan_min: T; scan_max: T; scan_step: T }
+    medium: { scan_min: T; scan_max: T; scan_step: T }
+    long: { scan_min: T; scan_max: T; scan_step: T }
+  }
 }
 
 type EntryRule = {
@@ -104,8 +109,9 @@ type EntryRule = {
   }
   sizing: {
     mode: "manual" | "kelly_wfo" | "wfo"
-    value?: number                    // manual exposure %
-    kelly_modifier?: number           // for kelly_wfo mode
+    manual_pct?: number               // fallback/manual exposure %
+    size_pct?: WFOParam<number>       // direct WFO entry exposure
+    kelly_modifier?: WFOParam<number> // for kelly_wfo mode
   }
 }
 
@@ -119,7 +125,9 @@ type ExitRule = {
   }
   sizing: {
     mode: "manual" | "kelly_wfo" | "wfo"
-    value?: number                    // manual reduction %
+    manual_pct?: number               // fallback/manual reduction %
+    reduction_pct?: WFOParam<number>  // direct WFO exit reduction
+    kelly_modifier?: WFOParam<number> // for kelly_wfo mode
   }
 }
 
@@ -169,9 +177,25 @@ type StrategySnapshot = {
 Every `WFOParam<T>` field in the strategy definition carries an explicit `mode` flag:
 
 - `"manual"` — the `value` field is the parameter value; WFO does not touch it
-- `"wfo"` — the `scan_min`, `scan_max`, `scan_step` fields define the search space for WFO
+- `"wfo"` — the parameter stores per-horizon presets, and the currently selected strategy horizon is resolved into `scan_min`, `scan_max`, `scan_step`
 
-The backend counts all `mode: "wfo"` parameters to produce the `total_wfo_param_count`. This count is displayed in the review section and included in the backtest handoff.
+Legacy configs that only store one range are migrated by copying that range into `short`, `medium`, and `long`.
+
+When the user first flips a parameter into WFO mode, the frontend also seeds `search_spaces_by_horizon` from documented default tables:
+
+- indicator params use the Signal Construction horizon tables
+- entry/exit thresholds use score-aware defaults
+- Kelly modifier, ATR multiplier, reward-to-risk, cooldown, and time stop use risk-aware defaults
+
+Those defaults are starting presets, not hard caps. If the current saved value sits outside the documented band, the frontend widens the seeded preset to include that value so existing user intent is preserved.
+
+The backend counts all leaf `mode: "wfo"` parameters to produce the `total_wfo_param_count`. Container objects are traversed, but only real numeric WFO leaves are counted. This count is displayed in the review section and included in the backtest handoff.
+
+The rule-sizing contract is intentionally explicit:
+
+- direct fixed-rule `wfo` sizing uses `size_pct` for entries and `reduction_pct` for exits
+- `kelly_wfo` uses a WFO-derived raw Kelly number and a separate modifier
+- execution is driven by the actual field modes, not by `config_option`
 
 ## API Endpoints
 

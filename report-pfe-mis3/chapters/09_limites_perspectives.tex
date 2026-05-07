@@ -1,0 +1,52 @@
+\chapter{Limites, risques et perspectives}
+
+\section{Limites actuelles}
+Malgre les progres architecturaux, plusieurs limites subsistent :
+\begin{itemize}
+\item couverture encore partielle des familles d'indicateurs ;
+\item sensibilite potentielle a la qualite des donnees sur certains titres peu liquides ;
+\item profondeur encore limitee des tests de robustesse multi-regimes.
+\end{itemize}
+
+\section{Risques methodologiques}
+Le Tableau~\ref{tab:risk-matrix} propose une matrice synthetique des risques.
+
+\begin{table}[H]
+\centering
+\caption{Matrice des risques methodologiques}
+\label{tab:risk-matrix}
+\begin{tabular}{p{4.2cm}p{3cm}p{6.3cm}}
+\toprule
+\textbf{Risque} & \textbf{Niveau} & \textbf{Mitigation prioritaire} \\
+\midrule
+Overfitting residuel & Moyen/Eleve & Renforcer protocoles holdout et tests de permutation. \\
+Drift de regime & Moyen & Ajouter un module de detection de regime plus strict. \\
+Biais de donnees & Moyen & Consolider controles de completude/fraicheur par symbole. \\
+Complexite parametrique & Moyen & Limiter l'espace de recherche et auditer les degres de liberte. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Le Tableau~\ref{tab:risk-matrix} montre que les risques majeurs sont
+methodologiques avant d'etre purement logiciels.
+
+\section{Plan d'amelioration priorise}
+Le plan d'evolution est organise en trois horizons :
+\begin{enumerate}
+\item \textbf{Court terme} : renforcer la gouvernance des experiences
+(protocoles de benchmark, versions de datasets, checks automatiques).
+\item \textbf{Moyen terme} : etendre les familles d'indicateurs en conservant le
+meme cadre OOS et les memes contraintes de robustesse.
+\item \textbf{Long terme} : connecter la plateforme a des flux de donnees
+institutionnels et formaliser une chaine pre-production.
+\end{enumerate}
+
+\section{Perspective scientifique}
+La perspective principale est de maintenir une architecture qui se complexifie
+sans perdre ses invariants. Toute extension doit conserver :
+\begin{itemize}
+\item la separation des responsabilites,
+\item la reproductibilite des verdicts,
+\item la priorite donnee a la robustesse OOS.
+\end{itemize}
+

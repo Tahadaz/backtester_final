@@ -48,7 +48,8 @@ def load_close_series_from_store(*, object_key: str) -> pd.Series:
     if close_col is None:
         raise ValueError("parquet payload is missing Close column")
 
-    close = pd.to_numeric(frame[close_col], errors="coerce").dropna()
+    close = pd.to_numeric(frame[close_col], errors="coerce")
+    close = close.where(close != 0).dropna()
     close = close.sort_index()
     close = close[~close.index.duplicated(keep="last")]
     if close.empty:
@@ -146,7 +147,8 @@ def load_close_series_from_dataset(*, dataset_row: models.Dataset, symbol: str) 
     if close_col is None:
         raise ValueError("dataset payload is missing Close column")
 
-    close = pd.to_numeric(frame[close_col], errors="coerce").dropna()
+    close = pd.to_numeric(frame[close_col], errors="coerce")
+    close = close.where(close != 0).dropna()
     close = close.sort_index()
     close = close[~close.index.duplicated(keep="last")]
     if close.empty:

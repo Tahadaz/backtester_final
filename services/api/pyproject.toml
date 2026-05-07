@@ -22,6 +22,7 @@ dependencies = [
   "openpyxl",
   "numba",
   "apscheduler>=3.10",
+  "yfinance"
 ]
 
 # ✅ CRITICAL: tell setuptools what to package, exclude alembic folder from package discovery

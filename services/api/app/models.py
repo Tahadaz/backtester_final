@@ -1,11 +1,15 @@
 import uuid
 from sqlalchemy import (
-    Column, String, DateTime, Date, ForeignKey, Text, BigInteger, Float, UniqueConstraint, Index, Integer, Boolean
+    Column, String, DateTime, Date, ForeignKey, Text, BigInteger, Float, UniqueConstraint, Index, Integer, Boolean, text
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.sql import func
 
 from .db import Base
+
+# ---------------------------------------------------------------------------
+# Signal Engine Persistence — new tables added 2026-04-20
+# ---------------------------------------------------------------------------
 
 
 
@@ -37,8 +41,9 @@ class MarketDataStore(Base):
     end_ts = Column(DateTime(timezone=True))
     row_count = Column(Integer)
     last_dataset_id = Column(ForeignKey("dataset.id"))
-    source_provider = Column(String, nullable=True)   # "bourse_direct"|"yahoo"|"bmce_excel"
+    source_provider = Column(String, nullable=True)   # "bourse_direct"|"yahoo"|"bmce_excel"|"casablanca_bourse"
     data_as_of = Column(Date, nullable=True)           # last bar date (denormalized for freshness display)
+    asset_class = Column(String(16), nullable=False, default="equity")  # "equity"|"index"|"factor"
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -393,6 +398,8 @@ class StockMaster(Base):
     isin = Column(String, nullable=True)                       # e.g. "MA0000011926"
     sector = Column(String, nullable=True)                     # e.g. "Banques"
     market_cap_class = Column(String, nullable=True)           # "large"|"mid"|"small"
+    asset_type = Column(String, nullable=False, default="equity")    # "equity"|"commodity"|"forex"|"bond"
+    market_region = Column(String, nullable=True)              # "masi"|"us"|"european"|"asian"|null
     is_active = Column(Boolean, nullable=False, default=True)
     track_source = Column(String, nullable=False, default="bourse_direct")
     bourse_url = Column(String, nullable=True)              # direct link to Bourse de Casablanca stock page
@@ -402,6 +409,117 @@ class StockMaster(Base):
 
     __table_args__ = (
         Index("ix_stock_master_is_active", "is_active"),
+    )
+
+
+class IndexMaster(Base):
+    """Canonical registry of tracked Moroccan market indices (MASI, MASI 20, MADEX, etc.)."""
+    __tablename__ = "index_master"
+
+    symbol = Column(String, primary_key=True)           # e.g. "MASI", "MASI_20"
+    display_name = Column(String, nullable=False)        # original French libellé
+    family = Column(String, nullable=True)               # "all_share"|"blue_chip"|"esg"|"sector"
+    market_region = Column(String, nullable=True)        # "masi"|"us"|"european"|"asian" — always 'masi' for current rows
+    is_active = Column(Boolean, nullable=False, default=True)
+    source = Column(String, nullable=False, default="casablanca_bourse")
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_index_master_is_active", "is_active"),
+    )
+
+
+class MacroFactorMeta(Base):
+    """DB-backed registry of macro factor series (replaces static MACRO_SERIES list in macro.py).
+
+    asset_type maps to Data-page tabs: 'equity' | 'commodity' | 'forex' | 'bond' | 'crypto'.
+    market_region maps to Data-page subtabs (equity only): 'us' | 'european' | 'asian' | None.
+    """
+    __tablename__ = "macro_factor_meta"
+
+    canonical_id  = Column(String, primary_key=True)          # e.g. "VIX"
+    yahoo_ticker  = Column(String, nullable=False, unique=True)  # e.g. "^VIX"
+    display_name  = Column(String, nullable=False)
+    asset_type    = Column(String, nullable=False)             # 'equity'|'commodity'|'forex'|'bond'|'crypto'
+    market_region = Column(String, nullable=True)             # 'us'|'european'|'asian'|'masi'|NULL
+    active        = Column(Boolean, nullable=False, default=True)
+    added_via     = Column(String, nullable=False, default="system")  # 'system'|'user'
+    created_at    = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    notes         = Column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("ix_macro_factor_meta_active", "active"),
+        Index("ix_macro_factor_meta_asset_type", "asset_type"),
+    )
+
+
+class StockFactorRelevance(Base):
+    """Stores the active factors selected for a specific stock by the Phase 3 econometric pipeline.
+    
+    A composite primary key on (symbol, horizon, factor_canonical_id) links a stock
+    to its selected macro factor for a specific forecast horizon.
+    """
+    __tablename__ = "stock_factor_relevance"
+
+    symbol = Column(String, primary_key=True)               # e.g. "ATW"
+    horizon = Column(String, primary_key=True)              # 'short' | 'mid' | 'long'
+    factor_canonical_id = Column(String, primary_key=True)  # e.g. "SP500", "VIX"
+    rank = Column(Integer, nullable=True)
+    ic = Column(Float, nullable=True)
+    spearman_ic = Column(Float, nullable=True)
+    pearson_corr = Column(Float, nullable=True)
+    ic_t_stat = Column(Float, nullable=True)
+    bh_p_adj = Column(Float, nullable=True)
+    lasso_coef = Column(Float, nullable=True)
+    relevance_score = Column(Float, nullable=False)         # compatibility mirror of lasso_coef
+    n_obs = Column(Integer, nullable=True)
+    selected_reason = Column(String(32), nullable=True)
+    last_calibrated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    cusum_drift_score = Column(Float, nullable=True)        # CUSUM metric tracking parameter drift
+    cusum_alarm = Column(Boolean, nullable=False, default=False)  # legacy compatibility
+    cusum_status = Column(String, nullable=False, default="valid")
+    regime_start = Column(Date, nullable=True)
+    low_confidence = Column(Boolean, nullable=False, default=False)
+    next_forced_recal = Column(DateTime(timezone=True), nullable=True)
+    history_n_days = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_stock_factor_relevance_symbol", "symbol"),
+        Index("idx_sfr_active", "symbol", "horizon", postgresql_where=text("cusum_status = 'valid'")),
+    )
+
+
+class StockFactorStage1Cache(Base):
+    """Internal cache for Phase 3 Stage 1 (BH-FDR NW IC) screening.
+    
+    Stores the pre-LASSO Information Coefficient metrics to avoid re-computing NW t-stats
+    daily unless the factor/stock series have shifted.
+    """
+    __tablename__ = "stock_factor_stage1_cache"
+
+    symbol = Column(String, primary_key=True)
+    horizon = Column(String, primary_key=True)
+    factor_canonical_id = Column(String, primary_key=True)
+    ic_mean = Column(Float, nullable=False)
+    spearman_ic = Column(Float, nullable=True)
+    pearson_corr = Column(Float, nullable=True)
+    ic_tstat = Column(Float, nullable=False)
+    bh_p_adj = Column(Float, nullable=True)
+    relevance_score = Column(Float, nullable=True)
+    n_obs = Column(Integer, nullable=True)
+    selected_reason = Column(String(32), nullable=True)
+    passed_fdr = Column(Boolean, nullable=False)
+    regime_start = Column(Date, nullable=True)
+    low_confidence = Column(Boolean, nullable=False, default=False)
+    history_n_days = Column(Integer, nullable=True)
+    calculated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_stage1_cache_symbol_horizon", "symbol", "horizon"),
     )
 
 
@@ -467,6 +585,435 @@ class SavedStrategy(Base):
     __table_args__ = (
         Index("ix_saved_strategy_status", "status"),
         Index("ix_saved_strategy_updated_at", "updated_at"),
+    )
+
+
+class DashboardCustomIndex(Base):
+    """Persisted custom dashboard index definition (shared/global)."""
+    __tablename__ = "dashboard_custom_index"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(120), nullable=False)
+    symbols = Column(JSONB, nullable=False, default=list)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_dashboard_custom_index_updated_at", "updated_at"),
+    )
+
+
+class StrategyBacktestRun(Base):
+    __tablename__ = "strategy_backtest_run"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    strategy_id = Column(UUID(as_uuid=True), ForeignKey("saved_strategy.id"), nullable=False, index=True)
+    title = Column(String(200), nullable=False, default="")
+    mode = Column(String(20), nullable=False, default="direct")
+    status = Column(String(20), nullable=False, default="queued")
+    horizon = Column(String(20), nullable=False, default="medium")
+    execution_fingerprint = Column(String(64), nullable=False, default="")
+    strategy_snapshot_json = Column(JSONB, nullable=False, default=dict)
+    data_snapshot_json = Column(JSONB, nullable=False, default=dict)
+    request_json = Column(JSONB, nullable=False, default=dict)
+    summary_json = Column(JSONB, nullable=False, default=dict)
+    result_json = Column(JSONB, nullable=False, default=dict)
+    progress_json = Column(JSONB, nullable=False, default=dict)
+    error_text = Column(Text, nullable=True)
+    rq_job_id = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_strategy_backtest_run_status", "status"),
+        Index("ix_strategy_backtest_run_created_at", "created_at"),
+        Index("ix_strategy_backtest_run_execution_fingerprint", "execution_fingerprint"),
+    )
+
+
+class StrategyBacktestStock(Base):
+    __tablename__ = "strategy_backtest_stock"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(UUID(as_uuid=True), ForeignKey("strategy_backtest_run.id", ondelete="CASCADE"), nullable=False)
+    symbol = Column(String, nullable=False)
+    status = Column(String(20), nullable=False, default="queued")
+    summary_json = Column(JSONB, nullable=False, default=dict)
+    result_json = Column(JSONB, nullable=False, default=dict)
+    error_text = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("run_id", "symbol", name="uq_strategy_backtest_stock_run_symbol"),
+        Index("ix_strategy_backtest_stock_run", "run_id"),
+    )
+
+
+class StrategyBacktestWindow(Base):
+    __tablename__ = "strategy_backtest_window"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(UUID(as_uuid=True), ForeignKey("strategy_backtest_run.id", ondelete="CASCADE"), nullable=False)
+    symbol = Column(String, nullable=False)
+    window_index = Column(Integer, nullable=False)
+    summary_json = Column(JSONB, nullable=False, default=dict)
+    detail_json = Column(JSONB, nullable=False, default=dict)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("run_id", "symbol", "window_index", name="uq_strategy_backtest_window_run_symbol_index"),
+        Index("ix_strategy_backtest_window_run", "run_id"),
+    )
+
+
+class WfoSignalSummary(Base):
+    """Cached WFO signal result for one (symbol, category, horizon) tuple."""
+    __tablename__ = "wfo_signal_summary"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    symbol = Column(String, nullable=False)
+    category = Column(String(32), nullable=False)       # "tendance" | "momentum" | "oscillation" | "volume"
+    horizon = Column(String(16), nullable=False)         # "short" | "medium" | "long"
+    variant = Column(String(16), nullable=False, server_default="expanded")  # "legacy" | "expanded"
+    status = Column(String(20), nullable=False, default="pending")  # "pending" | "running" | "succeeded" | "failed"
+
+    # --- WFO results ---
+    score_pct = Column(Float, nullable=True)             # -100.0 to +100.0  (ensemble score)
+    signal_label = Column(String(60), nullable=True)     # French label from signal_type_label()
+    representatives_json = Column(JSONB, nullable=False, default=list)
+    folds_json = Column(JSONB, nullable=True)             # per-fold details (IS/OOS returns, winner, profile)
+    config_json = Column(JSONB, nullable=True)            # WFO config used (train/test/step, grid_size, etc.)
+
+    # --- WFO quality metrics ---
+    wfe_pct = Column(Float, nullable=True)
+    robustness_ratio = Column(Float, nullable=True)      # 0.0 to 1.0
+    total_folds = Column(Integer, nullable=True)
+    profitable_folds = Column(Integer, nullable=True)
+    mean_oos_sharpe = Column(Float, nullable=True)
+    total_oos_pnl = Column(Float, nullable=True)
+    worst_fold_drawdown = Column(Float, nullable=True)
+    composite_score = Column(Float, nullable=True)       # pre-computed ranking score (0-100)
+    robustness_grade = Column(String(2), nullable=True)  # "A" | "B" | "C" | "D" | "F"
+
+    # --- Metadata ---
+    computed_at = Column(DateTime(timezone=True), nullable=True)
+    data_as_of = Column(Date, nullable=True)             # last bar date in OHLCV when computed
+    compute_seconds = Column(Float, nullable=True)       # wall-clock time for this family WFO
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("symbol", "category", "horizon", "variant", name="uq_wfo_signal_summary_sym_cat_hz_var"),
+        Index("ix_wfo_signal_summary_symbol_horizon", "symbol", "horizon"),
+        Index("ix_wfo_signal_summary_status", "status"),
+    )
+
+
+class WfoGlobalSignal(Base):
+    """Cached WFO global consensus signal for one (symbol, horizon) tuple."""
+    __tablename__ = "wfo_global_signal"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    symbol = Column(String, nullable=False)
+    horizon = Column(String(16), nullable=False)
+    variant = Column(String(16), nullable=False, server_default="expanded")  # "legacy" | "expanded"
+    status = Column(String(20), nullable=False, default="pending")
+
+    # --- Consensus signal ---
+    global_score_pct = Column(Float, nullable=True)      # -100 to +100 (after S/R modulation)
+    raw_score_pct = Column(Float, nullable=True)          # -100 to +100 (before S/R modulation)
+    signal_label = Column(String(60), nullable=True)
+    recommendation = Column(String(32), nullable=True)    # "achat_fort" | "achat" | "neutre" | "vente" | "vente_forte"
+
+    # --- Family weights (WFO-optimized, sum to 1.0) ---
+    weight_tendance = Column(Float, nullable=True)
+    weight_momentum = Column(Float, nullable=True)
+    weight_oscillation = Column(Float, nullable=True)
+    weight_volume = Column(Float, nullable=True)
+
+    # --- S/R modulation ---
+    sr_modifier = Column(Float, nullable=True)            # multiplier applied (e.g., 1.12 or 0.88)
+    sr_support_level = Column(Float, nullable=True)
+    sr_resistance_level = Column(Float, nullable=True)
+    sr_support_method = Column(String(40), nullable=True)
+    sr_resistance_method = Column(String(40), nullable=True)
+    sr_distance_support_atr = Column(Float, nullable=True)
+    sr_distance_resistance_atr = Column(Float, nullable=True)
+
+    # --- Cross-family ranking ---
+    best_category = Column(String(32), nullable=True)     # "tendance" | "momentum" | ...
+    best_category_score = Column(Float, nullable=True)
+    categories_viable = Column(Integer, nullable=True)    # how many categories have grade >= C
+
+    # --- WFO quality for the consensus pass ---
+    consensus_wfe_pct = Column(Float, nullable=True)
+    consensus_robustness = Column(Float, nullable=True)
+
+    # --- Metadata ---
+    computed_at = Column(DateTime(timezone=True), nullable=True)
+    data_as_of = Column(Date, nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("symbol", "horizon", "variant", name="uq_wfo_global_signal_sym_hz_var"),
+        Index("ix_wfo_global_signal_symbol", "symbol"),
+    )
+
+
+class SignalEngineFamilyResult(Base):
+    """Persisted A→G signal engine output for one (symbol, family, horizon, variant).
+
+    Mirrors WfoSignalSummary in structure. Enables export-scores.py to read
+    from DB instead of recomputing the full pipeline on every run.
+    """
+    __tablename__ = "signal_engine_family_result"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+
+    # Natural key
+    symbol = Column(String, nullable=False)
+    family = Column(String(32), nullable=False)        # "sma" | "macd" | "rsi" | …
+    category = Column(String(32), nullable=False)      # denormalized from CATEGORY_FAMILIES
+    horizon = Column(String(16), nullable=False)       # "short" | "medium" | "long"
+    variant = Column(String(16), nullable=False, server_default="expanded")
+    status = Column(String(20), nullable=False, server_default="pending")
+
+    # Signal output
+    family_score_pct = Column(Float, nullable=True)
+    signal_label = Column(String(60), nullable=True)
+
+    # Committed representative variants + weights (consumed by backtest)
+    representatives_json = Column(JSONB, nullable=False, default=list)
+
+    # Full family snapshot — verbatim _build_family_snapshot() output for export-scores.py
+    family_detail_json = Column(JSONB, nullable=True)
+
+    # Quality / selection counts
+    tested_count = Column(Integer, nullable=True)
+    viable_count = Column(Integer, nullable=True)
+    competitive_count = Column(Integer, nullable=True)
+    representative_count = Column(Integer, nullable=True)
+    is_provisional = Column(Boolean, nullable=False, server_default="false")
+    warning_message = Column(Text, nullable=True)
+
+    # Staleness marker — SHA-256 of (data_as_of + cost_bps + cooldown_bars)
+    input_hash = Column(String(64), nullable=True)
+
+    computed_at = Column(DateTime(timezone=True), nullable=True)
+    data_as_of = Column(Date, nullable=True)
+    compute_seconds = Column(Float, nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("symbol", "family", "horizon", "variant", name="uq_sefr_sym_fam_hz_var"),
+        Index("ix_sefr_symbol_horizon", "symbol", "horizon"),
+        Index("ix_sefr_category_horizon", "category", "horizon"),
+        Index("ix_sefr_status", "status"),
+    )
+
+
+class SignalEngineGlobalResult(Base):
+    """Persisted A→G global aggregate for one (symbol, horizon, variant).
+
+    Stores both legacy (1 family/category) and expanded (up to 5 families/category)
+    aggregate scores plus per-category breakdowns. Mirrors WfoGlobalSignal.
+    """
+    __tablename__ = "signal_engine_global_result"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+
+    symbol = Column(String, nullable=False)
+    horizon = Column(String(16), nullable=False)
+    variant = Column(String(16), nullable=False, server_default="expanded")
+    status = Column(String(20), nullable=False, server_default="pending")
+
+    # Aggregate scores
+    aggregate_score_pct = Column(Float, nullable=True)           # legacy: 1 family per category
+    expanded_aggregate_score_pct = Column(Float, nullable=True)  # expanded: up to 5 families per category
+    signal_label = Column(String(60), nullable=True)
+
+    # Per-category and per-family breakdowns
+    per_category_json = Column(JSONB, nullable=True)    # {category: {score_pct, label, family_scores: {family: score}}}
+    per_family_json = Column(JSONB, nullable=True)      # {family: {score_pct, label}}
+
+    # Technical levels + S/R stored verbatim for export-scores.py backward compat
+    technical_levels_json = Column(JSONB, nullable=True)
+    support_resistance_json = Column(JSONB, nullable=True)
+
+    computed_at = Column(DateTime(timezone=True), nullable=True)
+    data_as_of = Column(Date, nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("symbol", "horizon", "variant", name="uq_segr_sym_hz_var"),
+        Index("ix_segr_symbol", "symbol"),
+        Index("ix_segr_horizon_status", "horizon", "status"),
+    )
+
+
+class SignalScoreHistory(Base):
+    """Per-bar category-aggregated signal score, used for predictive-ability analytics.
+
+    One row per (date, symbol, source, category, horizon). `source` distinguishes
+    engine_legacy / engine_expanded / wfo. `score_pct` is in [-100, +100] — for
+    WFO it's discretized to {-100, 0, +100} (binary signal mapped from {-1,0,+1}).
+    """
+    __tablename__ = "signal_score_history"
+
+    date = Column(Date, primary_key=True, nullable=False)
+    symbol = Column(String, primary_key=True, nullable=False)
+    source = Column(String(20), primary_key=True, nullable=False)
+    category = Column(String(32), primary_key=True, nullable=False)
+    horizon = Column(String(16), primary_key=True, nullable=False)
+    score_pct = Column(Float, nullable=True)
+
+    __table_args__ = (
+        Index("ix_ssh_symbol_source_horizon", "symbol", "source", "horizon"),
+        Index("ix_ssh_symbol_date", "symbol", "date"),
+    )
+
+
+class ScoreHistoryJob(Base):
+    """Tracks score-history population jobs (one per symbol)."""
+    __tablename__ = "score_history_job"
+
+    symbol = Column(String, primary_key=True, nullable=False)
+    status = Column(String(20), nullable=False, server_default="pending")
+    rq_job_id = Column(String, nullable=True)
+    error_message = Column(Text, nullable=True)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(),
+                        onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_shj_status", "status"),
+    )
+
+
+class SignalBacktestRun(Base):
+    """Persisted signal-based backtest result with Monte Carlo equity-fan data.
+
+    One row per (symbol, horizon, source, scope, scope_key, variant, window_start, window_end).
+    Equity curve and MC envelope are stored in JSONB (small arrays — ~80 daily bars max).
+    """
+    __tablename__ = "signal_backtest_run"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+
+    # Natural key
+    symbol = Column(String, nullable=False)
+    horizon = Column(String(16), nullable=False)
+    source = Column(String(10), nullable=False)        # "engine" | "wfo"
+    scope = Column(String(20), nullable=False)         # "per_category" | "global" | "combination"
+    scope_key = Column(String(64), nullable=False)     # "tendance" | "global" | "tendance+momentum"
+    variant = Column(String(16), nullable=False, server_default="expanded")
+    window_start = Column(Date, nullable=False)
+    window_end = Column(Date, nullable=False)
+
+    # Config (not part of unique key — overwrites on change)
+    status = Column(String(20), nullable=False, server_default="pending")
+    cost_bps = Column(Float, nullable=False, server_default="5.0")
+    slippage_bps = Column(Float, nullable=False, server_default="5.0")
+    side_policy = Column(String(16), nullable=False, server_default="long_only")
+    n_paths = Column(Integer, nullable=False, server_default="2000")
+    mc_method = Column(String(20), nullable=False, server_default="block_bootstrap")
+    block_mean = Column(Integer, nullable=True)        # null = auto ceil(T^(1/3))
+
+    # Realized backtest outputs
+    n_bars = Column(Integer, nullable=True)
+    n_trades = Column(Integer, nullable=True)
+    equity_json = Column(JSONB, nullable=True)         # float[n_bars], normalized start=1.0
+    dates_json = Column(JSONB, nullable=True)          # "YYYY-MM-DD"[n_bars]
+
+    # Denormalized metrics for fast sorting / filtering
+    total_return = Column(Float, nullable=True)
+    cagr = Column(Float, nullable=True)
+    sharpe = Column(Float, nullable=True)
+    max_drawdown = Column(Float, nullable=True)
+    win_rate = Column(Float, nullable=True)
+
+    # Monte Carlo outputs
+    # {p05, p25, p50, p75, p95} — each is float[n_bars]
+    mc_envelope_json = Column(JSONB, nullable=True)
+    # {total_return/cagr/sharpe/max_drawdown: {p05,p50,p95}, var95, cvar95, prob_positive_terminal}
+    mc_stats_json = Column(JSONB, nullable=True)
+
+    # Trade-level detail (added 2026-04-21)
+    trades_json = Column(JSONB, nullable=True)           # list of {open_date,close_date,open_price,close_price,direction,pnl_return,bars_held}
+    close_series_json = Column(JSONB, nullable=True)     # OHLCV close aligned to dates_json
+    position_series_json = Column(JSONB, nullable=True)  # executed_position per bar
+    signal_diagnostics_json = Column(JSONB, nullable=True)  # {flat_executed, target_nonzero_bars, ...}
+    warning_code = Column(String(32), nullable=True)     # "flat_signal" | "few_trades" | null
+    shuffle_stats_json = Column(JSONB, nullable=True)    # shuffled-trade bootstrap result
+
+    # Staleness: SHA-256 of (representatives_json + data_as_of + cost_bps + slippage_bps + side_policy)
+    input_hash = Column(String(64), nullable=True)
+
+    computed_at = Column(DateTime(timezone=True), nullable=True)
+    data_as_of = Column(Date, nullable=True)
+    compute_seconds = Column(Float, nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "symbol", "horizon", "source", "scope", "scope_key", "variant",
+            "window_start", "window_end",
+            name="uq_sbr_natural_key",
+        ),
+        Index("ix_sbr_symbol_horizon", "symbol", "horizon"),
+        Index("ix_sbr_source_scope", "source", "scope"),
+        Index("ix_sbr_status", "status"),
+        Index("ix_sbr_data_as_of", "data_as_of"),
+    )
+
+
+class SignalEngineBatchJob(Base):
+    """Tracks batch computation jobs for signal engine or backtest for a (symbol, horizon).
+
+    Used for progress reporting and preventing concurrent duplicate runs.
+    UUID PK consistent with Run / StrategyBacktestRun convention.
+    """
+    __tablename__ = "signal_engine_batch_job"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    symbol = Column(String, nullable=False)
+    horizon = Column(String(16), nullable=False)
+    variant = Column(String(16), nullable=False, server_default="expanded")
+    job_type = Column(String(20), nullable=False)      # "signal_engine" | "signal_backtest"
+    status = Column(String(20), nullable=False, server_default="pending")
+    rq_job_id = Column(String, nullable=True)
+    triggered_by = Column(String(32), nullable=True)   # "manual" | "market_refresh" | "scheduler"
+    batch_id = Column(String(64), nullable=True)       # manual global launch grouping id
+
+    total_units = Column(Integer, nullable=True)       # families (engine) or scopes (backtest)
+    completed_units = Column(Integer, nullable=False, server_default="0")
+    failed_units = Column(Integer, nullable=False, server_default="0")
+
+    error_message = Column(Text, nullable=True)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_sebj_symbol_horizon_type", "symbol", "horizon", "job_type"),
+        Index("ix_sebj_status", "status"),
+        Index("ix_sebj_created_at", "created_at"),
+        Index("ix_sebj_batch_id", "batch_id"),
     )
 
 

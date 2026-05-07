@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 
+// Local `next dev` reaches the API through localhost; containerized setups
+// should continue overriding this via UPSTREAM_API_BASE or API_URL.
 const UPSTREAM =
   process.env.UPSTREAM_API_BASE ??
   process.env.API_URL ??
-  "http://127.0.0.1:8000"
+  "http://localhost:8000"
 const API_KEY = process.env.API_KEY ?? ""
 const IS_PROD = process.env.NODE_ENV === "production"
+const UPSTREAM_TIMEOUT_MS = Number(process.env.UPSTREAM_TIMEOUT_MS ?? "30000")
 const OFFLINE_EMPTY_GET_PATHS = new Set([
   "/runs",
   "/defaults/runs",
@@ -76,6 +79,10 @@ async function proxy(req: NextRequest, { params }: RouteContext) {
     init.duplex = "half"
   }
 
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS)
+  init.signal = controller.signal
+
   try {
     const upstream = await fetch(target, init)
     return new NextResponse(upstream.body, {
@@ -86,7 +93,12 @@ async function proxy(req: NextRequest, { params }: RouteContext) {
     const fallback = maybeOfflineFallback(method, pathParts)
     if (fallback) return fallback
 
-    const detail = error instanceof Error ? error.message : String(error)
+    const detail =
+      error instanceof Error && error.name === "AbortError"
+        ? `Upstream request timed out after ${UPSTREAM_TIMEOUT_MS}ms`
+        : error instanceof Error
+          ? error.message
+          : String(error)
     return NextResponse.json(
       {
         error: "Upstream API unavailable",
@@ -96,6 +108,8 @@ async function proxy(req: NextRequest, { params }: RouteContext) {
       },
       { status: 503 }
     )
+  } finally {
+    clearTimeout(timeoutId)
   }
 }
 

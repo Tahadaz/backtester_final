@@ -10,6 +10,7 @@ export interface PublicSignalRepresentative {
   current_close: number | null
   indicator_value: number | null
   explanation: string
+  description?: string
   params: Record<string, unknown>
   archetype: string
   selection_status: string

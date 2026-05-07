@@ -6,6 +6,7 @@ from core.quant_core.signal_engine import variant_detail as variant_detail_modul
 from core.quant_core.signal_engine.domain import OOSWindowResult, VariantDef
 from core.quant_core.signal_engine.variant_detail import (
     compute_variant_detail,
+    _compute_indicator,
     _extract_trade_register,
     _trade_performance_summary,
 )
@@ -618,3 +619,102 @@ def test_compute_variant_detail_rebases_tresorerie_for_selected_window(monkeypat
     assert [row["return_cumule"] for row in detail["trade_ledger"]] == pytest.approx([0.025641, 0.025641, 0.052632, 0.052632], abs=1e-6)
     assert [row["return_cumule"] for row in detail["per_window"][0]["trades"]] == pytest.approx([0.025641, 0.025641], abs=1e-6)
     assert [row["return_cumule"] for row in detail["per_window"][1]["trades"]] == pytest.approx([0.052632, 0.052632], abs=1e-6)
+
+
+def test_compute_indicator_supports_new_overlay_types() -> None:
+    close = np.linspace(100.0, 140.0, 120)
+    high = close + 2.0
+    low = close - 2.0
+    volume = np.linspace(100_000.0, 200_000.0, 120)
+
+    ichimoku = _compute_indicator(
+        close,
+        VariantDef(
+            variant_id="ichi",
+            family="ichimoku",
+            archetype="ichi_cloud",
+            params={"tenkan": 9, "kijun": 26, "senkou_b": 52},
+            description="Ichimoku",
+        ),
+        high=high,
+        low=low,
+    )
+    assert ichimoku["type"] == "overlay_cloud"
+    assert "senkou_a" in ichimoku and "senkou_b" in ichimoku
+
+    psar = _compute_indicator(
+        close,
+        VariantDef(
+            variant_id="psar",
+            family="psar",
+            archetype="psar_trend",
+            params={"af_step": 0.02, "af_max": 0.2},
+            description="PSAR",
+        ),
+        high=high,
+        low=low,
+    )
+    assert psar["type"] == "overlay_dots"
+    assert len(psar["values"]) == len(close)
+
+    vwap = _compute_indicator(
+        close,
+        VariantDef(
+            variant_id="vwap",
+            family="vwap",
+            archetype="vwap_dev",
+            params={"period": 20, "threshold_pct": 1.0},
+            description="VWAP",
+        ),
+        volume=volume,
+    )
+    assert vwap["type"] == "overlay_band"
+    assert "upper" in vwap and "lower" in vwap
+
+
+def test_compute_variant_detail_forwards_high_low_to_signal_engine(monkeypatch: pytest.MonkeyPatch) -> None:
+    dates = pd.date_range("2024-07-01", periods=40, freq="D")
+    close = np.linspace(100.0, 120.0, len(dates))
+    high = close + 2.0
+    low = close - 2.0
+    ohlcv = pd.DataFrame(
+        {
+            "Open": close,
+            "High": high,
+            "Low": low,
+            "Close": close,
+            "Volume": np.ones(len(close), dtype=float) * 100_000.0,
+        },
+        index=dates,
+    )
+    forwarded: list[tuple[np.ndarray | None, np.ndarray | None]] = []
+
+    def fake_compute_signal_array(_close, _variant, *, volume=None, high=None, low=None):
+        forwarded.append((high, low))
+        return np.zeros(len(_close), dtype=float)
+
+    monkeypatch.setattr(variant_detail_module, "compute_signal_array", fake_compute_signal_array)
+    monkeypatch.setattr(variant_detail_module, "_plot_oos_equity_and_drawdown", lambda *args, **kwargs: (None, None))
+    monkeypatch.setattr(variant_detail_module, "_plot_single_window_equity_dd", lambda *args, **kwargs: (None, None))
+
+    compute_variant_detail(
+        ohlcv,
+        close,
+        VariantDef(
+            variant_id="psar_variant",
+            family="psar",
+            archetype="psar_trend",
+            params={"af_step": 0.02, "af_max": 0.2},
+            description="PSAR",
+        ),
+        [_window(end=len(close))],
+        volume=ohlcv["Volume"].to_numpy(),
+        high=high,
+        low=low,
+        cost_bps=0.0,
+        cooldown_bars=0,
+    )
+
+    assert forwarded
+    assert all(call_high is high for call_high, _call_low in forwarded)
+    assert all(call_low is low for _call_high, call_low in forwarded)

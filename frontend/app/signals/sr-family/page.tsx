@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatNumber } from "@/lib/format"
 import type { SupportResistanceMethod } from "@/lib/api"
+import { ICStatsChip } from "@/components/signals/ic-stats-chip"
 
 function fmtPrice(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return "--"
@@ -34,10 +35,11 @@ function SupportResistanceFamilyContent() {
   const searchParams = useSearchParams()
   const symbol = (searchParams.get("symbol") ?? "").trim().toUpperCase()
   const horizon = (searchParams.get("horizon") ?? "medium").trim().toLowerCase()
+  const variant = (searchParams.get("variant") ?? "expanded").trim().toLowerCase()
   const cooldownBars = Number(searchParams.get("cooldown") ?? 0)
   const costBps = 33
 
-  const variants = useSupportResistanceVariants(symbol || null, horizon || null, costBps, cooldownBars, Boolean(symbol))
+  const variants = useSupportResistanceVariants(symbol || null, horizon || null, costBps, cooldownBars, variant, Boolean(symbol))
   const sortedAll = useMemo(
     () =>
       [...(variants.data?.all_variants ?? [])].sort(
@@ -88,9 +90,12 @@ function SupportResistanceFamilyContent() {
         </Button>
         <div>
           <h1 className="text-base font-bold">Support et resistance</h1>
-          <p className="text-xs text-muted-foreground">
-            {symbol} - {horizon} - {data.as_of}
-          </p>
+          <div className="flex items-center gap-2 mt-0.5">
+            <p className="text-xs text-muted-foreground">
+              {symbol} - {horizon} - {data.as_of}
+            </p>
+            <ICStatsChip symbol={symbol} horizon={horizon} />
+          </div>
         </div>
       </div>
 
@@ -131,7 +136,7 @@ function SupportResistanceFamilyContent() {
               method={method}
               onOpen={() =>
                 router.push(
-                  `/signals/sr-method/${encodeURIComponent(method.id)}?symbol=${encodeURIComponent(symbol)}&horizon=${encodeURIComponent(horizon)}&cooldown=${cooldownBars}`,
+                  `/signals/sr-method/${encodeURIComponent(method.id)}?symbol=${encodeURIComponent(symbol)}&horizon=${encodeURIComponent(horizon)}&cooldown=${cooldownBars}&variant=${variant}`,
                 )
               }
             />
@@ -166,7 +171,7 @@ function SupportResistanceFamilyContent() {
                     }`}
                     onClick={() =>
                       router.push(
-                        `/signals/sr-variant/${encodeURIComponent(variant.variant_id)}?symbol=${encodeURIComponent(symbol)}&horizon=${encodeURIComponent(horizon)}&cooldown=${cooldownBars}`,
+                        `/signals/sr-variant/${encodeURIComponent(variant.variant_id)}?symbol=${encodeURIComponent(symbol)}&horizon=${encodeURIComponent(horizon)}&cooldown=${cooldownBars}&variant=${variant}`,
                       )
                     }
                   >
