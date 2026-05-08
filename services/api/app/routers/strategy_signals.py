@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from redis.exceptions import RedisError
 from sqlalchemy.orm import Session
 
+from ..auth import rate_limit_trigger, require_admin
 from ..db import get_db
 from ..market_data_loader import load_close_for_symbol, load_ohlcv_for_symbol
 from ..schemas.strategy import PivotPoints
@@ -4321,7 +4322,11 @@ class _TriggerAllBody(_BaseModel):
     variants: list[str] = ["legacy", "expanded"]
 
 
-@router.post("/engine/trigger", summary="Trigger signal engine batch for one symbol/horizon")
+@router.post(
+    "/engine/trigger",
+    summary="Trigger signal engine batch for one symbol/horizon",
+    dependencies=[Depends(rate_limit_trigger)],
+)
 def trigger_signal_engine(body: _TriggerBody, db: Session = Depends(get_db)):
     """Enqueue computation of A→G engine results for (symbol, horizon).
 
@@ -4376,7 +4381,11 @@ def trigger_signal_engine(body: _TriggerBody, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@router.post("/engine/trigger-all", summary="Trigger signal engine batch for all active symbols/horizons")
+@router.post(
+    "/engine/trigger-all",
+    summary="Trigger signal engine batch for all active symbols/horizons",
+    dependencies=[Depends(require_admin), Depends(rate_limit_trigger)],
+)
 def trigger_all_signal_engine(body: _TriggerAllBody, db: Session = Depends(get_db)):
     """Fan out signal-engine jobs for every active symbol × horizon × variant."""
     from services.api.app.models import StockMaster
@@ -4427,7 +4436,11 @@ def trigger_all_signal_engine(body: _TriggerAllBody, db: Session = Depends(get_d
     }
 
 
-@router.post("/backtest-mc/trigger", summary="Trigger signal backtest + MC for one symbol/horizon")
+@router.post(
+    "/backtest-mc/trigger",
+    summary="Trigger signal backtest + MC for one symbol/horizon",
+    dependencies=[Depends(rate_limit_trigger)],
+)
 def trigger_signal_backtest(body: _BacktestTriggerBody, db: Session = Depends(get_db)):
     """Enqueue signal-based backtest + Monte Carlo computation.
 

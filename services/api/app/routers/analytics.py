@@ -20,6 +20,7 @@ import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from ..auth import rate_limit_trigger, require_admin
 from ..db import get_db
 from .. import models
 from ..market_data_loader import load_ohlcv_for_symbol
@@ -1353,7 +1354,11 @@ def get_predictive_ability_leaderboard(
 # Predictive-history population (RQ batch)
 # ---------------------------------------------------------------------------
 
-@router.post("/predictive-history/trigger", response_model=PredictiveHistoryTriggerOut)
+@router.post(
+    "/predictive-history/trigger",
+    response_model=PredictiveHistoryTriggerOut,
+    dependencies=[Depends(rate_limit_trigger)],
+)
 def trigger_predictive_history(
     symbol: str = Query(...),
     db: Session = Depends(get_db),
@@ -1384,7 +1389,11 @@ def trigger_predictive_history(
     return PredictiveHistoryTriggerOut(triggered=1, job_ids=[str(job.id)])
 
 
-@router.post("/predictive-history/trigger-all", response_model=PredictiveHistoryTriggerOut)
+@router.post(
+    "/predictive-history/trigger-all",
+    response_model=PredictiveHistoryTriggerOut,
+    dependencies=[Depends(require_admin), Depends(rate_limit_trigger)],
+)
 def trigger_all_predictive_history(db: Session = Depends(get_db)) -> PredictiveHistoryTriggerOut:
     from redis import Redis
     from rq import Queue
@@ -1980,7 +1989,10 @@ def get_edge_metrics(
     return JSONResponse(content=payload, headers={"X-Edge-Cache": "hit"})
 
 
-@router.post("/edge/warm")
+@router.post(
+    "/edge/warm",
+    dependencies=[Depends(require_admin), Depends(rate_limit_trigger)],
+)
 def warm_edge_cache(
     symbols: Optional[list[str]] = None,
     horizons: Optional[list[str]] = None,

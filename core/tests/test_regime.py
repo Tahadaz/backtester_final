@@ -46,8 +46,8 @@ class TestKaufmanER:
         assert np.all(np.isnan(er[:20]))
         assert not np.any(np.isnan(er[20:]))
 
-    def test_short_series(self):
-        """Series shorter than window → all NaN."""
+    def test_weekly_series(self):
+        """Series weeklyer than window → all NaN."""
         close = np.array([100.0, 101.0, 102.0])
         er = kaufman_er(close, window=20)
         assert len(er) == 3
@@ -100,7 +100,7 @@ class TestValidateRegimeOOS:
         return {"sma": sma_sig, "macd": macd_sig, "rsi": rsi_sig, "obv": obv_sig}
 
     def test_insufficient_data(self):
-        """Short series → regime_active=False, label=insufficient_data."""
+        """weekly series → regime_active=False, label=insufficient_data."""
         close = np.linspace(100, 110, 50)
         signals = {"sma": np.ones(50), "rsi": np.ones(50)}
         result = validate_regime_oos(close, signals, "medium", cost_bps=10.0)
@@ -110,7 +110,7 @@ class TestValidateRegimeOOS:
     def test_no_families(self):
         """Empty family dict → inactive."""
         close = np.linspace(100, 200, 1000)
-        result = validate_regime_oos(close, {}, "short", cost_bps=10.0)
+        result = validate_regime_oos(close, {}, "weekly", cost_bps=10.0)
         assert not result.regime_active
         assert result.n_families == 0
 
@@ -118,7 +118,7 @@ class TestValidateRegimeOOS:
         """Single family â†’ regime remains inactive."""
         close = self._make_trending_data(1200)
         signals = {"sma": np.ones(1200)}
-        result = validate_regime_oos(close, signals, "short", cost_bps=10.0)
+        result = validate_regime_oos(close, signals, "weekly", cost_bps=10.0)
         assert not result.regime_active
         assert result.regime_label == "single_family"
         assert result.n_families == 1
@@ -127,7 +127,7 @@ class TestValidateRegimeOOS:
         """With enough data, returns a RegimeResult with window_results."""
         close = self._make_trending_data(1200)
         signals = self._make_family_signals(1200)
-        result = validate_regime_oos(close, signals, "short", cost_bps=10.0)
+        result = validate_regime_oos(close, signals, "weekly", cost_bps=10.0)
         assert isinstance(result, RegimeResult)
         assert result.n_families == 4
         assert len(result.window_results) > 0
@@ -137,7 +137,7 @@ class TestValidateRegimeOOS:
         """Regime label is one of expected values."""
         close = self._make_trending_data(1200)
         signals = self._make_family_signals(1200)
-        result = validate_regime_oos(close, signals, "short", cost_bps=10.0)
+        result = validate_regime_oos(close, signals, "weekly", cost_bps=10.0)
         assert result.regime_label in {
             "trending", "ranging", "mixed", "inactive", "insufficient_data"
         }
@@ -149,12 +149,12 @@ class TestValidateRegimeOOS:
 
         monkeypatch.setitem(
             regime_module.HORIZON_PARAMS,
-            "short",
+            "weekly",
             {"train": 30, "test": 5, "step": 5, "max_years": 1},
         )
         monkeypatch.setattr(regime_module, "_sharpe", lambda arr: float(len(arr)))
 
-        result = validate_regime_oos(close, signals, "short", cost_bps=10.0)
+        result = validate_regime_oos(close, signals, "weekly", cost_bps=10.0)
 
         assert len(result.window_results) > 0
         for wr in result.window_results:

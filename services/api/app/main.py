@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import auth
 from .config import settings
+from .freshness import FreshnessHeadersMiddleware
 
 
 from .routers import (
@@ -48,7 +49,9 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["X-Computed-At", "X-Upstream-Rev", "X-Cache"],
     )
+    app.add_middleware(FreshnessHeadersMiddleware)
 
     # routers – auth is a no-op when API_KEY env var is unset
     app.include_router(runs.router, dependencies=[Depends(auth.require_api_key)])

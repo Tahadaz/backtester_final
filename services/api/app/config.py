@@ -1,7 +1,56 @@
 from __future__ import annotations
 
+import json
 import os
+from typing import Literal
+
 from pydantic import BaseModel
+
+
+SnapshotReadMode = Literal["legacy", "shadow", "snapshot"]
+_VALID_SNAPSHOT_READ_MODES: tuple[SnapshotReadMode, ...] = ("legacy", "shadow", "snapshot")
+
+
+def _parse_snapshot_read_mode(value: str | None, default: SnapshotReadMode = "legacy") -> SnapshotReadMode:
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized in _VALID_SNAPSHOT_READ_MODES:
+        return normalized  # type: ignore[return-value]
+    return default
+
+
+def _parse_snapshot_read_mode_overrides(raw: str | None) -> dict[str, SnapshotReadMode]:
+    """Parse ``SNAPSHOT_READ_MODE_OVERRIDES`` env var.
+
+    Accepts either JSON (``{"dashboard": "shadow"}``) or
+    comma-separated ``key=value`` pairs (``dashboard=shadow,analytics=snapshot``).
+    """
+    if not raw:
+        return {}
+    raw = raw.strip()
+    if not raw:
+        return {}
+    out: dict[str, SnapshotReadMode] = {}
+    if raw.startswith("{"):
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+        if isinstance(data, dict):
+            for k, v in data.items():
+                if not isinstance(k, str) or not isinstance(v, str):
+                    continue
+                if v.strip().lower() in _VALID_SNAPSHOT_READ_MODES:
+                    out[k.strip().lower()] = v.strip().lower()  # type: ignore[assignment]
+        return out
+    for chunk in raw.split(","):
+        if "=" not in chunk:
+            continue
+        key, value = chunk.split("=", 1)
+        if value.strip().lower() in _VALID_SNAPSHOT_READ_MODES:
+            out[key.strip().lower()] = value.strip().lower()  # type: ignore[assignment]
+    return out
 
 DEFAULT_LOCAL_DATABASE_URL = "postgresql+psycopg2://app:app@127.0.0.1:5555/quant"
 
@@ -51,6 +100,35 @@ class Settings(BaseModel):
     S3_USE_SSL: bool = _getenv_any("S3_USE_SSL", "S3_SECURE", default="false").lower() == "true"
 
     INTERNAL_JWT_SECRET: str = os.getenv("INTERNAL_JWT_SECRET", "").strip()
+
+    # Phase 0 — snapshot-cutover scaffolding.
+    # ``legacy`` keeps the live-compute path; ``shadow`` serves legacy AND queries
+    # the snapshot row to diff (Phase 1+ endpoints emit a metric on mismatch);
+    # ``snapshot`` serves snapshot tables only.
+    SNAPSHOT_READ_MODE: SnapshotReadMode = _parse_snapshot_read_mode(
+        os.getenv("SNAPSHOT_READ_MODE"), default="legacy"
+    )
+    # Per-endpoint override map, e.g. ``{"dashboard": "snapshot"}``. Overrides
+    # the global mode for a single logical surface (dashboard, signals, analytics).
+    SNAPSHOT_READ_MODE_OVERRIDES: dict[str, SnapshotReadMode] = _parse_snapshot_read_mode_overrides(
+        os.getenv("SNAPSHOT_READ_MODE_OVERRIDES")
+    )
+
+    # Phase 0 — admin scope + per-IP rate limit on trigger endpoints.
+    ADMIN_API_KEY: str = os.getenv("ADMIN_API_KEY", "").strip()
+    # Comma-separated list of JWT scope claims that grant admin (default: ``admin``).
+    ADMIN_SCOPES: tuple[str, ...] = tuple(
+        s.strip() for s in os.getenv("ADMIN_SCOPES", "admin").split(",") if s.strip()
+    ) or ("admin",)
+    # Trigger endpoints: per-IP rate limit (calls per window).
+    TRIGGER_RATE_LIMIT_PER_MIN: int = int(os.getenv("TRIGGER_RATE_LIMIT_PER_MIN", "10"))
+    TRIGGER_RATE_LIMIT_WINDOW_SECONDS: int = int(
+        os.getenv("TRIGGER_RATE_LIMIT_WINDOW_SECONDS", "60")
+    )
+
+    def snapshot_read_mode_for(self, surface: str) -> SnapshotReadMode:
+        """Return the effective read mode for a logical surface (e.g. "dashboard")."""
+        return self.SNAPSHOT_READ_MODE_OVERRIDES.get(surface.strip().lower(), self.SNAPSHOT_READ_MODE)
 
 
 settings = Settings()

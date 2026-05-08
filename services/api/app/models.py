@@ -1036,3 +1036,45 @@ class MarketRefreshError(Base):
         Index("ix_market_refresh_error_run", "refresh_run_id"),
         Index("ix_market_refresh_error_symbol", "symbol"),
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 0 — Pipeline lineage scaffolding
+# ---------------------------------------------------------------------------
+
+
+class PipelineRevision(Base):
+    """One row per successful pipeline-stage output.
+
+    Used to thread `upstream_rev` lineage through the snapshot/cache tables
+    introduced in Phase 1+ (`dashboard_snapshot`, `signal_evaluation_cache`,
+    `factor_relevance_cache`, etc.). Workers append a row before flipping
+    a downstream snapshot to the new revision.
+    """
+
+    __tablename__ = "pipeline_revision"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    stage = Column(String(64), nullable=False)
+    upstream_rev = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    content_hash = Column(String(64), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_pipeline_revision_stage_created", "stage", "created_at"),
+        UniqueConstraint("stage", "content_hash", name="uq_pipeline_revision_stage_content"),
+    )
+
+
+class SnapshotColumns:
+    """Mixin: every Phase 1+ snapshot/cache table inherits these columns.
+
+    `upstream_rev` is the JSON tuple of producer revisions consumed
+    (e.g. ``{"data_as_of": "...", "engine_run_id": "...", ...}``).
+    `computed_at` is when the row was written.
+    `as_of_date` is the point-in-time the row represents (immutable per date).
+    """
+
+    upstream_rev = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    computed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    as_of_date = Column(Date, nullable=True)

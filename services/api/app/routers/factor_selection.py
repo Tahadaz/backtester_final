@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from ..auth import rate_limit_trigger, require_admin
 from ..db import get_db
 from ..queue import _get_macro_ingest_queue
 from ..services.factor_selection_state import normalize_selection_horizon
@@ -136,7 +137,10 @@ def get_stage1_cache_for_stock(
     ]
 
 
-@router.post("/stocks/{symbol}/trigger-recalibration")
+@router.post(
+    "/stocks/{symbol}/trigger-recalibration",
+    dependencies=[Depends(rate_limit_trigger)],
+)
 def trigger_factor_recalibration(
     symbol: str,
     db: Session = Depends(get_db),
@@ -156,7 +160,10 @@ def trigger_factor_recalibration(
     return {"status": "enqueued", "job_id": job.id, "symbol": symbol}
 
 
-@router.post("/trigger-quarterly-recalibration-all")
+@router.post(
+    "/trigger-quarterly-recalibration-all",
+    dependencies=[Depends(require_admin), Depends(rate_limit_trigger)],
+)
 def trigger_quarterly_recalibration_all() -> dict[str, str]:
     q = _get_macro_ingest_queue()
     job = q.enqueue("services.worker.tasks.factor_selection_quarterly.run_quarterly_factor_recalibration")

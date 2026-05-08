@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from ..auth import rate_limit_trigger, require_admin
 from ..db import get_db
 from ..models import StockMaster, WfoGlobalSignal, WfoSignalSummary
 
@@ -472,7 +473,11 @@ def get_wfo_config() -> dict[str, Any]:
     }
 
 
-@router.post("/trigger", response_model=WfoTriggerResponse)
+@router.post(
+    "/trigger",
+    response_model=WfoTriggerResponse,
+    dependencies=[Depends(rate_limit_trigger)],
+)
 def trigger_wfo_computation(
     body: WfoTriggerRequest,
     db: Session = Depends(get_db),
@@ -539,7 +544,11 @@ def trigger_wfo_computation(
     return WfoTriggerResponse(triggered=categories, job_id=str(job.id))
 
 
-@router.post("/trigger-all", response_model=WfoTriggerAllResponse)
+@router.post(
+    "/trigger-all",
+    response_model=WfoTriggerAllResponse,
+    dependencies=[Depends(require_admin), Depends(rate_limit_trigger)],
+)
 def trigger_all_wfo(
     body: WfoTriggerAllRequest,
     db: Session = Depends(get_db),
