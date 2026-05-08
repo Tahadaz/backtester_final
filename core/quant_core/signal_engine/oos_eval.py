@@ -186,7 +186,9 @@ def _adx_signal(close: np.ndarray, params: dict, volume: np.ndarray, *, high=Non
 
 @register_signal("tsi", "tsi_zero")
 def _tsi_signal(close: np.ndarray, params: dict, volume: np.ndarray, *, high=None, low=None) -> np.ndarray:
-    tsi = compute_tsi_series(close, int(params["long_period"]), int(params["short_period"]))
+    long_period = int(params.get("long_period", params["quarterly_period"]))
+    short_period = int(params.get("short_period", params["weekly_period"]))
+    tsi = compute_tsi_series(close, long_period, short_period)
     return np.where(tsi > 0.0, 1.0, np.where(tsi < 0.0, -1.0, 0.0))
 
 

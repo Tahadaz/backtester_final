@@ -143,8 +143,10 @@ def _compute_indicator(
         }
 
     if arch == "tsi_zero":
-        vals = compute_tsi_series(close, int(p["long_period"]), int(p["short_period"]))
-        return {"type": "secondary_yaxis", "name": f"TSI({p['long_period']},{p['short_period']})", "values": vals, "zero_line": True}
+        long_period = int(p.get("long_period", p["quarterly_period"]))
+        short_period = int(p.get("short_period", p["weekly_period"]))
+        vals = compute_tsi_series(close, long_period, short_period)
+        return {"type": "secondary_yaxis", "name": f"TSI({long_period},{short_period})", "values": vals, "zero_line": True}
 
     if arch == "stoch_level" and high is not None and low is not None:
         k_vals, d_vals = compute_stochastic_series(high, low, close, int(p["k_period"]), int(p["d_period"]))

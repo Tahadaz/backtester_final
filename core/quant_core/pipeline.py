@@ -1190,6 +1190,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
 
         combined_leaderboard: list[dict[str, Any]] = []
         rows_by_horizon: dict[str, list[dict[str, Any]]] = {}
+        summary_by_horizon: dict[str, dict[str, Any]] = {}
 
         for horizon_index, horizon in enumerate(requested_horizons):
             horizon_output = dict(per_horizon_outputs.get(horizon) or {})
@@ -1205,6 +1206,48 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                 key=lambda row: _safe_float_scalar(row.get("objective_value")) if _safe_float_scalar(row.get("objective_value")) is not None else float("-inf"),
                 reverse=True,
             )
+
+            summary_by_kind: dict[str, dict[str, Any]] = {}
+            rows_by_kind: dict[str, list[dict[str, Any]]] = {}
+            for row in rows_raw:
+                strategy_kind = str(row.get("strategy_kind") or "").strip().lower()
+                if not strategy_kind:
+                    continue
+                rows_by_kind.setdefault(strategy_kind, []).append(row)
+            for strategy_kind, kind_rows in rows_by_kind.items():
+                objective_values = [
+                    float(value)
+                    for value in (
+                        _safe_float_scalar(row.get("objective_value"))
+                        for row in kind_rows
+                    )
+                    if value is not None
+                ]
+                last_test_start = None
+                last_test_end = None
+                for row in kind_rows:
+                    test_start = row.get("test_start") or row.get("start")
+                    test_end = row.get("test_end") or row.get("end")
+                    if test_start and (last_test_start is None or str(test_start) > str(last_test_start)):
+                        last_test_start = test_start
+                    if test_end and (last_test_end is None or str(test_end) > str(last_test_end)):
+                        last_test_end = test_end
+                summary_by_kind[strategy_kind] = {
+                    "objective_mean": float(sum(objective_values) / len(objective_values)) if objective_values else None,
+                    "objective_median": float(pd.Series(objective_values).median()) if objective_values else None,
+                    "objective_std": float(pd.Series(objective_values).std()) if len(objective_values) > 1 else 0.0,
+                    "positive_ratio": (
+                        float(sum(1 for value in objective_values if value > 0.0) / len(objective_values))
+                        if objective_values
+                        else None
+                    ),
+                    "n_folds": len({
+                        str(row.get("test_start") or row.get("start") or row.get("period") or "")
+                        for row in kind_rows
+                    }),
+                    "last_test_start": last_test_start,
+                    "last_test_end": last_test_end,
+                }
 
             best_row_by_kind: dict[str, dict[str, Any]] = {}
             for row in rows_raw:
@@ -1237,6 +1280,16 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                 best_params_json["simple_wfo.horizon_label"] = str(horizon_cfg.label)
                 best_params_json["simple_wfo.rank"] = int(local_rank)
                 best_params_json["simple_wfo.storage_rank"] = int(storage_rank)
+                summary_payload = dict(summary_by_kind.get(strategy_kind) or {})
+                best_params_json["_summary"] = {
+                    "objective_mean": summary_payload.get("objective_mean"),
+                    "objective_median": summary_payload.get("objective_median"),
+                    "objective_std": summary_payload.get("objective_std"),
+                    "positive_ratio": summary_payload.get("positive_ratio"),
+                    "n_folds": summary_payload.get("n_folds"),
+                }
+                best_params_json["last_test_start"] = summary_payload.get("last_test_start")
+                best_params_json["last_test_end"] = summary_payload.get("last_test_end")
 
                 combined_leaderboard.append(
                     {
@@ -1254,34 +1307,96 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
                     }
                 )
 
-            # ALL variants for persistence — includes param fields for stable trial_id computation
-            all_variants_for_horizon: list[dict[str, Any]] = []
-            for v_rank, row in enumerate(rows_raw, start=1):
+            # Aggregate rows by parameter signature so the per-horizon payload exposes
+            # the stable top-N candidate view instead of raw per-fold observations.
+            aggregated_by_signature: dict[tuple[str, tuple[tuple[str, Any], ...]], dict[str, Any]] = {}
+            for row in rows_raw:
                 sk = str(row.get("strategy_kind") or "").strip().lower()
                 if not sk:
                     continue
-                variant_entry: dict[str, Any] = {
-                    "strategy_kind": sk,
-                    "trial_rank": v_rank,
-                    "objective": objective_name,
-                    "objective_value": _safe_float_scalar(row.get("objective_value")),
-                    "pnl": _safe_float_scalar(row.get("stat.pnl") if "stat.pnl" in row else row.get("pnl")),
-                    "cagr": _safe_float_scalar(row.get("stat.cagr") if "stat.cagr" in row else row.get("cagr")),
-                    "sharpe": _safe_float_scalar(row.get("stat.sharpe") if "stat.sharpe" in row else row.get("sharpe")),
-                    "max_drawdown": _safe_float_scalar(row.get("stat.max_drawdown") if "stat.max_drawdown" in row else row.get("max_drawdown")),
-                    "win_pct": _safe_float_scalar(row.get("stat.win_pct") if "stat.win_pct" in row else row.get("win_pct")),
-                    "n_fills": _safe_int_scalar(row.get("stat.n_fills") if "stat.n_fills" in row else row.get("n_fills")),
-                    "period": row.get("period"),
-                    "start": row.get("start"),
-                    "end": row.get("end"),
-                }
-                # Carry param fields so execute_run.py can compute a stable trial_id
-                for k, v in row.items():
-                    if k.startswith("param.strategy.") or k.startswith("param.portfolio."):
-                        variant_entry[k] = v
-                all_variants_for_horizon.append(variant_entry)
+                param_items = tuple(
+                    sorted(
+                        (k, v)
+                        for k, v in row.items()
+                        if k.startswith("param.strategy.") or k.startswith("param.portfolio.")
+                    )
+                )
+                signature = (sk, param_items)
+                objective_value = _safe_float_scalar(row.get("objective_value"))
+                aggregate = aggregated_by_signature.get(signature)
+                if aggregate is None:
+                    aggregate = {
+                        "strategy_kind": sk,
+                        "objective": objective_name,
+                        "objective_value": objective_value,
+                        "pnl": _safe_float_scalar(row.get("stat.pnl") if "stat.pnl" in row else row.get("pnl")),
+                        "cagr": _safe_float_scalar(row.get("stat.cagr") if "stat.cagr" in row else row.get("cagr")),
+                        "sharpe": _safe_float_scalar(row.get("stat.sharpe") if "stat.sharpe" in row else row.get("sharpe")),
+                        "max_drawdown": _safe_float_scalar(row.get("stat.max_drawdown") if "stat.max_drawdown" in row else row.get("max_drawdown")),
+                        "win_pct": _safe_float_scalar(row.get("stat.win_pct") if "stat.win_pct" in row else row.get("win_pct")),
+                        "n_fills": _safe_int_scalar(row.get("stat.n_fills") if "stat.n_fills" in row else row.get("n_fills")),
+                        "period": row.get("period"),
+                        "start": row.get("start"),
+                        "end": row.get("end"),
+                        "_objective_values": [objective_value] if objective_value is not None else [],
+                        "_positive_count": 1 if (objective_value is not None and objective_value > 0.0) else 0,
+                        "_fold_count": 1,
+                    }
+                    for k, v in param_items:
+                        aggregate[k] = v
+                    aggregated_by_signature[signature] = aggregate
+                else:
+                    if objective_value is not None:
+                        aggregate["_objective_values"].append(objective_value)
+                        best_so_far = _safe_float_scalar(aggregate.get("objective_value"))
+                        if best_so_far is None or objective_value > best_so_far:
+                            aggregate["objective_value"] = objective_value
+                            aggregate["pnl"] = _safe_float_scalar(row.get("stat.pnl") if "stat.pnl" in row else row.get("pnl"))
+                            aggregate["cagr"] = _safe_float_scalar(row.get("stat.cagr") if "stat.cagr" in row else row.get("cagr"))
+                            aggregate["sharpe"] = _safe_float_scalar(row.get("stat.sharpe") if "stat.sharpe" in row else row.get("sharpe"))
+                            aggregate["max_drawdown"] = _safe_float_scalar(row.get("stat.max_drawdown") if "stat.max_drawdown" in row else row.get("max_drawdown"))
+                            aggregate["win_pct"] = _safe_float_scalar(row.get("stat.win_pct") if "stat.win_pct" in row else row.get("win_pct"))
+                            aggregate["n_fills"] = _safe_int_scalar(row.get("stat.n_fills") if "stat.n_fills" in row else row.get("n_fills"))
+                            aggregate["period"] = row.get("period")
+                            aggregate["start"] = row.get("start")
+                            aggregate["end"] = row.get("end")
+                        if objective_value > 0.0:
+                            aggregate["_positive_count"] += 1
+                    aggregate["_fold_count"] += 1
 
-            rows_by_horizon[horizon] = all_variants_for_horizon
+            aggregated_rows = list(aggregated_by_signature.values())
+            for candidate_rank, aggregate in enumerate(
+                sorted(
+                    aggregated_rows,
+                    key=lambda item: (
+                        _safe_float_scalar(item.get("objective_value")) if _safe_float_scalar(item.get("objective_value")) is not None else float("-inf"),
+                        float(sum(item.get("_objective_values") or []) / max(len(item.get("_objective_values") or []), 1)) if (item.get("_objective_values") or []) else float("-inf"),
+                    ),
+                    reverse=True,
+                ),
+                start=1,
+            ):
+                aggregate["trial_rank"] = candidate_rank
+                objective_values = [float(v) for v in list(aggregate.pop("_objective_values", [])) if v is not None]
+                fold_count = int(aggregate.pop("_fold_count", 0) or 0)
+                positive_count = int(aggregate.pop("_positive_count", 0) or 0)
+                aggregate["objective_mean"] = (
+                    float(sum(objective_values) / len(objective_values))
+                    if objective_values
+                    else None
+                )
+                aggregate["positive_ratio"] = (
+                    float(positive_count / fold_count)
+                    if fold_count > 0
+                    else None
+                )
+                aggregate["n_folds"] = fold_count
+
+            rows_by_horizon[horizon] = aggregated_rows[:20]
+            summary_by_horizon[horizon] = {
+                "n_candidates": len(aggregated_rows),
+                "objective": objective_name,
+            }
 
         combined_leaderboard.sort(
             key=lambda row: (
@@ -1305,6 +1420,7 @@ def run_pipeline(spec_json: Dict[str, Any]) -> Dict[str, Any]:
             "horizons": requested_horizons,
             "primary_horizon": primary_horizon,
             "rows_by_horizon": rows_by_horizon,
+            "summary_by_horizon": summary_by_horizon,
             "wfo_summary_by_horizon": wfo_summary_by_horizon,
         }
 

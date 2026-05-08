@@ -48,25 +48,32 @@ def _make_variant(archetype: str = "price_vs_sma", **params) -> VariantDef:
     )
 
 
+_EXPECTED_CANDIDATE_COUNTS: dict[str, dict[str, int]] = {
+    "sma": {"weekly": 16, "monthly": 16, "quarterly": 30},
+    "ema": {"weekly": 16, "monthly": 16, "quarterly": 30},
+    "obv": {"weekly": 16, "monthly": 30, "quarterly": 30},
+}
+
+
 # ===================================================================
 # Candidates (Layer A)
 # ===================================================================
 
 class TestCandidates:
-    @pytest.mark.parametrize("horizon", ["short", "medium", "long"])
+    @pytest.mark.parametrize("horizon", ["weekly", "monthly", "quarterly"])
     def test_candidate_count_per_horizon(self, horizon):
         candidates = generate_candidates("sma", horizon)
-        assert len(candidates) == 30, f"{horizon}: got {len(candidates)}"
+        assert len(candidates) == _EXPECTED_CANDIDATE_COUNTS["sma"][horizon], f"{horizon}: got {len(candidates)}"
 
     def test_variant_ids_unique(self):
-        for horizon in ("short", "medium", "long"):
+        for horizon in ("weekly", "monthly", "quarterly"):
             candidates = generate_candidates("sma", horizon)
             ids = [c.variant_id for c in candidates]
             assert len(ids) == len(set(ids)), f"Duplicate IDs in {horizon}"
 
     def test_variant_id_deterministic(self):
-        a = generate_candidates("sma", "medium")
-        b = generate_candidates("sma", "medium")
+        a = generate_candidates("sma", "monthly")
+        b = generate_candidates("sma", "monthly")
         assert [c.variant_id for c in a] == [c.variant_id for c in b]
 
 
@@ -105,14 +112,14 @@ class TestOOSEval:
     def test_oos_eval_valid_windows(self):
         close = _uptrend(1500)
         v = _make_variant("price_vs_sma", window=20)
-        results = evaluate_variant_oos(close, v, "medium")
+        results = evaluate_variant_oos(close, v, "monthly")
         valid = [r for r in results if r.is_valid]
         assert len(valid) >= 3, f"Expected >= 3 valid windows, got {len(valid)}"
 
     def test_oos_chronology_no_overlap(self):
         close = _uptrend(1500)
         v = _make_variant("price_vs_sma", window=20)
-        results = evaluate_variant_oos(close, v, "medium")
+        results = evaluate_variant_oos(close, v, "monthly")
         for w in results:
             assert w.test_start >= w.train_end, (
                 f"Window {w.window_index}: test_start {w.test_start} < train_end {w.train_end}"
@@ -143,9 +150,9 @@ class TestOOSEval:
 class TestRobustnessAndFiltering:
     def test_reliability_score_bounds(self):
         close = _uptrend(1500)
-        candidates = generate_candidates("sma", "medium")
+        candidates = generate_candidates("sma", "monthly")
         for c in candidates:
-            windows = evaluate_variant_oos(close, c, "medium")
+            windows = evaluate_variant_oos(close, c, "monthly")
             summary = score_variant_robustness(c, windows)
             assert 0.0 <= summary.reliability_score <= 1.0
 
@@ -276,7 +283,7 @@ class TestOOSReturnMetrics:
     def test_oos_window_has_return_metrics(self):
         close = _uptrend(1500)
         v = _make_variant("price_vs_sma", window=20)
-        results = evaluate_variant_oos(close, v, "medium")
+        results = evaluate_variant_oos(close, v, "monthly")
         valid = [r for r in results if r.is_valid]
         assert len(valid) >= 3
         for w in valid:
@@ -289,7 +296,7 @@ class TestOOSReturnMetrics:
     def test_robustness_summary_has_cagr_pnl(self):
         close = _uptrend(1500)
         v = _make_variant("price_vs_sma", window=20)
-        windows = evaluate_variant_oos(close, v, "medium")
+        windows = evaluate_variant_oos(close, v, "monthly")
         summary = score_variant_robustness(v, windows)
         assert hasattr(summary, 'cagr')
         assert hasattr(summary, 'total_pnl')
@@ -301,22 +308,23 @@ class TestOOSReturnMetrics:
 
 class TestMultiFamilyCandidates:
     @pytest.mark.parametrize("family", ["rsi", "macd", "obv"])
-    @pytest.mark.parametrize("horizon", ["short", "medium", "long"])
+    @pytest.mark.parametrize("horizon", ["weekly", "monthly", "quarterly"])
     def test_candidate_count(self, family, horizon):
         candidates = generate_candidates(family, horizon)
-        assert len(candidates) == 30, f"{family}/{horizon}: got {len(candidates)}"
+        expected = _EXPECTED_CANDIDATE_COUNTS.get(family, {}).get(horizon, 30)
+        assert len(candidates) == expected, f"{family}/{horizon}: got {len(candidates)}"
 
     @pytest.mark.parametrize("family", ["rsi", "macd", "obv"])
     def test_variant_ids_unique(self, family):
-        for horizon in ("short", "medium", "long"):
+        for horizon in ("weekly", "monthly", "quarterly"):
             candidates = generate_candidates(family, horizon)
             ids = [c.variant_id for c in candidates]
             assert len(ids) == len(set(ids)), f"Duplicate IDs in {family}/{horizon}"
 
     @pytest.mark.parametrize("family", ["rsi", "macd", "obv"])
     def test_variant_id_deterministic(self, family):
-        a = generate_candidates(family, "medium")
-        b = generate_candidates(family, "medium")
+        a = generate_candidates(family, "monthly")
+        b = generate_candidates(family, "monthly")
         assert [c.variant_id for c in a] == [c.variant_id for c in b]
 
 
@@ -329,7 +337,7 @@ class TestMultiFamilySignalContract:
     def test_signal_contract(self, family):
         close = _uptrend(800)
         volume = _make_volume(800)
-        candidates = generate_candidates(family, "medium")
+        candidates = generate_candidates(family, "monthly")
         for c in candidates[:5]:
             sig = compute_signal_array(close, c, volume=volume)
             assert len(sig) == len(close)
@@ -376,7 +384,7 @@ class TestMultiFamilyEnsemble:
         close = _uptrend(1500)
         volume = _make_volume(1500)
         detail = run_family_ensemble_full(
-            family, close, volume=volume, symbol="TEST", horizon="medium",
+            family, close, volume=volume, symbol="TEST", horizon="monthly",
         )
         assert detail.signal.family == family
         assert detail.signal.tested_count == 30
@@ -388,20 +396,20 @@ class TestLowDataModes:
     def test_adaptive_oos_mode_uses_reduced_windows(self):
         close = _uptrend(72)
         detail = run_family_ensemble_full(
-            "sma", close, symbol="TEST", horizon="short",
+            "sma", close, symbol="TEST", horizon="weekly",
         )
         assert detail.signal.methodology_mode == "adaptive_oos_ensemble"
         assert detail.signal.is_provisional is True
         assert detail.signal.effective_window.train == 8
         assert detail.signal.effective_window.test == 21
         assert detail.signal.effective_window.step == 21
-        assert detail.signal.tested_count == 30
+        assert detail.signal.tested_count == _EXPECTED_CANDIDATE_COUNTS["sma"]["weekly"]
         assert detail.signal.warning_message
 
     def test_live_signal_only_mode_returns_fallback_variants(self):
         close = _uptrend(50)
         detail = run_family_ensemble_full(
-            "sma", close, symbol="TEST", horizon="short",
+            "sma", close, symbol="TEST", horizon="weekly",
         )
         assert detail.signal.methodology_mode == "live_signal_only"
         assert detail.signal.is_provisional is True
@@ -419,7 +427,7 @@ class TestLowDataModes:
             no_representatives,
         )
         detail = run_family_ensemble_full(
-            "sma", _uptrend(500), symbol="TEST", horizon="short",
+            "sma", _uptrend(500), symbol="TEST", horizon="weekly",
         )
         assert detail.signal.representative_count == 0
         assert detail.signal.family_signal_label == "Pas disponible"
@@ -428,12 +436,12 @@ class TestLowDataModes:
     def test_robust_mode_stays_unchanged_when_history_is_sufficient(self):
         close = _uptrend(500)
         detail = run_family_ensemble_full(
-            "sma", close, symbol="TEST", horizon="short",
+            "sma", close, symbol="TEST", horizon="weekly",
         )
         assert detail.signal.methodology_mode == "robust_oos_ensemble"
         assert detail.signal.is_provisional is False
-        assert detail.signal.effective_window.train == HORIZON_PARAMS["short"]["train"]
-        assert detail.signal.effective_window.test == HORIZON_PARAMS["short"]["test"]
+        assert detail.signal.effective_window.train == HORIZON_PARAMS["weekly"]["train"]
+        assert detail.signal.effective_window.test == HORIZON_PARAMS["weekly"]["test"]
 
 
 # ===================================================================
@@ -442,7 +450,7 @@ class TestLowDataModes:
 
 class TestHorizonMaxYears:
     def test_max_years_present_and_correct(self):
-        expected = {"short": 5, "medium": 10, "long": 20}
+        expected = {"weekly": 5, "monthly": 10, "quarterly": 20}
         for h, years in expected.items():
             assert "max_years" in HORIZON_PARAMS[h], f"{h} missing max_years"
             assert HORIZON_PARAMS[h]["max_years"] == years, f"{h}: expected {years}"
@@ -457,18 +465,18 @@ class TestHorizonMaxYears:
             )
 
     def test_engine_truncates_close_to_max_years(self):
-        """Passing 40 years of data with short horizon should produce same
+        """Passing 40 years of data with weekly horizon should produce the same
         result as passing only 5 years, because the engine truncates."""
         n_full = 10000  # ~40 years
-        n_short = HORIZON_PARAMS["short"]["max_years"] * 252  # 1260
+        n_short = HORIZON_PARAMS["weekly"]["max_years"] * 252  # 1260
         close_full = _uptrend(n_full)
         close_short = close_full[-n_short:]
 
         detail_full = run_family_ensemble_full(
-            "sma", close_full, symbol="TEST", horizon="short",
+            "sma", close_full, symbol="TEST", horizon="weekly",
         )
         detail_short = run_family_ensemble_full(
-            "sma", close_short, symbol="TEST", horizon="short",
+            "sma", close_short, symbol="TEST", horizon="weekly",
         )
 
         # Same number of OOS windows
@@ -515,8 +523,8 @@ class TestCooldown:
         """OOS eval with cooldown should produce fewer trades."""
         close = _uptrend(1500)
         v = _make_variant("price_vs_sma", window=20)
-        results_0 = evaluate_variant_oos(close, v, "medium", cooldown_bars=0)
-        results_5 = evaluate_variant_oos(close, v, "medium", cooldown_bars=5)
+        results_0 = evaluate_variant_oos(close, v, "monthly", cooldown_bars=0)
+        results_5 = evaluate_variant_oos(close, v, "monthly", cooldown_bars=5)
         # Both should produce valid windows
         assert len(results_0) > 0
         assert len(results_5) > 0
@@ -687,20 +695,21 @@ def _make_high_low(close: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
 class TestExpandedFamilyCoverage:
     @pytest.mark.parametrize("family", _EXPANDED_FAMILIES)
-    @pytest.mark.parametrize("horizon", ["short", "medium", "long"])
+    @pytest.mark.parametrize("horizon", ["weekly", "monthly", "quarterly"])
     def test_all_families_generate_thirty_candidates(self, family, horizon):
         candidates = generate_candidates(family, horizon)
-        assert len(candidates) == 30, f"{family}/{horizon}: got {len(candidates)}"
+        expected = _EXPECTED_CANDIDATE_COUNTS.get(family, {}).get(horizon, 30)
+        assert len(candidates) == expected, f"{family}/{horizon}: got {len(candidates)}"
 
     @pytest.mark.parametrize("family", _EXPANDED_FAMILIES)
-    @pytest.mark.parametrize("horizon", ["short", "medium", "long"])
+    @pytest.mark.parametrize("horizon", ["weekly", "monthly", "quarterly"])
     def test_all_families_candidate_ids_are_deterministic(self, family, horizon):
         first = generate_candidates(family, horizon)
         second = generate_candidates(family, horizon)
         assert [candidate.variant_id for candidate in first] == [candidate.variant_id for candidate in second]
 
     @pytest.mark.parametrize("family", _EXPANDED_FAMILIES)
-    @pytest.mark.parametrize("horizon", ["short", "medium", "long"])
+    @pytest.mark.parametrize("horizon", ["weekly", "monthly", "quarterly"])
     def test_all_families_warmup_fits_train_budget(self, family, horizon):
         candidates = generate_candidates(family, horizon)
         train_window = HORIZON_PARAMS[horizon]["train"]
@@ -711,7 +720,7 @@ class TestExpandedFamilyCoverage:
         close = _oscillating_uptrend(900)
         high, low = _make_high_low(close)
         volume = _make_volume(len(close))
-        variant = generate_candidates(family, "medium")[0]
+        variant = generate_candidates(family, "monthly")[0]
 
         sig = compute_signal_array(close, variant, volume=volume, high=high, low=low)
 
@@ -732,81 +741,82 @@ class TestExpandedFamilyCoverage:
             high=high,
             low=low,
             symbol="TEST",
-            horizon="medium",
+            horizon="monthly",
         )
 
         assert detail.signal.family == family
-        assert detail.signal.tested_count == 30
+        expected = _EXPECTED_CANDIDATE_COUNTS.get(family, {}).get("monthly", 30)
+        assert detail.signal.tested_count == expected
         assert -100.0 <= detail.signal.family_score_pct <= 100.0
 
 
 class TestRecalibrationAnchors:
     def test_sma_anchor_windows_land_in_expected_horizons(self):
-        medium_windows = {candidate.params["window"] for candidate in generate_candidates("sma", "medium")}
-        long_windows = {candidate.params["window"] for candidate in generate_candidates("sma", "long")}
-        assert 50 in medium_windows
-        assert 200 in long_windows
+        monthly_windows = {candidate.params["window"] for candidate in generate_candidates("sma", "monthly")}
+        quarterly_windows = {candidate.params["window"] for candidate in generate_candidates("sma", "quarterly")}
+        assert 50 in monthly_windows
+        assert 200 in quarterly_windows
 
     def test_macd_anchor_is_in_medium_grid(self):
         params = {
             (candidate.params["fast"], candidate.params["slow"], candidate.params["signal"])
-            for candidate in generate_candidates("macd", "medium")
+            for candidate in generate_candidates("macd", "monthly")
         }
         assert (12, 26, 9) in params
 
     def test_ichimoku_anchor_is_in_medium_grid(self):
         params = {
             (candidate.params["tenkan"], candidate.params["kijun"], candidate.params["senkou_b"])
-            for candidate in generate_candidates("ichimoku", "medium")
+            for candidate in generate_candidates("ichimoku", "monthly")
         }
         assert (9, 26, 52) in params
 
     def test_uo_anchor_is_in_medium_grid(self):
         params = {
             (candidate.params["period_1"], candidate.params["period_2"], candidate.params["period_3"])
-            for candidate in generate_candidates("uo", "medium")
+            for candidate in generate_candidates("uo", "monthly")
         }
         assert (7, 14, 28) in params
 
     def test_tsi_anchor_is_in_medium_grid(self):
         params = {
-            (candidate.params["long_period"], candidate.params["short_period"])
-            for candidate in generate_candidates("tsi", "medium")
+            (candidate.params["quarterly_period"], candidate.params["weekly_period"])
+            for candidate in generate_candidates("tsi", "monthly")
         }
         assert (25, 13) in params
 
     def test_psar_default_is_in_medium_grid(self):
         params = {
             (candidate.params["af_step"], candidate.params["af_max"])
-            for candidate in generate_candidates("psar", "medium")
+            for candidate in generate_candidates("psar", "monthly")
         }
         assert (0.02, 0.2) in params
 
     def test_rsi_and_adx_wilder_defaults_are_retained(self):
-        rsi_periods = {candidate.params["period"] for candidate in generate_candidates("rsi", "short")}
+        rsi_periods = {candidate.params["period"] for candidate in generate_candidates("rsi", "weekly")}
         adx_params = {
             (candidate.params["period"], candidate.params["adx_threshold"])
-            for candidate in generate_candidates("adx", "short")
+            for candidate in generate_candidates("adx", "weekly")
         }
         assert 14 in rsi_periods
         assert (14, 20) in adx_params
 
     def test_psar_horizons_are_distinct(self):
-        short_params = {
+        weekly_params = {
             (candidate.params["af_step"], candidate.params["af_max"])
-            for candidate in generate_candidates("psar", "short")
+            for candidate in generate_candidates("psar", "weekly")
         }
-        medium_params = {
+        monthly_params = {
             (candidate.params["af_step"], candidate.params["af_max"])
-            for candidate in generate_candidates("psar", "medium")
+            for candidate in generate_candidates("psar", "monthly")
         }
-        long_params = {
+        quarterly_params = {
             (candidate.params["af_step"], candidate.params["af_max"])
-            for candidate in generate_candidates("psar", "long")
+            for candidate in generate_candidates("psar", "quarterly")
         }
-        assert short_params != medium_params
-        assert medium_params != long_params
-        assert short_params != long_params
+        assert weekly_params != monthly_params
+        assert monthly_params != quarterly_params
+        assert weekly_params != quarterly_params
 
 
 # ---------------------------------------------------------------------------

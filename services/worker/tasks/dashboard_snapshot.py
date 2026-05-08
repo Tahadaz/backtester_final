@@ -1,48 +1,121 @@
+"""Dashboard snapshot worker — Phase 1.
+
+Materialises a ``dashboard_snapshot`` row for each horizon by calling the
+shared ``build_dashboard_payload`` service. Uses a CAS upsert so a slow
+worker can never overwrite a fresher row written in the meantime.
+
+Also writes a ``pipeline_revision`` row for lineage tracking.
+"""
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
-import subprocess
-import sys
-from pathlib import Path
-
+from datetime import date, datetime, timezone
 
 logger = logging.getLogger(__name__)
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-EXPORT_SCRIPT = REPO_ROOT / "frontend" / "scripts" / "export-scores.py"
+HORIZONS = ("weekly", "monthly", "quarterly")
 
+
+def _cas_upsert(db, horizon: str, as_of: date, payload: dict, upstream_rev: dict) -> bool:
+    """Insert or conditionally update the snapshot row.
+
+    Returns True if the row was written (new or fresher), False if skipped
+    because a newer row already exists.
+    """
+    from sqlalchemy import text
+
+    upstream_json = json.dumps(upstream_rev, sort_keys=True, default=str)
+    result = db.execute(
+        text("""
+        INSERT INTO dashboard_snapshot (horizon, as_of_date, payload_jsonb, upstream_rev, computed_at)
+        VALUES (:horizon, :as_of_date, :payload::jsonb, :upstream_rev::jsonb, now())
+        ON CONFLICT (horizon, as_of_date) DO UPDATE
+            SET payload_jsonb  = EXCLUDED.payload_jsonb,
+                upstream_rev   = EXCLUDED.upstream_rev,
+                computed_at    = EXCLUDED.computed_at
+            WHERE dashboard_snapshot.upstream_rev::text < EXCLUDED.upstream_rev::text
+        RETURNING horizon
+        """),
+        {
+            "horizon": horizon,
+            "as_of_date": as_of,
+            "payload": json.dumps(payload, default=str),
+            "upstream_rev": upstream_json,
+        },
+    )
+    db.commit()
+    return result.rowcount > 0
+
+
+def _write_pipeline_revision(db, horizon: str, upstream_rev: dict, payload: dict) -> None:
+    content = json.dumps(payload, sort_keys=True, default=str).encode()
+    content_hash = hashlib.sha256(content).hexdigest()[:64]
+    stage = f"dashboard_snapshot:{horizon}"
+    from sqlalchemy import text
+    db.execute(
+        text("""
+        INSERT INTO pipeline_revision (stage, upstream_rev, content_hash, created_at)
+        VALUES (:stage, :upstream_rev::jsonb, :content_hash, now())
+        ON CONFLICT (stage, content_hash) DO NOTHING
+        """),
+        {
+            "stage": stage,
+            "upstream_rev": json.dumps(upstream_rev, sort_keys=True, default=str),
+            "content_hash": content_hash,
+        },
+    )
+    db.commit()
+
+
+def refresh_dashboard_snapshot(horizon: str | None = None) -> dict[str, bool]:
+    """Build and persist dashboard snapshots.
+
+    Args:
+        horizon: specific horizon to refresh, or None to refresh all three.
+
+    Returns:
+        dict mapping horizon -> wrote (True if CAS succeeded, False if skipped).
+    """
+    from services.api.app.db import _ensure_session_factory
+    from services.api.app.services.dashboard_builder import (
+        build_dashboard_payload,
+        derive_upstream_rev,
+    )
+
+    horizons = [horizon] if horizon else list(HORIZONS)
+    Session = _ensure_session_factory()
+    results: dict[str, bool] = {}
+
+    for h in horizons:
+        db = Session()
+        try:
+            upstream_rev = derive_upstream_rev(db, h)
+            payload = build_dashboard_payload(db, h)
+            as_of = date.today()
+            wrote = _cas_upsert(db, h, as_of, payload, upstream_rev)
+            if wrote:
+                _write_pipeline_revision(db, h, upstream_rev, payload)
+                logger.info("dashboard_snapshot: wrote %s (as_of=%s)", h, as_of)
+            else:
+                logger.info("dashboard_snapshot: skipped %s — existing row is fresher", h)
+            results[h] = wrote
+        except Exception:
+            logger.exception("dashboard_snapshot: failed for horizon=%s", h)
+            db.rollback()
+            results[h] = False
+        finally:
+            db.close()
+
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Backward-compatible shim — called by refresh_market_data / ingest_market_data
+# ---------------------------------------------------------------------------
 
 def regenerate_dashboard_snapshot() -> bool:
-    """
-    Refresh the static dashboard/signal JSON snapshots used by the frontend.
-
-    This is intentionally best-effort: market-data refresh should not be marked
-    failed just because snapshot materialization failed afterward.
-    """
-    if not EXPORT_SCRIPT.exists():
-        logger.warning("dashboard snapshot export script not found: %s", EXPORT_SCRIPT)
-        return False
-
-    try:
-        completed = subprocess.run(
-            [sys.executable, str(EXPORT_SCRIPT)],
-            cwd=str(REPO_ROOT),
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-    except subprocess.CalledProcessError as exc:
-        stdout = (exc.stdout or "").strip()
-        stderr = (exc.stderr or "").strip()
-        logger.warning(
-            "dashboard snapshot regeneration failed with exit code %s\nstdout:\n%s\nstderr:\n%s",
-            exc.returncode,
-            stdout,
-            stderr,
-        )
-        return False
-
-    stdout = (completed.stdout or "").strip()
-    if stdout:
-        logger.info("dashboard snapshot regeneration output:\n%s", stdout)
-    return True
+    """Refresh all three horizon snapshots. Returns True if all succeeded."""
+    results = refresh_dashboard_snapshot()
+    return all(results.values())

@@ -81,6 +81,20 @@ def _enqueue_quarterly_recalibration() -> None:
         log.exception("scheduler: failed to enqueue quarterly factor recalibration")
 
 
+def _enqueue_dashboard_snapshot() -> None:
+    """Enqueue a full dashboard snapshot refresh (all three horizons)."""
+    try:
+        q = get_market_refresh_queue()
+        job = q.enqueue(
+            "services.worker.tasks.dashboard_snapshot.refresh_dashboard_snapshot",
+            None,
+            job_timeout=600,
+        )
+        log.info("scheduler: enqueued dashboard snapshot job=%s", job.id)
+    except Exception:
+        log.exception("scheduler: failed to enqueue dashboard snapshot")
+
+
 _scheduler: BackgroundScheduler | None = None
 
 
@@ -110,8 +124,17 @@ def start_scheduler() -> None:
         id="quarterly_factor_recalibration",
         replace_existing=True,
     )
+    _scheduler.add_job(
+        _enqueue_dashboard_snapshot,
+        trigger=CronTrigger(hour=20, minute=30, day_of_week="mon-fri", timezone="Africa/Casablanca"),
+        id="daily_dashboard_snapshot",
+        replace_existing=True,
+    )
     _scheduler.start()
-    log.info("scheduler: started - daily refresh @20:00, factor monitor @22:00, quarterly recalib @Jan/Apr/Jul/Oct 1st")
+    log.info(
+        "scheduler: started - daily refresh @20:00, dashboard snapshot @20:30, "
+        "factor monitor @22:00, quarterly recalib @Jan/Apr/Jul/Oct 1st"
+    )
 
 
 def stop_scheduler() -> None:

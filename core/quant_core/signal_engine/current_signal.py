@@ -131,7 +131,9 @@ def _get_indicator_value(close: np.ndarray, variant, *, volume=None, high=None, 
         _plus, _minus, arr = compute_adx_series(high, low, close, int(p["period"]))
         value = float(arr[-1]) if np.isfinite(arr[-1]) else None
     elif arch == "tsi_zero":
-        arr = compute_tsi_series(close, int(p["long_period"]), int(p["short_period"]))
+        long_period = int(p.get("long_period", p["quarterly_period"]))
+        short_period = int(p.get("short_period", p["weekly_period"]))
+        arr = compute_tsi_series(close, long_period, short_period)
         value = float(arr[-1]) if np.isfinite(arr[-1]) else None
     elif arch == "stoch_level" and high is not None and low is not None:
         k_vals, _d_vals = compute_stochastic_series(high, low, close, int(p["k_period"]), int(p["d_period"]))
@@ -196,7 +198,9 @@ def _build_explanation(current_close: float, indicator_val: float | None, varian
     if arch == "adx_trend":
         return f"ADX({p['period']}) threshold={p['adx_threshold']} value={_fmt(indicator_val)} -> {label}"
     if arch == "tsi_zero":
-        return f"TSI({p['long_period']},{p['short_period']})={_fmt(indicator_val)} -> {label}"
+        long_period = int(p.get("long_period", p["quarterly_period"]))
+        short_period = int(p.get("short_period", p["weekly_period"]))
+        return f"TSI({long_period},{short_period})={_fmt(indicator_val)} -> {label}"
     if arch == "stoch_level":
         return f"Stochastic({p['k_period']},{p['d_period']}) %K={_fmt(indicator_val)} -> {label}"
     if arch == "cci_level":
