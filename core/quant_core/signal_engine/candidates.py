@@ -60,7 +60,7 @@ def variant_min_history(variant: VariantDef) -> int:
     if arch == "adx_trend":
         return 2 * int(p["period"])
     if arch == "tsi_zero":
-        return int(p["long_period"]) + int(p["short_period"])
+        return int(p["quarterly_period"]) + int(p["weekly_period"])
     if arch == "stoch_level":
         return int(p["k_period"]) + int(p["d_period"])
     if arch == "cci_level":
@@ -131,141 +131,141 @@ def _anchored_int_grid(low: int, high: int, n: int, anchors: tuple[int, ...] = (
 
 
 _TREND_WINDOWS: dict[str, list[int]] = {
-    "short": _dense_int_grid(5, 20),
-    "medium": _anchored_int_grid(21, 80, 30, anchors=(50,)),
-    "long": _anchored_int_grid(120, 250, 30, anchors=(200,)),
+    "weekly": _dense_int_grid(5, 20),
+    "monthly": _anchored_int_grid(21, 80, 30, anchors=(50,)),
+    "quarterly": _anchored_int_grid(120, 250, 30, anchors=(200,)),
 }
 
 _EMA_CROSS_PARAMS: dict[str, dict[str, list[int]]] = {
-    "short": {"fast": [3, 4, 5, 6, 8, 10], "slow": [12, 15, 18, 20, 25]},
-    "medium": {"fast": [8, 10, 12, 14, 16, 20], "slow": [26, 34, 42, 50, 60]},
-    "long": {"fast": [20, 26, 32, 38, 44, 50], "slow": [60, 90, 120, 150, 200]},
+    "weekly": {"fast": [3, 4, 5, 6, 8, 10], "slow": [12, 15, 18, 20, 25]},
+    "monthly": {"fast": [8, 10, 12, 14, 16, 20], "slow": [26, 34, 42, 50, 60]},
+    "quarterly": {"fast": [20, 26, 32, 38, 44, 50], "slow": [60, 90, 120, 150, 200]},
 }
 
 _ICHIMOKU_PARAMS: dict[str, dict[str, list[int]]] = {
-    "short": {"tenkan": [5, 6, 7, 9, 10], "kijun": [12, 16, 20], "senkou_b": [22, 40]},
-    "medium": {"tenkan": [9, 11, 13, 15, 18], "kijun": [22, 26, 40], "senkou_b": [52, 80]},
-    "long": {"tenkan": [18, 21, 24, 27, 30], "kijun": [40, 60, 80], "senkou_b": [90, 180]},
+    "weekly": {"tenkan": [5, 6, 7, 9, 10], "kijun": [12, 16, 20], "senkou_b": [22, 40]},
+    "monthly": {"tenkan": [9, 11, 13, 15, 18], "kijun": [22, 26, 40], "senkou_b": [52, 80]},
+    "quarterly": {"tenkan": [18, 21, 24, 27, 30], "kijun": [40, 60, 80], "senkou_b": [90, 180]},
 }
 
 _PSAR_PARAMS: dict[str, dict[str, list[float]]] = {
-    "short": {
+    "weekly": {
         "af_step": [0.025, 0.03, 0.035, 0.04, 0.045, 0.05],
         "af_max": [0.20, 0.25, 0.30, 0.35, 0.40],
     },
-    "medium": {
+    "monthly": {
         "af_step": [0.01, 0.015, 0.02, 0.025, 0.03],
         "af_max": [0.15, 0.20, 0.25, 0.30, 0.40, 0.50],
     },
-    "long": {
+    "quarterly": {
         "af_step": [0.005, 0.0075, 0.01, 0.0125, 0.015],
         "af_max": [0.08, 0.10, 0.12, 0.15, 0.18, 0.22],
     },
 }
 
 _MACD_PARAMS: dict[str, dict[str, list[int]]] = {
-    "short": {"fast": [5, 6, 7, 8, 10], "slow": [12, 17, 20], "signal": [5, 9]},
-    "medium": {"fast": [10, 12, 14, 16, 18], "slow": [22, 26, 45], "signal": [7, 9]},
-    "long": {"fast": [18, 21, 24, 27, 30], "slow": [50, 75, 100], "signal": [9, 18]},
+    "weekly": {"fast": [5, 6, 7, 8, 10], "slow": [12, 17, 20], "signal": [5, 9]},
+    "monthly": {"fast": [10, 12, 14, 16, 18], "slow": [22, 26, 45], "signal": [7, 9]},
+    "quarterly": {"fast": [18, 21, 24, 27, 30], "slow": [50, 75, 100], "signal": [9, 18]},
 }
 
 _ROC_PERIODS: dict[str, list[int]] = {
-    "short": _dense_int_grid(5, 20),
-    "medium": _anchored_int_grid(22, 80, 30, anchors=(60,)),
-    "long": _anchored_int_grid(120, 250, 30, anchors=(200,)),
+    "weekly": _dense_int_grid(5, 20),
+    "monthly": _anchored_int_grid(22, 80, 30, anchors=(60,)),
+    "quarterly": _anchored_int_grid(120, 250, 30, anchors=(200,)),
 }
 
 _TRIX_PERIODS: dict[str, list[int]] = {
-    "short": _dense_int_grid(2, 7),
-    # The recalibration ADR's raw 7-27 medium band only yields 21 integers.
+    "weekly": _dense_int_grid(2, 7),
+    # The recalibration ADR's raw 7-27 monthly band only yields 21 integers.
     # Apply the same widening rule used everywhere else to satisfy the 30-slot contract.
-    "medium": _dense_int_grid(7, 27),
-    "long": _anchored_int_grid(40, 84, 30),
+    "monthly": _dense_int_grid(7, 27),
+    "quarterly": _anchored_int_grid(40, 84, 30),
 }
 
 _ADX_PERIODS: dict[str, list[int]] = {
-    "short": list(range(5, 15)),
-    "medium": _anchored_int_grid(14, 30, 10, anchors=(14,)),
-    "long": _anchored_int_grid(25, 50, 10),
+    "weekly": list(range(5, 15)),
+    "monthly": _anchored_int_grid(14, 30, 10, anchors=(14,)),
+    "quarterly": _anchored_int_grid(25, 50, 10),
 }
 _ADX_THRESHOLDS: dict[str, list[int]] = {
-    "short": [20, 25, 30],
-    "medium": [20, 25, 30],
-    "long": [25, 30, 35],
+    "weekly": [20, 25, 30],
+    "monthly": [20, 25, 30],
+    "quarterly": [25, 30, 35],
 }
 
 _TSI_PARAMS: dict[str, dict[str, list[int]]] = {
-    "short": {"long_period": [9, 11, 13, 15, 17, 18], "short_period": [4, 5, 6, 7, 8]},
-    "medium": {"long_period": [20, 25, 28, 32, 36, 40], "short_period": [10, 12, 13, 15, 18]},
-    "long": {"long_period": [45, 50, 55, 60, 70, 80], "short_period": [15, 18, 21, 24, 30]},
+    "weekly": {"quarterly_period": [9, 11, 13, 15, 17, 18], "weekly_period": [4, 5, 6, 7, 8]},
+    "monthly": {"quarterly_period": [20, 25, 28, 32, 36, 40], "weekly_period": [10, 12, 13, 15, 18]},
+    "quarterly": {"quarterly_period": [45, 50, 55, 60, 70, 80], "weekly_period": [15, 18, 21, 24, 30]},
 }
 
 _RSI_PERIODS: dict[str, list[int]] = {
-    "short": list(range(5, 15)),
-    "medium": _anchored_int_grid(14, 28, 10, anchors=(21,)),
-    "long": _anchored_int_grid(21, 50, 10),
+    "weekly": list(range(5, 15)),
+    "monthly": _anchored_int_grid(14, 28, 10, anchors=(21,)),
+    "quarterly": _anchored_int_grid(21, 50, 10),
 }
 _RSI_THRESHOLDS: dict[str, list[tuple[int, int]]] = {
-    "short": [(30, 70), (25, 75), (20, 80)],
-    "medium": [(25, 75), (20, 80), (15, 85)],
-    "long": [(20, 80), (15, 85), (10, 90)],
+    "weekly": [(30, 70), (25, 75), (20, 80)],
+    "monthly": [(25, 75), (20, 80), (15, 85)],
+    "quarterly": [(20, 80), (15, 85), (10, 90)],
 }
 
 _STOCHASTIC_PARAMS: dict[str, dict[str, list[int]]] = {
-    "short": {"k_period": list(range(5, 15)), "d_period": [3, 5, 7]},
-    "medium": {"k_period": _anchored_int_grid(14, 28, 10, anchors=(14,)), "d_period": [3, 5, 7]},
-    "long": {"k_period": _anchored_int_grid(21, 50, 10), "d_period": [5, 7, 9]},
+    "weekly": {"k_period": list(range(5, 15)), "d_period": [3, 5, 7]},
+    "monthly": {"k_period": _anchored_int_grid(14, 28, 10, anchors=(14,)), "d_period": [3, 5, 7]},
+    "quarterly": {"k_period": _anchored_int_grid(21, 50, 10), "d_period": [5, 7, 9]},
 }
 
 _CCI_PERIODS: dict[str, list[int]] = {
-    "short": _dense_int_grid(5, 20),
-    "medium": _anchored_int_grid(22, 80, 30),
-    "long": _anchored_int_grid(120, 250, 30, anchors=(200,)),
+    "weekly": _dense_int_grid(5, 20),
+    "monthly": _anchored_int_grid(22, 80, 30),
+    "quarterly": _anchored_int_grid(120, 250, 30, anchors=(200,)),
 }
 
 _MFI_PERIODS: dict[str, list[int]] = {
-    "short": list(range(5, 15)),
-    "medium": _anchored_int_grid(14, 28, 10, anchors=(14,)),
-    "long": _anchored_int_grid(21, 50, 10),
+    "weekly": list(range(5, 15)),
+    "monthly": _anchored_int_grid(14, 28, 10, anchors=(14,)),
+    "quarterly": _anchored_int_grid(21, 50, 10),
 }
 _MFI_THRESHOLDS: dict[str, list[tuple[int, int]]] = {
-    "short": [(20, 80), (15, 85), (10, 90)],
-    "medium": [(20, 80), (15, 85), (10, 90)],
-    "long": [(20, 80), (15, 85), (10, 90)],
+    "weekly": [(20, 80), (15, 85), (10, 90)],
+    "monthly": [(20, 80), (15, 85), (10, 90)],
+    "quarterly": [(20, 80), (15, 85), (10, 90)],
 }
 
 _UO_PARAMS: dict[str, dict[str, list[int]]] = {
-    "short": {"period_1": [4, 5, 6, 7, 8], "period_2": [9, 11, 14], "period_3": [18, 28]},
-    "medium": {"period_1": [7, 8, 9, 11, 13], "period_2": [14, 21, 27], "period_3": [28, 56]},
-    "long": {"period_1": [14, 16, 18, 21, 24], "period_2": [25, 35, 49], "period_3": [50, 100]},
+    "weekly": {"period_1": [4, 5, 6, 7, 8], "period_2": [9, 11, 14], "period_3": [18, 28]},
+    "monthly": {"period_1": [7, 8, 9, 11, 13], "period_2": [14, 21, 27], "period_3": [28, 56]},
+    "quarterly": {"period_1": [14, 16, 18, 21, 24], "period_2": [25, 35, 49], "period_3": [50, 100]},
 }
 
 _OBV_EMA_PERIODS = _TREND_WINDOWS
 
 _CMF_PERIODS: dict[str, list[int]] = {
-    "short": _dense_int_grid(5, 20),
-    "medium": _anchored_int_grid(22, 80, 30),
-    "long": _anchored_int_grid(80, 150, 30),
+    "weekly": _dense_int_grid(5, 20),
+    "monthly": _anchored_int_grid(22, 80, 30),
+    "quarterly": _anchored_int_grid(80, 150, 30),
 }
 
 _AD_EMA_PERIODS = _TREND_WINDOWS
 
 _VWAP_PARAMS: dict[str, dict[str, list[float | int]]] = {
-    "short": {"period": _anchored_int_grid(5, 20, 10), "threshold_pct": [0.5, 1.0, 2.0]},
-    "medium": {"period": _anchored_int_grid(22, 80, 10), "threshold_pct": [0.5, 1.0, 2.0]},
-    "long": {"period": _anchored_int_grid(120, 250, 10), "threshold_pct": [1.0, 2.0, 3.0]},
+    "weekly": {"period": _anchored_int_grid(5, 20, 10), "threshold_pct": [0.5, 1.0, 2.0]},
+    "monthly": {"period": _anchored_int_grid(22, 80, 10), "threshold_pct": [0.5, 1.0, 2.0]},
+    "quarterly": {"period": _anchored_int_grid(120, 250, 10), "threshold_pct": [1.0, 2.0, 3.0]},
 }
 
 _FI_PERIODS: dict[str, list[int]] = {
-    "short": _dense_int_grid(2, 2),
-    "medium": _TREND_WINDOWS["medium"],
-    "long": _TREND_WINDOWS["long"],
+    "weekly": _dense_int_grid(2, 2),
+    "monthly": _TREND_WINDOWS["monthly"],
+    "quarterly": _TREND_WINDOWS["quarterly"],
 }
 
 
 def _install_canonical_horizon_keys(grid: dict) -> None:
     """Expose the new horizon names while preserving existing grid definitions."""
-    aliases = {"weekly": "short", "monthly": "medium", "quarterly": "long"}
+    aliases = {"weekly": "weekly", "monthly": "monthly", "quarterly": "quarterly"}
     for new_key, old_key in aliases.items():
         if old_key in grid and new_key not in grid:
             grid[new_key] = grid[old_key]
@@ -322,7 +322,7 @@ def _make_variant(family: str, archetype: str, params: dict, horizon: str) -> Va
     elif archetype == "adx_trend":
         description = f"ADX({params['period']},{params['adx_threshold']})"
     elif archetype == "tsi_zero":
-        description = f"TSI({params['long_period']},{params['short_period']})"
+        description = f"TSI({params['quarterly_period']},{params['weekly_period']})"
     elif archetype == "stoch_level":
         description = f"STOCH({params['k_period']},{params['d_period']})"
     elif archetype == "cci_level":
@@ -454,12 +454,12 @@ def generate_tsi_candidates(horizon: str) -> list[VariantDef]:
         _make_variant(
             "tsi",
             "tsi_zero",
-            {"long_period": long_period, "short_period": short_period},
+            {"quarterly_period": quarterly_period, "weekly_period": weekly_period},
             horizon,
         )
-        for long_period in cfg["long_period"]
-        for short_period in cfg["short_period"]
-        if long_period > short_period
+        for quarterly_period in cfg["quarterly_period"]
+        for weekly_period in cfg["weekly_period"]
+        if quarterly_period > weekly_period
     ]
     return _take_first_n(items)
 

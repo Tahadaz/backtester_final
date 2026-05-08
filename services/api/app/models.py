@@ -1066,6 +1066,26 @@ class PipelineRevision(Base):
     )
 
 
+class DashboardSnapshot(Base):
+    """Pre-computed dashboard payload for one (horizon, as_of_date).
+
+    Written by the worker via CAS upsert. The API in snapshot/shadow mode
+    reads ``payload_jsonb`` instead of running the live aggregation.
+    """
+
+    __tablename__ = "dashboard_snapshot"
+
+    horizon = Column(String(16), primary_key=True)
+    as_of_date = Column(Date, primary_key=True)
+    payload_jsonb = Column(JSONB, nullable=False)
+    upstream_rev = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    computed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_dashboard_snapshot_horizon_computed", "horizon", "computed_at"),
+    )
+
+
 class SnapshotColumns:
     """Mixin: every Phase 1+ snapshot/cache table inherits these columns.
 
