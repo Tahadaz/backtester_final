@@ -77,7 +77,7 @@ def test_compute_signal_backtest_uses_requested_config_and_updates_job(monkeypat
     pending_job = SignalEngineBatchJob(
         id=uuid.uuid4(),
         symbol="AAA",
-        horizon="short",
+        horizon="weekly",
         variant="expanded",
         job_type="signal_backtest",
         status="pending",
@@ -90,7 +90,7 @@ def test_compute_signal_backtest_uses_requested_config_and_updates_job(monkeypat
         symbol="AAA",
         family="sma",
         category="tendance",
-        horizon="short",
+        horizon="weekly",
         variant="expanded",
         status="succeeded",
         representatives_json=[{"variant_id": "v1", "archetype": "sma_cross", "params": {}, "normalized_weight": 1.0}],
@@ -151,7 +151,7 @@ def test_compute_signal_backtest_uses_requested_config_and_updates_job(monkeypat
 
     result = backtest_mod.compute_signal_backtest_for_symbol(
         "AAA",
-        "short",
+        "weekly",
         window_start="2024-01-01",
         window_end="2024-01-20",
         mc_config={
@@ -196,14 +196,14 @@ def test_load_engine_family_rows_backfills_missing_family():
         symbol="AAA",
         family="sma",
         category="tendance",
-        horizon="short",
+        horizon="weekly",
         variant="expanded",
         status="succeeded",
         representatives_json=[{"variant_id": "v1", "archetype": "price_vs_sma", "params": {"window": 3}}],
     )
     fake_db = _FakeDB({SignalEngineFamilyResult: [family_row]})
 
-    rows = backtest_mod._load_engine_family_rows(fake_db, "AAA", "short", "expanded")
+    rows = backtest_mod._load_engine_family_rows(fake_db, "AAA", "weekly", "expanded")
 
     assert rows["sma"]["representatives_json"][0]["family"] == "sma"
     assert "family" not in family_row.representatives_json[0]
@@ -213,7 +213,7 @@ def test_compute_signal_backtest_persists_failed_scope_when_series_build_fails(m
     pending_job = SignalEngineBatchJob(
         id=uuid.uuid4(),
         symbol="AAA",
-        horizon="short",
+        horizon="weekly",
         variant="expanded",
         job_type="signal_backtest",
         status="pending",
@@ -226,7 +226,7 @@ def test_compute_signal_backtest_persists_failed_scope_when_series_build_fails(m
         symbol="AAA",
         family="sma",
         category="tendance",
-        horizon="short",
+        horizon="weekly",
         variant="expanded",
         status="succeeded",
         representatives_json=[{"variant_id": "v1", "archetype": "price_vs_sma", "params": {"window": 3}}],
@@ -274,7 +274,7 @@ def test_compute_signal_backtest_persists_failed_scope_when_series_build_fails(m
 
     result = backtest_mod.compute_signal_backtest_for_symbol(
         "AAA",
-        "short",
+        "weekly",
         window_start="2024-01-01",
         window_end="2024-01-20",
         rq_job_id="rq-2",

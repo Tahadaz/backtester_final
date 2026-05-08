@@ -80,9 +80,7 @@ services:
     restart: unless-stopped
 
   quant_api:
-    build:
-      context: ..
-      dockerfile: services/api/Dockerfile
+    image: ghcr.io/tahadaz/bt-api:${IMAGE_TAG:-latest}
     container_name: quant_api
     environment:
       REDIS_URL: redis://quant_redis:6379/0
@@ -101,6 +99,8 @@ services:
       S3_BUCKET: quant-artifacts
       S3_SECURE: "false"
       API_KEY: ${API_KEY:-}
+      INTERNAL_JWT_SECRET: ${INTERNAL_JWT_SECRET:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
       PYTHONPATH: /repo
     depends_on:
       quant_postgres:
@@ -180,9 +180,7 @@ services:
     <<: *wfo_worker_base
 
   quant_frontend:
-    build:
-      context: ../frontend
-      dockerfile: Dockerfile
+    image: ghcr.io/tahadaz/bt-frontend:${IMAGE_TAG:-latest}
     container_name: quant_frontend
     environment:
       UPSTREAM_API_BASE: http://quant_api:8000
@@ -190,8 +188,16 @@ services:
       ARTIFACT_MINIO_HOST: minio
       ARTIFACT_MINIO_PUBLIC_ORIGIN: http://minio:9000
       NODE_ENV: production
+      # Auth.js
+      DATABASE_URL: postgresql://app:app@quant_postgres:5432/quant
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-https://84.8.218.252.sslip.io}
+      # Sentry (optional — no-op when unset)
+      NEXT_PUBLIC_SENTRY_DSN: ${SENTRY_DSN:-}
     depends_on:
       quant_api:
+        condition: service_healthy
+      quant_postgres:
         condition: service_healthy
     restart: unless-stopped
 
@@ -199,7 +205,7 @@ services:
     image: caddy:2-alpine
     container_name: edge_proxy
     environment:
-      DOMAIN: ${DOMAIN:-34.123.220.144.sslip.io}
+      DOMAIN: ${DOMAIN:-84.8.218.252.sslip.io}
     depends_on:
       - quant_frontend
     ports:

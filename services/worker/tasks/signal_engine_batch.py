@@ -24,7 +24,7 @@ from services.worker.redis_utils import connect_redis_with_fallback
 
 logger = logging.getLogger(__name__)
 
-HORIZONS = ("short", "medium", "long")
+HORIZONS = ("weekly", "monthly", "quarterly")
 
 
 def _active_symbols(db: Session) -> list[str]:

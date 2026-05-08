@@ -257,6 +257,9 @@ def bucketed_forward_returns(
     *,
     n_bootstrap: int = 5000,
     return_calc_method: str = "close_to_close",
+    oos_dates: pd.DatetimeIndex | None = None,
+    recent_window: tuple[int, int] | None = None,
+    max_lookback_years: float | None = None,
 ) -> list[dict[str, Any]]:
     """For each (bucket, fwd_h) cell, return mean / CI / hit-rate metrics.
 
@@ -264,6 +267,14 @@ def bucketed_forward_returns(
     prices: close prices Series or OHLC DataFrame indexed by date.
     fwd_horizons: list of forward-return horizons in trading days.
     return_calc_method: 'close_to_close' | 'open_to_open' | 'close_to_open' | 'open_to_close'
+    oos_dates: if given, restrict the aligned index to these dates only
+        (Edge-OOS path; defaults to None = full series, preserving legacy callers).
+    recent_window: (n_min, n_target). If set, after the OOS filter, take the
+        most recent up to n_target obs per (bucket, fwd_h) cell. If the cell
+        ends up with fewer than n_min obs, emit an empty cell with the
+        truncated n.
+    max_lookback_years: hard ceiling on the aligned index measured from its
+        max date. None = no ceiling.
     Returns a list of cell dicts, one per (bucket, fwd_h).
     """
     score_series = _strip_tz(score_series)
@@ -273,12 +284,18 @@ def bucketed_forward_returns(
     if score_series.name is None:
         score_series = score_series.rename("score")
 
-    # For alignment, we just need the index. 
+    # For alignment, we just need the index.
     # _calculate_forward_returns handles the specific logic.
     if isinstance(prices, pd.Series):
         aligned_idx = pd.concat([score_series, prices], axis=1).dropna().index
     else:
         aligned_idx = pd.concat([score_series, prices], axis=1).dropna(subset=[score_series.name]).index
+
+    if oos_dates is not None:
+        aligned_idx = aligned_idx.intersection(pd.DatetimeIndex(oos_dates))
+    if max_lookback_years is not None and len(aligned_idx) > 0:
+        cutoff = aligned_idx.max() - pd.Timedelta(days=int(365.25 * max_lookback_years))
+        aligned_idx = aligned_idx[aligned_idx >= cutoff]
 
     if len(aligned_idx) < 20:
         return cells
@@ -291,6 +308,11 @@ def bucketed_forward_returns(
         h = int(h)
         fwd = _calculate_forward_returns(prices, h, method=return_calc_method)
         df = pd.concat([score, fwd, buckets], axis=1, keys=["score", "fwd", "bucket"]).dropna()
+        if oos_dates is not None and not df.empty:
+            oos_idx = pd.DatetimeIndex(oos_dates)
+            exit_idx = df.index.map(lambda ts: _forward_exit_date(prices.index, pd.Timestamp(ts), h, return_calc_method))
+            exit_mask = pd.DatetimeIndex(exit_idx).isin(oos_idx)
+            df = df.loc[exit_mask]
         if df.empty:
             for b in BUCKET_NAMES:
                 cells.append(_empty_cell(b, h))
@@ -298,6 +320,12 @@ def bucketed_forward_returns(
 
         for b in BUCKET_NAMES:
             sub = df[df["bucket"] == b]
+            if recent_window is not None:
+                n_min, n_target = recent_window
+                sub = sub.sort_index().tail(int(n_target))
+                if len(sub) < int(n_min):
+                    cells.append(_empty_cell(b, h, n=int(len(sub))))
+                    continue
             n = int(len(sub))
             if n < 5:
                 cells.append(_empty_cell(b, h, n=n))
@@ -327,6 +355,11 @@ def bucketed_forward_returns(
             except Exception:
                 ci_lo, ci_hi = float("nan"), float("nan")
 
+            sub_idx = sub.index
+            window_start = pd.Timestamp(sub_idx.min()).date().isoformat()
+            window_end = pd.Timestamp(sub_idx.max()).date().isoformat()
+            lookback_business_days = int(len(pd.bdate_range(sub_idx.min(), sub_idx.max())))
+
             cells.append({
                 "bucket": b,
                 "fwd_h": h,
@@ -338,6 +371,9 @@ def bucketed_forward_returns(
                 "hit_rate": _finite(hit_rate),
                 "hit_ci_lower": _finite(hit_lo),
                 "hit_ci_upper": _finite(hit_hi),
+                "window_start": window_start,
+                "window_end": window_end,
+                "lookback_business_days": lookback_business_days,
             })
 
     return cells
@@ -349,7 +385,29 @@ def _empty_cell(bucket: str, h: int, n: int = 0) -> dict[str, Any]:
         "mean": None, "std": None,
         "ci_lower": None, "ci_upper": None,
         "hit_rate": None, "hit_ci_lower": None, "hit_ci_upper": None,
+        "window_start": None, "window_end": None, "lookback_business_days": None,
     }
+
+
+def _forward_exit_date(
+    price_index: pd.Index,
+    entry_date: pd.Timestamp,
+    h: int,
+    method: str,
+) -> pd.Timestamp | pd.NaT:
+    """Return the price-index date used as the forward-return exit bar."""
+    idx = pd.DatetimeIndex(price_index)
+    try:
+        pos = idx.get_loc(entry_date)
+    except KeyError:
+        return pd.NaT
+    if not isinstance(pos, (int, np.integer)):
+        return pd.NaT
+    offset = h + 1 if method == "open_to_open" else h
+    exit_pos = int(pos) + int(offset)
+    if exit_pos < 0 or exit_pos >= len(idx):
+        return pd.NaT
+    return pd.Timestamp(idx[exit_pos])
 
 
 def _finite(v: float) -> float | None:

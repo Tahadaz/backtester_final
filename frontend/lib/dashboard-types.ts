@@ -1,3 +1,5 @@
+import type { TradingHorizon } from "@/lib/horizon"
+
 export interface FamilyScore {
   score_pct: number
   label: string
@@ -144,4 +146,6 @@ export interface DashboardCustomIndexDefinition {
 
 export type DashboardScoreSource = "both" | "signal_engine" | "wfo"
 export type DashboardView = "stocks" | "sectors" | "index"
-export type Horizon = "short" | "medium" | "long"
+export type DashboardHorizon = TradingHorizon
+export type DashboardHorizonAlias = DashboardHorizon | "short" | "medium" | "long"
+export type Horizon = DashboardHorizonAlias

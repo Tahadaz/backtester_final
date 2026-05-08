@@ -7,7 +7,7 @@ const isPagesBuild = buildTarget === "pages"
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  ...(isPagesBuild ? { output: "export", trailingSlash: true, distDir: ".next-pages" } : {}),
+  ...(isPagesBuild ? { output: "export", trailingSlash: true, distDir: ".next-pages" } : { output: "standalone" }),
   basePath: isPagesBuild ? process.env.NEXT_PUBLIC_BASE_PATH || "" : "",
   typescript: {
     ignoreBuildErrors: true,

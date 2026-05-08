@@ -11,6 +11,7 @@ from typing import Any
 import numpy as np
 from sqlalchemy.orm import Session
 
+from core.quant_core.horizons import DEFAULT_COST_BPS_PER_SIDE
 from core.quant_core.data import drop_incomplete_ohlcv_rows
 from core.quant_core.risk import monte_carlo_equity_paths, shuffled_trade_analysis
 from core.quant_core.signal_engine.backtest_mc import (
@@ -36,12 +37,12 @@ from services.worker.redis_utils import connect_redis_with_fallback
 
 logger = logging.getLogger(__name__)
 
-HORIZONS = ("short", "medium", "long")
+HORIZONS = ("weekly", "monthly", "quarterly")
 TIMEFRAME = "1D"
 CATEGORIES = ("tendance", "momentum", "oscillation", "volume")
 
 DEFAULT_WINDOW_START = "2026-01-01"
-DEFAULT_COST_BPS = 5.0
+DEFAULT_COST_BPS = DEFAULT_COST_BPS_PER_SIDE
 DEFAULT_SLIPPAGE_BPS = 5.0
 DEFAULT_SIDE_POLICY = "long_only"
 DEFAULT_BACKTEST_CONFIG = {
@@ -54,7 +55,7 @@ DEFAULT_BACKTEST_CONFIG = {
     "side_policy": DEFAULT_SIDE_POLICY,
 }
 MIN_TRADE_BOOTSTRAP_TRADES = 30
-BACKTEST_INPUT_LOGIC_VERSION = "family-aware-rebuild-v3-representatives-overlay"
+BACKTEST_INPUT_LOGIC_VERSION = "family-aware-rebuild-v4-horizon-param-caps"
 
 
 def run_signal_backtest_batch() -> dict:

@@ -10,6 +10,7 @@ from typing import Any, Literal
 
 import numpy as np
 
+from core.quant_core.horizons import DEFAULT_COST_BPS_PER_SIDE
 from .candidates import generate_candidates, variant_min_history
 from .current_signal import build_current_signal, compute_current_signals
 from .domain import (
@@ -109,7 +110,7 @@ def compute_family_score_timeseries(
     symbol: str | None = None,
     horizon: str | None = None,
     timeframe: str | None = None,
-    signal_cost_bps: float = 10.0,
+    signal_cost_bps: float = DEFAULT_COST_BPS_PER_SIDE,
 ) -> np.ndarray:
     """Per-bar family consensus score from representative variants.
 
@@ -514,9 +515,9 @@ def run_family_ensemble_full(
     high: np.ndarray | None = None,
     low: np.ndarray | None = None,
     symbol: str,
-    horizon: str = "medium",
+    horizon: str = "monthly",
     timeframe: str = "1D",
-    cost_bps: float = 10.0,
+    cost_bps: float = DEFAULT_COST_BPS_PER_SIDE,
     cooldown_bars: int = 0,
 ) -> EnsemblePipelineDetail:
     """Full A→G pipeline for any indicator family, returning all intermediate data."""
@@ -785,9 +786,9 @@ def run_family_ensemble(
     high: np.ndarray | None = None,
     low: np.ndarray | None = None,
     symbol: str,
-    horizon: str = "medium",
+    horizon: str = "monthly",
     timeframe: str = "1D",
-    cost_bps: float = 10.0,
+    cost_bps: float = DEFAULT_COST_BPS_PER_SIDE,
     cooldown_bars: int = 0,
 ) -> FamilyCombinedSignal:
     """Full A→G pipeline for any family (returns signal only)."""
@@ -805,9 +806,9 @@ def run_sma_ensemble_full(
     high: np.ndarray | None = None,
     low: np.ndarray | None = None,
     symbol: str,
-    horizon: str = "medium",
+    horizon: str = "monthly",
     timeframe: str = "1D",
-    cost_bps: float = 10.0,
+    cost_bps: float = DEFAULT_COST_BPS_PER_SIDE,
     cooldown_bars: int = 0,
 ) -> EnsemblePipelineDetail:
     """Full A→G pipeline for the SMA family (backward-compat wrapper)."""
@@ -824,9 +825,9 @@ def run_sma_ensemble(
     high: np.ndarray | None = None,
     low: np.ndarray | None = None,
     symbol: str,
-    horizon: str = "medium",
+    horizon: str = "monthly",
     timeframe: str = "1D",
-    cost_bps: float = 10.0,
+    cost_bps: float = DEFAULT_COST_BPS_PER_SIDE,
     cooldown_bars: int = 0,
 ) -> FamilyCombinedSignal:
     """Full A→G pipeline for the SMA family (convenience wrapper)."""

@@ -41,6 +41,9 @@ from ..schemas.analytics import (
     PredictiveHistoryTriggerOut,
     LeaderboardRow,
     LeaderboardOut,
+    EdgeMetricsOut,
+    EdgeGatesOut,
+    ExpectancyDecompOut,
 )
 from core.quant_core.research.evaluate import evaluate_signal
 from core.quant_core.macro import MACRO_SERIES,MACRO_SERIES_BY_ID
@@ -1433,4 +1436,512 @@ def predictive_history_batch_status(db: Session = Depends(get_db)) -> Predictive
         running=counts.get("running", 0),
         failed=counts.get("failed", 0),
         pending=counts.get("pending", 0),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Edge metrics endpoint (§4.2.b of the edge-deploy plan)
+# ---------------------------------------------------------------------------
+
+def _edge_redis() -> "Any":
+    """Return a Redis client for edge cache operations, or None if unavailable."""
+    try:
+        from redis import Redis
+        from ..config import settings
+        return Redis.from_url(settings.REDIS_URL, decode_responses=True)
+    except Exception:
+        return None
+
+
+def _edge_cache_key(
+    *,
+    source: str,
+    symbol: str,
+    horizon: str,
+    cost_bps: float,
+    methodology_version: str,
+    score_revision_hash: str,
+) -> str:
+    return (
+        f"edge:v{methodology_version}:{source}:{symbol}:{horizon}"
+        f":c{int(cost_bps)}:{score_revision_hash}"
+    )
+
+
+def _score_revision_hash(
+    *,
+    data_as_of: Any,
+    row_count: int,
+    folds_hash: str,
+) -> str:
+    import hashlib
+    raw = f"{data_as_of}|{row_count}|{folds_hash}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+def _folds_hash(folds_json: Any) -> str:
+    import hashlib, json
+    if folds_json is None:
+        return "none"
+    try:
+        serialized = json.dumps(folds_json, sort_keys=True, default=str)
+    except Exception:
+        serialized = str(folds_json)
+    return hashlib.sha256(serialized.encode()).hexdigest()[:16]
+
+
+def _edge_db_horizons(canonical_horizon_name: str) -> list[str]:
+    from core.quant_core.horizons import LEGACY_HORIZON_ALIASES
+
+    out = [canonical_horizon_name]
+    out.extend(legacy for legacy, new in LEGACY_HORIZON_ALIASES.items() if new == canonical_horizon_name)
+    return out
+
+
+def _edge_revision_context(
+    *,
+    db: "Session",
+    symbol: str,
+    horizon: str,
+    source: str,
+) -> tuple[str, str] | None:
+    from core.quant_core.horizons import canonical_horizon
+    from sqlalchemy import func as _func
+
+    try:
+        canonical_h = canonical_horizon(horizon, allow_legacy=True)
+    except ValueError:
+        return None
+
+    symbol_upper = symbol.upper()
+    db_horizons = _edge_db_horizons(canonical_h)
+
+    if source == "wfo":
+        summary = (
+            db.query(models.WfoSignalSummary)
+            .filter(
+                models.WfoSignalSummary.symbol == symbol_upper,
+                models.WfoSignalSummary.horizon.in_(db_horizons),
+                models.WfoSignalSummary.status == "succeeded",
+            )
+            .order_by(models.WfoSignalSummary.updated_at.desc())
+            .first()
+        )
+        if summary is None:
+            return None
+        row_count = int(
+            db.query(_func.count())
+            .select_from(models.SignalScoreHistory)
+            .filter(
+                models.SignalScoreHistory.symbol == symbol_upper,
+                models.SignalScoreHistory.source == "wfo",
+                models.SignalScoreHistory.horizon.in_(db_horizons),
+            )
+            .scalar()
+            or 0
+        )
+        if row_count <= 0:
+            return None
+        rev_hash = _score_revision_hash(
+            data_as_of=str(summary.data_as_of or summary.updated_at or ""),
+            row_count=row_count,
+            folds_hash=_folds_hash(summary.folds_json),
+        )
+        return canonical_h, rev_hash
+
+    if source == "signal_engine":
+        global_row = (
+            db.query(models.SignalEngineGlobalResult)
+            .filter(
+                models.SignalEngineGlobalResult.symbol == symbol_upper,
+                models.SignalEngineGlobalResult.horizon.in_(db_horizons),
+                models.SignalEngineGlobalResult.status == "succeeded",
+            )
+            .order_by(models.SignalEngineGlobalResult.updated_at.desc())
+            .first()
+        )
+        row_count = int(
+            db.query(_func.count())
+            .select_from(models.SignalScoreHistory)
+            .filter(
+                models.SignalScoreHistory.symbol == symbol_upper,
+                models.SignalScoreHistory.source.in_(("engine_expanded", "engine_legacy")),
+                models.SignalScoreHistory.horizon.in_(db_horizons),
+            )
+            .scalar()
+            or 0
+        )
+        if global_row is None and row_count <= 0:
+            return None
+        rev_hash = _score_revision_hash(
+            data_as_of=str(getattr(global_row, "data_as_of", "") or ""),
+            row_count=row_count,
+            folds_hash="none",
+        )
+        return canonical_h, rev_hash
+
+    return None
+
+
+def _edge_cache_payload(
+    *,
+    db: "Session",
+    symbol: str,
+    horizon: str,
+    source: str,
+    cost_bps: float,
+) -> tuple[dict[str, Any] | None, str]:
+    import json
+    from core.quant_core.research.edge import METHODOLOGY_VERSION
+
+    ctx = _edge_revision_context(db=db, symbol=symbol, horizon=horizon, source=source)
+    if ctx is None:
+        return None, "missing"
+
+    canonical_h, rev_hash = ctx
+    cache_key = _edge_cache_key(
+        source=source,
+        symbol=symbol.upper(),
+        horizon=canonical_h,
+        cost_bps=cost_bps,
+        methodology_version=METHODOLOGY_VERSION,
+        score_revision_hash=rev_hash,
+    )
+    redis = _edge_redis()
+    if redis is None:
+        return None, "cold"
+    try:
+        cached = redis.get(cache_key)
+    except Exception:
+        return None, "cold"
+    if not cached:
+        return None, "cold"
+    try:
+        return json.loads(cached), "hit"
+    except Exception:
+        return None, "cold"
+
+
+def _store_edge_cache_payload(
+    *,
+    db: "Session",
+    symbol: str,
+    horizon: str,
+    source: str,
+    cost_bps: float,
+    out_json: str,
+) -> bool:
+    from core.quant_core.research.edge import METHODOLOGY_VERSION
+
+    ctx = _edge_revision_context(db=db, symbol=symbol, horizon=horizon, source=source)
+    if ctx is None:
+        return False
+    canonical_h, rev_hash = ctx
+    redis = _edge_redis()
+    if redis is None:
+        return False
+    cache_key = _edge_cache_key(
+        source=source,
+        symbol=symbol.upper(),
+        horizon=canonical_h,
+        cost_bps=cost_bps,
+        methodology_version=METHODOLOGY_VERSION,
+        score_revision_hash=rev_hash,
+    )
+    try:
+        redis.setex(cache_key, 25 * 3600, out_json)
+        return True
+    except Exception:
+        return False
+
+
+def _build_edge_metrics_from_db(
+    *,
+    symbol: str,
+    horizon: str,
+    source: str,
+    cost_bps: float,
+    db: "Session",
+) -> "EdgeMetrics | None":
+    """Load all required data from DB and compute EdgeMetrics. Returns None on missing data."""
+    from core.quant_core.horizons import HORIZON_SPECS, canonical_horizon
+    from core.quant_core.research.edge import build_edge_payload
+    from core.quant_core.research.oos_index import oos_sample_for
+    from core.quant_core.research.score_history import aggregate_subset, _bucket_for
+
+    # Resolve legacy horizon aliases (short/medium/long → weekly/monthly/quarterly).
+    try:
+        canonical_h = canonical_horizon(horizon, allow_legacy=True)
+    except ValueError:
+        return None
+
+    spec = HORIZON_SPECS[canonical_h]
+
+    # --- Determine DB source strings ---
+    # API source: 'signal_engine' | 'wfo'
+    # DB source column: 'engine_legacy' | 'engine_expanded' | 'wfo'
+    if source == "signal_engine":
+        db_sources = ("engine_expanded", "engine_legacy")
+    elif source == "wfo":
+        db_sources = ("wfo",)
+    else:
+        return None
+
+    # --- Load score history rows for all categories ---
+    # Try candidate horizons: canonical first, then legacy alias.
+    db_horizons = _edge_db_horizons(canonical_h)
+
+    series_by_cat: dict[str, pd.Series] = {}
+    used_horizon_key = None
+    for db_src in db_sources:
+        for db_h in db_horizons:
+            series_by_cat = _load_score_history(db, symbol=symbol, source=db_src, horizon=db_h)
+            if series_by_cat:
+                used_horizon_key = db_h
+                break
+        if series_by_cat:
+            break
+
+    if not series_by_cat:
+        return None
+
+    score = aggregate_subset(series_by_cat, list(series_by_cat.keys()))
+    if score is None or score.dropna().empty:
+        return None
+
+    # --- Determine today's bucket ---
+    live_source = "wfo" if source == "wfo" else (
+        "engine_expanded" if "engine_expanded" in db_sources else "engine_legacy"
+    )
+    live_score_raw = _load_current_live_score(
+        db, symbol=symbol, source=live_source, horizon=used_horizon_key or canonical_h,
+    )
+    if live_score_raw is None:
+        # Fall back to the latest bar in score history.
+        live_score_raw = float(score.dropna().iloc[-1])
+    today_bucket = _bucket_for(live_score_raw)
+
+    # --- Load prices ---
+    try:
+        prices = _load_pricing_data(db, symbol)
+    except Exception:
+        return None
+
+    # --- OOS loaders ---
+    ohlcv_idx = pd.DatetimeIndex(prices.index)
+
+    def wfo_loader(sym: str, h: str) -> dict:
+        for db_h in db_horizons:
+            summary = (
+                db.query(models.WfoSignalSummary)
+                .filter(
+                    models.WfoSignalSummary.symbol == sym,
+                    models.WfoSignalSummary.horizon == db_h,
+                    models.WfoSignalSummary.status == "succeeded",
+                    models.WfoSignalSummary.folds_json.isnot(None),
+                )
+                .order_by(models.WfoSignalSummary.updated_at.desc())
+                .first()
+            )
+            if summary is not None and summary.folds_json:
+                return {"folds_json": summary.folds_json}
+        return {}
+
+    def score_history_loader(sym: str, h: str) -> list[dict]:
+        out = []
+        for db_src in db_sources:
+            for db_h in db_horizons:
+                rows = (
+                    db.query(models.SignalScoreHistory)
+                    .filter_by(symbol=sym, source=db_src, horizon=db_h)
+                    .order_by(models.SignalScoreHistory.date.asc())
+                    .all()
+                )
+                if rows:
+                    out.extend({"date": r.date, "is_oos": bool(getattr(r, "is_oos", False))} for r in rows)
+                    return out
+        return out
+
+    oos_sample = oos_sample_for(
+        symbol=symbol,
+        horizon=canonical_h,
+        source=source,
+        wfo_loader=wfo_loader if source == "wfo" else None,
+        score_history_loader=score_history_loader if source == "signal_engine" else None,
+        ohlcv_index_loader=lambda sym: ohlcv_idx,
+        holdout_bars=spec.signal_engine_holdout_bars,
+    )
+
+    return build_edge_payload(
+        symbol=symbol,
+        horizon=canonical_h,
+        source=source,
+        score_series=score,
+        prices=prices,
+        oos_sample=oos_sample,
+        today_bucket=today_bucket,
+        fwd_horizon_bars=spec.reference_forward_days,
+        cost_bps_per_side=cost_bps,
+    )
+
+
+def _edge_metrics_to_out(m: "EdgeMetrics") -> "EdgeMetricsOut":
+    def _exp(e: Any) -> "ExpectancyDecompOut | None":
+        if e is None:
+            return None
+        return ExpectancyDecompOut(
+            p_win=e.p_win, avg_win=e.avg_win,
+            p_loss=e.p_loss, avg_loss=e.avg_loss, expectancy=e.expectancy,
+        )
+
+    return EdgeMetricsOut(
+        symbol=m.symbol,
+        horizon=m.horizon,
+        source=m.source,
+        bucket=m.bucket,
+        direction=m.direction,
+        n=m.n,
+        window_start=m.window_start.date().isoformat() if m.window_start else None,
+        window_end=m.window_end.date().isoformat() if m.window_end else None,
+        expected_return_gross=m.expected_return_gross,
+        expected_return_net=m.expected_return_net,
+        hit_rate=m.hit_rate,
+        hit_ci_lower=m.hit_ci_lower,
+        hit_ci_upper=m.hit_ci_upper,
+        expectancy_gross=_exp(m.expectancy_gross),
+        expectancy_net=_exp(m.expectancy_net),
+        edge_ratio_gross=m.edge_ratio_gross,
+        edge_ratio_net=m.edge_ratio_net,
+        profit_factor_gross=m.profit_factor_gross,
+        profit_factor_net=m.profit_factor_net,
+        mc_luck_pvalue_gross=m.mc_luck_pvalue_gross,
+        mc_luck_pvalue_net=m.mc_luck_pvalue_net,
+        label_shuffle_pvalue_gross=m.label_shuffle_pvalue_gross,
+        label_shuffle_pvalue_net=m.label_shuffle_pvalue_net,
+        proven_edge_gross=m.proven_edge_gross,
+        proven_edge_net=m.proven_edge_net,
+        gates=EdgeGatesOut(
+            mc_gross=m.gates.mc_gross,
+            mc_net=m.gates.mc_net,
+            wilson=m.gates.wilson,
+            n=m.gates.n,
+        ),
+        cost_bps_per_side=m.cost_bps_per_side,
+        methodology_version=m.methodology_version,
+    )
+
+
+def _warm_edge_cache_entries(
+    *,
+    db: "Session",
+    symbols: list[str] | None,
+    horizons: list[str] | None,
+    sources: list[str] | None,
+    cost_bps: float,
+) -> dict[str, int]:
+    from core.quant_core.horizons import VALID_HORIZONS, canonical_horizon
+
+    if not horizons:
+        horizons = list(VALID_HORIZONS)
+    if not sources:
+        sources = ["signal_engine", "wfo"]
+    if not symbols:
+        wfo_syms = {s for (s,) in db.query(models.WfoSignalSummary.symbol).distinct().all()}
+        eng_syms = {s for (s,) in db.query(models.SignalEngineGlobalResult.symbol).distinct().all()}
+        symbols = sorted(wfo_syms | eng_syms)
+
+    warmed = 0
+    errors = 0
+    for sym in symbols:
+        for h in horizons:
+            try:
+                canonical_h = canonical_horizon(h, allow_legacy=True)
+            except ValueError:
+                continue
+            for src in sources:
+                try:
+                    metrics = _build_edge_metrics_from_db(
+                        symbol=sym,
+                        horizon=canonical_h,
+                        source=src,
+                        cost_bps=cost_bps,
+                        db=db,
+                    )
+                    if metrics is None:
+                        continue
+                    out_json = _edge_metrics_to_out(metrics).model_dump_json()
+                    if _store_edge_cache_payload(
+                        db=db,
+                        symbol=sym,
+                        horizon=canonical_h,
+                        source=src,
+                        cost_bps=cost_bps,
+                        out_json=out_json,
+                    ):
+                        warmed += 1
+                except Exception:
+                    errors += 1
+
+    return {"warmed": warmed, "errors": errors, "symbols": len(symbols)}
+
+
+@router.get("/edge", response_model=EdgeMetricsOut | None)
+def get_edge_metrics(
+    symbol: str = Query(...),
+    horizon: str = Query(..., description="weekly | monthly | quarterly (short/medium/long also accepted)"),
+    source: str = Query(..., description="signal_engine | wfo"),
+    cost_bps: float | None = Query(default=None, ge=0.0, le=500.0),
+    db: Session = Depends(get_db),
+) -> Any:
+    """Return cached Edge metrics for one (symbol, horizon, source) cell.
+
+    Returns 200 with the EdgeMetricsOut JSON body on a cache hit.
+    Returns 200 with null body and X-Edge-Cache: cold on a cache miss.
+    Returns 404 if the underlying score-history inputs do not exist.
+    """
+    from fastapi.responses import JSONResponse
+    from ..config import settings
+
+    _VALID_EDGE_SOURCES = {"signal_engine", "wfo"}
+    if source not in _VALID_EDGE_SOURCES:
+        raise HTTPException(400, f"source must be one of {sorted(_VALID_EDGE_SOURCES)}")
+    cost_bps_value = float(settings.EDGE_COST_BPS_PER_SIDE if cost_bps is None else cost_bps)
+    payload, state = _edge_cache_payload(
+        db=db,
+        symbol=symbol.upper(),
+        horizon=horizon,
+        source=source,
+        cost_bps=cost_bps_value,
+    )
+    if state == "missing":
+        raise HTTPException(
+            status_code=404,
+            detail=f"No edge inputs for symbol={symbol!r} horizon={horizon!r} source={source!r}",
+        )
+    if payload is None:
+        return JSONResponse(content=None, headers={"X-Edge-Cache": "cold"})
+    return JSONResponse(content=payload, headers={"X-Edge-Cache": "hit"})
+
+
+@router.post("/edge/warm")
+def warm_edge_cache(
+    symbols: Optional[list[str]] = None,
+    horizons: Optional[list[str]] = None,
+    sources: Optional[list[str]] = None,
+    cost_bps: float | None = Query(default=None, ge=0.0, le=500.0),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Pre-populate the Edge cache for a set of (symbols × horizons × sources).
+
+    Called after the daily score refresh. Body params are optional — defaults
+    to all symbols × all horizons × both sources.
+    """
+    from ..config import settings
+
+    return _warm_edge_cache_entries(
+        db=db,
+        symbols=symbols,
+        horizons=horizons,
+        sources=sources,
+        cost_bps=float(settings.EDGE_COST_BPS_PER_SIDE if cost_bps is None else cost_bps),
     )

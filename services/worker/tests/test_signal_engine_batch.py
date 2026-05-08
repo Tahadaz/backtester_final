@@ -90,7 +90,7 @@ def test_compute_signal_engine_propagates_triggered_by_from_rq_meta(monkeypatch)
     monkeypatch.setattr(signal_engine_batch_mod, "_upsert_batch_job", _fake_upsert_batch_job)
     monkeypatch.setattr(signal_engine_batch_mod, "full_rebuild_from_pipeline", _fake_full_rebuild)
 
-    result = signal_engine_batch_mod.compute_signal_engine_for_symbol("AAA", "short", "expanded")
+    result = signal_engine_batch_mod.compute_signal_engine_for_symbol("AAA", "weekly", "expanded")
 
     assert result["status"] == "failed"
     assert captured["triggered_by"] == "manual_global"
@@ -105,37 +105,37 @@ def test_run_signal_engine_batch_only_processes_weekly_stale_tuples(monkeypatch)
             SignalEngineGlobalResult: [
                 SignalEngineGlobalResult(
                     symbol="AAA",
-                    horizon="short",
+                    horizon="weekly",
                     variant="legacy",
                     computed_at=now - dt.timedelta(days=8),
                 ),
                 SignalEngineGlobalResult(
                     symbol="AAA",
-                    horizon="short",
+                    horizon="weekly",
                     variant="expanded",
                     computed_at=now - dt.timedelta(days=2),
                 ),
                 SignalEngineGlobalResult(
                     symbol="AAA",
-                    horizon="medium",
+                    horizon="monthly",
                     variant="legacy",
                     computed_at=now - dt.timedelta(days=2),
                 ),
                 SignalEngineGlobalResult(
                     symbol="AAA",
-                    horizon="medium",
+                    horizon="monthly",
                     variant="expanded",
                     computed_at=now - dt.timedelta(days=2),
                 ),
                 SignalEngineGlobalResult(
                     symbol="AAA",
-                    horizon="long",
+                    horizon="quarterly",
                     variant="legacy",
                     computed_at=now - dt.timedelta(days=2),
                 ),
                 SignalEngineGlobalResult(
                     symbol="AAA",
-                    horizon="long",
+                    horizon="quarterly",
                     variant="expanded",
                     computed_at=now - dt.timedelta(days=2),
                 ),
@@ -156,4 +156,4 @@ def test_run_signal_engine_batch_only_processes_weekly_stale_tuples(monkeypatch)
     result = signal_engine_batch_mod.run_signal_engine_batch(now=now)
 
     assert result == {"total": 1, "succeeded": 1, "failed": 0}
-    assert calls == [("AAA", "short", "legacy")]
+    assert calls == [("AAA", "weekly", "legacy")]

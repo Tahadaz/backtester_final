@@ -34,6 +34,15 @@ interface SectorTableProps {
   showTechnicalLevels?: boolean
 }
 
+function toLegacyHorizon(horizon: Horizon): "short" | "medium" | "long" {
+  if (horizon === "weekly") return "short"
+  if (horizon === "monthly") return "medium"
+  if (horizon === "quarterly") return "long"
+  if (horizon === "medium") return "medium"
+  if (horizon === "long") return "long"
+  return "short"
+}
+
 function formatLevelPrice(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return "--"
   return value.toFixed(2)
@@ -213,6 +222,7 @@ export function SectorTable({
   showTechnicalLevels = true,
 }: SectorTableProps) {
   const [expandedSector, setExpandedSector] = useState<string | null>(null)
+  const linkHorizon = toLegacyHorizon(horizon)
 
   const sortedSectors = useMemo(
     () =>
@@ -318,7 +328,7 @@ export function SectorTable({
                                     <TableRow key={`${sector.sector}-${stock.symbol}`}>
                                       <TableCell className="pl-8">
                                         <Link
-                                          href={`/signals?symbol=${encodeURIComponent(stock.symbol)}&horizon=${horizon}&view=${signalViewQuery}`}
+                                          href={`/signals?symbol=${encodeURIComponent(stock.symbol)}&horizon=${linkHorizon}&view=${signalViewQuery}`}
                                           className="block hover:underline"
                                         >
                                           <p className="font-semibold">{stock.symbol}</p>

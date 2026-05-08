@@ -90,21 +90,66 @@ def _summary_row(symbol: str, category: str, horizon: str, variant: str, family:
 
 def test_build_config_json_defaults_max_reps_to_one():
     payload = wfo_batch_mod._build_config_json(
-        horizon="short",
+        horizon="weekly",
         category="tendance",
         close_len=500,
         pool_size=10,
         overrides={},
     )
     assert payload["max_reps"] == 1
+    assert payload["cost_bps"] == 33.0
+
+
+def test_build_folds_json_persists_indices_and_dates():
+    dates = pd.date_range("2026-01-01", periods=10, freq="D")
+    pool = [SimpleNamespace(variant_id="sma-5", description="SMA-5")]
+    result = SimpleNamespace(
+        engine_result=SimpleNamespace(
+            windows=[
+                SimpleNamespace(
+                    winner_key=0,
+                    window=SimpleNamespace(
+                        index=1,
+                        train_start=0,
+                        train_end=5,
+                        oos_start=5,
+                        oos_end=8,
+                    ),
+                    is_return=0.0123456,
+                    oos_return=0.0234567,
+                    oos_sharpe=1.23456,
+                    winner_prom=0.0345678,
+                    profile=SimpleNamespace(
+                        passes=True,
+                        reason="ok",
+                        pct_profitable=0.75,
+                    ),
+                )
+            ]
+        )
+    )
+
+    folds = wfo_batch_mod._build_folds_json(result, pool, dates)
+
+    assert folds is not None
+    fold = folds[0]
+    assert fold["train_start_idx"] == 0
+    assert fold["train_end_idx"] == 5
+    assert fold["oos_start_idx"] == 5
+    assert fold["oos_end_idx"] == 8
+    assert fold["train_start_date"] == "2026-01-01"
+    assert fold["train_end_date"] == "2026-01-05"
+    assert fold["oos_start_date"] == "2026-01-06"
+    assert fold["oos_end_date"] == "2026-01-08"
+    assert fold["winner_variant_id"] == "sma-5"
 
 
 def test_refresh_wfo_uses_persisted_representatives_without_reselection(monkeypatch):
     rows = [
-        _summary_row("AAA", "tendance", "short", "expanded", "sma"),
-        _summary_row("AAA", "momentum", "short", "expanded", "macd"),
-        _summary_row("AAA", "oscillation", "short", "expanded", "rsi"),
-        _summary_row("AAA", "volume", "short", "expanded", "obv"),
+        _summary_row("AAA", "tendance", "weekly", "expanded", "sma"),
+        _summary_row("AAA", "momentum", "weekly", "expanded", "macd"),
+        _summary_row("AAA", "oscillation", "weekly", "expanded", "rsi"),
+        _summary_row("AAA", "volume", "weekly", "expanded", "obv"),
     ]
     fake_db = _FakeDB({WfoSignalSummary: rows, WfoGlobalSignal: []})
 
@@ -156,7 +201,7 @@ def test_refresh_wfo_uses_persisted_representatives_without_reselection(monkeypa
 
     monkeypatch.setattr(wfo_batch_mod, "run_wfo_for_symbol_horizon", _unexpected_full_compute)
 
-    result = wfo_batch_mod.refresh_wfo_for_symbol_horizon("AAA", "short", "expanded")
+    result = wfo_batch_mod.refresh_wfo_for_symbol_horizon("AAA", "weekly", "expanded")
 
     assert result["status"] == "succeeded"
     assert result["mode"] == "representatives_refresh"
@@ -180,37 +225,37 @@ def test_run_weekly_wfo_batch_only_processes_weekly_stale_tuples(monkeypatch):
             WfoGlobalSignal: [
                 WfoGlobalSignal(
                     symbol="AAA",
-                    horizon="short",
+                    horizon="weekly",
                     variant="legacy",
                     computed_at=now - dt.timedelta(days=8),
                 ),
                 WfoGlobalSignal(
                     symbol="AAA",
-                    horizon="short",
+                    horizon="weekly",
                     variant="expanded",
                     computed_at=now - dt.timedelta(days=2),
                 ),
                 WfoGlobalSignal(
                     symbol="AAA",
-                    horizon="medium",
+                    horizon="monthly",
                     variant="legacy",
                     computed_at=now - dt.timedelta(days=2),
                 ),
                 WfoGlobalSignal(
                     symbol="AAA",
-                    horizon="medium",
+                    horizon="monthly",
                     variant="expanded",
                     computed_at=now - dt.timedelta(days=2),
                 ),
                 WfoGlobalSignal(
                     symbol="AAA",
-                    horizon="long",
+                    horizon="quarterly",
                     variant="legacy",
                     computed_at=now - dt.timedelta(days=2),
                 ),
                 WfoGlobalSignal(
                     symbol="AAA",
-                    horizon="long",
+                    horizon="quarterly",
                     variant="expanded",
                     computed_at=now - dt.timedelta(days=2),
                 ),
@@ -231,4 +276,4 @@ def test_run_weekly_wfo_batch_only_processes_weekly_stale_tuples(monkeypatch):
     result = wfo_batch_mod.run_weekly_wfo_batch(now=now)
 
     assert result == {"total": 1, "succeeded": 1, "failed": 0}
-    assert calls == [("AAA", "short", "legacy")]
+    assert calls == [("AAA", "weekly", "legacy")]

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Callable
 
 from ._hashing import compute_variant_id
-from .domain import VALID_HORIZONS, VariantDef
+from .domain import HORIZON_PARAM_CAP, VALID_HORIZONS, VariantDef, cap_param_grid
 
 _CANDIDATE_GENERATORS: dict[str, Callable[[str], list[VariantDef]]] = {}
 
@@ -360,12 +360,14 @@ def _take_first_n(items: list[VariantDef], expected: int = 30) -> list[VariantDe
 
 @register_family("sma")
 def generate_sma_candidates(horizon: str) -> list[VariantDef]:
-    return [_make_variant("sma", "price_vs_sma", {"window": w}, horizon) for w in _TREND_WINDOWS[horizon]]
+    windows = cap_param_grid(_TREND_WINDOWS[horizon], HORIZON_PARAM_CAP[horizon]["sma"])
+    return [_make_variant("sma", "price_vs_sma", {"window": w}, horizon) for w in windows]
 
 
 @register_family("ema")
 def generate_ema_candidates(horizon: str) -> list[VariantDef]:
-    return [_make_variant("ema", "price_vs_ema", {"window": w}, horizon) for w in _TREND_WINDOWS[horizon]]
+    windows = cap_param_grid(_TREND_WINDOWS[horizon], HORIZON_PARAM_CAP[horizon]["ema"])
+    return [_make_variant("ema", "price_vs_ema", {"window": w}, horizon) for w in windows]
 
 
 @register_family("ema_cross")
@@ -383,7 +385,8 @@ def generate_ema_cross_candidates(horizon: str) -> list[VariantDef]:
 @register_family("ichimoku")
 def generate_ichimoku_candidates(horizon: str) -> list[VariantDef]:
     cfg = _ICHIMOKU_PARAMS[horizon]
-    items = [
+    kijun_vals = cap_param_grid(cfg["kijun"], HORIZON_PARAM_CAP[horizon]["ichimoku_kijun"])
+    return [
         _make_variant(
             "ichimoku",
             "ichi_cloud",
@@ -391,11 +394,10 @@ def generate_ichimoku_candidates(horizon: str) -> list[VariantDef]:
             horizon,
         )
         for senkou_b in cfg["senkou_b"]
-        for kijun in cfg["kijun"]
+        for kijun in kijun_vals
         for tenkan in cfg["tenkan"]
         if tenkan < kijun < senkou_b
     ]
-    return _take_first_n(items)
 
 
 @register_family("psar")
@@ -411,19 +413,19 @@ def generate_psar_candidates(horizon: str) -> list[VariantDef]:
 @register_family("macd")
 def generate_macd_candidates(horizon: str) -> list[VariantDef]:
     cfg = _MACD_PARAMS[horizon]
-    items = [
+    slow_vals = cap_param_grid(cfg["slow"], HORIZON_PARAM_CAP[horizon]["macd_slow"])
+    return [
         _make_variant(
             "macd",
             "macd_cross",
             {"fast": fast, "slow": slow, "signal": signal},
             horizon,
         )
-        for slow in cfg["slow"]
+        for slow in slow_vals
         for fast in cfg["fast"]
         for signal in cfg["signal"]
         if fast < slow
     ]
-    return _take_first_n(items)
 
 
 @register_family("roc")
@@ -464,6 +466,7 @@ def generate_tsi_candidates(horizon: str) -> list[VariantDef]:
 
 @register_family("rsi")
 def generate_rsi_candidates(horizon: str) -> list[VariantDef]:
+    periods = cap_param_grid(_RSI_PERIODS[horizon], HORIZON_PARAM_CAP[horizon]["rsi"])
     return [
         _make_variant(
             "rsi",
@@ -471,7 +474,7 @@ def generate_rsi_candidates(horizon: str) -> list[VariantDef]:
             {"period": period, "oversold": oversold, "overbought": overbought},
             horizon,
         )
-        for period in _RSI_PERIODS[horizon]
+        for period in periods
         for oversold, overbought in _RSI_THRESHOLDS[horizon]
     ]
 
@@ -479,9 +482,10 @@ def generate_rsi_candidates(horizon: str) -> list[VariantDef]:
 @register_family("stochastic")
 def generate_stochastic_candidates(horizon: str) -> list[VariantDef]:
     cfg = _STOCHASTIC_PARAMS[horizon]
+    k_periods = cap_param_grid(cfg["k_period"], HORIZON_PARAM_CAP[horizon]["stoch"])
     return [
         _make_variant("stochastic", "stoch_level", {"k_period": k, "d_period": d}, horizon)
-        for k in cfg["k_period"]
+        for k in k_periods
         for d in cfg["d_period"]
     ]
 
@@ -525,7 +529,8 @@ def generate_uo_candidates(horizon: str) -> list[VariantDef]:
 
 @register_family("obv")
 def generate_obv_candidates(horizon: str) -> list[VariantDef]:
-    return [_make_variant("obv", "obv_trend", {"ema_period": p}, horizon) for p in _OBV_EMA_PERIODS[horizon]]
+    periods = cap_param_grid(_OBV_EMA_PERIODS[horizon], HORIZON_PARAM_CAP[horizon]["obv_ema"])
+    return [_make_variant("obv", "obv_trend", {"ema_period": p}, horizon) for p in periods]
 
 
 @register_family("cmf")

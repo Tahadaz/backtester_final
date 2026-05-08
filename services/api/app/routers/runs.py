@@ -10,6 +10,7 @@ import logging
 import math
 from pathlib import Path
 import subprocess
+import time
 from tempfile import NamedTemporaryFile
 import uuid
 from typing import Any
@@ -1756,6 +1757,8 @@ def list_strategy_leaderboard(
     symbol: str | None = None,
     limit: int = Query(default=20, ge=1, le=500),
     best_only: bool | None = Query(default=None),
+    edge_source: str = Query(default="signal_engine"),
+    edge_cost_bps: float | None = Query(default=None, ge=0.0, le=500.0),
     db: Session = Depends(get_db),
 ):
     run = db.get(Run, run_id)
@@ -1838,6 +1841,9 @@ def list_strategy_leaderboard(
         artifact_url_map[(str(a.symbol or ""), kind, base, str(a.artifact_type))] = presign_get(a.object_key, expires_seconds=300)
 
     win_pct_cache: dict[tuple[str, str], float | None] = {}
+    edge_deadline = time.perf_counter() + (max(int(settings.EDGE_INLINE_LIMIT_MS), 0) / 1000.0)
+    edge_source_norm = str(edge_source or "").strip().lower() or "signal_engine"
+    edge_cost_bps_value = float(settings.EDGE_COST_BPS_PER_SIDE if edge_cost_bps is None else edge_cost_bps)
 
     out = []
     for row in rows:
@@ -1881,6 +1887,22 @@ def list_strategy_leaderboard(
             ).strip().lower()
             or None
         )
+        edge_payload = None
+        if row_horizon and edge_source_norm in {"signal_engine", "wfo"} and time.perf_counter() <= edge_deadline:
+            try:
+                from .analytics import _edge_cache_payload
+
+                edge_payload, edge_state = _edge_cache_payload(
+                    db=db,
+                    symbol=row_symbol,
+                    horizon=row_horizon,
+                    source=edge_source_norm,
+                    cost_bps=edge_cost_bps_value,
+                )
+                if edge_state != "hit":
+                    edge_payload = None
+            except Exception:
+                edge_payload = None
 
         out.append(
             {
@@ -1905,6 +1927,7 @@ def list_strategy_leaderboard(
                 "best_params_json": best_params_json,
                 "plot_url": artifact_url_map.get((key_base[0], key_base[1], "price_indicators_trades", "strategy_plotly_json")),
                 "ledger_url": artifact_url_map.get((key_base[0], key_base[1], "trade_ledger", "strategy_trade_ledger_csv")),
+                "edge": edge_payload,
             }
         )
     return out

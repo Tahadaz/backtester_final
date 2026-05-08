@@ -6,6 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from .analytics import EdgeMetricsOut
 
 class RunCreateRequest(BaseModel):
     spec_json: Dict[str, Any] = Field(..., description="Run specification JSON")
@@ -189,6 +190,7 @@ class StrategyLeaderboardOut(BaseModel):
     best_params_json: Optional[Dict[str, Any]]
     plot_url: Optional[str]
     ledger_url: Optional[str]
+    edge: Optional[EdgeMetricsOut] = None
 
 
 class MaterializeStrategyDetailsRequest(BaseModel):

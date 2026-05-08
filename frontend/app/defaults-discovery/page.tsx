@@ -79,7 +79,7 @@ function downloadFile(filename: string, body: string, mime: string) {
 }
 
 type SortKey = "bucket_id" | "chosen_default_n" | "win_rate" | "stability_std" | "avg_score"
-const ORDERED_HORIZONS: TradingHorizon[] = ["short", "medium", "long"]
+const ORDERED_HORIZONS: TradingHorizon[] = ["weekly", "monthly", "quarterly"]
 
 function normalizeSymbol(raw: string): string {
   let symbol = String(raw ?? "").trim().toUpperCase()
@@ -168,7 +168,7 @@ export default function DefaultsDiscoveryPage() {
   const [buckets, setBuckets] = useState<BucketRange[]>(DEFAULT_BUCKETS)
 
   // ── Walk-forward settings ─────────────────────────────────────────────────
-  const [horizon, setHorizon] = useState<TradingHorizon>("medium")
+  const [horizon, setHorizon] = useState<TradingHorizon>("monthly")
   const [trainWindow, setTrainWindow] = useState(504)
   const [stepSize, setStepSize] = useState(21)
   const [useTestWindow, setUseTestWindow] = useState(true)
@@ -178,7 +178,7 @@ export default function DefaultsDiscoveryPage() {
   // ── Run state ─────────────────────────────────────────────────────────────
   const [currentRunId, setCurrentRunId] = useState<string | null>(null)
   const [currentRun, setCurrentRun] = useState<SmaDefaultsDiscoveryRun | null>(null)
-  const [resultsHorizon, setResultsHorizon] = useState<TradingHorizon>("medium")
+  const [resultsHorizon, setResultsHorizon] = useState<TradingHorizon>("monthly")
   const [recentRuns, setRecentRuns] = useState<SmaDefaultsDiscoveryRun[]>([])
   const [loadingRun, setLoadingRun] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -277,8 +277,8 @@ export default function DefaultsDiscoveryPage() {
     const nestedRaw = (resultsJson?.horizons ?? resultsJson?.results_by_horizon) as unknown
     if (nestedRaw && typeof nestedRaw === "object" && !Array.isArray(nestedRaw)) {
       const nested = nestedRaw as Record<string, unknown>
-      for (const hz of ORDERED_HORIZONS) {
-        const payload = nested[hz]
+      for (const [rawHorizon, payload] of Object.entries(nested)) {
+        const hz = resolveHorizonPreset(rawHorizon).value
         if (payload && typeof payload === "object" && !Array.isArray(payload)) {
           out[hz] = payload as Record<string, unknown>
         }
@@ -288,11 +288,9 @@ export default function DefaultsDiscoveryPage() {
       const fallbackMeta = resultsJson.meta
       const fallbackHorizon =
         fallbackMeta && typeof fallbackMeta === "object" && !Array.isArray(fallbackMeta)
-          ? String((fallbackMeta as Record<string, unknown>).horizon ?? "medium").trim().toLowerCase()
-          : "medium"
-      const token = ORDERED_HORIZONS.includes(fallbackHorizon as TradingHorizon)
-        ? (fallbackHorizon as TradingHorizon)
-        : "medium"
+          ? String((fallbackMeta as Record<string, unknown>).horizon ?? "monthly").trim().toLowerCase()
+          : "monthly"
+      const token = resolveHorizonPreset(fallbackHorizon).value
       out[token] = resultsJson as Record<string, unknown>
     }
     return out

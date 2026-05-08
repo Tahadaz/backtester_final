@@ -122,6 +122,102 @@ def monte_carlo_luck_test(
     }
 
 
+def monte_carlo_label_shuffle_test(
+    score_series: Any,
+    forward_returns: Any,
+    *,
+    bucket: str,
+    n_iter: int = 2000,
+    seed: int = 42,
+) -> dict[str, Any]:
+    """Test whether a bucket label is informative.
+
+    H0: bucket assignment is uninformative — i.e., shuffling the score-to-date
+    mapping produces a distribution of bucket-mean forward returns equivalent
+    to the observed bucket mean. Returns the same shape as
+    `monte_carlo_luck_test`. The 'observed' field is the actual bucket mean;
+    the null is built by shuffling `score_series`'s index labels (preserving
+    the marginal score distribution) and recomputing the bucket mean.
+
+    Inputs are aligned by date (intersection of indices). `bucket` must be one
+    of the canonical bucket names (e.g. 'strong_buy'). The test uses the same
+    `_bucket_for` thresholds as the rest of the score-history pipeline.
+    """
+    import pandas as pd  # local to avoid hard dep at import time
+    from .research.score_history import _bucket_for  # noqa: WPS433
+
+    score = pd.Series(score_series).dropna()
+    fwd = pd.Series(forward_returns).dropna()
+    aligned = pd.concat([score.rename("score"), fwd.rename("fwd")], axis=1).dropna()
+    if aligned.empty:
+        return {
+            "metric": "bucket_mean",
+            "bucket": str(bucket),
+            "nobs": 0,
+            "observed": None,
+            "pvalue": None,
+            "null_quantiles": {},
+            "method": "bucket_label_shuffle",
+        }
+
+    scores_arr = aligned["score"].to_numpy(dtype="float64")
+    fwd_arr = aligned["fwd"].to_numpy(dtype="float64")
+    buckets_arr = np.array([_bucket_for(float(s)) for s in scores_arr])
+
+    mask_obs = buckets_arr == str(bucket)
+    n_obs = int(mask_obs.sum())
+    if n_obs < 3:
+        return {
+            "metric": "bucket_mean",
+            "bucket": str(bucket),
+            "nobs": n_obs,
+            "observed": float(np.mean(fwd_arr[mask_obs])) if n_obs else None,
+            "pvalue": None,
+            "null_quantiles": {},
+            "method": "bucket_label_shuffle",
+        }
+
+    observed = float(np.mean(fwd_arr[mask_obs]))
+
+    rng = np.random.default_rng(int(seed))
+    n_total = len(scores_arr)
+    null = np.empty(int(n_iter), dtype=float)
+    for i in range(int(n_iter)):
+        perm = rng.permutation(n_total)
+        permuted_buckets = buckets_arr[perm]
+        sub = fwd_arr[permuted_buckets == str(bucket)]
+        null[i] = float(np.mean(sub)) if len(sub) else float("nan")
+
+    null_finite = null[np.isfinite(null)]
+    if len(null_finite) == 0:
+        pvalue = None
+        quantiles: dict[str, float] = {}
+    else:
+        if observed >= 0:
+            pvalue = float(np.mean(null_finite >= observed))
+        else:
+            pvalue = float(np.mean(null_finite <= observed))
+        quantiles = {
+            "q01": float(np.quantile(null_finite, 0.01)),
+            "q05": float(np.quantile(null_finite, 0.05)),
+            "q50": float(np.quantile(null_finite, 0.50)),
+            "q95": float(np.quantile(null_finite, 0.95)),
+            "q99": float(np.quantile(null_finite, 0.99)),
+        }
+
+    return {
+        "metric": "bucket_mean",
+        "bucket": str(bucket),
+        "nobs": n_obs,
+        "iterations": int(n_iter),
+        "seed": int(seed),
+        "observed": observed,
+        "pvalue": pvalue,
+        "null_quantiles": quantiles,
+        "method": "bucket_label_shuffle",
+    }
+
+
 def evaluate_significance(
     returns_by_key: dict[str, Any],
     *,

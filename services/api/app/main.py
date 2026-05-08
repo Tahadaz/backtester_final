@@ -1,11 +1,15 @@
 from __future__ import annotations
 from contextlib import asynccontextmanager
 
+import sentry_sdk
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
-
 from . import auth
+from .config import settings
+
+if settings.SENTRY_DSN:
+    sentry_sdk.init(dsn=settings.SENTRY_DSN, traces_sample_rate=0.1)
 from .routers import (
     analytics,
     dashboard_data,

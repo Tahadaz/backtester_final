@@ -16,6 +16,7 @@ from typing import Any
 import numpy as np
 from sqlalchemy.orm import Session
 
+from core.quant_core.horizons import DEFAULT_COST_BPS_PER_SIDE
 from core.quant_core.data import drop_incomplete_ohlcv_rows
 from core.quant_core.signal_engine.current_signal import build_current_signal
 from core.quant_core.signal_engine.domain import (
@@ -43,7 +44,7 @@ from services.api.app.models import (
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEFRAME = "1D"
-DEFAULT_COST_BPS = 10.0
+DEFAULT_COST_BPS = DEFAULT_COST_BPS_PER_SIDE
 DEFAULT_COOLDOWN_BARS = 0
 
 _VOLUME_FAMILIES = frozenset(CATEGORY_FAMILIES.get("volume", []))

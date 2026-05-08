@@ -17,6 +17,8 @@ def _getenv_any(*names: str, default: str) -> str:
 class Settings(BaseModel):
     DATABASE_URL: str = os.getenv("DATABASE_URL", DEFAULT_LOCAL_DATABASE_URL)
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    EDGE_COST_BPS_PER_SIDE: float = float(os.getenv("EDGE_COST_BPS_PER_SIDE", "33"))
+    EDGE_INLINE_LIMIT_MS: int = int(os.getenv("EDGE_INLINE_LIMIT_MS", "200"))
     DATASET_MAX_UPLOAD_BYTES: int = int(os.getenv("DATASET_MAX_UPLOAD_BYTES", "104857600"))
     DATASET_ALLOWED_EXTENSIONS: tuple[str, ...] = (".csv", ".xlsx", ".xls")
     DATASET_METADATA_MAX_BYTES: int = int(os.getenv("DATASET_METADATA_MAX_BYTES", "32768"))
@@ -47,6 +49,9 @@ class Settings(BaseModel):
     S3_BUCKET: str = os.getenv("S3_BUCKET", "quant-artifacts")
     S3_REGION: str = os.getenv("S3_REGION", "us-east-1")
     S3_USE_SSL: bool = _getenv_any("S3_USE_SSL", "S3_SECURE", default="false").lower() == "true"
+
+    INTERNAL_JWT_SECRET: str = os.getenv("INTERNAL_JWT_SECRET", "").strip()
+    SENTRY_DSN: str = os.getenv("SENTRY_DSN", "").strip()
 
 
 settings = Settings()

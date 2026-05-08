@@ -22,6 +22,7 @@ from services.api.app.models import (
 )
 from services.api.app.services.weekly_recompute_policy import iter_wfo_weekly_stale_tuples
 from services.api.app.market_data_loader import load_ohlcv_for_symbol
+from core.quant_core.horizons import DEFAULT_COST_BPS_PER_SIDE
 from core.quant_core.data import drop_incomplete_ohlcv_rows
 from core.quant_core.signal_engine.current_signal import build_current_signal
 from core.quant_core.signal_engine.domain import (
@@ -37,7 +38,7 @@ from core.quant_core.signal_engine.wfo_global import compute_global_wfo_signal
 
 logger = logging.getLogger(__name__)
 
-HORIZONS = ("short", "medium", "long")
+HORIZONS = ("weekly", "monthly", "quarterly")
 CATEGORIES = ("tendance", "momentum", "oscillation", "volume")
 
 
@@ -142,7 +143,22 @@ def enqueue_wfo_full_for_symbol_horizon(
     return str(job.id)
 
 
-def _build_folds_json(result, pool: list | None = None) -> list[dict] | None:
+def _window_date(index: Any, position: int, *, end_exclusive: bool = False) -> str | None:
+    if index is None:
+        return None
+    try:
+        loc = int(position) - 1 if end_exclusive else int(position)
+        if loc < 0 or loc >= len(index):
+            return None
+        value = index[loc]
+        if hasattr(value, "date"):
+            return value.date().isoformat()
+        return str(value)
+    except Exception:
+        return None
+
+
+def _build_folds_json(result, pool: list | None = None, index: Any = None) -> list[dict] | None:
     """Extract per-fold details from a WfoCategoryResult's engine_result."""
     er = result.engine_result
     if er is None or not er.windows:
@@ -154,12 +170,24 @@ def _build_folds_json(result, pool: list | None = None) -> list[dict] | None:
         if pool is not None and isinstance(w.winner_key, int) and w.winner_key < len(pool):
             winner_id = pool[w.winner_key].variant_id
             winner_desc = pool[w.winner_key].description
+        train_start_idx = int(w.window.train_start)
+        train_end_idx = int(w.window.train_end)
+        oos_start_idx = int(w.window.oos_start)
+        oos_end_idx = int(w.window.oos_end)
         folds.append({
             "index": w.window.index,
-            "train_start": w.window.train_start,
-            "train_end": w.window.train_end,
-            "oos_start": w.window.oos_start,
-            "oos_end": w.window.oos_end,
+            "train_start": train_start_idx,
+            "train_end": train_end_idx,
+            "oos_start": oos_start_idx,
+            "oos_end": oos_end_idx,
+            "train_start_idx": train_start_idx,
+            "train_end_idx": train_end_idx,
+            "oos_start_idx": oos_start_idx,
+            "oos_end_idx": oos_end_idx,
+            "train_start_date": _window_date(index, train_start_idx),
+            "train_end_date": _window_date(index, train_end_idx, end_exclusive=True),
+            "oos_start_date": _window_date(index, oos_start_idx),
+            "oos_end_date": _window_date(index, oos_end_idx, end_exclusive=True),
             "is_return": round(w.is_return, 6),
             "oos_return": round(w.oos_return, 6),
             "oos_sharpe": round(getattr(w, 'oos_sharpe', 0.0), 4),
@@ -199,7 +227,7 @@ def _build_config_json(
         "data_bars": close_len,
         "min_bars_needed": config_used.get("min_bars_needed", train + oos),
         "grid_size": pool_size,
-        "cost_bps": overrides.get("cost_bps", 10.0),
+        "cost_bps": overrides.get("cost_bps", DEFAULT_COST_BPS_PER_SIDE),
         "max_reps": overrides.get("max_reps", 1),
         "max_corr": overrides.get("max_corr", 0.85),
         "families": families if families is not None else CATEGORY_FAMILIES.get(category, []),
@@ -308,7 +336,7 @@ def run_wfo_for_symbol_horizon(
             result.data_as_of = str(data_as_of) if data_as_of else ""
             category_results[category] = result
 
-            folds_json = _build_folds_json(result, pool)
+            folds_json = _build_folds_json(result, pool, ohlcv.index)
             config_json = _build_config_json(
                 horizon,
                 category,

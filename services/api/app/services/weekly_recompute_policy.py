@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from services.api.app.models import SignalEngineGlobalResult, WfoGlobalSignal, WfoSignalSummary
 
-HORIZONS = ("short", "medium", "long")
+HORIZONS = ("weekly", "monthly", "quarterly")
 VARIANTS = ("legacy", "expanded")
 WFO_CATEGORIES = ("tendance", "momentum", "oscillation", "volume")
 MARKET_REFRESH_TIMEZONE = ZoneInfo("Africa/Casablanca")

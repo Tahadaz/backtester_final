@@ -7,6 +7,7 @@ from typing import Callable
 
 import numpy as np
 
+from core.quant_core.horizons import DEFAULT_COST_BPS_PER_SIDE
 from core.quant_core.optimize import ema
 from core.quant_core.significance import sharpe_ratio
 
@@ -333,7 +334,7 @@ def evaluate_variant_oos(
     close: np.ndarray,
     variant: VariantDef,
     horizon: str,
-    cost_bps: float = 10.0,
+    cost_bps: float = DEFAULT_COST_BPS_PER_SIDE,
     *,
     cooldown_bars: int = 0,
     volume: np.ndarray | None = None,

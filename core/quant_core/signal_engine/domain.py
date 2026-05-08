@@ -8,6 +8,40 @@ from typing import Any
 from core.quant_core.horizons import HORIZON_PARAMS, VALID_HORIZONS
 
 # ---------------------------------------------------------------------------
+# Horizon-aware parameter caps (A.1.d)
+# Prevents slow-warmup indicators from appearing in short/medium horizon searches.
+# Keys map family → the single "governing" param that determines warmup length.
+# ---------------------------------------------------------------------------
+
+#: Maximum allowed value for the governing parameter of each family × horizon.
+#  short  — enforces that warmup stays inside a typical 3-month data window
+#  medium — filters oversized MAs from medium-horizon universe (SMA/EMA > 50 excluded)
+#  long   — set at grid maximums; effectively no filtering for long-horizon searches
+HORIZON_PARAM_CAP: dict[str, dict[str, int]] = {
+    "short":  {"sma": 20,  "ema": 20,  "rsi": 14, "macd_slow": 20,  "stoch": 14, "obv_ema": 20,  "ichimoku_kijun": 26},
+    "medium": {"sma": 50,  "ema": 50,  "rsi": 28, "macd_slow": 45,  "stoch": 28, "obv_ema": 80,  "ichimoku_kijun": 40},
+    "long":   {"sma": 250, "ema": 250, "rsi": 50, "macd_slow": 100, "stoch": 50, "obv_ema": 250, "ichimoku_kijun": 80},
+}
+# Canonical horizon aliases share the same caps as their base horizon.
+for _alias, _base in (("weekly", "short"), ("monthly", "medium"), ("quarterly", "long")):
+    HORIZON_PARAM_CAP[_alias] = HORIZON_PARAM_CAP[_base]
+
+
+def cap_param_grid(values: list[int], cap: int) -> list[int]:
+    """Return *values* filtered to those ≤ *cap*.
+
+    Raises ValueError if the result is empty — the caller must ensure the
+    underlying grid contains at least one value within the cap before calling.
+    """
+    result = [v for v in values if v <= cap]
+    if not result:
+        raise ValueError(
+            f"cap_param_grid: no values in {values} are ≤ cap={cap}"
+        )
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Signal type taxonomy (Murphy 1999, Elder 1993, Pring 2002)
 # ---------------------------------------------------------------------------
 

@@ -11,10 +11,16 @@ from ..models import StockMaster
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
+HORIZON_ALIASES = {
+    "short": "weekly",
+    "medium": "monthly",
+    "long": "quarterly",
+}
+
 HORIZONS = {
-    "short": "Court terme",
-    "medium": "Moyen terme",
-    "long": "Long terme",
+    "weekly": "Hebdomadaire",
+    "monthly": "Mensuel",
+    "quarterly": "Trimestriel",
 }
 
 FAMILY_SIGNAL_TYPE = {
@@ -100,10 +106,17 @@ def _round(val):
         return val
 
 
+def _normalize_horizon(raw: str) -> str:
+    token = str(raw or "").strip().lower()
+    normalized = HORIZON_ALIASES.get(token, token)
+    if normalized not in HORIZONS:
+        raise HTTPException(status_code=400, detail="Invalid horizon")
+    return normalized
+
+
 @router.get("/data/{horizon}", response_model=None)
 def get_dashboard_data(horizon: str, db: Session = Depends(get_db)):
-    if horizon not in HORIZONS:
-        raise HTTPException(status_code=400, detail="Invalid horizon")
+    horizon = _normalize_horizon(horizon)
 
     # Fetch stocks
     stocks_info = db.query(StockMaster).filter_by(is_active=True).all()
@@ -244,6 +257,9 @@ def get_dashboard_data(horizon: str, db: Session = Depends(get_db)):
             "symbol": symbol,
             "display_name": stock.display_name,
             "sector": stock.sector,
+            "asset_type": stock.asset_type,
+            "market_region": stock.market_region,
+            "adv": None,
             "scores": {
                 "signal_engine": se_scores_obj,
                 "wfo": wfo_scores_obj

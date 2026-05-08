@@ -1,42 +1,325 @@
 # Edge Metrics + Intranet Deployment — Implementation Plan
 
 > **Status:** Plan document, intended to be reviewed and implemented by Codex.
-> The user (taha) will hand this plan to Codex for implementation. The working copy lives in `~/.claude/plans/hey-so-i-think-misty-quasar.md`; this file is the repo-side handoff.
+> On approval, copy this file to `docs/plans/edge-deploy-plan.md` in the repository so Codex picks it up alongside the source tree. The plan file in `~/.claude/plans/` is the working copy.
 
-## ⚡ Codex — start here
+## 2026-05-07 Implementation Amendment - Horizon, Holdout, WFO Edge Contract
 
-**Recommended first step before touching any production code: complete the §4.1.a audit.** It is read-only, it answers two of the §7 open items, and every subsequent backend task in Workstream A depends on its findings. Doing it first prevents you from designing `oos_index.py` against assumptions that turn out to be wrong.
+This amendment supersedes any older `short` / `medium` / `long` terminology in this plan. The live signal stack must use `weekly`, `monthly`, and `quarterly`.
 
-Concretely, in this order:
+| Horizon key | Prediction intent | Reference forward grid | Signal-engine terminal holdout | WFO train / OOS / step |
+|---|---:|---:|---:|---:|
+| `weekly` | 1-5 trading days | `[1, 3, 5]`, reference 5d | last 60 trading bars | 252 / 21 / 21 bars |
+| `monthly` | 6-21 trading days | `[6, 10, 15, 21]`, reference 21d | last 180 trading bars | 504 / 63 / 63 bars |
+| `quarterly` | 22-63 trading days | `[22, 42, 63]`, reference 63d | last 360 trading bars | 756 / 126 / 126 bars |
 
-1. **Read end-to-end** without making changes:
-   - `core/quant_core/research/score_history.py` — focus on lines 38–315 (bucketing, forward-return helpers, `bucketed_forward_returns`)
-   - `core/quant_core/significance.py` — lines 40–125 (`monte_carlo_luck_test` and the centered-bootstrap null)
-   - `core/quant_core/research/stats/hit_rate.py` — `wilson_ci`
-   - `core/quant_core/signal_engine/` — find the indicator-parameter-grid construction site(s) and `_build_family_snapshot`
-   - `services/api/app/models.py:670–840` — `WfoSignalSummary`, `WfoGlobalSignal`, `SignalEngineFamilyResult`, `SignalEngineGlobalResult`
-   - `services/api/app/routers/runs.py` — find the actual leaderboard endpoint feeding `frontend/app/v1/page.tsx` (likely `list_strategy_leaderboard`, but verify; this resolves §7 item 3)
+Old `short`, `medium`, and `long` rows are legacy diagnostics and must be recomputed under the new keys. Costs are 33 bps per side: one buy or sell leg costs 33 bps, and a direct flip costs 66 bps.
 
-2. **Inspect real data** in the dev / local Postgres:
-   - Pull at least 5 rows from `wfo_signal_summary` and dump `folds_json` for each. Document the JSON shape (key names, types, whether OOS windows are stored as date ranges or as fold indices into a separate price series). Heterogeneity across rows must be reported, not silently coerced.
-   - Inspect `signal_score_history` — does any column flag "this score was produced by an out-of-sample fit"? If `is_oos` does not exist, you must add it via alembic in A.1; do not silently omit it.
+Signal Engine Edge is in-sample TA selection on pre-holdout data, then Edge is tested only on the untouched terminal holdout. WFO Edge uses the latest completed WFO OOS fold as primary Edge and recent completed OOS folds as diagnostics; it must not use the Signal Engine terminal holdout.
 
-3. **Write the §4.1.a-finding section** as a markdown block appended to this plan file (`docs/plans/edge-deploy-plan.md`) with three subsections:
-   - **3.a — `folds_json` shape**: example payload + parser strategy
-   - **3.b — `signal_score_history` OOS marker**: present (column name, semantics) or absent (proposed migration)
-   - **3.c — leaderboard payload assembly**: confirmed endpoint name + file:line, plus the schema field where you will attach `edge: EdgeMetricsOut | None`
+Every persisted WFO fold must include indices and dates: `train_start_idx`, `train_end_idx`, `oos_start_idx`, `oos_end_idx`, `train_start_date`, `train_end_date`, `oos_start_date`, `oos_end_date`.
 
-4. **Stop and ask the user before continuing** if any finding contradicts an assumption baked into Workstreams A.1.b–A.1.d. Specifically, raise a flag if:
-   - `signal_score_history` has no IS/OOS distinction *and* cannot be augmented because the score-producing pipeline doesn't track it (this would invalidate the whole OOS-only methodology contract in §3.2 and require a deeper redesign).
-   - `WfoSignalSummary.folds_json` does not store enough information to reconstruct OOS date ranges per fold.
-   - The leaderboard endpoint feeding `/v1` is wired through a denormalized snapshot table that won't accept a per-row payload extension at request time.
+Dashboard triage: actionable requires WFO A/B, source-appropriate Edge pass, and no severe local-neighborhood fragility; watch covers WFO C, weak-positive Edge, or mixed local sensitivity; hidden/diagnostic covers WFO D/F, negative Edge, or local-neighborhood fragility in most folds. The previous "catastrophic fold" gate is deprecated as a primary rule.
 
-Only after this audit lands and the user confirms should you start writing code for A.1.b. The audit cost is ~½ day; the cost of building on bad assumptions is several days of rework.
+## 2026-05-07 Amendment B — Edge sampling and bootstrap discipline
 
-A note on style: when in doubt, keep changes additive — do not rename functions or break existing test contracts. The methodology fixes specified here are designed to coexist with the current 91+ test suite. Failing existing tests is a regression, not a refactor.
+Refines the Edge methodology in §3 and §4 in two areas: how the Edge sample is sourced for each `source ∈ {signal_engine, wfo}`, and what kind of bootstrap drives each statistic. Supersedes any conflicting language in the original §3.2, §4.1.b, §4.1.c-NEW, §4.2.a, and the prior 2026-05-07 amendment's "WFO Edge uses the latest completed WFO OOS fold as primary Edge" line.
 
----
+### B.1 — WFO Edge sample = union of ALL completed OOS folds
 
+Earlier text said WFO Edge uses "the latest completed WFO OOS fold." **Replace with: WFO Edge sample = the concatenation of every completed OOS fold** for that `(symbol, horizon, category, variant)`. Each fold contributes:
+- its winner-parameter score series (which assigns the bucket label for OOS bars within that fold), and
+- its forward returns over its OOS window.
+
+Concatenated, the WFO sample is large by construction. Example: monthly WFO (`504/63/63`) over ~5 years of bars → ~12–14 folds × 63 OOS bars ≈ **750+ OOS observations** before recent-window capping.
+
+The "latest completed OOS fold" is **not the sample** — it is a *diagnostic* surfaced in the drill-down panel as "ER / HR sur le dernier fold" alongside the cumulative number. Disagreement between the latest-fold value and the cumulative value is a regime-change signal (informative, not a gate).
+
+Bucket assignment is strictly OOS: within each fold, the score that classifies a bar comes from the **winner-parameters of that fold**, evaluated on bars within that fold's OOS window. Never a globally-fitted score evaluated retroactively on past dates.
+
+### B.2 — Signal Engine Edge sample = whatever the terminal holdout gives, badge `insufficient` on n < 30
+
+For `source = "signal_engine"`: use the entire terminal holdout (60 / 180 / 360 bars per the §1 horizon contract) as the Edge sample. **No overlap-tricks, no inflation.** When n at the configured forward horizon falls below 30, badge fires `insufficient` (grey) and `proven_edge = False`. This is acceptable by design — SE ranks indicators in-sample; its Edge claim is structurally weak. Users wanting a strong Edge claim consult the WFO source.
+
+Concretely in `build_edge_payload`:
+
+```python
+if source == "signal_engine":
+    sample_returns = se_holdout_forward_returns(symbol, horizon)        # small: ~12–60 obs
+elif source == "wfo":
+    sample_returns = wfo_concatenated_oos_forward_returns(symbol, horizon)  # large: 100s of obs
+if len(sample_returns) < 30:
+    return EdgeMetrics(..., n=len(sample_returns), proven_edge=False, badge="insufficient")
+```
+
+The recent-window cap (§3.3, `n_target=60`, `max_lookback_years=3`) is applied **after** WFO concatenation, not per-fold — i.e., "last 60 OOS observations across the union of folds within the last 3 years."
+
+### B.3 — Bootstrap audit (verified against the codebase)
+
+| Statistic | Function | Bootstrap kind | Autocorrelation-aware? |
+|---|---|---|---|
+| Mean / ER CI in `bucketed_forward_returns` | `stationary_bootstrap_ci()` (`research/stats/robustness.py:108`) | Stationary block (Politis-Romano) | **Yes ✓** |
+| Hit-rate CI | `wilson_ci()` (`research/stats/hit_rate.py:46`) | Analytical | N/A |
+| **MC luck p-value** | `monte_carlo_luck_test()` (`significance.py:62`, line 97) | **IID centered-return** | **No ✗** |
+| Backtest MC paths | `stationary_block_bootstrap()` (`risk.py:97`) | Stationary block | Yes ✓ |
+
+The ER CI is already block-aware. **The MC luck test that drives the Edge `mc` gate is IID** and inflates significance under overlapping forward returns. Required fix in Workstream A.2:
+
+- Add a `block_mean: int | None = None` parameter to `monte_carlo_luck_test`. When set, draw blocks from the centered series via the same Politis-Romano scheme used in `risk.py::stationary_block_bootstrap`. Default `None` preserves existing IID behavior for non-overlapping callers.
+- **Rule for Edge use:** call with `block_mean = max(2, horizon)` when the forward-return horizon > 1; `block_mean = None` when horizon = 1.
+- Same fix applies to `monte_carlo_label_shuffle_test` (the new test in §4.1.c-NEW): when shuffling within an autocorrelated series, the shuffle preserves block structure (shuffle of contiguous blocks of length ≈ horizon, not single bars).
+
+### B.4 — Sections that change as a result of this amendment
+
+When reading §3 / §4 below, treat these spots as overridden:
+- §3.2 (OOS-only forward-return statistics) — for `source="wfo"`, sample is "union of fold OOS windows," not "single fold."
+- §3.3 (Recent-window sample policy) — applies to the *concatenated* WFO sample, capped at last 60 obs / 3 years.
+- §3.7 (Four gates) — `mc` gate's MC luck test must run with `block_mean = max(2, horizon)` for horizon > 1.
+- §4.1.b (`oos_sample_for`) — for `source="wfo"`, returns fold-scoped OOS observations that preserve fold id, winner variant, and OOS date range; the Edge consumer concatenates those observations, not just a naked date set.
+- §4.1.c-NEW (`monte_carlo_label_shuffle_test`) — block-aware shuffle when horizon > 1.
+- §4.2.a (`build_edge_payload`) — branches on source per B.2; calls block-aware MC tests per B.3.
+
+## 2026-05-07 Amendment C — Definitional fixes (parameter neighborhood, gates, triage)
+
+Closes ambiguities in the prior amendments. Pins the numerical thresholds Codex needs to implement triage rules, parameter-neighborhood robustness, and gate semantics. Where this amendment contradicts earlier text it supersedes it.
+
+### C.1 — Local parameter neighborhood = ±10% rounded up; 95% CI on OOS metric
+
+For each WFO fold's winner parameter `p*`, the local neighborhood `N(p*)` is the set of grid points `p` satisfying
+
+```
+|p − p*| <= ceil(0.10 * p*)
+```
+
+Examples: `p* = 14` → `|p − 14| ≤ 2` → `N = {12, 13, 14, 15, 16}` (intersected with the actual discrete grid). `p* = 50` → `N = {45..55}`. For multi-dimensional parameters (MACD `(fast, slow, signal)`, Ichimoku `(9, 26, 52)`, etc.), compute the neighborhood independently per dimension; the joint neighborhood is the Cartesian intersection with the actual grid. **Cap at 25 neighbors max** — if the joint neighborhood would exceed 25, sample 25 deterministically by L1 distance from `p*` (ties broken lexicographically; seeded for reproducibility).
+
+For each `p ∈ N(p*)`, evaluate the OOS metric on the **same** fold's OOS window. The metric is the **OOS edge ratio** (`mean / std` of forward returns at horizon `h`, no annualization) — chosen over OOS Sharpe because it stays meaningful at small samples.
+
+Compute a **95% percentile bootstrap CI** over `{metric(p) : p ∈ N(p*)}` using an ordinary deterministic percentile bootstrap over the scalar neighbor metrics. Do **not** use a stationary/block bootstrap here: neighbor metrics are a small cross-section of parameter variants, not an autocorrelated time series.
+
+Fragility class **per fold**:
+
+| Class | Rule on the neighborhood 95% CI of OOS edge ratio |
+|---|---|
+| `stable` | CI fully on the same sign as `metric(p*)` AND `metric(p*) ∈ [CI_lo, CI_hi]` |
+| `mixed`  | CI straddles 0, OR `metric(p*)` lies outside `[CI_lo, CI_hi]` (winner is an outlier in its own neighborhood — classic overfit signal) |
+| `severe` | 95% CI fully on the *opposite* sign of `metric(p*)`, OR `> 50%` of `N(p*)` produces `metric(p) < 0` |
+
+Aggregation **across folds** for the dashboard's "local-neighborhood fragility" badge:
+
+| Aggregate label | Rule |
+|---|---|
+| no severe fragility | `< 30%` of folds classified as `severe` |
+| mixed local sensitivity | `30% ≤ severe + mixed share < 60%` |
+| fragility in most folds | `≥ 60%` of folds classified as `severe` OR `mixed` |
+
+These thresholds are explicit and testable.
+
+### C.2 — All confidence intervals at 95%, alpha pinned at every call site
+
+Every Edge-stack CI uses **α = 0.05 → 95% CI** — mean ER (`stationary_bootstrap_ci`), hit rate (`wilson_ci`), neighborhood fragility (C.1), MC luck-null quantiles where displayed in the drill-down, label-shuffle null. **Pass `alpha=0.05` explicitly at every call site** (no relying on defaults), so a future ripgrep for `alpha=` produces a complete audit trail.
+
+### C.3 — Triage state ↔ Edge gate definitions, pinned
+
+The prior triage amendment used "weak-positive Edge" and "negative Edge" without thresholds. Pinned:
+
+| State | Definition |
+|---|---|
+| `proven` | All 4 gates pass: `mc` (block-aware `p < 0.01`) AND `wilson` (`hit_ci_lower > 0.50`) AND `bh` (direction-correct ER beats B&H) AND `n` (`n ≥ 30`). |
+| `weak-positive` | `n` AND `bh` pass, AND **at least one** of `{mc, wilson}` passes, but NOT all four. |
+| `neutral` | `n` passes; neither `bh` nor `wilson` passes. |
+| `negative` | `n` passes AND `bh` fails AND `wilson` lower bound below 0.50 (signal underperforms B&H and is no better than coinflip). |
+| `insufficient` | `n < 30`. Grey badge regardless of other gate values. |
+
+The drill-down panel always shows the per-gate truth table; the dashboard tile surfaces only the 5-state label.
+
+### C.4 — Recent-folds diagnostic = last 3 completed OOS folds (fixed count, not time window)
+
+"Recent completed OOS folds as diagnostics" → **the last 3 completed OOS folds** by `oos_end_date`. Fixed count, not a time window. For monthly WFO (`63/63`), 3 folds ≈ 9 months — enough for a regime-stability read without overweighting old structure. The drill-down panel renders these 3 folds as a small bar chart (one bar per fold's OOS edge ratio, with 95% CI whiskers per fold).
+
+If fewer than 3 completed folds exist (early WFO), render the available folds and label `"régime trop court pour diagnostic"`. Do not extrapolate.
+
+### C.5 — Direction-corrected gates (consolidates a subtlety in the existing code)
+
+Per the existing `bucketed_forward_returns` code (`score_history.py:312–316`), hit rate is **already direction-aware**: `hits = sum(r > 0)` for buy buckets, `sum(r < 0)` for sell buckets. The Edge `wilson` gate therefore uses `hit_ci_lower > 0.50` for **both** long and short directions — no sign flip required at the gate level. The earlier §3.7 wording mentioning `hit_ci_upper < 0.50` for short buckets was incorrect against the existing code; ignore it.
+
+The `bh` gate compares ER to B&H in the bucket-direction sense:
+- Long buckets (`buy`, `strong_buy`): pass iff `expected_return > bh_expected_return`.
+- Short buckets (`sell`, `strong_sell`): pass iff `expected_return < bh_expected_return` (the short signal must be more negative than the unconditional drift; a short that returns 0 while B&H returns +1% is a fail).
+- `hold`: gate is N/A; bucket renders "Pas de signal aujourd'hui" with no Edge tile.
+
+## 2026-05-07 Amendment D — Drop the buy-and-hold gate
+
+The `bh` gate (compare `expected_return` to a passive buy-and-hold benchmark) is **removed** from the Edge methodology. Rationale: the strategy is signal-gated and per-trade; B&H is unconditional and frictionless. Making the comparison fair requires asymmetric cost adjustment that adds methodological surface without buying real rigor. The remaining three gates already make the honest claim.
+
+### D.1 — Three-gate `proven_edge`
+
+```
+proven_edge := mc & wilson & n
+```
+
+| Gate | Pass condition |
+|---|---|
+| `mc` | block-aware Monte Carlo luck `p < 0.01` (block_mean = max(2, horizon) for horizon > 1) |
+| `wilson` | hit-rate Wilson 95% lower bound > 0.50 (direction-aware via the existing bucket-direction code) |
+| `n` | `n >= 30` |
+
+### D.2 — Updated `EdgeMetrics` shape
+
+- Remove field `bh_expected_return`.
+- `EdgeGates` drops the `bh: bool` field; now has only `mc`, `wilson`, `n`.
+- Everything else (`expected_return`, `hit_rate`, `hit_ci_lower`, `hit_ci_upper`, `expectancy` decomposition, `edge_ratio`, `profit_factor`, `mc_luck_pvalue`, `label_shuffle_pvalue`, `n`, `window_*`, `methodology_version`) unchanged.
+
+### D.3 — Triage state machine, repinned (supersedes §C.3)
+
+| State | Definition |
+|---|---|
+| `proven` | n passes AND mc passes AND wilson passes (Wilson LB > 0.50). |
+| `weak-positive` | n passes AND **exactly one** of `{mc, wilson}` passes. |
+| `neutral` | n passes; neither mc nor wilson passes; Wilson **upper** bound ≥ 0.50 (signal isn't statistically demonstrable as wrong-directional). |
+| `negative` | n passes; Wilson **upper** bound < 0.50 (statistically wrong-directional with 95% confidence). |
+| `insufficient` | n < 30. Grey badge regardless of other gate values. |
+
+### D.4 — Dashboard / drill-down changes
+
+- 4-gate checklist becomes a **3-gate checklist** (drop the "Bat le buy-and-hold" row).
+- 33 bps/side cost is still surfaced in the drill-down as **informational** (next to ER and the expectancy decomposition), not as a gate input.
+- "Méthodologie / limites" accordion: remove any cost-adjustment caveat tied to B&H. Keep the multi-testing, MC-null-shape, and recent-regime caveats.
+- Triage filter "Edge prouvé seulement" semantics unchanged — it shows rows where `proven_edge=True`.
+
+### D.5 — Plan sections this supersedes
+
+- §3.7 (Four gates → **three** gates): drop the `bh` row; `proven_edge` is now a 3-AND.
+- §4.2.a (`EdgeMetrics` / `EdgeGates`): remove `bh_expected_return` and `bh: bool` fields.
+- §4.2.b endpoint response: `EdgeMetricsOut` mirrors the dataclass change.
+- §4.2.d tests: drop `test_proven_edge_fails_when_er_below_bh`. Add `test_negative_state_when_wilson_upper_below_half`.
+- §3.8 honest-framing copy: drop the "beats buy-and-hold" sentence; the demo-talking-point is now "the signal's magnitude is non-zero AND its direction is reliable AND we have enough data."
+- §C.3 (Triage state ↔ Edge gate definitions): superseded by §D.3 above.
+- §C.5 (direction-corrected gates): drop the second paragraph ("The `bh` gate compares ER to B&H..."); keep the hit-rate-direction-awareness paragraph.
+
+### D.6 — `bh_expected_return` is no longer computed
+
+`build_edge_payload` no longer calls `_calculate_forward_returns(prices, h)` over the unconditional OOS sample. Saves a small amount of compute per call, simplifies cache key, and removes one source of stale-cache bugs.
+
+## 2026-05-07 Amendment E — Cost-aware Edge metrics (gross/net toggle)
+
+Costs were dropped from the `bh` gate (Amendment D), but the user wants ER and dependent metrics to be **viewable both gross and net of cost**, with a UI toggle. This amendment defines the contract.
+
+### E.1 — Strategy-perspective return convention (read carefully)
+
+Per-trade return from the strategy's perspective, with direction baked in:
+
+```python
+# r is the raw forward return at horizon h from _calculate_forward_returns()
+# direction ∈ {long, short, none} from direction_for_bucket(bucket)
+# c = DEFAULT_COST_BPS_PER_SIDE * 1e-4 = 0.0033 (per side; round-trip = 2c = 66 bps)
+def strategy_return(r: float, direction: str, c: float, include_costs: bool) -> float:
+    sign = +1 if direction == "long" else (-1 if direction == "short" else 0)
+    if sign == 0:                  # hold bucket: no trade
+        return 0.0
+    gross = sign * r               # positive = good, regardless of direction
+    return gross - 2*c if include_costs else gross
+```
+
+Every cost-sensitive metric below is computed from this `strategy_return` view; the user-facing sign convention is unambiguous (positive = made money).
+
+### E.2 — `EdgeMetrics` shape, gross/net pairs
+
+Cost-sensitive fields gain `_gross` / `_net` variants. Cost-invariant fields stay singular.
+
+| Field | Gross | Net | Notes |
+|---|---|---|---|
+| `expected_return` | `expected_return_gross` | `expected_return_net` | mean of `strategy_return(r, dir, c, include_costs)` |
+| `expectancy` | `expectancy_gross: ExpectancyDecomp` | `expectancy_net: ExpectancyDecomp` | `p_win` is cost-invariant; `avg_win` and `avg_loss` differ; expectancy field within the decomp recomputes |
+| `edge_ratio` | `edge_ratio_gross` | `edge_ratio_net` | std is cost-invariant (flat per-trade shift); `edge_ratio_net = (mean − 2c) / std` |
+| `profit_factor` | `profit_factor_gross` | `profit_factor_net` | recomputed: each per-trade return is shifted before bucketing into wins / losses |
+| `mc_luck_pvalue` | `mc_luck_pvalue_gross` | `mc_luck_pvalue_net` | both run with the same `block_mean` (B.3); the centered-bootstrap operates on the cost-shifted series for `_net` |
+| `label_shuffle_pvalue` | `label_shuffle_pvalue_gross` | `label_shuffle_pvalue_net` | same |
+| `hit_rate`, `hit_ci_lower`, `hit_ci_upper` | single value (cost-invariant) | — | cost is flat per trade, doesn't change which trades won |
+| `n`, `window_*`, `bucket`, `direction`, `methodology_version` | single value | — | structural |
+| **NEW** `cost_bps_per_side: float` | — | — | the value used to compute the `_net` columns; default 33; allows the frontend to display "net of 33 bps" precisely |
+
+### E.3 — `EdgeGates` and `proven_edge`, gross/net pairs
+
+```python
+@dataclass(frozen=True)
+class EdgeGates:
+    mc_gross:  bool   # mc_luck_pvalue_gross < 0.01
+    mc_net:    bool   # mc_luck_pvalue_net   < 0.01
+    wilson:    bool   # cost-invariant
+    n:         bool   # cost-invariant
+
+@dataclass(frozen=True)
+class EdgeMetrics:
+    ...
+    proven_edge_gross: bool   # mc_gross & wilson & n
+    proven_edge_net:   bool   # mc_net   & wilson & n
+```
+
+A signal can be `proven` gross but not net (cost is the killer) — that's exactly the failure mode we want surfaced.
+
+### E.4 — Triage state machine driven by the *displayed* mode
+
+The dashboard has a global toggle: **`[Coûts inclus]`** (default) / **`[Coûts exclus]`**. The triage state (`proven` / `weak-positive` / `neutral` / `negative` / `insufficient` per §D.3) is computed against `proven_edge_net` when the toggle is on `Coûts inclus`, and against `proven_edge_gross` when on `Coûts exclus`. **Default = `Coûts inclus` (net)** — the more honest stance.
+
+`weak-positive` redefined under the toggle:
+- Net mode: `n` passes AND exactly one of `{mc_net, wilson}` passes.
+- Gross mode: `n` passes AND exactly one of `{mc_gross, wilson}` passes.
+
+`negative` is unchanged — Wilson upper bound < 0.50, cost-invariant.
+
+### E.5 — Drill-down panel changes
+
+The drill-down shows **both** gross and net values side-by-side, regardless of the toggle, so the supervisor can see the cost impact directly:
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  ER       gross +1.84%      net +1.18%   (cost −0.66%)   │
+│  Edge     gross  0.42       net  0.27                    │
+│  PF       gross  1.62       net  1.38                    │
+│  MC p     gross  0.004      net  0.018  (block-aware)    │
+│  Hit      64%   [IC 95% : 56% – 72%]   (sans coûts)      │
+└──────────────────────────────────────────────────────────┘
+```
+
+The 3-gate checklist visualizes the gates **for the currently-selected mode** (gross or net) with pass/fail icons. The "Méthodologie / limites" accordion gains a one-line note: *"Coûts par aller : 33 bps (configurable). En mode net, les coûts d'aller-retour (66 bps) sont déduits de chaque trade avant calcul d'ER, expectance, ratio d'edge, profit factor et p-valeur MC. Le hit rate ne dépend pas des coûts."*
+
+### E.6 — Feature flag and persistence
+
+- Toggle state persisted in the user's frontend preference (localStorage `bt.edge.includeCosts: true|false`, default `true`).
+- Backend env var `EDGE_COST_BPS_PER_SIDE` (default 33) overrides the cost used for `_net` computations. Cache key includes this value so changing it invalidates stale caches.
+- `cost_bps_per_side` is also a query param on `/analytics/edge?cost_bps=33` — defaults to env, allows ad-hoc what-if analysis without server restart.
+
+### E.7 — Test additions
+
+- `test_strategy_return_long_subtracts_round_trip_cost`
+- `test_strategy_return_short_subtracts_round_trip_cost_after_sign_flip`
+- `test_hold_bucket_strategy_return_is_zero`
+- `test_edge_ratio_net_equals_gross_minus_cost_over_std`
+- `test_profit_factor_net_lower_than_gross_when_costs_nonzero`
+- `test_proven_edge_gross_true_net_false_when_cost_kills_mc`
+- `test_proven_edge_invariant_to_cost_when_cost_is_zero`
+- `test_endpoint_cost_bps_query_param_overrides_env_default`
+
+### E.8 — Plan sections this supersedes
+
+- §3.4 (canonical expectancy) — applies to both gross and net (`avg_win`, `avg_loss`, `expectancy` recomputed with cost-shifted returns for `_net`); `p_win` is single-valued.
+- §3.5 (profit factor) — extended to net via cost-shifted per-trade returns.
+- §3.6 (edge ratio) — extended to net via `(mean − 2c) / std`.
+- §4.2.a `EdgeMetrics` and `EdgeGates` — replace single-valued cost-sensitive fields with `_gross`/`_net` pairs per E.2 and E.3.
+- §4.2.d test list — augmented with E.7.
+- §C.3 / §D.3 (triage state machine) — extended with the toggle-driven semantics in E.4.
+
+### C.6 — Other ambiguities tagged for Codex to flag, not yet decided
+
+Codex must raise each of these as a clarifying question to the user **before** implementing the affected sub-phase:
+
+1. **Cost calibration.** 33 bps/side is the locked contract per the §1 amendment. Codex should verify against actual MASI fill data once a sample is available. If average all-in cost (commission + spread + impact) exceeds 50 bps/side on liquid MASI mid-caps, the contract must be revisited — many marginal-edge symbols would flip from `proven` to `negative` purely on cost. Not a v1 blocker; flag for v2.
+2. **Recompute migration.** Switching `short/medium/long` → `weekly/monthly/quarterly` invalidates `signal_engine_global_result`, `signal_engine_family_result`, `wfo_signal_summary`, `wfo_global_signal`, and `signal_score_history`. Codex must propose a staged backfill (one horizon per night, one variant at a time) and define rollback (snapshot the legacy-horizon rows to `*_legacy_horizons` tables before deleting). Live-dashboard behaviour during migration: serve only horizons whose backfill is complete; horizons in progress show "recompute en cours."
+3. **`methodology_version` format.** Proposal: `"YYYY-MM-DD"` of the latest amendment-rule edit, compared lexicographically; bumps invalidate every Edge cache. Confirm before implementing the cache key.
+4. **Auth.js signup approval UX.** `users.is_active = false` default + admin approval. v1: a SQL-only "approve user" runbook in `docs/ops/auth.md` (no UI); admin page is post-demo work.
+5. **"Edge prouvé seulement" filter ↔ `bucket = hold` interaction.** Proposal: when the filter is on, rows with `bucket = hold` are hidden entirely (consistent with "show me only actionable opportunities"). Confirm.
+6. **WFO fold-metadata backfill shape.** `wfo_signal_summary.folds_json` is JSONB, so the required fold metadata (`train_start_idx`, `train_end_idx`, `oos_start_idx`, `oos_end_idx`, `train_start_date`, `train_end_date`, `oos_start_date`, `oos_end_date`) does **not** require an Alembic migration unless the team deliberately chooses physical columns. The required v1 work is a defensive parser plus staged recompute/backfill of JSON fold payloads before any Edge code relies on those fields.
 
 ## 0. Audience and tone for this document
 
@@ -141,12 +424,12 @@ There is **no `pick_best_bucket` function**, no "best-historical-bucket" overrid
 
 ### 3.2 OOS-only forward-return statistics
 
-All of `expected_return`, `hit_rate`, `std`, `profit_factor`, `expectancy`, `mc_luck_pvalue`, `bh_expected_return` for a `(symbol, horizon, source)` cell must be computed using **only** the dates `D_OOS(symbol, horizon, source)` defined as:
+All Edge statistics for a `(symbol, horizon, source)` cell must be computed using **only** the source-appropriate OOS sample defined by `oos_sample_for(symbol, horizon, source)`:
 
-- **For `source = "wfo"`:** the union of test-window date ranges across all WFO folds for that (symbol, horizon).
-- **For `source = "signal_engine"`:** the dates on which the score series was produced from a model fitted *not using* that day's data — i.e., a leave-one-out, expanding-window, or rolling-window scheme. Codex must confirm one of these is true today; if not, this requires an upstream fix.
+- **For `source = "wfo"`:** the concatenation of completed fold OOS observations, where each observation's score/bucket comes from that fold's winner parameters. Keep fold identity and winner metadata for diagnostics.
+- **For `source = "signal_engine"`:** the terminal holdout sample for the active horizon: 60 / 180 / 360 bars for weekly / monthly / quarterly. The holdout is not used for parameter selection.
 
-The benchmark `bh_expected_return` is the mean forward return across **all OOS dates for the symbol at horizon h** (no bucket filter, same OOS date set as the cell statistics — same denominator universe).
+No buy-and-hold benchmark is computed or used as a gate.
 
 ### 3.3 Recent-window sample policy
 
@@ -193,15 +476,14 @@ edge_ratio = mean(r) / std(r, ddof=1)   if n > 1 and std > 0 else None
 
 This is a per-trade signal-to-noise ratio. The display label is **"Ratio d'edge"**, not "Sharpe." The tooltip explains the formula and explicitly disclaims the Sharpe analogy.
 
-### 3.7 The four gates — definition of "Proven Edge"
+### 3.7 The three gates — definition of "Proven Edge"
 
-`proven_edge := mc & wilson & bh & n` where each gate is a boolean:
+`proven_edge_net := mc_net & wilson & n`; `proven_edge_gross := mc_gross & wilson & n`. Dashboard default is net (`Coûts inclus`).
 
 | Gate | Pass condition | Threshold rationale |
 |---|---|---|
-| `mc` | `mc_luck_pvalue < 0.01` | Stricter than 0.05; partial mitigation for deferred multiple-testing correction |
-| `wilson` | `hit_ci_lower > 0.50` (long buckets) or `hit_ci_upper < 0.50` (short buckets, where "win" means `r < 0`) | Wilson lower bound clears the random-direction baseline |
-| `bh` | `expected_return > bh_expected_return` (long) or `expected_return < bh_expected_return` (short) | Beats the do-nothing benchmark on the same OOS window |
+| `mc_gross` / `mc_net` | block-aware `mc_luck_pvalue_* < 0.01` | Stricter than 0.05; partial mitigation for deferred multiple-testing correction |
+| `wilson` | `hit_ci_lower > 0.50`; hit definition is already direction-aware | Wilson lower bound clears the random-direction baseline |
 | `n` | `n >= 30` | Floor for the Wilson CI to be meaningful |
 
 The drill-down panel shows pass/fail per gate with the actual value vs threshold for each. **No gate has a UI affordance to override.**
@@ -230,27 +512,94 @@ Codex deliverables:
 
 **STOP here and report findings before continuing.** A.1.b depends on these answers.
 
-#### A.1.b — `oos_dates_for(symbol, horizon, source) -> set[pd.Timestamp]`  (½ day)
+#### §4.1.a-finding — Audit results (2026-05-07)
 
-New module: `core/quant_core/research/oos_index.py`. Pure functions only. No I/O — receives data via injected loaders so it is unit-testable with synthetic inputs.
+Live-DB audit run against `infra-quant_postgres-1` (`quant` DB, `app` user). Sample sizes: `signal_score_history` 1,395,306 rows across `source ∈ {engine_legacy=354027, engine_expanded=606534, wfo=434745}`; `wfo_signal_summary` 1808 rows total, 847 with non-empty `folds_json` arrays (8–12 folds each).
+
+**1. Producer locations (correcting a plan reference).**
+
+The `_build_family_snapshot` symbol cited in §2.4 / §4.1.a step 1 lives only in `frontend/scripts/export-scores.py:390` — that copy is a *re-builder* used by an offline export script, **not** the production writer. The actual production writer for `signal_engine_family_result.family_detail_json` is `_build_family_detail_json` at `services/api/app/services/signal_engine_persistence.py:152` (called from `:730` and `:1094`). This is the function the rest of this plan should reason about; treat references to `_build_family_snapshot` in §2.4 / §6 as aliases for `_build_family_detail_json`.
+
+The per-bar score-history producer is `services/worker/tasks/score_history_batch.py` — `run_score_history_for_symbol()` at `:150`, with the actual row-write happening in `_replace_history()` at `:78`. It rebuilds the per-bar series from persisted representatives via `core/quant_core/research/score_history.py::build_engine_category_series` and `build_wfo_category_series`, then DELETEs+INSERTs the entire `(symbol, source, horizon)` slice. It has no concept of IS vs OOS at write time — the series spans the entire OHLCV index reachable from the representative's parameters.
+
+**2. `signal_score_history` OOS marker — ABSENT. Must add.**
+
+Live `\d` confirms columns are `(date, symbol, source, category, horizon, score_pct)` — exactly the ORM shape at `services/api/app/models.py:864-883`. The PK is the full natural key; there is no `is_oos`, no `holdout_flag`, no provenance column. The `source` column distinguishes engine variant from WFO but does not split IS vs OOS within either.
+
+Within `source = 'wfo'`, every persisted bar from the entire OHLCV history is materialized — including bars before the first WFO fold's `oos_start` (no fold has yet selected a winner) and bars inside training windows of later folds. None of this is currently filterable from the table alone.
+
+**Proposed schema change** (resolves Open item #1 in §7):
+```sql
+ALTER TABLE signal_score_history
+    ADD COLUMN is_oos BOOLEAN NOT NULL DEFAULT false;
+```
+Migration filename: `services/api/alembic/versions/<rev>_add_is_oos_to_signal_score_history.py`. The column is non-nullable with `DEFAULT false` so the upgrade is online-safe on Postgres 11+ (no table rewrite). The PK does not include `is_oos`; legacy rows keep `false` and are functionally treated as IS (conservative — they will never enter Edge samples). Backfill is **not** attempted in the migration; instead, A.1.b follows the policy of §B.2 (terminal-N-bars-per-horizon for `signal_engine`) and `_replace_history` is updated to set `is_oos=true` for bars that fall inside fold OOS windows when source='wfo' (resolution detail in A.1.b.iii). Until the next score-history rebuild lands, the `is_oos=false` default + the §B.2 holdout fallback ensure callers do not double-count.
+
+**3. `WfoSignalSummary.folds_json[*]` shape — homogeneous, but bar-index based.**
+
+Sampled all 847 non-empty rows. Distinct keys present in `folds_json[0]`:
+```
+index, train_start, train_end, oos_start, oos_end,
+is_return, oos_return, oos_sharpe,
+winner_variant_id, winner_description, winner_prom,
+profile_passes, profile_reason, profile_pct_profitable,
+oos_profitable
+```
+**Critical:** every persisted fold uses **integer bar indices** for `train_start`, `train_end`, `oos_start`, `oos_end`. 0 of 847 rows carry the `*_date` keys that the writer at `services/worker/tasks/wfo_signal_batch.py:161` (`_build_folds_json`) emits when an `index` argument is supplied. In production the writer is invoked at `:339` with `ohlcv.index` — but the sampled rows pre-date that change (or the call-site evolution; live DB shows none have dates yet). **A.1.b must convert bar-index → timestamp by reloading the symbol's OHLCV index**, not by reading the JSON dates.
+
+Other gotchas observed:
+- `winner_variant_id` and `winner_description` may be empty string `""` (not null) when the winner pool is unavailable at write time. `OosWindow.winner_variant_id` should treat `""` as None.
+- `oos_end` is exclusive in the bar-index space (matches `_window_date(end_exclusive=True)` at `:188-190`). The downstream `OosWindow.end` should keep it inclusive in date-space, so the conversion is `dates[oos_end - 1]`.
+- All 15 keys are present in every sampled row — the shape is homogeneous. The defensive parser proposed for A.1.b can therefore be lean: tolerate the optional `*_date` keys for forward-compat, fall back to bar-index → timestamp resolution otherwise. No multi-version branching needed.
+
+**`OosWindow` from a fold row** (concrete A.1.b spec):
+```python
+def _fold_to_window(fold: dict, ohlcv_index: pd.DatetimeIndex) -> OosWindow:
+    s = int(fold["oos_start"]); e = int(fold["oos_end"])
+    start = pd.Timestamp(fold.get("oos_start_date") or ohlcv_index[s])
+    end   = pd.Timestamp(fold.get("oos_end_date")   or ohlcv_index[e - 1])  # exclusive → inclusive
+    wv = (fold.get("winner_variant_id") or "").strip() or None
+    return OosWindow(fold_id=int(fold["index"]), start=start, end=end,
+                     winner_variant_id=wv, winner_params=None)
+```
+`winner_params` is not in the JSON; if A.1.b needs it, A.1.b must look it up via `winner_variant_id` against `representatives_json` on the same `WfoSignalSummary` row.
+
+**Resolution of §7 open items.** Item #1 (OOS marker on `signal_score_history`) → resolved by the migration above. Item #2 (`folds_json` shape) → resolved; shape is homogeneous, parser spec given. A.1.b can proceed.
+
+#### A.1.b — `oos_sample_for(symbol, horizon, source) -> OosSample`  (½ day)
+
+New module: `core/quant_core/research/oos_index.py`. Pure functions only. No I/O — receives data via injected loaders so it is unit-testable with synthetic inputs. The key design constraint: WFO Edge cannot be represented as a plain date set, because bucket assignment must be tied to the fold winner that produced the OOS score on that date.
 
 ```python
 @dataclass(frozen=True)
 class OosWindow:
+    fold_id: str | int | None
     start: pd.Timestamp  # inclusive
     end:   pd.Timestamp  # inclusive
+    winner_variant_id: str | None = None
+    winner_params: dict[str, Any] | None = None
+
+@dataclass(frozen=True)
+class OosSample:
+    source: Literal["wfo", "signal_engine"]
+    horizon: Literal["weekly", "monthly", "quarterly"]
+    windows: tuple[OosWindow, ...]
+    dates: pd.DatetimeIndex  # sorted union, convenience only
+    score_mode: Literal["fold_scoped_winner", "terminal_holdout"]
 
 def oos_windows_from_wfo(folds_json: list[dict]) -> list[OosWindow]:
     """Parse WfoSignalSummary.folds_json into normalized OOS windows.
     Tolerates the actual fold shape established in A.1.a-finding."""
 
-def oos_dates_for_signal_engine(score_history_rows: Iterable[ScoreRow]) -> set[pd.Timestamp]:
-    """Returns the date set where score was produced under an OOS fit.
-    Source of truth: signal_score_history.is_oos == True (after A.1.a)."""
+def oos_sample_for_signal_engine(score_history_rows: Iterable[ScoreRow],
+                                 holdout_bars: int) -> OosSample:
+    """Returns the terminal holdout sample. If signal_score_history lacks an
+    is_oos marker, derive the holdout from the final N trading bars per horizon."""
 
-def oos_date_index(*, symbol: str, horizon: int, source: Literal["wfo", "signal_engine"],
-                   wfo_loader: Callable, score_history_loader: Callable) -> pd.DatetimeIndex:
-    """Top-level entry. Returns a sorted, tz-naive DatetimeIndex.
+def oos_sample_for(*, symbol: str, horizon: Literal["weekly", "monthly", "quarterly"],
+                   source: Literal["wfo", "signal_engine"],
+                   wfo_loader: Callable, score_history_loader: Callable) -> OosSample:
+    """Top-level entry. Returns fold-scoped OOS windows plus the convenience date union.
     Caches by (symbol, horizon, source, content_hash) for the duration of a request."""
 ```
 
@@ -352,32 +701,38 @@ class ExpectancyDecomp:
 
 @dataclass(frozen=True)
 class EdgeGates:
-    mc: bool       # mc_luck_pvalue < 0.01
-    wilson: bool   # hit_ci bounds clear the 0.5 baseline appropriate for direction
-    bh: bool       # ER beats B&H in direction-correct sense
-    n: bool        # n >= 30
+    mc_gross: bool
+    mc_net: bool
+    wilson: bool
+    n: bool
 
 @dataclass(frozen=True)
 class EdgeMetrics:
     symbol: str
-    horizon: int
+    horizon: Literal["weekly", "monthly", "quarterly"]
     source: Literal["signal_engine", "wfo"]
     bucket: str                # one of BUCKET_NAMES
     direction: Literal["long", "short", "none"]
     n: int
     window_start: pd.Timestamp | None
     window_end:   pd.Timestamp | None
-    expected_return: float | None
+    expected_return_gross: float | None
+    expected_return_net: float | None
     hit_rate: float | None
     hit_ci_lower: float | None
     hit_ci_upper: float | None
-    expectancy: ExpectancyDecomp | None
-    edge_ratio: float | None
-    profit_factor: float | None
-    mc_luck_pvalue: float | None
-    label_shuffle_pvalue: float | None  # see A.1.c
-    bh_expected_return: float | None
-    proven_edge: bool
+    expectancy_gross: ExpectancyDecomp | None
+    expectancy_net: ExpectancyDecomp | None
+    edge_ratio_gross: float | None
+    edge_ratio_net: float | None
+    profit_factor_gross: float | None
+    profit_factor_net: float | None
+    mc_luck_pvalue_gross: float | None
+    mc_luck_pvalue_net: float | None
+    label_shuffle_pvalue_gross: float | None
+    label_shuffle_pvalue_net: float | None
+    proven_edge_gross: bool
+    proven_edge_net: bool
     gates: EdgeGates
     methodology_version: str   # bump on any algo change so frontend can detect stale cache
 
@@ -386,11 +741,12 @@ def compute_profit_factor(returns: np.ndarray) -> float | None: ...
 def compute_edge_ratio(mean: float, std: float) -> float | None: ...
 def direction_for_bucket(bucket: str) -> Literal["long", "short", "none"]: ...
 def build_edge_payload(*, symbol, horizon, source, score_series, prices,
-                       oos_dates, today_bucket: str, n_min=30, n_target=60,
-                       max_lookback_years=3.0, mc_iter=2000, mc_seed=42) -> EdgeMetrics: ...
+                       oos_sample: OosSample, today_bucket: str, cost_bps_per_side=33.0,
+                       n_min=30, n_target=60, max_lookback_years=3.0,
+                       mc_iter=2000, mc_seed=42) -> EdgeMetrics: ...
 ```
 
-`build_edge_payload` orchestrates: calls `bucketed_forward_returns(..., oos_dates=oos_dates, recent_window=(n_min, n_target), max_lookback_years=max_lookback_years)` for `fwd_horizons=[horizon]`; pulls the cell for `today_bucket`; calls `monte_carlo_luck_test(returns, metric="total_return")`; calls `monte_carlo_label_shuffle_test` (A.1.c-NEW below); computes expectancy, edge_ratio, profit_factor; computes B&H; assembles gates; returns `EdgeMetrics`.
+`build_edge_payload` orchestrates source-specific sampling, applies the recent-window cap after WFO concatenation, computes gross and net strategy-perspective returns, runs block-aware MC tests for gross and net, computes the cost-invariant Wilson gate, and returns gross/net `EdgeMetrics`. It does not compute or gate against buy-and-hold.
 
 #### A.1.c-NEW — `monte_carlo_label_shuffle_test` (½ day, slotted with A.2.a)
 
@@ -425,8 +781,9 @@ This adds `label_shuffle_pvalue` to `EdgeMetrics`. The drill-down panel surfaces
 
 Query params (all required unless marked):
 - `symbol: str`
-- `horizon: int` (in trading days)
+- `horizon: Literal["weekly", "monthly", "quarterly"]`
 - `source: Literal["signal_engine", "wfo"]`
+- `cost_bps: float = 33.0` (optional override; default is the locked 33 bps/side contract)
 
 Response: `EdgeMetricsOut` Pydantic model in `services/api/app/schemas/edge.py` mirroring the dataclass exactly. Use `model_config = ConfigDict(from_attributes=True)`.
 
@@ -526,11 +883,10 @@ Slide-over panel (use existing `Sheet` component from `frontend/components/ui/sh
 Sections, top to bottom:
 
 1. **Header** — `<symbol> · <horizon>j · source: <Signal Engine|WFO>` toggle for source (refetches on change). Bucket label as a read-only chip (no override affordance, per §3.1).
-2. **4-gate checklist:**
+2. **3-gate checklist for selected mode (default net / `Coûts inclus`):**
    ```
    ✓ Test de chance MC : p = 0.004 (< 0.01)
    ✓ Wilson LB : 0.58 (> 0.50)
-   ✓ Bat le buy-and-hold : +1.8% > +0.4%
    ✓ Échantillon : 42 (≥ 30)
    ```
 3. **Test complémentaire (label shuffle)** — `Label-shuffle MC : p = 0.012` with one-line explainer.
@@ -548,7 +904,7 @@ Sections, top to bottom:
 
 `frontend/lib/api.ts`:
 - `EdgeMetricsSchema` (Zod) mirroring `EdgeMetricsOut`.
-- `fetchEdge(symbol: string, horizon: number, source: 'signal_engine'|'wfo'): Promise<EdgeMetrics | null>` — returns `null` on cold-cache.
+- `fetchEdge(symbol: string, horizon: TradingHorizon, source: 'signal_engine'|'wfo', costBps = 33): Promise<EdgeMetrics | null>` — returns `null` on cold-cache.
 
 #### A.3.f — Feature flag
 
@@ -899,7 +1255,7 @@ Workstream B is mostly independent of A; both can run in parallel if Codex has b
 ## 9. Demo dry-run checklist
 
 Before showing the supervisor:
-- 2–3 symbols where badge fires green; rehearse: row → drill-down → 4 gates → expectancy decomposition → histogram → label-shuffle pvalue → cross-link.
+- 2–3 symbols where badge fires green; rehearse: row → drill-down → **3 gates (`mc`/`wilson`/`n` per Amendment D)** → canonical expectancy decomposition (gross + net side-by-side per Amendment E.5) → histogram → label-shuffle pvalue → cross-link.
 - 1 symbol with badge=false; show *which* gate fails and why.
 - 1 symbol with `bucket=hold`; show the dim "Pas de signal aujourd'hui" state.
 - 1 symbol with `n<30`; show the grey "Insuffisant" state.

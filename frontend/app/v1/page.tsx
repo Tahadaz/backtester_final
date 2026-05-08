@@ -1,371 +1,473 @@
 "use client"
 
 import Link from "next/link"
-import { useState, useMemo } from "react"
-import { AlertCircle } from "lucide-react"
+import { useMemo, useState } from "react"
+import useSWR from "swr"
+import { AlertCircle, BookOpen, Download, Filter, RefreshCw } from "lucide-react"
 import { useDashboardData } from "@/hooks/use-dashboard"
 import { useDashboardIndices } from "@/hooks/use-dashboard-indices"
 import { useMarketCatalog } from "@/hooks/use-api"
-import type { DashboardScoreSource, DashboardView, Horizon } from "@/lib/dashboard-types"
+import { fetchEdge, type EdgeMetrics } from "@/lib/api"
+import type { DashboardScoreSource, DashboardStock, DashboardView, Horizon } from "@/lib/dashboard-types"
 import { createDashboardIndex, deleteDashboardIndex, updateDashboardIndex } from "@/lib/api"
-import { HORIZONS, VIEWS } from "@/lib/dashboard-constants"
+import { resolveHorizonPreset } from "@/lib/horizon"
 import { recomputeDashboardSectors } from "@/lib/static-expanded-preferences"
 import { StockTable } from "@/components/dashboard-v1/stock-table"
-import { SectorTable } from "@/components/dashboard-v1/sector-table"
-import { IndexTab } from "@/components/dashboard-v1/index-tab"
+import { SetupStep } from "@/components/dashboard/setup-step"
+import { KpiTile } from "@/components/dashboard/kpi-tile"
+import { EdgePanel } from "@/components/dashboard/edge-panel"
+import { Eyebrow } from "@/components/ui/eyebrow"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Switch } from "@/components/ui/switch"
+import { formatPercent } from "@/lib/format"
+import { cn } from "@/lib/utils"
 
 const isPublicDashboardOnly = process.env.NEXT_PUBLIC_DASHBOARD_PUBLIC_ONLY === "true"
-
+const edgeEnabled = process.env.NEXT_PUBLIC_EDGE_ENABLED !== "false"
+const EDGE_COST_BPS = 33
 const ADV_THRESHOLD = 1000
+const DASHBOARD_HORIZONS = [
+  { value: "weekly" as const, label: "Court" },
+  { value: "monthly" as const, label: "Moyen" },
+  { value: "quarterly" as const, label: "Long" },
+]
+const STOCK_ONLY_VIEW = [{ value: "stocks" as const, label: "Actions" }]
+const SOURCE_OPTIONS = [
+  { value: "signal_engine" as const, label: "Signal Engine" },
+  { value: "wfo" as const, label: "WFO" },
+  { value: "both" as const, label: "Les deux" },
+]
+const CATEGORY_OPTIONS = [
+  { value: "all" as const, label: "Toutes" },
+  { value: "liquid" as const, label: "Très liq." },
+  { value: "mid" as const, label: "Mid" },
+]
+const SR_OPTIONS = [
+  { value: "off" as const, label: "Off" },
+  { value: "on" as const, label: "Auto" },
+  { value: "manual" as const, label: "Manuel" },
+]
+
+type EdgeMode = "gross" | "net"
+
+function median(values: number[]) {
+  if (!values.length) return null
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  if (sorted.length % 2 === 1) return sorted[mid]
+  return (sorted[mid - 1] + sorted[mid]) / 2
+}
+
+function scoreLabelForCounts(stock: DashboardStock, scoreSource: DashboardScoreSource, signalView: "legacy" | "expanded" | "factor_x_ta") {
+  if (scoreSource === "wfo") {
+    return stock.scores.wfo?.aggregate_signal_label ?? null
+  }
+  if (scoreSource === "both") {
+    return stock.scores.wfo?.aggregate_signal_label ?? stock.scores.signal_engine.aggregate_signal_label
+  }
+  return signalView === "expanded"
+    ? stock.scores.signal_engine.expanded_aggregate_signal_label ?? stock.scores.signal_engine.aggregate_signal_label
+    : stock.scores.signal_engine.aggregate_signal_label
+}
+
+function downloadStocksCsv(stocks: DashboardStock[]) {
+  const lines = [
+    ["symbol", "display_name", "sector", "asset_type", "market_region", "adv"].join(","),
+    ...stocks.map((stock) =>
+      [
+        stock.symbol,
+        stock.display_name ?? "",
+        stock.sector ?? "",
+        stock.asset_type ?? "",
+        stock.market_region ?? "",
+        stock.adv ?? "",
+      ]
+        .map((value) => {
+          const raw = String(value)
+          const escaped = raw.replaceAll("\"", "\"\"")
+          return /[",\n\r]/.test(raw) ? `"${escaped}"` : escaped
+        })
+        .join(","),
+    ),
+  ]
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = "dashboard-v1.csv"
+  link.click()
+  URL.revokeObjectURL(url)
+}
 
 export default function DashboardV1Page() {
-  const [horizon, setHorizon] = useState<Horizon>("short")
-  const [view, setView] = useState<DashboardView>("stocks")
+  const [horizon, setHorizon] = useState<Horizon>("monthly")
+  const [view] = useState<DashboardView>("stocks")
   const [indexActionError, setIndexActionError] = useState<string | null>(null)
-  const [liquidityFilter, setLiquidityFilter] = useState(true)
+  const [showFilters, setShowFilters] = useState(true)
+  const [liquidityFilter, setLiquidityFilter] = useState(false)
   const [signalView, setSignalView] = useState<"legacy" | "expanded" | "factor_x_ta">("expanded")
   const [scoreSource, setScoreSource] = useState<DashboardScoreSource>("wfo")
   const [showTechnicalLevels, setShowTechnicalLevels] = useState(false)
-  const [categoryFilter, setCategoryFilter] = useState<string>("all")
-  const [subcategoryFilter, setSubcategoryFilter] = useState<string>("all")
+  const [hideDetails, setHideDetails] = useState(true)
+  const [edgeOnly, setEdgeOnly] = useState(false)
+  const [edgeMode, setEdgeMode] = useState<EdgeMode>("net")
+  const [search, setSearch] = useState("")
+  const [sectorFilter, setSectorFilter] = useState<string>("all")
+  const [categoryFilter, setCategoryFilter] = useState<"all" | "liquid" | "mid">("all")
+  const [selectedStock, setSelectedStock] = useState<DashboardStock | null>(null)
 
-  const { data, error, isLoading } = useDashboardData(horizon)
+  const { data, error, isLoading, mutate } = useDashboardData(horizon)
   const { data: persistedIndices, error: indicesError, mutate: mutateIndices } = useDashboardIndices(!isPublicDashboardOnly)
   const { data: catalogData } = useMarketCatalog()
 
-  // Build taxonomy lookup from catalog
   const taxonomyMap = useMemo(() => {
-    const m: Record<string, { asset_type: string; market_region: string | null }> = {}
+    const out: Record<string, { asset_type: string; market_region: string | null }> = {}
     for (const row of catalogData ?? []) {
-      m[row.symbol] = { asset_type: row.asset_type ?? "equity", market_region: row.market_region ?? null }
+      out[row.symbol] = { asset_type: row.asset_type ?? "equity", market_region: row.market_region ?? null }
     }
-    return m
+    return out
   }, [catalogData])
 
-  const allStocks = (data?.stocks ?? []).map((s) => ({
-    ...s,
-    asset_type: taxonomyMap[s.symbol]?.asset_type ?? "equity",
-    market_region: taxonomyMap[s.symbol]?.market_region ?? null,
-  }))
+  const allStocks = useMemo(
+    () =>
+      (data?.stocks ?? []).map((stock) => ({
+        ...stock,
+        asset_type: stock.asset_type ?? taxonomyMap[stock.symbol]?.asset_type ?? "equity",
+        market_region: stock.market_region ?? taxonomyMap[stock.symbol]?.market_region ?? null,
+      })),
+    [data?.stocks, taxonomyMap],
+  )
 
-  const liquidityFiltered = liquidityFilter
-    ? allStocks.filter((s) => (s.adv ?? 0) >= ADV_THRESHOLD)
-    : allStocks
+  const masiStocks = useMemo(
+    () =>
+      allStocks.filter(
+        (stock) => (stock.asset_type ?? "equity") === "equity" && (stock.market_region ?? "masi") === "masi",
+      ),
+    [allStocks],
+  )
 
-  const filteredStocks = liquidityFiltered
-    .filter((s) => categoryFilter === "all" || s.asset_type === categoryFilter)
-    .filter((s) => subcategoryFilter === "all" || s.market_region === subcategoryFilter)
+  const edgeSource = scoreSource === "signal_engine" ? "signal_engine" : "wfo"
+  const edgeHorizon = resolveHorizonPreset(horizon).value
 
-  const filteredSectors = liquidityFilter
-    ? recomputeDashboardSectors(filteredStocks, scoreSource)
-    : (data?.sectors ?? [])
+  const stocksBeforeEdge = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    return masiStocks
+      .filter((stock) => !liquidityFilter || (stock.adv ?? ADV_THRESHOLD) >= ADV_THRESHOLD)
+      .filter((stock) => categoryFilter !== "liquid" || (stock.adv ?? 0) >= ADV_THRESHOLD)
+      .filter((stock) => categoryFilter !== "mid" || (stock.adv ?? 0) < ADV_THRESHOLD)
+      .filter((stock) => sectorFilter === "all" || stock.sector === sectorFilter)
+      .filter((stock) => {
+        if (!query) return true
+        return stock.symbol.toLowerCase().includes(query) || (stock.display_name ?? "").toLowerCase().includes(query)
+      })
+  }, [masiStocks, liquidityFilter, categoryFilter, sectorFilter, search])
 
-  const staticDefinitions = data?.custom_index_definitions ?? []
-  const customDefinitions = isPublicDashboardOnly
-    ? staticDefinitions
-    : (persistedIndices ?? staticDefinitions)
+  const { data: edgeEntries = [] } = useSWR<[string, EdgeMetrics | null][]>(
+    edgeEnabled && view === "stocks" && stocksBeforeEdge.length
+      ? `dashboard-edge-${edgeHorizon}-${edgeSource}-${edgeMode}-${stocksBeforeEdge.map((stock) => stock.symbol).join(",")}`
+      : null,
+    async () =>
+      Promise.all(
+        stocksBeforeEdge.map(async (stock) => [
+          stock.symbol,
+          await fetchEdge(stock.symbol, edgeHorizon, edgeSource, EDGE_COST_BPS).catch(() => null),
+        ] as [string, EdgeMetrics | null]),
+      ),
+    { revalidateOnFocus: false },
+  )
 
-  async function refreshIndices() {
-    await mutateIndices()
-  }
+  const edgeMap = useMemo(() => Object.fromEntries(edgeEntries), [edgeEntries]) as Record<string, EdgeMetrics | null | undefined>
 
-  async function handleCreateIndex(payload: { name: string; symbols: string[] }) {
-    setIndexActionError(null)
-    try {
-      await createDashboardIndex(payload)
-      await refreshIndices()
-    } catch (createError) {
-      setIndexActionError(createError instanceof Error ? createError.message : "Erreur lors de la creation de l'indice.")
-      throw createError
+  const filteredStocks = useMemo(() => {
+    if (!edgeEnabled || !edgeOnly || view !== "stocks") {
+      return stocksBeforeEdge
     }
-  }
+    return stocksBeforeEdge.filter((stock) => {
+      const edge = edgeMap[stock.symbol]
+      return edgeMode === "net" ? edge?.proven_edge_net : edge?.proven_edge_gross
+    })
+  }, [stocksBeforeEdge, edgeEnabled, edgeOnly, view, edgeMap, edgeMode])
 
-  async function handleUpdateIndex(indexId: string, payload: { name: string; symbols: string[] }) {
-    setIndexActionError(null)
-    try {
-      await updateDashboardIndex(indexId, payload)
-      await refreshIndices()
-    } catch (updateError) {
-      setIndexActionError(updateError instanceof Error ? updateError.message : "Erreur lors de la mise a jour de l'indice.")
-      throw updateError
-    }
-  }
+  const sectorsInput = liquidityFilter ? filteredStocks : masiStocks
+  const filteredSectors = useMemo(
+    () => recomputeDashboardSectors(sectorsInput, scoreSource),
+    [sectorsInput, scoreSource],
+  )
 
-  async function handleDeleteIndex(indexId: string) {
-    setIndexActionError(null)
-    try {
-      await deleteDashboardIndex(indexId)
-      await refreshIndices()
-    } catch (deleteError) {
-      setIndexActionError(deleteError instanceof Error ? deleteError.message : "Erreur lors de la suppression de l'indice.")
-      throw deleteError
-    }
-  }
+  const sectorOptions = useMemo(() => {
+    const set = new Set(filteredStocks.map((stock) => stock.sector).filter((sector): sector is string => Boolean(sector)))
+    return ["all", ...Array.from(set).sort()]
+  }, [filteredStocks])
+
+  const kpiBullish = filteredStocks.filter((stock) => (scoreLabelForCounts(stock, scoreSource, signalView) ?? "").includes("Achat")).length
+  const kpiBearish = filteredStocks.filter((stock) => (scoreLabelForCounts(stock, scoreSource, signalView) ?? "").includes("Vente")).length
+  const kpiMedianEdge = median(
+    filteredStocks
+      .map((stock) => edgeMap[stock.symbol])
+      .filter((edge): edge is EdgeMetrics => Boolean(edge))
+      .filter((edge) => (edgeMode === "net" ? edge.proven_edge_net : edge.proven_edge_gross))
+      .map((edge) => edgeMode === "net" ? edge.expected_return_net : edge.expected_return_gross)
+      .filter((value): value is number => typeof value === "number"),
+  )
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Tableau de Bord V1</h1>
-          <p className="text-sm text-muted-foreground">
-            Signaux techniques - Marche MASI
-            {data && (
-              <span className="ml-2">
-                - Mis a jour le {new Date(data.generated_at).toLocaleDateString("fr-FR")}
-              </span>
-            )}
-          </p>
+    <div className="dashboard-claude space-y-4">
+      <div className="flex flex-col gap-4 border-b border-border pb-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="space-y-1">
+          <Eyebrow>Dashboard</Eyebrow>
+          <div>
+            <h1 className="text-[22px] font-semibold tracking-tight">Tableau de Bord V1</h1>
+            <p className="text-[12px] text-muted-foreground">
+              Signaux techniques · <span className="font-medium text-foreground">Marché MASI · Actions</span>
+              {data ? <span className="dashboard-meta ml-2">Maj {new Date(data.generated_at).toLocaleDateString("fr-FR")}</span> : null}
+            </p>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2 self-start">
-          <button
-            onClick={() => setLiquidityFilter((v) => !v)}
-            className={`inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
-              liquidityFilter
-                ? "border-amber-300 bg-amber-50 text-amber-800"
-                : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
-            }`}
-          >
-            <span
-              className={`h-2 w-2 rounded-full ${liquidityFilter ? "bg-amber-500" : "bg-slate-300"}`}
-            />
-            {liquidityFilter ? `Liquidite >= ${ADV_THRESHOLD.toLocaleString("fr-FR")} (actif)` : "Filtre liquidite"}
-          </button>
-          <button
-            onClick={() => setSignalView((v) => (v === "legacy" ? "expanded" : "legacy"))}
-            className={`inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
-              signalView === "expanded"
-                ? "border-blue-300 bg-blue-50 text-blue-800"
-                : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
-            }`}
-          >
-            <span className={`h-2 w-2 rounded-full ${signalView === "expanded" ? "bg-blue-500" : "bg-slate-300"}`} />
-            {signalView === "expanded" ? "Vue Expanded" : "Vue Legacy"}
-          </button>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" className="h-8 rounded-md px-3 text-[13px]" onClick={() => setShowFilters((value) => !value)}>
+            <Filter className="h-3.5 w-3.5" />
+            Filtres
+          </Button>
+          <Button variant="outline" size="sm" className="h-8 rounded-md px-3 text-[13px]" onClick={() => downloadStocksCsv(filteredStocks)} disabled={view !== "stocks"}>
+            <Download className="h-3.5 w-3.5" />
+            Exporter
+          </Button>
+          <Button variant="default" size="sm" className="h-8 rounded-md px-3 text-[13px]" onClick={() => void mutate()}>
+            <RefreshCw className="h-3.5 w-3.5" />
+            Recalculer
+          </Button>
         </div>
       </div>
 
-      <Card className="border-slate-200 bg-white">
-        <CardContent className="p-4 sm:p-5">
-          <div className="flex flex-col gap-4">
-            <div className="border-b border-slate-200 pb-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Parametres d'affichage</p>
-              <p className="mt-1 text-sm text-slate-600">Choisissez l'horizon puis la vue a afficher.</p>
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+        <KpiTile label="Univers actif" value={filteredStocks.length.toLocaleString("fr-FR")} sub="titres après filtres" />
+        <KpiTile label="Signaux haussiers" value={kpiBullish.toLocaleString("fr-FR")} tone="positive" sub="score composite > +15" />
+        <KpiTile label="Signaux baissiers" value={kpiBearish.toLocaleString("fr-FR")} tone="negative" sub="score composite < -15" />
+        <KpiTile label="E[R] médian (opt.)" value={edgeEnabled ? formatPercent(kpiMedianEdge) : "--"} sub={edgeEnabled ? `mode ${edgeMode === "net" ? "net" : "brut"}` : "edge désactivé"} />
+      </div>
+
+      {showFilters ? (
+        <div className="space-y-3">
+          <div className="grid gap-2 xl:grid-cols-5">
+            <SetupStep index={1} title="Horizon" value={horizon} onChange={setHorizon} options={DASHBOARD_HORIZONS} />
+            <SetupStep index={2} title="Univers" value={view} onChange={() => undefined} options={STOCK_ONLY_VIEW} hint={`${masiStocks.length} titres MASI`} />
+            <SetupStep
+              index={3}
+              title="Source"
+              value={scoreSource}
+              onChange={setScoreSource}
+              options={SOURCE_OPTIONS}
+              hint="Composite 4 familles"
+            />
+            <SetupStep
+              index={4}
+              title="Categorie"
+              value={categoryFilter}
+              onChange={setCategoryFilter}
+              options={CATEGORY_OPTIONS}
+              hint="Filtre liquidité"
+            />
+            <SetupStep
+              index={5}
+              title="S/R"
+              value={showTechnicalLevels ? "on" : "off"}
+              onChange={(next) => setShowTechnicalLevels(next !== "off")}
+              options={SR_OPTIONS}
+              hint="Supports / résistances"
+            />
+          </div>
+
+          <div className="flex flex-wrap gap-1.5">
+            {[
+              { label: "Actions", active: true },
+              { label: "Matières premières", active: false },
+              { label: "Obligations", active: false },
+              { label: "Devises", active: false },
+            ].map((option) => (
+              <button
+                key={option.label}
+                type="button"
+                className={cn(
+                  "inline-flex h-7 items-center gap-1.5 rounded-md border px-3 text-[12px] transition",
+                  option.active
+                    ? "border-primary/25 bg-primary/10 font-semibold text-primary"
+                    : "cursor-default border-border bg-card text-muted-foreground",
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap gap-0.5 border-b border-dashed border-border pb-2">
+            {[
+              { label: "MASI (Maroc)", active: true },
+              { label: "US", active: false },
+              { label: "Europe", active: false },
+              { label: "Asie", active: false },
+            ].map((option) => (
+              <button
+                key={option.label}
+                type="button"
+                className={cn(
+                  "border-b-2 px-2.5 py-1.5 text-[12px] text-muted-foreground transition",
+                  option.active ? "border-primary font-semibold text-foreground" : "cursor-default border-transparent",
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="dashboard-panel flex flex-col gap-3 px-3 py-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex flex-1 flex-wrap items-center gap-2">
+              {liquidityFilter ? (
+                <span className="dashboard-chip dashboard-chip-amber">
+                  <span className="dashboard-chip-dot bg-[var(--warning)]" />
+                  Liquidite {"\u003e="} {ADV_THRESHOLD}
+                </span>
+              ) : null}
+              <span className={cn("dashboard-chip", sectorFilter !== "all" && "dashboard-chip-active")}>
+                <span className="dashboard-chip-dot" />
+                Secteur - {sectorFilter === "all" ? "Tous" : sectorFilter}
+              </span>
+              <div className="flex h-8 min-w-[220px] flex-1 items-center gap-2 rounded-md border border-input bg-background px-2.5">
+                <Input
+                  className="h-auto border-0 bg-transparent px-0 text-[12px] shadow-none focus-visible:ring-0"
+                  placeholder="Rechercher..."
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                />
+              </div>
+              <select
+                value={sectorFilter}
+                onChange={(event) => setSectorFilter(event.target.value)}
+                className="h-8 min-w-[180px] rounded-md border border-input bg-background px-2.5 text-[12px]"
+              >
+                <option value="all">Tous les secteurs</option>
+                {sectorOptions.filter((option) => option !== "all").map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+              <Button variant="ghost" size="sm" className="ml-auto h-7 rounded-md px-2 text-[12px] text-muted-foreground" asChild>
+                <Link href="/glossary">
+                  <BookOpen className="h-3.5 w-3.5" />
+                  Glossaire
+                </Link>
+              </Button>
             </div>
 
-            <div className="grid gap-4 xl:grid-cols-2">
-              <div className="space-y-2">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">1. Horizon de temps</p>
-                <Tabs value={horizon} onValueChange={(value) => setHorizon(value as Horizon)}>
-                  <TabsList className="grid h-auto w-full grid-cols-3 rounded-md border border-slate-300 bg-white p-1">
-                    {HORIZONS.map((item) => (
-                      <TabsTrigger
-                        key={item.value}
-                        value={item.value}
-                        className="rounded-sm py-2 text-sm font-semibold text-slate-600 transition data-[state=active]:bg-slate-900 data-[state=active]:text-white"
-                      >
-                        {item.label}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-                </Tabs>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
+                <Switch checked={liquidityFilter} onCheckedChange={setLiquidityFilter} />
+                <span>Liquidite</span>
               </div>
-
-              <div className="space-y-2">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">2. Univers d'analyse</p>
-                <div className="grid w-full grid-cols-3 gap-1 rounded-md border border-slate-300 bg-white p-1">
-                  {VIEWS.map((item) => (
-                    <button
-                      key={item.value}
-                      onClick={() => setView(item.value)}
-                      className={`rounded-sm px-3 py-2 text-sm font-semibold transition-colors ${
-                        view === item.value
-                          ? "bg-slate-900 text-white"
-                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                      }`}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
+              <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
+                <Switch checked={hideDetails} onCheckedChange={setHideDetails} />
+                <span>Masquer les details</span>
               </div>
-            </div>
-
-            <div className="grid gap-4 xl:grid-cols-2">
-              <div className="space-y-2">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">3. Source des scores</p>
-                <div className="grid w-full grid-cols-3 gap-1 rounded-md border border-slate-300 bg-white p-1">
-                  {[
-                    { value: "both" as const, label: "SE + WFO" },
-                    { value: "signal_engine" as const, label: "Signal Engine" },
-                    { value: "wfo" as const, label: "WFO" },
-                  ].map((item) => (
+              {edgeEnabled ? (
+                <>
+                  <div className="inline-flex rounded-md border border-border bg-muted/40 p-0.5">
                     <button
-                      key={item.value}
-                      onClick={() => setScoreSource(item.value)}
-                      className={`rounded-sm px-3 py-2 text-sm font-semibold transition-colors ${
-                        scoreSource === item.value
-                          ? "bg-slate-900 text-white"
-                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                      }`}
+                      type="button"
+                      onClick={() => setEdgeMode("net")}
+                      className={cn(
+                        "rounded-[6px] px-2 py-1 text-[11px] font-medium",
+                        edgeMode === "net" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground",
+                      )}
                     >
-                      {item.label}
+                      Couts inclus
                     </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">4. Catégorie d&apos;actif</p>
-                <div className="flex flex-wrap gap-1">
-                  {[
-                    { value: "all", label: "Tous" },
-                    { value: "equity", label: "Actions" },
-                    { value: "commodity", label: "Matières premières" },
-                    { value: "forex", label: "Devises" },
-                    { value: "bond", label: "Obligations" },
-                  ].map((item) => (
                     <button
-                      key={item.value}
-                      onClick={() => {
-                        setCategoryFilter(item.value)
-                        setSubcategoryFilter("all")
-                      }}
-                      className={`rounded-sm px-3 py-1.5 text-xs font-semibold transition-colors border ${
-                        categoryFilter === item.value
-                          ? "bg-slate-900 text-white border-slate-900"
-                          : "text-slate-600 bg-white border-slate-300 hover:bg-slate-100"
-                      }`}
+                      type="button"
+                      onClick={() => setEdgeMode("gross")}
+                      className={cn(
+                        "rounded-[6px] px-2 py-1 text-[11px] font-medium",
+                        edgeMode === "gross" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground",
+                      )}
                     >
-                      {item.label}
+                      Couts exclus
                     </button>
-                  ))}
-                </div>
-                {categoryFilter === "equity" && (
-                  <div className="flex flex-wrap gap-1 pt-1">
-                    {[
-                      { value: "all", label: "Tous marchés" },
-                      { value: "masi", label: "MASI" },
-                      { value: "us", label: "US" },
-                      { value: "european", label: "Europe" },
-                      { value: "asian", label: "Asie" },
-                    ].map((item) => (
-                      <button
-                        key={item.value}
-                        onClick={() => setSubcategoryFilter(item.value)}
-                        className={`rounded-sm px-2.5 py-1 text-[11px] font-semibold transition-colors border ${
-                          subcategoryFilter === item.value
-                            ? "bg-blue-700 text-white border-blue-700"
-                            : "text-slate-500 bg-white border-slate-200 hover:bg-slate-50"
-                        }`}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
                   </div>
-                )}
-              </div>
-            </div>
-
-            <div className="grid gap-4 xl:grid-cols-2">
-              <div className="space-y-2">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">5. Supports / resistances</p>
-                <button
-                  type="button"
-                  onClick={() => setShowTechnicalLevels((value) => !value)}
-                  className={`inline-flex h-11 w-full items-center justify-center rounded-md border px-3 text-sm font-semibold transition-colors ${
-                    showTechnicalLevels
-                      ? "border-emerald-300 bg-emerald-50 text-emerald-800"
-                      : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
-                  }`}
-                >
-                  {showTechnicalLevels ? "Masquer supports / resistances" : "Afficher supports / resistances"}
-                </button>
-                {scoreSource === "wfo" && (
-                  <p className="text-xs text-slate-500">
-                    WFO n&apos;utilise pas la vue legacy/expanded, mais votre choix est conserve pour le retour sur Signal Engine.
-                  </p>
-                )}
-              </div>
+                  <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
+                    <Checkbox checked={edgeOnly} onCheckedChange={(checked) => setEdgeOnly(checked === true)} />
+                    Edge prouvé seulement
+                  </label>
+                </>
+              ) : null}
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      ) : null}
 
       {isLoading && <LoadingSkeleton />}
       {error && <ErrorCard message={error.message} />}
 
-      {data && (
-        <>
-          {view === "stocks" && (
-            <StockTable
-              stocks={filteredStocks}
-              horizon={horizon}
-              signalView={signalView}
-              scoreSource={scoreSource}
-              showTechnicalLevels={showTechnicalLevels}
-            />
-          )}
-          {view === "sectors" && (
-            <SectorTable
-              sectors={filteredSectors}
-              stocks={filteredStocks}
-              horizon={horizon}
-              signalView={signalView}
-              scoreSource={scoreSource}
-              showTechnicalLevels={showTechnicalLevels}
-            />
-          )}
-          {view === "index" && (
-            <IndexTab
-              baseIndex={data.index}
-              stocks={filteredStocks}
-              customDefinitions={customDefinitions}
-              readOnly={isPublicDashboardOnly}
-              actionError={indexActionError ?? (indicesError ? indicesError.message : null)}
-              scoreSource={scoreSource}
-              onCreate={isPublicDashboardOnly ? undefined : handleCreateIndex}
-              onUpdate={isPublicDashboardOnly ? undefined : handleUpdateIndex}
-              onDelete={isPublicDashboardOnly ? undefined : handleDeleteIndex}
-            />
-          )}
-        </>
-      )}
+      {data ? (
+        <StockTable
+          stocks={filteredStocks}
+          horizon={horizon}
+          signalView={signalView}
+          scoreSource={scoreSource}
+          hideDetails={hideDetails}
+          showTechnicalLevels={showTechnicalLevels}
+          edgeEnabled={edgeEnabled}
+          edgeMode={edgeMode}
+          edgeSource={edgeSource}
+          edgeMap={edgeMap}
+          onOpenEdge={setSelectedStock}
+        />
+      ) : null}
 
-      {data && data.stocks.length === 0 && (
+      {data && data.stocks.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
             {isPublicDashboardOnly ? (
-              <p className="text-muted-foreground">
-                Aucune donnee disponible. La prochaine publication mettra a jour les donnees du tableau de bord.
-              </p>
+              <p className="text-muted-foreground">Aucune donnee disponible.</p>
             ) : (
               <p className="text-muted-foreground">
-                Aucune donnee disponible. Chargez des donnees de marche depuis la page{" "}
-                <Link href="/data" className="underline">
-                  Data
-                </Link>
-                .
+                Aucune donnee disponible. Chargez des donnees de marche depuis la page <Link href="/data" className="underline">Data</Link>.
               </p>
             )}
           </CardContent>
         </Card>
-      )}
+      ) : null}
+
+      {edgeEnabled ? (
+        <EdgePanel
+          open={Boolean(selectedStock)}
+          onOpenChange={(open) => {
+            if (!open) setSelectedStock(null)
+          }}
+          symbol={selectedStock?.symbol ?? null}
+          horizon={edgeHorizon}
+          initialSource={edgeSource}
+          mode={edgeMode}
+          onModeChange={setEdgeMode}
+          costBps={EDGE_COST_BPS}
+          initialEdge={selectedStock ? edgeMap[selectedStock.symbol] ?? null : null}
+        />
+      ) : null}
     </div>
   )
 }
 
 function LoadingSkeleton() {
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-4 gap-4">
+    <div className="space-y-3">
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
         {Array.from({ length: 4 }).map((_, index) => (
-          <Skeleton key={index} className="h-20 rounded-lg" />
+          <Skeleton key={index} className="h-20 rounded-md" />
         ))}
       </div>
-      <Skeleton className="h-96 rounded-lg" />
+      <Skeleton className="h-28 rounded-md" />
+      <Skeleton className="h-[480px] rounded-md" />
     </div>
   )
 }

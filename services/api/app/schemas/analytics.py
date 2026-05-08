@@ -128,6 +128,9 @@ class PredictiveAbilityCell(BaseModel):
     hit_rate: Optional[float] = None
     hit_ci_lower: Optional[float] = None
     hit_ci_upper: Optional[float] = None
+    window_start: Optional[str] = None         # ISO date of earliest score in cell
+    window_end: Optional[str] = None           # ISO date of latest score in cell
+    lookback_business_days: Optional[int] = None  # business-day span window_start → window_end
 
 
 class PredictiveAbilityMatrix(BaseModel):
@@ -224,3 +227,53 @@ class FactorSignalEvalOut(BaseModel):
     ic_curve: ICCurveOut
     portfolio: PortfolioStatsOut
     robustness: RobustnessOut
+
+
+# ---------------------------------------------------------------------------
+# Edge metrics (§4.2 of the edge-deploy plan, Amendment E gross/net pairs)
+# ---------------------------------------------------------------------------
+
+class ExpectancyDecompOut(BaseModel):
+    p_win: float
+    avg_win: float
+    p_loss: float
+    avg_loss: float
+    expectancy: float
+
+
+class EdgeGatesOut(BaseModel):
+    mc_gross: bool
+    mc_net: bool
+    wilson: bool
+    n: bool
+
+
+class EdgeMetricsOut(BaseModel):
+    symbol: str
+    horizon: str                              # weekly | monthly | quarterly
+    source: str                               # signal_engine | wfo
+    bucket: str                               # strong_sell | sell | hold | buy | strong_buy
+    direction: str                            # long | short | none
+    n: int
+    window_start: Optional[str] = None        # ISO date
+    window_end: Optional[str] = None          # ISO date
+    expected_return_gross: Optional[float] = None
+    expected_return_net: Optional[float] = None
+    hit_rate: Optional[float] = None
+    hit_ci_lower: Optional[float] = None
+    hit_ci_upper: Optional[float] = None
+    expectancy_gross: Optional[ExpectancyDecompOut] = None
+    expectancy_net: Optional[ExpectancyDecompOut] = None
+    edge_ratio_gross: Optional[float] = None
+    edge_ratio_net: Optional[float] = None
+    profit_factor_gross: Optional[float] = None
+    profit_factor_net: Optional[float] = None
+    mc_luck_pvalue_gross: Optional[float] = None
+    mc_luck_pvalue_net: Optional[float] = None
+    label_shuffle_pvalue_gross: Optional[float] = None
+    label_shuffle_pvalue_net: Optional[float] = None
+    proven_edge_gross: bool = False
+    proven_edge_net: bool = False
+    gates: EdgeGatesOut
+    cost_bps_per_side: float
+    methodology_version: str

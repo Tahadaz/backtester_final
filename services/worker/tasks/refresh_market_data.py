@@ -71,7 +71,7 @@ def _enqueue_signal_layers_after_refresh(
             from services.worker.tasks.signal_engine_batch import enqueue_signal_engine_refresh_for_symbol
         from services.worker.tasks.signal_engine_batch import enqueue_signal_engine_for_symbol
 
-        for horizon in ("short", "medium", "long"):
+        for horizon in ("weekly", "monthly", "quarterly"):
             for variant in ("legacy", "expanded"):
                 if _SIGNAL_ENGINE_REFRESH_ON_MARKET_REFRESH:
                     enqueue_signal_engine_refresh_for_symbol(

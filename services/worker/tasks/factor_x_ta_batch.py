@@ -26,6 +26,7 @@ from pathlib import Path
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from core.quant_core.horizons import DEFAULT_COST_BPS_PER_SIDE
 from core.quant_core.data import drop_incomplete_ohlcv_rows
 from core.quant_core.signal_engine.domain import (
     ALL_FAMILIES,
@@ -42,9 +43,9 @@ from services.worker.redis_utils import connect_redis_with_fallback
 
 logger = logging.getLogger(__name__)
 
-HORIZONS = ("short", "medium", "long")
+HORIZONS = ("weekly", "monthly", "quarterly")
 DEFAULT_TIMEFRAME = "1D"
-DEFAULT_COST_BPS = 10.0
+DEFAULT_COST_BPS = DEFAULT_COST_BPS_PER_SIDE
 DEFAULT_COOLDOWN_BARS = 0
 VARIANT = "factor_x_ta"
 

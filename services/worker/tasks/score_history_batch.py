@@ -1,7 +1,7 @@
 """Populate `signal_score_history` for one symbol.
 
-For each (source ∈ {engine_legacy, engine_expanded, wfo}, horizon ∈ {short,
-medium, long}, category ∈ {tendance, momentum, oscillation, volume}) we
+For each (source ∈ {engine_legacy, engine_expanded, wfo}, horizon ∈ {weekly,
+monthly, quarterly}, category ∈ {tendance, momentum, oscillation, volume}) we
 reconstruct a per-bar score series from the persisted representatives and
 upsert it into `signal_score_history`.
 
@@ -26,11 +26,12 @@ from core.quant_core.research.score_history import (
     build_engine_category_series,
     build_wfo_category_series,
 )
+from core.quant_core.research.oos_index import oos_windows_from_wfo
 
 
 logger = logging.getLogger(__name__)
 
-HORIZONS = ("short", "medium", "long")
+HORIZONS = ("weekly", "monthly", "quarterly")
 ENGINE_VARIANTS = ("legacy", "expanded")
 
 
@@ -76,7 +77,9 @@ def _ohlcv_arrays(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray | None,
 
 
 def _replace_history(db: Session, symbol: str, source: str, horizon: str,
-                     series_by_cat: dict[str, pd.Series]) -> int:
+                     series_by_cat: dict[str, pd.Series],
+                     *,
+                     is_oos_dates_by_cat: dict[str, set[pd.Timestamp]] | None = None) -> int:
     """Upsert the per-bar series into signal_score_history. Returns row count."""
     # Wipe the existing slice for atomicity, then bulk-insert.
     db.query(models.SignalScoreHistory).filter_by(
@@ -88,6 +91,7 @@ def _replace_history(db: Session, symbol: str, source: str, horizon: str,
         s = series.dropna()
         if s.empty:
             continue
+        oos_dates = (is_oos_dates_by_cat or {}).get(category, set())
         for ts, val in s.items():
             try:
                 d = pd.Timestamp(ts).date()
@@ -106,6 +110,7 @@ def _replace_history(db: Session, symbol: str, source: str, horizon: str,
                 "category": category,
                 "horizon": horizon,
                 "score_pct": v,
+                "is_oos": pd.Timestamp(ts) in oos_dates,
             })
 
     if rows:
@@ -133,17 +138,31 @@ def _engine_family_rows(db: Session, symbol: str, horizon: str, variant: str
 
 
 def _wfo_category_reps(db: Session, symbol: str, horizon: str
-                       ) -> dict[str, list[dict[str, Any]]]:
+                       ) -> dict[str, models.WfoSignalSummary]:
     rows = (
         db.query(models.WfoSignalSummary)
         .filter_by(symbol=symbol, horizon=horizon, variant="expanded", status="succeeded")
         .all()
     )
-    out: dict[str, list[dict[str, Any]]] = {}
+    out: dict[str, models.WfoSignalSummary] = {}
     for r in rows:
         reps = r.representatives_json or []
         if isinstance(reps, list) and reps:
-            out[r.category] = reps
+            out[r.category] = r
+    return out
+
+
+def _dates_for_windows(
+    index: pd.DatetimeIndex,
+    folds_json: Any,
+) -> set[pd.Timestamp]:
+    windows = oos_windows_from_wfo(folds_json, ohlcv_index=index)
+    if not windows:
+        return set()
+    out: set[pd.Timestamp] = set()
+    for window in windows:
+        mask = (index >= window.start) & (index <= window.end)
+        out.update(pd.Timestamp(ts) for ts in index[mask])
     return out
 
 
@@ -173,12 +192,27 @@ def run_score_history_for_symbol(db: Session, symbol: str) -> dict[str, int]:
         # WFO
         cat_reps = _wfo_category_reps(db, symbol, horizon)
         if cat_reps:
+            category_reps = {
+                category: list(row.representatives_json or [])
+                for category, row in cat_reps.items()
+            }
             series = build_wfo_category_series(
                 symbol=symbol, horizon=horizon,
                 close=close, volume=volume, high=high, low=low,
-                category_reps=cat_reps, index=idx,
+                category_reps=category_reps, index=idx,
             )
-            summary["wfo"] += _replace_history(db, symbol, "wfo", horizon, series)
+            is_oos_dates_by_cat = {
+                category: _dates_for_windows(idx, row.folds_json)
+                for category, row in cat_reps.items()
+            }
+            summary["wfo"] += _replace_history(
+                db,
+                symbol,
+                "wfo",
+                horizon,
+                series,
+                is_oos_dates_by_cat=is_oos_dates_by_cat,
+            )
 
     return summary
 

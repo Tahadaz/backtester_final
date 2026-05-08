@@ -11,6 +11,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from core.quant_core.horizons import DEFAULT_COST_BPS_PER_SIDE
 from core.quant_core.optimize import ema, obv_array
 
 from .domain import OOSWindowResult, VariantDef
@@ -264,7 +265,7 @@ def compute_variant_trade_register(
     volume: np.ndarray | None = None,
     high: np.ndarray | None = None,
     low: np.ndarray | None = None,
-    cost_bps: float = 10.0,
+    cost_bps: float = DEFAULT_COST_BPS_PER_SIDE,
     cooldown_bars: int = 0,
     force_valid_windows: bool = False,
 ) -> tuple[list[dict[str, Any]], dict[int, float]]:
@@ -297,7 +298,7 @@ def compute_variant_detail(
     volume: np.ndarray | None = None,
     high: np.ndarray | None = None,
     low: np.ndarray | None = None,
-    cost_bps: float = 10.0,
+    cost_bps: float = DEFAULT_COST_BPS_PER_SIDE,
     cooldown_bars: int = 0,
     force_valid_windows: bool = False,
 ) -> dict[str, Any]:

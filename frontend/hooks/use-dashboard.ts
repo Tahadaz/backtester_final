@@ -1,11 +1,16 @@
-﻿"use client"
+"use client"
 
 import useSWR from "swr"
-import type { DashboardData, Horizon } from "@/lib/dashboard-types"
+import type { DashboardData, DashboardHorizonAlias } from "@/lib/dashboard-types"
+import { resolveHorizonPreset } from "@/lib/horizon"
 
-async function fetchDashboardData(horizon: Horizon): Promise<DashboardData> {
-  const base = process.env.NEXT_PUBLIC_BASE_PATH || ""
-  const res = await fetch(`${base}/data/scores-${horizon}.json`, { cache: "no-store" })
+function normalizeDashboardHorizon(horizon: DashboardHorizonAlias) {
+  return resolveHorizonPreset(horizon).value
+}
+
+async function fetchDashboardData(horizon: DashboardHorizonAlias): Promise<DashboardData> {
+  const normalized = normalizeDashboardHorizon(horizon)
+  const res = await fetch(`/api/dashboard/data/${normalized}`, { cache: "no-store" })
   if (!res.ok) {
     throw new Error(`Failed to load dashboard data: ${res.status}`)
   }
@@ -16,8 +21,9 @@ async function fetchDashboardData(horizon: Horizon): Promise<DashboardData> {
   }
 }
 
-export function useDashboardData(horizon: Horizon) {
-  return useSWR<DashboardData>(`dashboard-${horizon}`, () => fetchDashboardData(horizon), {
+export function useDashboardData(horizon: DashboardHorizonAlias) {
+  const normalized = normalizeDashboardHorizon(horizon)
+  return useSWR<DashboardData>(`dashboard-${normalized}`, () => fetchDashboardData(horizon), {
     revalidateOnFocus: false,
   })
 }

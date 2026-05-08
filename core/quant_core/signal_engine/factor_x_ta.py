@@ -22,6 +22,7 @@ from typing import Any
 
 import numpy as np
 
+from core.quant_core.horizons import DEFAULT_COST_BPS_PER_SIDE
 from .candidates import (
     filter_candidates_for_history,
     generate_candidates,
@@ -74,9 +75,9 @@ def run_factor_x_ta_ensemble_for_family(
     high: np.ndarray | None = None,
     low: np.ndarray | None = None,
     symbol: str,
-    horizon: str = "medium",
+    horizon: str = "monthly",
     timeframe: str = "1D",
-    cost_bps: float = 10.0,
+    cost_bps: float = DEFAULT_COST_BPS_PER_SIDE,
     cooldown_bars: int = 0,
     channel_tags: dict[str, list[str]] | None = None,
     stock_sector: str | None = None,

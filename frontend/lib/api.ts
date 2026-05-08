@@ -299,8 +299,58 @@ export const LeaderboardRowSchema = z.object({
   best_params_json: z.unknown().optional(),
   plot_url: z.string().url().nullable().optional(),
   ledger_url: z.string().url().nullable().optional(),
+  edge: z.lazy(() => EdgeMetricsSchema).nullable().optional(),
 })
 export type LeaderboardRow = z.infer<typeof LeaderboardRowSchema>
+
+export const ExpectancyDecompSchema = z.object({
+  p_win: z.number(),
+  avg_win: z.number(),
+  p_loss: z.number(),
+  avg_loss: z.number(),
+  expectancy: z.number(),
+})
+export type ExpectancyDecomp = z.infer<typeof ExpectancyDecompSchema>
+
+export const EdgeGatesSchema = z.object({
+  mc_gross: z.boolean(),
+  mc_net: z.boolean(),
+  wilson: z.boolean(),
+  n: z.boolean(),
+})
+export type EdgeGates = z.infer<typeof EdgeGatesSchema>
+
+export const EdgeMetricsSchema = z.object({
+  symbol: z.string(),
+  horizon: z.enum(["weekly", "monthly", "quarterly"]),
+  source: z.enum(["signal_engine", "wfo"]),
+  bucket: z.string(),
+  direction: z.enum(["long", "short", "none"]),
+  n: z.number(),
+  window_start: z.string().nullable().optional(),
+  window_end: z.string().nullable().optional(),
+  expected_return_gross: z.number().nullable().optional(),
+  expected_return_net: z.number().nullable().optional(),
+  hit_rate: z.number().nullable().optional(),
+  hit_ci_lower: z.number().nullable().optional(),
+  hit_ci_upper: z.number().nullable().optional(),
+  expectancy_gross: ExpectancyDecompSchema.nullable().optional(),
+  expectancy_net: ExpectancyDecompSchema.nullable().optional(),
+  edge_ratio_gross: z.number().nullable().optional(),
+  edge_ratio_net: z.number().nullable().optional(),
+  profit_factor_gross: z.number().nullable().optional(),
+  profit_factor_net: z.number().nullable().optional(),
+  mc_luck_pvalue_gross: z.number().nullable().optional(),
+  mc_luck_pvalue_net: z.number().nullable().optional(),
+  label_shuffle_pvalue_gross: z.number().nullable().optional(),
+  label_shuffle_pvalue_net: z.number().nullable().optional(),
+  proven_edge_gross: z.boolean(),
+  proven_edge_net: z.boolean(),
+  gates: EdgeGatesSchema,
+  cost_bps_per_side: z.number(),
+  methodology_version: z.string(),
+})
+export type EdgeMetrics = z.infer<typeof EdgeMetricsSchema>
 
 export const FillRowSchema = z.object({
   id: z.string().optional(),
@@ -819,6 +869,25 @@ export async function getLeaderboard(
 
   const rows = await request<unknown[]>(`/runs/${runId}/leaderboard${q ? `?${q}` : ""}`)
   return z.array(LeaderboardRowSchema).parse(rows)
+}
+
+export async function fetchEdge(
+  symbol: string,
+  horizon: "weekly" | "monthly" | "quarterly",
+  source: "signal_engine" | "wfo",
+  costBps: number = 33,
+): Promise<EdgeMetrics | null> {
+  const qs = new URLSearchParams({
+    symbol,
+    horizon,
+    source,
+    cost_bps: String(costBps),
+  })
+  const payload = await request<unknown | null>(`/analytics/edge?${qs.toString()}`)
+  if (payload == null) {
+    return null
+  }
+  return EdgeMetricsSchema.parse(payload)
 }
 
 export async function getRunDecisions(

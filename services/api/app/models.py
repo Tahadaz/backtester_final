@@ -876,6 +876,7 @@ class SignalScoreHistory(Base):
     category = Column(String(32), primary_key=True, nullable=False)
     horizon = Column(String(16), primary_key=True, nullable=False)
     score_pct = Column(Float, nullable=True)
+    is_oos = Column(Boolean, nullable=False, server_default=text("false"))
 
     __table_args__ = (
         Index("ix_ssh_symbol_source_horizon", "symbol", "source", "horizon"),

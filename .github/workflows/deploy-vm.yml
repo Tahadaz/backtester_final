@@ -1,0 +1,55 @@
+name: deploy-vm
+
+on:
+  workflow_run:
+    workflows: [build-images]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to Oracle VM (84.8.218.252)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.ORACLE_HOST }}
+          username: deploy
+          key: ${{ secrets.ORACLE_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd /opt/bt
+
+            # Pull latest compose + config
+            git fetch --quiet
+            git reset --hard origin/main
+
+            # Pull new images
+            IMAGE_TAG=${{ github.event.workflow_run.head_sha }} \
+              docker compose --env-file /etc/bt/env \
+              -f infra/docker-compose.gcp.yml pull
+
+            # Run Python DB migrations
+            IMAGE_TAG=${{ github.event.workflow_run.head_sha }} \
+              docker compose --env-file /etc/bt/env \
+              -f infra/docker-compose.gcp.yml \
+              run --rm quant_api \
+              alembic -c services/api/alembic.ini upgrade head
+
+            # Bring everything up
+            IMAGE_TAG=${{ github.event.workflow_run.head_sha }} \
+              docker compose --env-file /etc/bt/env \
+              -f infra/docker-compose.gcp.yml \
+              up -d --remove-orphans
+
+            # Prune old images
+            docker image prune -f
+
+      - name: Smoke test
+        run: |
+          sleep 15
+          curl -fsS --max-time 10 \
+            "https://${{ secrets.DOMAIN }}/api/health" | grep -q '"ok"'
+          curl -fsS --max-time 10 \
+            "https://${{ secrets.DOMAIN }}/login" | grep -q "Connexion"

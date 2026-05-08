@@ -20,6 +20,7 @@ from typing import Any
 import numpy as np
 from sqlalchemy.orm import Session
 
+from core.quant_core.horizons import DEFAULT_COST_BPS_PER_SIDE
 from core.quant_core.data import drop_incomplete_ohlcv_rows
 from core.quant_core.signal_engine.candidates import (
     generate_candidates,
@@ -94,7 +95,7 @@ def _compute_prom_fx(
     sig_full: np.ndarray,
     start_is: int,
     start_oos: int,
-    cost_bps: float = 10.0,
+    cost_bps: float = DEFAULT_COST_BPS_PER_SIDE,
 ) -> tuple[float, float, float, float]:
     """Compute (prom, is_return, oos_return, oos_sharpe) from a precomputed AND signal."""
     sig_is = sig_full[start_is:start_is + len(close_is)]
@@ -127,7 +128,7 @@ def run_wfo_fx_for_category(
     volume: np.ndarray | None = None,
     high: np.ndarray | None = None,
     low: np.ndarray | None = None,
-    cost_bps: float = 10.0,
+    cost_bps: float = DEFAULT_COST_BPS_PER_SIDE,
     max_reps: int = 2,
     max_corr: float = 0.85,
     top_k_folds: int = DEFAULT_TOP_K_FOLDS,

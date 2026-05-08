@@ -1,0 +1,43 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          pip install --upgrade pip
+          pip install pytest pytest-asyncio
+          pip install -e services/api/ --no-deps
+          pip install -e core/ --no-deps || true
+      - name: Test
+        run: python -m pytest core/tests/ -q --tb=short
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install
+        working-directory: frontend
+        run: npm ci --legacy-peer-deps
+      - name: Typecheck
+        working-directory: frontend
+        run: npx tsc --noEmit
+        env:
+          NEXT_BUILD_TARGET: app
+          DATABASE_URL: postgresql://placeholder/placeholder
+          NEXTAUTH_SECRET: ci-placeholder-secret
