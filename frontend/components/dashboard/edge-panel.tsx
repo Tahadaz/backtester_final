@@ -194,6 +194,14 @@ export function EdgePanel({
                 sub="Test complementaire de la valeur informative du bucket."
               />
 
+              {edge.source === "wfo" ? (
+                <StatBox
+                  label="Fragilite locale"
+                  value={edge.fragility_label.replaceAll("_", " ")}
+                  sub={`${edge.fragility_fold_count} folds classes en cache`}
+                />
+              ) : null}
+
               <div className="grid gap-4 lg:grid-cols-2">
                 <MetricCard
                   label="Brut"
@@ -259,6 +267,7 @@ export function EdgePanel({
                   <AccordionContent className="space-y-2 text-sm text-muted-foreground">
                     <p>Le badge repose sur 3 gates: MC, Wilson et taille d echantillon.</p>
                     <p>En mode net, un aller-retour retire 2 x le cout configure avant calcul d ER, d expectance, d edge ratio et de profit factor.</p>
+                    <p>Pour WFO, la fragilite locale est pre-calculee par fold et sert au triage, pas au calcul des 3 gates.</p>
                     <p>Le hit rate ne depend pas des couts. Les p-values restent des diagnostics, pas une garantie de regime stable.</p>
                   </AccordionContent>
                 </AccordionItem>

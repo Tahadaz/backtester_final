@@ -6,6 +6,15 @@
 }
 
 {$DOMAIN} {
+    @office {
+        remote_ip 197.230.23.178/32
+    }
+    handle @office {
+        reverse_proxy quant_frontend:3000
+    }
+    handle {
+        respond "Forbidden" 403
+    }
     encode gzip zstd
     tls {
         protocols tls1.2 tls1.3
@@ -21,5 +30,4 @@
         Permissions-Policy "camera=(), microphone=(), geolocation=()"
         -Server
     }
-    reverse_proxy quant_frontend:3000
 }

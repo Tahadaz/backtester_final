@@ -79,6 +79,9 @@ class EdgeMetrics:
     gates: EdgeGates
     cost_bps_per_side: float
     methodology_version: str
+    fragility_label: str = "unavailable"
+    fragility_fold_count: int = 0
+    fragility_details: tuple[dict[str, Any], ...] = ()
 
 
 # ---------------------------------------------------------------------------
@@ -180,6 +183,9 @@ def _empty_metrics(
     cost_bps_per_side: float,
     window_start: pd.Timestamp | None = None,
     window_end: pd.Timestamp | None = None,
+    fragility_label: str = "unavailable",
+    fragility_fold_count: int = 0,
+    fragility_details: tuple[dict[str, Any], ...] = (),
 ) -> EdgeMetrics:
     gates = EdgeGates(mc_gross=False, mc_net=False, wilson=False, n=(n >= N_MIN))
     return EdgeMetrics(
@@ -196,6 +202,9 @@ def _empty_metrics(
         proven_edge_gross=False, proven_edge_net=False,
         gates=gates, cost_bps_per_side=float(cost_bps_per_side),
         methodology_version=METHODOLOGY_VERSION,
+        fragility_label=str(fragility_label or "unavailable"),
+        fragility_fold_count=int(fragility_fold_count or 0),
+        fragility_details=tuple(fragility_details or ()),
     )
 
 
@@ -216,6 +225,9 @@ def build_edge_payload(
     mc_iter: int = 2000,
     mc_seed: int = 42,
     return_calc_method: str = "close_to_close",
+    fragility_label: str = "unavailable",
+    fragility_fold_count: int = 0,
+    fragility_details: tuple[dict[str, Any], ...] = (),
 ) -> EdgeMetrics:
     """Compute the full Edge payload for one (symbol, horizon, source, bucket)."""
     if today_bucket not in BUCKET_NAMES:
@@ -229,6 +241,9 @@ def build_edge_payload(
         return _empty_metrics(
             symbol=symbol, horizon=horizon, source=source, bucket=today_bucket,
             direction=direction, n=0, cost_bps_per_side=cost_bps_per_side,
+            fragility_label=fragility_label,
+            fragility_fold_count=fragility_fold_count,
+            fragility_details=fragility_details,
         )
 
     # 2. Build aligned (score, fwd_return) frame, filter to OOS dates, then to
@@ -246,6 +261,9 @@ def build_edge_payload(
         return _empty_metrics(
             symbol=symbol, horizon=horizon, source=source, bucket=today_bucket,
             direction=direction, n=0, cost_bps_per_side=cost_bps_per_side,
+            fragility_label=fragility_label,
+            fragility_fold_count=fragility_fold_count,
+            fragility_details=fragility_details,
         )
 
     df["bucket"] = df["score"].apply(_bucket_for)
@@ -265,6 +283,9 @@ def build_edge_payload(
             symbol=symbol, horizon=horizon, source=source, bucket=today_bucket,
             direction=direction, n=n, cost_bps_per_side=cost_bps_per_side,
             window_start=window_start, window_end=window_end,
+            fragility_label=fragility_label,
+            fragility_fold_count=fragility_fold_count,
+            fragility_details=fragility_details,
         )
 
     # 3. Strategy-perspective returns.
@@ -288,11 +309,12 @@ def build_edge_payload(
     er_net = float(np.mean(r_net))
 
     # 6. MC tests. `monte_carlo_luck_test` works on signed strategy returns.
+    block_mean = max(2, int(fwd_horizon_bars)) if int(fwd_horizon_bars) > 1 else None
     mc_gross_res = monte_carlo_luck_test(
-        r_gross, metric="total_return", n_iter=mc_iter, seed=mc_seed,
+        r_gross, metric="total_return", n_iter=mc_iter, seed=mc_seed, block_mean=block_mean,
     )
     mc_net_res = monte_carlo_luck_test(
-        r_net, metric="total_return", n_iter=mc_iter, seed=mc_seed,
+        r_net, metric="total_return", n_iter=mc_iter, seed=mc_seed, block_mean=block_mean,
     )
     mc_luck_pvalue_gross = mc_gross_res.get("pvalue")
     mc_luck_pvalue_net = mc_net_res.get("pvalue")
@@ -320,10 +342,10 @@ def build_edge_payload(
         index=fwd_oos.index,
     )
     ls_gross_res = monte_carlo_label_shuffle_test(
-        score_oos, fwd_strategy_gross, bucket=today_bucket, n_iter=mc_iter, seed=mc_seed,
+        score_oos, fwd_strategy_gross, bucket=today_bucket, n_iter=mc_iter, seed=mc_seed, block_mean=block_mean,
     )
     ls_net_res = monte_carlo_label_shuffle_test(
-        score_oos, fwd_strategy_net, bucket=today_bucket, n_iter=mc_iter, seed=mc_seed,
+        score_oos, fwd_strategy_net, bucket=today_bucket, n_iter=mc_iter, seed=mc_seed, block_mean=block_mean,
     )
     label_shuffle_pvalue_gross = ls_gross_res.get("pvalue")
     label_shuffle_pvalue_net = ls_net_res.get("pvalue")
@@ -383,4 +405,7 @@ def build_edge_payload(
         gates=gates,
         cost_bps_per_side=float(cost_bps_per_side),
         methodology_version=METHODOLOGY_VERSION,
+        fragility_label=str(fragility_label or "unavailable"),
+        fragility_fold_count=int(fragility_fold_count or 0),
+        fragility_details=tuple(fragility_details or ()),
     )

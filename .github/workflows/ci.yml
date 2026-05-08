@@ -16,6 +16,7 @@ jobs:
       - name: Install
         run: |
           pip install --upgrade pip
+          pip install pandas numpy fastapi
           pip install pytest pytest-asyncio
           pip install -e services/api/ --no-deps
           pip install -e core/ --no-deps || true

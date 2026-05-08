@@ -51,7 +51,6 @@ class Settings(BaseModel):
     S3_USE_SSL: bool = _getenv_any("S3_USE_SSL", "S3_SECURE", default="false").lower() == "true"
 
     INTERNAL_JWT_SECRET: str = os.getenv("INTERNAL_JWT_SECRET", "").strip()
-    SENTRY_DSN: str = os.getenv("SENTRY_DSN", "").strip()
 
 
 settings = Settings()

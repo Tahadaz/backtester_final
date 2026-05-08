@@ -50,3 +50,23 @@ def test_label_shuffle_seed_determinism():
     b = monte_carlo_label_shuffle_test(score, fwd, bucket="buy", n_iter=500, seed=42)
     assert a["pvalue"] == b["pvalue"]
     assert a["null_quantiles"] == b["null_quantiles"]
+
+
+def test_label_shuffle_supports_block_shuffle():
+    n = 120
+    idx = _idx(n)
+    rng = np.random.default_rng(13)
+    score = pd.Series(rng.uniform(-100, 100, size=n), index=idx)
+    fwd = pd.Series(rng.normal(0.0, 0.01, size=n), index=idx)
+
+    res = monte_carlo_label_shuffle_test(
+        score,
+        fwd,
+        bucket="strong_buy",
+        n_iter=100,
+        seed=42,
+        block_mean=5,
+    )
+
+    assert res["method"] == "bucket_label_block_shuffle"
+    assert res["block_mean"] == 5

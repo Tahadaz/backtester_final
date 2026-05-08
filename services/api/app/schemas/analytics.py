@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ICCurveOut(BaseModel):
@@ -277,3 +277,6 @@ class EdgeMetricsOut(BaseModel):
     gates: EdgeGatesOut
     cost_bps_per_side: float
     methodology_version: str
+    fragility_label: str = "unavailable"
+    fragility_fold_count: int = 0
+    fragility_details: list[dict[str, Any]] = Field(default_factory=list)

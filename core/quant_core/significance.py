@@ -66,6 +66,7 @@ def monte_carlo_luck_test(
     n_iter: int = 2000,
     seed: int = 42,
     periods_per_year: int = 252,
+    block_mean: int | None = None,
 ) -> dict[str, Any]:
     r = _to_returns(returns)
     n = len(r)
@@ -93,8 +94,13 @@ def monte_carlo_luck_test(
 
     rng = np.random.default_rng(int(seed))
     null = np.empty(int(n_iter), dtype=float)
+    block = int(block_mean) if block_mean is not None else 0
+    use_blocks = block > 1
     for i in range(int(n_iter)):
-        sample = centered[rng.integers(0, n, size=n)]
+        if use_blocks:
+            sample = _stationary_block_sample(centered, rng=rng, block_mean=block)
+        else:
+            sample = centered[rng.integers(0, n, size=n)]
         null[i] = _metric_fn(sample)
 
     if observed >= 0:
@@ -118,8 +124,40 @@ def monte_carlo_luck_test(
         "observed": float(observed),
         "pvalue": pvalue,
         "null_quantiles": quantiles,
-        "method": "bootstrap_centered_returns",
+        "method": "stationary_block_bootstrap_centered_returns" if use_blocks else "bootstrap_centered_returns",
+        "block_mean": block if use_blocks else None,
     }
+
+
+def _stationary_block_sample(values: np.ndarray, *, rng: np.random.Generator, block_mean: int) -> np.ndarray:
+    """Politis-Romano style stationary block sample with circular wrapping."""
+    x = np.asarray(values, dtype=float)
+    n = len(x)
+    if n == 0:
+        return x.copy()
+    p = 1.0 / max(float(block_mean), 1.0)
+    out = np.empty(n, dtype=float)
+    pos = int(rng.integers(0, n))
+    for i in range(n):
+        if i == 0 or rng.random() < p:
+            pos = int(rng.integers(0, n))
+        else:
+            pos = (pos + 1) % n
+        out[i] = x[pos]
+    return out
+
+
+def _block_permutation(values: np.ndarray, *, rng: np.random.Generator, block_len: int) -> np.ndarray:
+    """Shuffle contiguous non-overlapping blocks while preserving within-block order."""
+    x = np.asarray(values)
+    n = len(x)
+    if n == 0:
+        return x.copy()
+    b = max(1, int(block_len))
+    starts = list(range(0, n, b))
+    order = rng.permutation(len(starts))
+    parts = [x[starts[i]: min(starts[i] + b, n)] for i in order]
+    return np.concatenate(parts)[:n]
 
 
 def monte_carlo_label_shuffle_test(
@@ -129,6 +167,7 @@ def monte_carlo_label_shuffle_test(
     bucket: str,
     n_iter: int = 2000,
     seed: int = 42,
+    block_mean: int | None = None,
 ) -> dict[str, Any]:
     """Test whether a bucket label is informative.
 
@@ -182,9 +221,14 @@ def monte_carlo_label_shuffle_test(
     rng = np.random.default_rng(int(seed))
     n_total = len(scores_arr)
     null = np.empty(int(n_iter), dtype=float)
+    block = int(block_mean) if block_mean is not None else 0
+    use_blocks = block > 1
     for i in range(int(n_iter)):
-        perm = rng.permutation(n_total)
-        permuted_buckets = buckets_arr[perm]
+        permuted_buckets = (
+            _block_permutation(buckets_arr, rng=rng, block_len=block)
+            if use_blocks
+            else buckets_arr[rng.permutation(n_total)]
+        )
         sub = fwd_arr[permuted_buckets == str(bucket)]
         null[i] = float(np.mean(sub)) if len(sub) else float("nan")
 
@@ -214,7 +258,8 @@ def monte_carlo_label_shuffle_test(
         "observed": observed,
         "pvalue": pvalue,
         "null_quantiles": quantiles,
-        "method": "bucket_label_shuffle",
+        "method": "bucket_label_block_shuffle" if use_blocks else "bucket_label_shuffle",
+        "block_mean": block if use_blocks else None,
     }
 
 

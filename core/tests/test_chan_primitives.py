@@ -98,6 +98,23 @@ def test_significance_module_returns_tstat_and_mc_pvalue() -> None:
     assert "demo" in by_key
 
 
+def test_monte_carlo_luck_test_supports_block_sampling() -> None:
+    rng = np.random.default_rng(43)
+    returns = rng.normal(0.001, 0.01, size=180)
+
+    out = monte_carlo_luck_test(
+        returns,
+        metric="total_return",
+        n_iter=100,
+        seed=9,
+        block_mean=5,
+    )
+
+    assert out["method"] == "stationary_block_bootstrap_centered_returns"
+    assert out["block_mean"] == 5
+    assert out["pvalue"] is not None
+
+
 def test_build_risk_summary_contains_kelly_and_mc_details() -> None:
     rng = np.random.default_rng(55)
     r = rng.normal(0.0005, 0.01, size=240)

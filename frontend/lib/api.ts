@@ -349,6 +349,9 @@ export const EdgeMetricsSchema = z.object({
   gates: EdgeGatesSchema,
   cost_bps_per_side: z.number(),
   methodology_version: z.string(),
+  fragility_label: z.string().default("unavailable"),
+  fragility_fold_count: z.number().default(0),
+  fragility_details: z.array(z.record(z.unknown())).default([]),
 })
 export type EdgeMetrics = z.infer<typeof EdgeMetricsSchema>
 

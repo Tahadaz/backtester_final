@@ -1,0 +1,10 @@
+# Data Science & Math
+pandas
+numpy
+
+# Web & API
+fastapi
+
+# Testing
+pytest
+pytest-asyncio

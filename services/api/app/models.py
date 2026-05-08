@@ -686,6 +686,7 @@ class WfoSignalSummary(Base):
     representatives_json = Column(JSONB, nullable=False, default=list)
     folds_json = Column(JSONB, nullable=True)             # per-fold details (IS/OOS returns, winner, profile)
     config_json = Column(JSONB, nullable=True)            # WFO config used (train/test/step, grid_size, etc.)
+    fragility_json = Column(JSONB, nullable=True)          # C.1 local-neighborhood fragility cache
 
     # --- WFO quality metrics ---
     wfe_pct = Column(Float, nullable=True)

@@ -7,10 +7,12 @@ Per-symbol:  run_wfo_for_symbol_horizon(db, symbol, horizon)
 from __future__ import annotations
 
 import logging
+import math
 import time
 from datetime import datetime, timezone
 from typing import Any
 
+import numpy as np
 from sqlalchemy.orm import Session
 
 from services.worker.db import SessionLocal
@@ -22,7 +24,7 @@ from services.api.app.models import (
 )
 from services.api.app.services.weekly_recompute_policy import iter_wfo_weekly_stale_tuples
 from services.api.app.market_data_loader import load_ohlcv_for_symbol
-from core.quant_core.horizons import DEFAULT_COST_BPS_PER_SIDE
+from core.quant_core.horizons import DEFAULT_COST_BPS_PER_SIDE, HORIZON_SPECS
 from core.quant_core.data import drop_incomplete_ohlcv_rows
 from core.quant_core.signal_engine.current_signal import build_current_signal
 from core.quant_core.signal_engine.domain import (
@@ -34,6 +36,7 @@ from core.quant_core.signal_engine.domain import (
     signal_type_label,
 )
 from core.quant_core.signal_engine.wfo_signal import WfoCategoryResult, run_wfo_category_signal
+from core.quant_core.signal_engine.variant_detail import compute_variant_signal_array
 from core.quant_core.signal_engine.wfo_global import compute_global_wfo_signal
 
 logger = logging.getLogger(__name__)
@@ -167,9 +170,11 @@ def _build_folds_json(result, pool: list | None = None, index: Any = None) -> li
     for w in er.windows:
         winner_id = ""
         winner_desc = ""
+        winner_params = {}
         if pool is not None and isinstance(w.winner_key, int) and w.winner_key < len(pool):
             winner_id = pool[w.winner_key].variant_id
             winner_desc = pool[w.winner_key].description
+            winner_params = dict(getattr(pool[w.winner_key], "params", {}) or {})
         train_start_idx = int(w.window.train_start)
         train_end_idx = int(w.window.train_end)
         oos_start_idx = int(w.window.oos_start)
@@ -193,6 +198,7 @@ def _build_folds_json(result, pool: list | None = None, index: Any = None) -> li
             "oos_sharpe": round(getattr(w, 'oos_sharpe', 0.0), 4),
             "winner_variant_id": winner_id,
             "winner_description": winner_desc,
+            "winner_params": winner_params,
             "winner_prom": round(w.winner_prom, 6),
             "profile_passes": w.profile.passes,
             "profile_reason": w.profile.reason,
@@ -200,6 +206,163 @@ def _build_folds_json(result, pool: list | None = None, index: Any = None) -> li
             "oos_profitable": w.oos_return > 0,
         })
     return folds
+
+
+def _numeric_param_distance(candidate: VariantDef, winner: VariantDef) -> float | None:
+    if candidate.family != winner.family or candidate.archetype != winner.archetype:
+        return None
+    distance = 0.0
+    numeric_seen = False
+    for key, winner_value in winner.params.items():
+        candidate_value = candidate.params.get(key)
+        if isinstance(winner_value, (int, float)) and isinstance(candidate_value, (int, float)):
+            numeric_seen = True
+            radius = max(0, int(math.ceil(abs(float(winner_value)) * 0.10)))
+            if abs(float(candidate_value) - float(winner_value)) > radius:
+                return None
+            distance += abs(float(candidate_value) - float(winner_value))
+        elif candidate_value != winner_value:
+            return None
+    return distance if numeric_seen else (0.0 if candidate.variant_id == winner.variant_id else None)
+
+
+def _local_neighbors(pool: list[VariantDef], winner: VariantDef, *, max_neighbors: int = 25) -> list[VariantDef]:
+    rows: list[tuple[float, str, VariantDef]] = []
+    for candidate in pool:
+        dist = _numeric_param_distance(candidate, winner)
+        if dist is not None:
+            rows.append((dist, candidate.variant_id, candidate))
+    rows.sort(key=lambda item: (item[0], item[1]))
+    return [item[2] for item in rows[:max_neighbors]]
+
+
+def _variant_oos_edge_ratio(
+    *,
+    variant: VariantDef,
+    close: np.ndarray,
+    volume: np.ndarray | None,
+    high: np.ndarray | None,
+    low: np.ndarray | None,
+    start: int,
+    end: int,
+    horizon_bars: int,
+) -> float | None:
+    sig = compute_variant_signal_array(close, variant, volume=volume, high=high, low=low)
+    prices = np.asarray(close, dtype="float64")
+    if len(sig) != len(prices) or len(prices) <= horizon_bars or end <= start:
+        return None
+    fwd = (np.roll(prices, -int(horizon_bars)) / prices) - 1.0
+    fwd[-int(horizon_bars):] = np.nan
+    lo = max(0, int(start))
+    hi = min(int(end), len(prices))
+    signal_slice = sig[lo:hi]
+    returns_slice = fwd[lo:hi]
+    mask = np.isfinite(returns_slice) & (signal_slice != 0)
+    strategy_returns = signal_slice[mask].astype("float64") * returns_slice[mask].astype("float64")
+    if len(strategy_returns) < 3:
+        return None
+    std = float(np.std(strategy_returns, ddof=1))
+    if std <= 0.0 or not np.isfinite(std):
+        return None
+    return float(np.mean(strategy_returns) / std)
+
+
+def _fragility_class(metric_winner: float, metrics: list[float]) -> tuple[str, float, float]:
+    vals = np.asarray([v for v in metrics if np.isfinite(v)], dtype="float64")
+    if len(vals) == 0 or not np.isfinite(metric_winner):
+        return "unavailable", float("nan"), float("nan")
+    rng = np.random.default_rng(20260507)
+    boot = np.empty(1000, dtype="float64")
+    for i in range(len(boot)):
+        sample = vals[rng.integers(0, len(vals), size=len(vals))]
+        boot[i] = float(np.mean(sample))
+    ci_lo = float(np.percentile(boot, 2.5))
+    ci_hi = float(np.percentile(boot, 97.5))
+    winner_positive = metric_winner >= 0.0
+    opposite_sign = (ci_hi < 0.0 and winner_positive) or (ci_lo > 0.0 and not winner_positive)
+    negative_share = float(np.mean(vals < 0.0))
+    if opposite_sign or negative_share > 0.50:
+        return "severe", ci_lo, ci_hi
+    if (ci_lo <= 0.0 <= ci_hi) or not (ci_lo <= metric_winner <= ci_hi):
+        return "mixed", ci_lo, ci_hi
+    return "stable", ci_lo, ci_hi
+
+
+def _aggregate_fragility(details: list[dict[str, Any]]) -> str:
+    classified = [d for d in details if d.get("class") in {"stable", "mixed", "severe"}]
+    if not classified:
+        return "unavailable"
+    n = len(classified)
+    severe_share = sum(1 for d in classified if d.get("class") == "severe") / n
+    mixed_or_severe_share = sum(1 for d in classified if d.get("class") in {"mixed", "severe"}) / n
+    if severe_share >= 0.60 or mixed_or_severe_share >= 0.60:
+        return "fragility_in_most_folds"
+    if severe_share >= 0.30 or mixed_or_severe_share >= 0.30:
+        return "mixed_local_sensitivity"
+    return "no_severe_fragility"
+
+
+def _build_fragility_json(
+    *,
+    result: WfoCategoryResult,
+    pool: list[VariantDef],
+    close: np.ndarray,
+    volume: np.ndarray | None,
+    high: np.ndarray | None,
+    low: np.ndarray | None,
+    index: Any,
+) -> dict[str, Any] | None:
+    er = result.engine_result
+    if er is None or not er.windows or not pool:
+        return None
+    horizon_bars = int(HORIZON_SPECS[result.horizon].reference_forward_days)
+    details: list[dict[str, Any]] = []
+    for w in er.windows:
+        winner = pool[w.winner_key] if isinstance(w.winner_key, int) and w.winner_key < len(pool) else None
+        if winner is None:
+            details.append({"fold_id": w.window.index, "class": "unavailable", "reason": "winner_missing"})
+            continue
+        metrics: list[float] = []
+        metric_winner: float | None = None
+        for neighbor in _local_neighbors(pool, winner):
+            metric = _variant_oos_edge_ratio(
+                variant=neighbor,
+                close=close,
+                volume=volume,
+                high=high,
+                low=low,
+                start=int(w.window.oos_start),
+                end=int(w.window.oos_end),
+                horizon_bars=horizon_bars,
+            )
+            if metric is None:
+                continue
+            metrics.append(metric)
+            if neighbor.variant_id == winner.variant_id:
+                metric_winner = metric
+        if metric_winner is None:
+            details.append({"fold_id": w.window.index, "class": "unavailable", "reason": "winner_metric_unavailable"})
+            continue
+        klass, ci_lo, ci_hi = _fragility_class(metric_winner, metrics)
+        details.append(
+            {
+                "fold_id": w.window.index,
+                "winner_variant_id": winner.variant_id,
+                "winner_params": dict(winner.params),
+                "neighbor_count": len(metrics),
+                "metric_winner": round(float(metric_winner), 6),
+                "ci_lower": round(float(ci_lo), 6) if np.isfinite(ci_lo) else None,
+                "ci_upper": round(float(ci_hi), 6) if np.isfinite(ci_hi) else None,
+                "class": klass,
+                "oos_start_date": _window_date(index, int(w.window.oos_start)),
+                "oos_end_date": _window_date(index, int(w.window.oos_end), end_exclusive=True),
+            }
+        )
+    return {
+        "label": _aggregate_fragility(details),
+        "fold_count": len([d for d in details if d.get("class") in {"stable", "mixed", "severe"}]),
+        "details": details,
+    }
 
 
 def _build_config_json(
@@ -337,6 +500,15 @@ def run_wfo_for_symbol_horizon(
             category_results[category] = result
 
             folds_json = _build_folds_json(result, pool, ohlcv.index)
+            fragility_json = _build_fragility_json(
+                result=result,
+                pool=pool,
+                close=close,
+                volume=volume,
+                high=high,
+                low=low,
+                index=ohlcv.index,
+            )
             config_json = _build_config_json(
                 horizon,
                 category,
@@ -352,6 +524,7 @@ def run_wfo_for_symbol_horizon(
                 variant=variant,
                 status=result.status, result=result, data_as_of=data_as_of,
                 folds_json=folds_json, config_json=config_json,
+                fragility_json=fragility_json,
                 error_message=result.error_message or None,
             )
         except Exception as exc:
@@ -634,6 +807,7 @@ def _upsert_summary(
     error_message: str | None = None,
     folds_json: list[dict] | None = None,
     config_json: dict | None = None,
+    fragility_json: dict | None = None,
 ) -> None:
     row = (
         db.query(WfoSignalSummary)
@@ -653,6 +827,7 @@ def _upsert_summary(
         row.signal_label        = result.signal_label
         row.representatives_json = result.representatives
         row.folds_json          = folds_json
+        row.fragility_json      = fragility_json
         row.wfe_pct             = result.wfe_pct
         row.robustness_ratio    = result.robustness_ratio
         row.total_folds         = result.total_folds

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import math
 import time
+from dataclasses import replace
 from typing import Any, Optional
 
 import numpy as np
@@ -1772,7 +1773,7 @@ def _build_edge_metrics_from_db(
         holdout_bars=spec.signal_engine_holdout_bars,
     )
 
-    return build_edge_payload(
+    metrics = build_edge_payload(
         symbol=symbol,
         horizon=canonical_h,
         source=source,
@@ -1783,6 +1784,59 @@ def _build_edge_metrics_from_db(
         fwd_horizon_bars=spec.reference_forward_days,
         cost_bps_per_side=cost_bps,
     )
+    if source != "wfo":
+        return metrics
+
+    fragility = _edge_fragility_from_db(
+        db=db,
+        symbol=symbol,
+        db_horizons=db_horizons,
+    )
+    return replace(
+        metrics,
+        fragility_label=str(fragility.get("label") or "unavailable"),
+        fragility_fold_count=int(fragility.get("fold_count") or 0),
+        fragility_details=tuple(fragility.get("details") or ()),
+    )
+
+
+def _edge_fragility_from_db(
+    *,
+    db: "Session",
+    symbol: str,
+    db_horizons: list[str],
+) -> dict[str, Any]:
+    severity = {
+        "unavailable": 0,
+        "no_severe_fragility": 1,
+        "mixed_local_sensitivity": 2,
+        "fragility_in_most_folds": 3,
+    }
+    rows = (
+        db.query(models.WfoSignalSummary)
+        .filter(
+            models.WfoSignalSummary.symbol == symbol.upper(),
+            models.WfoSignalSummary.horizon.in_(db_horizons),
+            models.WfoSignalSummary.status == "succeeded",
+            models.WfoSignalSummary.fragility_json.isnot(None),
+        )
+        .all()
+    )
+    if not rows:
+        return {"label": "unavailable", "fold_count": 0, "details": []}
+    best_label = "unavailable"
+    fold_count = 0
+    details: list[dict[str, Any]] = []
+    for row in rows:
+        payload = dict(row.fragility_json or {})
+        label = str(payload.get("label") or "unavailable")
+        if severity.get(label, 0) > severity.get(best_label, 0):
+            best_label = label
+        fold_count += int(payload.get("fold_count") or 0)
+        for item in list(payload.get("details") or []):
+            if isinstance(item, dict):
+                details.append({"category": row.category, **item})
+    return {"label": best_label, "fold_count": fold_count, "details": details}
 
 
 def _edge_metrics_to_out(m: "EdgeMetrics") -> "EdgeMetricsOut":
@@ -1828,6 +1882,9 @@ def _edge_metrics_to_out(m: "EdgeMetrics") -> "EdgeMetricsOut":
         ),
         cost_bps_per_side=m.cost_bps_per_side,
         methodology_version=m.methodology_version,
+        fragility_label=m.fragility_label,
+        fragility_fold_count=m.fragility_fold_count,
+        fragility_details=list(m.fragility_details or ()),
     )
 
 

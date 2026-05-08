@@ -27,6 +27,9 @@ from core.quant_core.research.score_history import (
     build_wfo_category_series,
 )
 from core.quant_core.research.oos_index import oos_windows_from_wfo
+from core.quant_core.signal_engine.variant_detail import compute_variant_signal_array
+from core.quant_core.signal_engine.wfo_signal import build_category_candidate_grid
+from core.quant_core.signal_engine.domain import VARIANT_FAMILIES
 
 
 logger = logging.getLogger(__name__)
@@ -152,6 +155,54 @@ def _wfo_category_reps(db: Session, symbol: str, horizon: str
     return out
 
 
+def _candidate_pool_for(row: models.WfoSignalSummary) -> list:
+    families = VARIANT_FAMILIES.get(row.variant or "expanded", VARIANT_FAMILIES["expanded"]).get(row.category)
+    try:
+        return build_category_candidate_grid(row.category, row.horizon, families=families)
+    except Exception:
+        return []
+
+
+def _fold_scoped_wfo_series(
+    *,
+    row: models.WfoSignalSummary,
+    base_series: pd.Series,
+    close: np.ndarray,
+    volume: np.ndarray | None,
+    high: np.ndarray | None,
+    low: np.ndarray | None,
+    index: pd.DatetimeIndex,
+) -> pd.Series:
+    """Override WFO OOS bars with the winner variant selected for each fold."""
+    out = base_series.copy()
+    windows = oos_windows_from_wfo(row.folds_json, ohlcv_index=index)
+    if not windows:
+        return out
+
+    pool = _candidate_pool_for(row)
+    by_id = {str(v.variant_id): v for v in pool}
+    signal_cache: dict[str, pd.Series] = {}
+
+    for window in windows:
+        winner_id = str(window.winner_variant_id or "").strip()
+        variant = by_id.get(winner_id)
+        if variant is None:
+            continue
+        if winner_id not in signal_cache:
+            sig = compute_variant_signal_array(
+                close,
+                variant,
+                volume=volume,
+                high=high,
+                low=low,
+            )
+            signal_cache[winner_id] = pd.Series(sig * 100.0, index=index, name=row.category)
+        mask = (index >= window.start) & (index <= window.end)
+        out.loc[index[mask]] = signal_cache[winner_id].loc[index[mask]]
+
+    return out
+
+
 def _dates_for_windows(
     index: pd.DatetimeIndex,
     folds_json: Any,
@@ -201,6 +252,17 @@ def run_score_history_for_symbol(db: Session, symbol: str) -> dict[str, int]:
                 close=close, volume=volume, high=high, low=low,
                 category_reps=category_reps, index=idx,
             )
+            for category, row in cat_reps.items():
+                if category in series:
+                    series[category] = _fold_scoped_wfo_series(
+                        row=row,
+                        base_series=series[category],
+                        close=close,
+                        volume=volume,
+                        high=high,
+                        low=low,
+                        index=idx,
+                    )
             is_oos_dates_by_cat = {
                 category: _dates_for_windows(idx, row.folds_json)
                 for category, row in cat_reps.items()

@@ -7,8 +7,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements-dev.txt /repo/requirements-dev.txt
-RUN pip install --no-cache-dir -r /repo/requirements-dev.txt
+COPY services/api/pyproject.toml /repo/services/api/pyproject.toml
+RUN pip install --no-cache-dir /repo/services/api/
 
 COPY . /repo
 

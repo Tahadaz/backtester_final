@@ -23,8 +23,7 @@ dependencies = [
   "numba",
   "apscheduler>=3.10",
   "yfinance",
-  "python-jose[cryptography]>=3.3",
-  "sentry-sdk[fastapi]>=2.0"
+  "python-jose[cryptography]>=3.3"
 ]
 
 # ✅ CRITICAL: tell setuptools what to package, exclude alembic folder from package discovery

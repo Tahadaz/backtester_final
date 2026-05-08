@@ -8,6 +8,7 @@ import pandas as pd
 
 from services.api.app.models import StockMaster, WfoGlobalSignal, WfoSignalSummary
 from services.worker.tasks import wfo_signal_batch as wfo_batch_mod
+from core.quant_core.signal_engine.domain import VariantDef
 
 
 class _FakeQuery:
@@ -142,6 +143,30 @@ def test_build_folds_json_persists_indices_and_dates():
     assert fold["oos_start_date"] == "2026-01-06"
     assert fold["oos_end_date"] == "2026-01-08"
     assert fold["winner_variant_id"] == "sma-5"
+    assert fold["winner_params"] == {}
+
+
+def test_fragility_classifies_stable_and_aggregate_no_severe():
+    klass, ci_lo, ci_hi = wfo_batch_mod._fragility_class(0.4, [0.3, 0.35, 0.4, 0.45])
+
+    assert klass == "stable"
+    assert ci_lo > 0
+    assert ci_hi > 0
+    assert wfo_batch_mod._aggregate_fragility(
+        [{"class": "stable"}, {"class": "stable"}, {"class": "mixed"}]
+    ) == "mixed_local_sensitivity"
+
+
+def test_local_neighbors_uses_ten_percent_window_and_caps():
+    winner = VariantDef("sma-14", "sma", "price_vs_sma", {"window": 14})
+    pool = [
+        VariantDef(f"sma-{i}", "sma", "price_vs_sma", {"window": i})
+        for i in range(1, 40)
+    ]
+
+    neighbors = wfo_batch_mod._local_neighbors(pool, winner)
+
+    assert [item.params["window"] for item in neighbors] == [14, 13, 15, 12, 16]
 
 
 def test_refresh_wfo_uses_persisted_representatives_without_reselection(monkeypatch):
