@@ -8,6 +8,8 @@ venv/
 .env
 .env.*
 *.log
+.cache/
+.codex-logs/
 
 # ---- Jupyter ----
 .ipynb_checkpoints/
@@ -31,6 +33,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+*.tsbuildinfo
 
 # ---- Data / Artifacts (VERY IMPORTANT) ----
 data/
@@ -42,6 +45,9 @@ data/
 !frontend/public/data/**
 datasets/
 artifacts/
+# Whitelist: Next.js API route for artifact proxying, not generated artifact data
+!frontend/app/api/artifacts/
+!frontend/app/api/artifacts/**
 # Whitelist: Python package literally named "artifacts" (core runtime code, not build output)
 !core/quant_core/artifacts/
 !core/quant_core/artifacts/**
@@ -51,6 +57,28 @@ artifacts/
 *.parquet
 *.pkl
 *.pickle
+exports/
+market_data_export*.xlsx
+openapi.json
+schema_dump.sql
+run*.json
+leaderboard*.json
+artifacts*.json
+body.json
+body.txt
+headers.txt
+branches.txt
+
+# ---- Local scratch / agent output ----
+_patch_*/
+_commit*.patch
+_execute_run*.diff
+*.resolved
+CODEX_PLAN_*.md
+CONTEXT_PACKET_*.md
+git_reflog_all.txt
+worker_tail.txt
+mc.exe
 
 # ---- Local infra volumes ----
 minio/
@@ -64,4 +92,5 @@ docker-data/
 
 # Legacy / archived
 original backtester/
+quant-backtesting-frontend/
 

@@ -10,7 +10,13 @@ const rootDir = path.join(__dirname, "..")
 const outDir = path.join(rootDir, "out-pages")
 
 const disableTargets = [
+  "instrumentation.ts",
   "app/api/[...path]/route.ts",
+  "app/api/artifacts/fetch/route.ts",
+  "app/api/auth/[...nextauth]/route.ts",
+  "app/account/page.tsx",
+  "app/signup/page.tsx",
+  "app/signup/pending/page.tsx",
   "app/signals/variant/[id]/page.tsx",
   "app/signals/sr-family/page.tsx",
   "app/signals/sr-method/[id]/page.tsx",
