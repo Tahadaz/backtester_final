@@ -73,6 +73,8 @@ services:
       default:
         aliases:
           - minio
+    ports:
+      - "127.0.0.1:9000:9000"
     volumes:
       - miniodata:/data
     healthcheck:

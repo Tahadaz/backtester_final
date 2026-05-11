@@ -25,6 +25,8 @@ This is the source-of-truth deploy runbook for the Oracle VM path.
 - GitHub deploy smoke test now runs on the VM with `curl --resolve`, avoiding false failure from the public IP allowlist.
 - The systemd heartbeat now probes the real Caddy HTTPS route locally.
 - Frontend artifact downloads now go through `/api/artifacts/fetch`, a server-side proxy that only allows MinIO artifact hosts.
+- MinIO is bound to `127.0.0.1:9000` on the VM so host cron can upload Postgres backups without exposing MinIO publicly.
+- Oracle Linux `firewalld` must allow `http` and `https`; the OCI subnet/security-list must also allow inbound `80/tcp` and `443/tcp`.
 
 ## Remaining Deployment Risks
 
@@ -54,7 +56,7 @@ INTERNAL_JWT_SECRET=replace_with_openssl_rand_hex_32
 MINIO_ROOT_USER=btminio
 MINIO_ROOT_PASSWORD=replace_with_long_random_secret
 
-ALLOWED_REMOTE_IPS=197.230.23.178/32 196.127.81.67/32
+ALLOWED_REMOTE_IPS="197.230.23.178/32 196.127.81.67/32"
 API_WORKERS=1
 WORKER_CONCURRENCY=1
 OMP_NUM_THREADS=1
@@ -107,6 +109,12 @@ case "$ARCH" in
 esac
 curl -fsSL "https://dl.min.io/client/mc/release/linux-${MC_ARCH}/mc" -o /tmp/mc
 sudo install -m 0755 /tmp/mc /usr/local/bin/mc
+
+if command -v firewall-cmd >/dev/null 2>&1 && sudo firewall-cmd --state >/dev/null 2>&1; then
+  sudo firewall-cmd --permanent --add-service=http
+  sudo firewall-cmd --permanent --add-service=https
+  sudo firewall-cmd --reload
+fi
 ```
 
 6. Install the env file:
@@ -121,7 +129,7 @@ ADMIN_API_KEY=replace_me
 INTERNAL_JWT_SECRET=replace_me
 MINIO_ROOT_USER=btminio
 MINIO_ROOT_PASSWORD=replace_me
-ALLOWED_REMOTE_IPS=197.230.23.178/32 196.127.81.67/32
+ALLOWED_REMOTE_IPS="197.230.23.178/32 196.127.81.67/32"
 API_WORKERS=1
 WORKER_CONCURRENCY=1
 OMP_NUM_THREADS=1
@@ -179,12 +187,9 @@ sudo systemctl list-timers bt-heartbeat.timer
 sudo cp /opt/bt/infra/scripts/pg_backup.sh /usr/local/bin/pg_backup.sh
 sudo chmod +x /usr/local/bin/pg_backup.sh
 
-source /etc/bt/env
-mc alias set local http://localhost:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"
-mc mb local/bt-backups || true
-mc ilm add --expiry-days 30 local/bt-backups
+sudo -iu deploy bash -lc 'set -a; source /etc/bt/env; set +a; /usr/local/bin/mc alias set local http://127.0.0.1:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"; /usr/local/bin/mc mb --ignore-existing local/bt-backups; /usr/local/bin/mc ilm add --expiry-days 30 local/bt-backups || true'
 
-echo "0 1 * * * deploy /usr/local/bin/pg_backup.sh >> /var/log/bt-backup.log 2>&1" | sudo crontab -u deploy -
+echo "0 1 * * * /usr/local/bin/pg_backup.sh >> /var/log/bt-backup.log 2>&1" | sudo crontab -u deploy -
 ```
 
 ## GitHub Actions Setup

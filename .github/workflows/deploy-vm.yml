@@ -46,10 +46,34 @@ jobs:
             # Prune old images
             docker image prune -f
 
-      - name: Smoke test
-        run: |
-          sleep 15
-          curl -fsS --max-time 10 \
-            "https://${{ secrets.DOMAIN }}/api/health" | grep -q '"ok"'
-          curl -fsS --max-time 10 \
-            "https://${{ secrets.DOMAIN }}/login" | grep -q "Connexion"
+      - name: Smoke test on Oracle VM
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.ORACLE_HOST }}
+          username: deploy
+          key: ${{ secrets.ORACLE_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd /opt/bt
+
+            DOMAIN="${{ secrets.DOMAIN }}"
+            if [ -z "$DOMAIN" ] && [ -f /etc/bt/env ]; then
+              DOMAIN="$(sed -n 's/^DOMAIN=//p' /etc/bt/env | tail -n 1)"
+            fi
+            DOMAIN="${DOMAIN:-84.8.218.252.sslip.io}"
+
+            for i in $(seq 1 30); do
+              if curl -fsS --max-time 10 --resolve "${DOMAIN}:443:127.0.0.1" "https://${DOMAIN}/api/health" | grep -q '"ok"'; then
+                break
+              fi
+              if [ "$i" -eq 30 ]; then
+                echo "API health smoke test failed" >&2
+                exit 1
+              fi
+              sleep 5
+            done
+
+            curl -fsS --max-time 10 --resolve "${DOMAIN}:443:127.0.0.1" "https://${DOMAIN}/login" | grep -q "Connexion"
+            IMAGE_TAG=${{ github.event.workflow_run.head_sha }} \
+              docker compose --env-file /etc/bt/env \
+              -f infra/docker-compose.gcp.yml ps

@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Daily Postgres backup → MinIO bt-backups bucket.
+# Daily Postgres backup to the MinIO bt-backups bucket.
 # Runs as a cron job on the Oracle VM. Requires mc (MinIO client) in PATH.
 set -euo pipefail
+
+PATH="/usr/local/bin:/usr/bin:/bin:${PATH:-}"
 
 TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)
 BACKUP_FILE="/tmp/quant_${TIMESTAMP}.dump"
@@ -20,7 +22,7 @@ gzip "${BACKUP_FILE}"
 BACKUP_FILE="${BACKUP_FILE}.gz"
 
 # Upload to MinIO
-mc cp "${BACKUP_FILE}" "${MINIO_ALIAS}/${MINIO_BUCKET}/daily/${TIMESTAMP}.dump.gz"
+/usr/local/bin/mc cp "${BACKUP_FILE}" "${MINIO_ALIAS}/${MINIO_BUCKET}/daily/${TIMESTAMP}.dump.gz"
 
 # Remove local file
 rm -f "${BACKUP_FILE}"
@@ -28,6 +30,6 @@ rm -f "${BACKUP_FILE}"
 echo "[pg_backup] ${TIMESTAMP} uploaded to ${MINIO_ALIAS}/${MINIO_BUCKET}/daily/"
 
 # Enforce retention: delete objects older than RETENTION_DAYS days
-mc find "${MINIO_ALIAS}/${MINIO_BUCKET}/daily/" \
+/usr/local/bin/mc find "${MINIO_ALIAS}/${MINIO_BUCKET}/daily/" \
   --older-than "${RETENTION_DAYS}d" \
-  --exec "mc rm {}"
+  --exec "/usr/local/bin/mc rm {}"
