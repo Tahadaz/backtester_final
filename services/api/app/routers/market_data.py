@@ -28,6 +28,7 @@ from ..market_holidays import get_holiday_info
 from ..masi_tickers import is_masi_ticker, get_masi_info, all_masi_tickers
 from ..asset_taxonomy import detect_asset_type as _detect_asset_type
 from ..queue import get_queue, get_market_refresh_queue
+from ..services.market_universe import list_market_catalog
 from ..storage import delete_object, put_bytes, presign_get, s3_client
 from ..schemas.market_data import (
     AvailabilityCalendarDayOut,
@@ -1426,6 +1427,31 @@ def get_market_catalog(db: Session = Depends(get_db)) -> list[MarketCatalogRowOu
       C. Factors: market_data_store (asset_class='factor') ↔ macro_factor_meta.
          + macro_factor_meta rows without a market_data_store entry yet.
     """
+    return [
+        MarketCatalogRowOut(
+            symbol=row.symbol,
+            display_name=row.display_name,
+            isin=row.isin,
+            sector=row.sector,
+            is_active=row.is_active,
+            track_source=row.track_source,
+            bourse_url=row.bourse_url,
+            notes=row.notes,
+            start_ts=row.start_ts,
+            end_ts=row.end_ts,
+            row_count=row.row_count,
+            source_provider=row.source_provider,
+            data_as_of=row.data_as_of,
+            is_stale=row.is_stale,
+            is_tracked=row.is_tracked,
+            has_canonical_data=row.has_canonical_data,
+            market=row.market,
+            asset_type=row.asset_type,
+            market_region=row.market_region,
+            asset_class=row.asset_class,
+        )
+        for row in list_market_catalog(db, include_without_data=True)
+    ]
     if not _has_table(db, "index_master"):
         db.execute(
             text(
@@ -1865,7 +1891,7 @@ def download_all_market_data_excel(
     """Download 1D OHLCV data as a multi-sheet Excel file.
 
     Optional filters: symbols (repeatable or comma-separated explicit tickers),
-                      asset_type ("equity"|"commodity"|"forex"|"bond")
+                      asset_type ("equity"|"commodity"|"forex"|"bond"|"crypto")
                       market_region ("masi"|"us"|"european"|"asian")
     Without filters, returns all symbols.
     """

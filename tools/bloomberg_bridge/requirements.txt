@@ -1,0 +1,4 @@
+requests>=2.31
+pandas<3
+pyarrow>=14
+xbbg>=0.7; platform_system == "Windows"

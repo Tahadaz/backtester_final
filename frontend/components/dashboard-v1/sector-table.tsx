@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { Fragment, useMemo, useState } from "react"
-import { ArrowRight, ChevronDown, ChevronRight } from "lucide-react"
+import { ArrowRight, ChevronDown, ChevronRight, RotateCcw, Save } from "lucide-react"
 import type {
   DashboardDisplayMode,
   DashboardScoreSource,
@@ -35,6 +35,7 @@ import {
   technicalSignalForDisplay,
 } from "./best-signal-cells"
 import { SignalBadge } from "./signal-badge"
+import { formatPercent } from "@/lib/format"
 import {
   Table,
   TableBody,
@@ -44,10 +45,22 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
+import { Input } from "@/components/ui/input"
 import { signalEvidenceUrl } from "@/lib/signal-evidence-url"
 import { cn } from "@/lib/utils"
+import {
+  buildPortfolioWeightRows,
+  portfolioRowsBySymbol,
+  summarizeWeightRows,
+} from "./sector-portfolio-utils.mjs"
 
 type FamilyKey = (typeof FAMILY_ORDER)[number]
+type PortfolioWeightRow = {
+  shares: number
+  price: number | null
+  marketValue: number
+  weightPct: number
+}
 
 interface SectorTableProps {
   sectors: DashboardSector[]
@@ -60,6 +73,13 @@ interface SectorTableProps {
   edgeEnabled?: boolean
   showTechnicalLevels?: boolean
   visibleFamilies?: Partial<Record<FamilyKey, boolean>>
+  portfolioShares?: Record<string, string | number | null | undefined>
+  portfolioSharesDirty?: boolean
+  portfolioSharesSaving?: boolean
+  portfolioSharesError?: string | null
+  onPortfolioShareChange?: (symbol: string, shares: string) => void
+  onSavePortfolioShares?: () => void
+  onResetPortfolioShares?: () => void
 }
 
 function resolveSeAggregateScore(item: SignalEngineScores, signalView: "legacy" | "expanded" | "factor_x_ta"): number | null {
@@ -160,6 +180,66 @@ function formatScorePct(value: number | null | undefined) {
   return `${sign}${value.toFixed(1)}`
 }
 
+function formatWeightPct(value: number | null | undefined, digits = 1) {
+  if (value == null || !Number.isFinite(value)) return "--"
+  return `${value.toLocaleString("fr-FR", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })}%`
+}
+
+function formatMoneyCompact(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return "--"
+  return `${Math.round(value).toLocaleString("fr-FR")} MAD`
+}
+
+function WeightedSignalCell({ summary }: { summary: ReturnType<typeof summarizeWeightRows> }) {
+  if (!summary || summary.totalWeightPct <= 0) {
+    return <SignalBadge label="Indisponible" />
+  }
+  return (
+    <div className="space-y-1">
+      <SignalBadge label={summary.signalLabel} />
+      <div className="dashboard-mono text-[10px] text-muted-foreground">
+        {formatWeightPct(summary.longWeightPct)}L/{formatWeightPct(summary.shortWeightPct)}S
+      </div>
+    </div>
+  )
+}
+
+function WeightedMethodCell({ summary }: { summary: ReturnType<typeof summarizeWeightRows> }) {
+  if (!summary || summary.totalWeightPct <= 0) {
+    return <span className="text-[11px] text-muted-foreground">No portfolio weight</span>
+  }
+  return (
+    <div className="space-y-1">
+      <div className="max-w-[180px] truncate text-[11px] font-semibold">Poids manuels</div>
+      <div className="dashboard-mono text-[10px] text-muted-foreground">
+        {summary.investedCount} lignes - {formatWeightPct(summary.totalWeightPct)}
+      </div>
+    </div>
+  )
+}
+
+function WeightedExpectedReturnCell({ summary }: { summary: ReturnType<typeof summarizeWeightRows> }) {
+  if (!summary || summary.weightedAverageExpectedReturnNet == null) {
+    return (
+      <div className="space-y-0.5 text-right text-muted-foreground">
+        <div>No eligible</div>
+        <div className="dashboard-mono text-[10px]">weighted E[R]</div>
+      </div>
+    )
+  }
+  return (
+    <div className="space-y-0.5 text-right">
+      <div>{formatPercent(summary.weightedAverageExpectedReturnNet)}</div>
+      <div className="dashboard-mono text-[10px] text-muted-foreground">
+        contribution {formatPercent(summary.weightedExpectedReturnNet)}
+      </div>
+    </div>
+  )
+}
+
 export function SectorTable({
   sectors,
   stocks,
@@ -170,29 +250,59 @@ export function SectorTable({
   displayMode = "trade_opportunities",
   edgeEnabled = true,
   visibleFamilies,
+  portfolioShares,
+  portfolioSharesDirty = false,
+  portfolioSharesSaving = false,
+  portfolioSharesError,
+  onPortfolioShareChange,
+  onSavePortfolioShares,
+  onResetPortfolioShares,
 }: SectorTableProps) {
   const [expandedSector, setExpandedSector] = useState<string | null>(null)
   const isTechnicalMode = displayMode === "technical_directions"
+  const showPortfolioWeights = Boolean(portfolioShares && onPortfolioShareChange)
 
   const shownFamilies = useMemo(
     () => isTechnicalMode ? FAMILY_ORDER.filter((family) => visibleFamilies?.[family] !== false) : [],
     [isTechnicalMode, visibleFamilies],
   )
 
+  const portfolioWeights = useMemo(
+    () => buildPortfolioWeightRows(stocks, portfolioShares ?? {}, { displayMode }),
+    [displayMode, portfolioShares, stocks],
+  )
+  const portfolioRowBySymbol = useMemo<Record<string, PortfolioWeightRow>>(
+    () => portfolioRowsBySymbol(portfolioWeights.rows) as Record<string, PortfolioWeightRow>,
+    [portfolioWeights.rows],
+  )
+  const portfolioSummary = useMemo(
+    () => summarizeWeightRows(portfolioWeights.rows),
+    [portfolioWeights.rows],
+  )
+  const hasWeightedPortfolio = showPortfolioWeights && portfolioSummary.totalWeightPct > 0
+
   const sectorRows = useMemo(
     () =>
       sectors
         .map((sector) => {
           const sectorStocks = stocks.filter((stock) => stock.sector === sector.sector)
+          const weightSummary = summarizeWeightRows(
+            portfolioWeights.rows.filter((row) => row.sector === sector.sector),
+          )
           return {
             sector,
             sectorStocks,
             sortedStocks: [...sectorStocks].sort(isTechnicalMode ? compareTechnicalSignalStocks : compareBestSignalStocks),
             stats: summarizeBestSignals(sectorStocks),
             technicalStats: summarizeTechnicalSignals(sectorStocks),
+            weightSummary,
           }
         })
         .sort((left, right) => {
+          if (hasWeightedPortfolio) {
+            const weight = right.weightSummary.totalWeightPct - left.weightSummary.totalWeightPct
+            if (weight !== 0) return weight
+          }
           if (isTechnicalMode) {
             const rightScore = right.technicalStats.topSignal?.abs_score_pct ?? Number.NEGATIVE_INFINITY
             const leftScore = left.technicalStats.topSignal?.abs_score_pct ?? Number.NEGATIVE_INFINITY
@@ -205,15 +315,21 @@ export function SectorTable({
             scoreForSort(right.sector, scoreSource, signalView),
           )
         }),
-    [isTechnicalMode, scoreSource, sectors, signalView, stocks],
+    [hasWeightedPortfolio, isTechnicalMode, portfolioWeights.rows, scoreSource, sectors, signalView, stocks],
   )
 
-  const columnCount = 1 + shownFamilies.length + 3 + (!isTechnicalMode && edgeEnabled ? 2 : 0) + 1
-  const tableMinWidthClass = shownFamilies.length === 0
-    ? "min-w-[880px]"
-    : shownFamilies.length < FAMILY_ORDER.length
-      ? "min-w-[1020px]"
-      : "min-w-[1140px]"
+  const columnCount = 1 + (showPortfolioWeights ? 1 : 0) + shownFamilies.length + 3 + (!isTechnicalMode && edgeEnabled ? 2 : 0) + 1
+  const tableMinWidthClass = showPortfolioWeights
+    ? shownFamilies.length === 0
+      ? "min-w-[1160px]"
+      : shownFamilies.length < FAMILY_ORDER.length
+        ? "min-w-[1300px]"
+        : "min-w-[1420px]"
+    : shownFamilies.length === 0
+      ? "min-w-[880px]"
+      : shownFamilies.length < FAMILY_ORDER.length
+        ? "min-w-[1020px]"
+        : "min-w-[1140px]"
 
   if (sectorRows.length === 0) {
     return <div className="dashboard-panel px-4 py-12 text-center text-sm text-muted-foreground">Aucun secteur ne correspond aux filtres.</div>
@@ -223,13 +339,90 @@ export function SectorTable({
     <div className="dashboard-panel overflow-hidden">
       <div className="flex items-center justify-between gap-3 border-b border-border bg-bg2 px-4 py-3">
         <h3 className="dashboard-section-title">Signaux par secteur - Horizon {horizonLabel(horizon)} ({horizonDays} j)</h3>
-        <div className="dashboard-meta">{sectorRows.length} secteurs - edge portefeuille</div>
+        <div className="dashboard-meta">
+          {sectorRows.length} secteurs - {hasWeightedPortfolio ? "poids manuels" : "edge portefeuille"}
+        </div>
       </div>
+
+      {showPortfolioWeights ? (
+        <div className="grid gap-2 border-b border-border bg-background px-4 py-3 md:grid-cols-5">
+          <div className="dashboard-field px-3 py-2">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Portefeuille</div>
+            <div className="mt-1">
+              <WeightedSignalCell summary={portfolioSummary} />
+            </div>
+          </div>
+          <div className="dashboard-field px-3 py-2">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Valeur</div>
+            <div className="dashboard-mono mt-1 text-[13px] font-semibold">{formatMoneyCompact(portfolioWeights.totalMarketValue)}</div>
+            <div className="dashboard-mono mt-0.5 text-[10px] text-muted-foreground">
+              {portfolioWeights.investedCount} lignes valorisees
+            </div>
+          </div>
+          <div className="dashboard-field px-3 py-2">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Long / Short</div>
+            <div className="dashboard-mono mt-1 text-[13px] font-semibold">
+              {formatWeightPct(portfolioSummary.longWeightPct)} / {formatWeightPct(portfolioSummary.shortWeightPct)}
+            </div>
+            <div className="dashboard-mono mt-0.5 text-[10px] text-muted-foreground">
+              net {formatScorePct(portfolioSummary.netSignalPct)}
+            </div>
+          </div>
+          <div className="dashboard-field px-3 py-2">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">E[R] pondere</div>
+            <div className="dashboard-mono mt-1 text-[13px] font-semibold">
+              {formatPercent(portfolioSummary.weightedExpectedReturnNet)}
+            </div>
+            <div className="dashboard-mono mt-0.5 text-[10px] text-muted-foreground">
+              moyenne {formatPercent(portfolioSummary.weightedAverageExpectedReturnNet)}
+            </div>
+          </div>
+          <div className="dashboard-field flex flex-col justify-between gap-2 px-3 py-2">
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Positions</div>
+              <div className="mt-1 text-[11px] text-muted-foreground">
+                {portfolioSharesError ?? (portfolioSharesDirty ? "Modifications non sauvegardees" : "Synchronise")}
+              </div>
+              {portfolioWeights.missingPriceCount > 0 ? (
+                <div className="mt-0.5 text-[10px] text-destructive">
+                  {portfolioWeights.missingPriceCount} prix absent(s)
+                </div>
+              ) : null}
+            </div>
+            <div className="flex gap-2">
+              {onResetPortfolioShares ? (
+                <button
+                  type="button"
+                  onClick={onResetPortfolioShares}
+                  className="inline-flex h-7 flex-1 items-center justify-center gap-1 rounded-md border border-border px-2 text-[11px] text-muted-foreground transition hover:bg-muted/30 hover:text-foreground"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  Reset
+                </button>
+              ) : null}
+              {onSavePortfolioShares ? (
+                <button
+                  type="button"
+                  onClick={onSavePortfolioShares}
+                  disabled={!portfolioSharesDirty || portfolioSharesSaving}
+                  className="inline-flex h-7 flex-1 items-center justify-center gap-1 rounded-md border border-border px-2 text-[11px] font-semibold transition hover:bg-muted/30 disabled:pointer-events-none disabled:opacity-50"
+                >
+                  <Save className={cn("h-3 w-3", portfolioSharesSaving && "animate-pulse")} />
+                  Save
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <Table className={cn(tableMinWidthClass, "text-[12px]")}>
         <TableHeader>
           <TableRow className="border-b border-border bg-bg2 hover:bg-bg2">
             <TableHead className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Secteur</TableHead>
+            {showPortfolioWeights ? (
+              <TableHead className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Poids</TableHead>
+            ) : null}
             {shownFamilies.map((family) => (
               <TableHead key={family} className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                 {FAMILY_SHORT_LABELS[family]}
@@ -244,7 +437,13 @@ export function SectorTable({
             <TableHead className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
               {isTechnicalMode ? "Score technique" : "retour attendu"}
             </TableHead>
-            {!isTechnicalMode && edgeEnabled ? (
+            {!isTechnicalMode && edgeEnabled && showPortfolioWeights ? (
+              <>
+                <TableHead className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Actif poids</TableHead>
+                <TableHead className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Net poids</TableHead>
+              </>
+            ) : null}
+            {!isTechnicalMode && edgeEnabled && !showPortfolioWeights ? (
               <>
                 <TableHead className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">%succés port.</TableHead>
                 <TableHead className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Edge</TableHead>
@@ -254,7 +453,7 @@ export function SectorTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {sectorRows.map(({ sector, sectorStocks, sortedStocks, stats, technicalStats }) => {
+          {sectorRows.map(({ sector, sectorStocks, sortedStocks, stats, technicalStats, weightSummary }) => {
             const isOpen = expandedSector === sector.sector
             const portfolioEdge = sector.portfolio_edge ?? null
             const topTechnicalSignal = technicalStats.topSignal
@@ -268,11 +467,20 @@ export function SectorTable({
                       <div>
                         <p className="font-medium">{sector.sector}</p>
                         <p className="text-xs text-muted-foreground">
-                          {sector.stock_count} actions - {isTechnicalMode ? technicalStats.directionalCount : portfolioEdge?.active_count ?? stats.actionableCount} actives
+                          {sector.stock_count} actions - {hasWeightedPortfolio ? formatWeightPct(weightSummary.totalWeightPct) : isTechnicalMode ? technicalStats.directionalCount : portfolioEdge?.active_count ?? stats.actionableCount} actives
                         </p>
                       </div>
                     </button>
                   </TableCell>
+
+                  {showPortfolioWeights ? (
+                    <TableCell className="dashboard-mono px-3 py-2.5 text-right text-[11px]">
+                      <div>{formatWeightPct(weightSummary.totalWeightPct)}</div>
+                      <div className="text-[10px] text-muted-foreground">
+                        {formatWeightPct(weightSummary.longWeightPct)}L/{formatWeightPct(weightSummary.shortWeightPct)}S
+                      </div>
+                    </TableCell>
+                  ) : null}
 
                   {shownFamilies.map((family) => (
                     <TableCell key={`${sector.sector}-${family}`} className="px-3 py-2.5">
@@ -299,16 +507,26 @@ export function SectorTable({
 
                   <TableCell className="px-3 py-2.5">
                     <div className="space-y-1">
-                      {isTechnicalMode ? <SignalBadge label={topTechnicalSignal?.signal_label ?? "Indisponible"} /> : <PortfolioEdgeBadgeCell edge={portfolioEdge} />}
+                      {hasWeightedPortfolio ? (
+                        <WeightedSignalCell summary={weightSummary} />
+                      ) : isTechnicalMode ? (
+                        <SignalBadge label={topTechnicalSignal?.signal_label ?? "Indisponible"} />
+                      ) : (
+                        <PortfolioEdgeBadgeCell edge={portfolioEdge} />
+                      )}
                       <div className="dashboard-mono text-[10px] text-muted-foreground">
-                        {isTechnicalMode
+                        {hasWeightedPortfolio
+                          ? `${formatScorePct(weightSummary.netSignalPct)} net - ${weightSummary.investedCount}/${sectorStocks.length}`
+                          : isTechnicalMode
                           ? `${technicalStats.bullishCount}L/${technicalStats.bearishCount}S - ${technicalStats.directionalCount}/${sectorStocks.length}`
                           : `${portfolioEdge?.long_count ?? 0}L/${portfolioEdge?.short_count ?? 0}S - ${portfolioEdge?.active_count ?? stats.actionableCount}/${sectorStocks.length}`}
                       </div>
                     </div>
                   </TableCell>
                   <TableCell className="px-3 py-2.5">
-                    {isTechnicalMode ? (
+                    {hasWeightedPortfolio ? (
+                      <WeightedMethodCell summary={weightSummary} />
+                    ) : isTechnicalMode ? (
                       <div className="space-y-1">
                         <div className="max-w-[180px] truncate text-[11px] font-semibold" title={topTechnicalSignal?.label ?? ""}>
                           {topTechnicalSignal?.label?.replace("Signal Engine - ", "Engine ").replace("Factor x TA", "FX") ?? "No technical signal"}
@@ -318,7 +536,9 @@ export function SectorTable({
                     ) : <PortfolioEdgeMethodCell edge={portfolioEdge} />}
                   </TableCell>
                   <TableCell className="dashboard-mono px-3 py-2.5 text-right text-[11px]">
-                    {isTechnicalMode ? (
+                    {hasWeightedPortfolio ? (
+                      <WeightedExpectedReturnCell summary={weightSummary} />
+                    ) : isTechnicalMode ? (
                       <div className="space-y-0.5 text-right">
                         <div>{formatScorePct(topTechnicalSignal?.score_pct)}</div>
                         <div className="text-[10px] text-muted-foreground">{technicalDirectionLabel(topTechnicalSignal?.direction)}</div>
@@ -328,13 +548,21 @@ export function SectorTable({
                   {!isTechnicalMode && edgeEnabled ? (
                     <>
                       <TableCell className="px-3 py-2.5 text-right">
-                        <PortfolioEdgeHitRateCell edge={portfolioEdge} />
+                        {hasWeightedPortfolio ? (
+                          <div className="dashboard-mono text-[11px]">{formatWeightPct(weightSummary.activeWeightPct)}</div>
+                        ) : (
+                          <PortfolioEdgeHitRateCell edge={portfolioEdge} />
+                        )}
                       </TableCell>
                       <TableCell className="px-3 py-2.5">
-                        <div className="space-y-1">
-                          <EdgeBadge triage={portfolioEdgeTriage(portfolioEdge)} />
-                          <div className="dashboard-mono text-[10px] text-muted-foreground">n={portfolioEdge?.n ?? 0}</div>
-                        </div>
+                        {hasWeightedPortfolio ? (
+                          <div className="dashboard-mono text-[11px] font-semibold">{formatScorePct(weightSummary.netSignalPct)}</div>
+                        ) : (
+                          <div className="space-y-1">
+                            <EdgeBadge triage={portfolioEdgeTriage(portfolioEdge)} />
+                            <div className="dashboard-mono text-[10px] text-muted-foreground">n={portfolioEdge?.n ?? 0}</div>
+                          </div>
+                        )}
                       </TableCell>
                     </>
                   ) : null}
@@ -355,6 +583,12 @@ export function SectorTable({
                                   <TableRow className="border-b border-border bg-bg2 hover:bg-bg2">
                                     <TableHead className="h-auto pl-8 pr-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Ticker</TableHead>
                                     <TableHead className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Nom</TableHead>
+                                    {showPortfolioWeights ? (
+                                      <>
+                                        <TableHead className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Actions</TableHead>
+                                        <TableHead className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Poids</TableHead>
+                                      </>
+                                    ) : null}
                                     {shownFamilies.map((family) => (
                                       <TableHead key={`${sector.sector}-nested-${family}`} className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                                         {FAMILY_SHORT_LABELS[family]}
@@ -383,6 +617,9 @@ export function SectorTable({
                                     const href = isTechnicalMode ? technicalHref(stock, horizon) : evidenceHref(stock, horizon, signalView, scoreSource)
                                     const signal = bestSignalForDisplay(stock)
                                     const technicalSignal = technicalSignalForDisplay(stock)
+                                    const shareSymbol = String(stock.symbol ?? "").trim().toUpperCase()
+                                    const weightRow = portfolioRowBySymbol[shareSymbol]
+                                    const shareValue = portfolioShares?.[shareSymbol] ?? ""
 
                                     return (
                                       <TableRow key={`${sector.sector}-${stock.symbol}`} className="border-b border-border/70 hover:bg-bg2">
@@ -396,6 +633,30 @@ export function SectorTable({
                                             <div className="text-[12px] font-medium">{stock.display_name ?? "-"}</div>
                                           </Link>
                                         </TableCell>
+                                        {showPortfolioWeights ? (
+                                          <>
+                                            <TableCell className="px-3 py-2.5 text-right">
+                                              <Input
+                                                type="number"
+                                                min={0}
+                                                step={1}
+                                                value={String(shareValue)}
+                                                onClick={(event) => event.stopPropagation()}
+                                                onChange={(event) => onPortfolioShareChange?.(shareSymbol, event.currentTarget.value)}
+                                                className="ml-auto h-7 w-24 border-border bg-background px-2 text-right dashboard-mono text-[12px]"
+                                                aria-label={`Actions ${stock.symbol}`}
+                                              />
+                                            </TableCell>
+                                            <TableCell className="dashboard-mono px-3 py-2.5 text-right text-[11px]">
+                                              <div>{weightRow ? formatWeightPct(weightRow.weightPct) : "--"}</div>
+                                              <div className="text-[10px] text-muted-foreground">
+                                                {weightRow?.price == null && weightRow?.shares > 0
+                                                  ? "Prix absent"
+                                                  : formatMoneyCompact(weightRow?.marketValue)}
+                                              </div>
+                                            </TableCell>
+                                          </>
+                                        ) : null}
                                         {shownFamilies.map((family) => (
                                           <TableCell key={`${stock.symbol}-nested-${family}`} className="px-3 py-2.5">
                                             {isTechnicalMode ? (

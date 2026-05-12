@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { Activity, Archive, BookOpen, Check, ChevronLeft, ChevronRight, CircleDollarSign, CopyPlus, Eye, Gauge, Globe, ListChecks, Plus, Save, ShieldCheck, Star, TrendingUp } from "lucide-react"
+import { Archive, BookOpen, Check, ChevronLeft, ChevronRight, CircleDollarSign, CopyPlus, Eye, Gauge, Plus, Save } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -18,6 +18,7 @@ import { ExitRulesTab } from "@/components/strategy/exit-rules-tab"
 import { ReviewTab } from "@/components/strategy/review-tab"
 import { RiskTab } from "@/components/strategy/risk-tab"
 import { SignalConstructionTab } from "@/components/strategy/signal-construction-tab"
+import { StockUniverseSelector } from "@/components/strategy/stock-universe-selector"
 import { INDICATOR_FAMILY_META, normalizeIndicatorParams } from "@/components/strategy/indicator-config"
 import {
   useSignalConstructionPreview,
@@ -28,22 +29,28 @@ import {
   useStrategy,
   useStrategyAllocation,
   useStrategyReview,
-  useSignalCandidates,
   useUniverse,
 } from "@/hooks/use-api"
-import { archiveStrategy, createStrategy, duplicateStrategy, updateStrategy, type SignalCandidate, type StrategyAllocationRow, type UniverseStock } from "@/lib/api"
-import { applyStarterPresetToStock, buildEdgeCandidateStockStrategyConfig, cloneStockStrategyConfig, defaultIndicatorRowConfig, defaultStrategyConfigV2, ensureBasketStocks, manualParam, migrateStrategyConfigV2, normalizeSignalCandidateRef, scoreVariableOptions, type FamilyId, type HorizonKey, type RiskConfigV2, type SignalCandidateRef, type SortBy, type SortDir, type StrategyConfigV2 } from "@/lib/strategy-v2"
+import { archiveStrategy, createStrategy, duplicateStrategy, updateStrategy, type StrategyAllocationRow } from "@/lib/api"
+import { applyStarterPresetToStock, cloneStockStrategyConfig, defaultEntryRule, defaultExitRule, defaultIndicatorRowConfig, defaultRuleCondition, defaultStrategyConfigV2, ensureBasketStocks, manualParam, migrateStrategyConfigV2, scoreVariableOptions, type EntryRuleV2, type ExitRuleV2, type FamilyId, type HorizonKey, type RiskConfigV2, type RuleConditionV2, type StrategyConfigV2 } from "@/lib/strategy-v2"
 import { cn } from "@/lib/utils"
 
 const fmtMoney = (v: number | null | undefined) => (v == null || Number.isNaN(v) ? "-" : v.toLocaleString("fr-FR", { maximumFractionDigits: 0 }))
 const fmtPct = (v: number | null | undefined, d = 1) => (v == null || Number.isNaN(v) ? "-" : `${v.toFixed(d)}%`)
-const fmtDecimalPct = (v: number | null | undefined, d = 2) => (v == null || Number.isNaN(v) ? "-" : `${(v * 100).toFixed(d)}%`)
 const parseIntSafe = (v: string) => { const n = Number(String(v).replace(/\s/g, "").replace(/,/g, "")); return Number.isFinite(n) ? n : 0 }
 const LOCAL_STRATEGY_DRAFT_KEY = "strategy.simple.localDraft.v1"
 type StrategyStep = "capital" | "type" | "signal" | "entry" | "exit" | "risk" | "review"
 type WorkflowMode = "simple" | "advanced"
-const STRATEGY_STEPS: Array<{ id: StrategyStep; label: string }> = [
-  { id: "capital", label: "Signal Universe" },
+const SIMPLE_STRATEGY_STEPS: Array<{ id: StrategyStep; label: string }> = [
+  { id: "capital", label: "Stock Universe" },
+  { id: "signal", label: "Indicators" },
+  { id: "entry", label: "Entries" },
+  { id: "exit", label: "Exits" },
+  { id: "risk", label: "Risk" },
+  { id: "review", label: "Review" },
+]
+const ADVANCED_STRATEGY_STEPS: Array<{ id: StrategyStep; label: string }> = [
+  { id: "capital", label: "Stock Universe" },
   { id: "type", label: "Basket Setup" },
   { id: "signal", label: "Signal Rules" },
   { id: "entry", label: "Entries" },
@@ -120,30 +127,6 @@ function buildSignalConstructionShapeSignature(stockConfig: Record<string, unkno
   })
 }
 
-function normalizeSectorValue(value: string | null | undefined): string {
-  return (value ?? "").normalize("NFC").trim().toLocaleLowerCase("fr-FR")
-}
-
-function candidateTone(candidate: Pick<SignalCandidate, "triage" | "direction"> | SignalCandidateRef): "default" | "destructive" | "secondary" {
-  if (String(candidate.triage ?? "").toLowerCase() === "proven") return "default"
-  if (String(candidate.direction ?? "").toLowerCase() === "short") return "destructive"
-  return "secondary"
-}
-
-function candidateRefFromRow(candidate: SignalCandidate): SignalCandidateRef {
-  return normalizeSignalCandidateRef(candidate) ?? {
-    candidate_id: candidate.candidate_id,
-    symbol: candidate.symbol.toUpperCase(),
-    source: candidate.source,
-    variant: candidate.variant,
-    label: candidate.label,
-  }
-}
-
-function candidateMethodText(candidate: Pick<SignalCandidate, "source" | "variant" | "label"> | SignalCandidateRef) {
-  return candidate.label || `${candidate.source} / ${candidate.variant}`
-}
-
 function AllocationCard({ symbol, totalCapital, row, override, onChange }: { symbol: string; totalCapital: number; row: StrategyAllocationRow | null; override: { enabled: boolean; capital_mad: number }; onChange: (next: { enabled: boolean; capital_mad: number }) => void }) {
   const hrpCapital = totalCapital * ((row?.hrp_weight_pct ?? 0) / 100)
   return (
@@ -168,6 +151,159 @@ function SummaryStat({ label, value, sub, primary, tone }: { label: string; valu
   )
 }
 
+const SIMPLE_RULE_OPERATOR_OPTIONS: RuleConditionV2["operator"][] = [">=", ">", "<=", "<"]
+
+function firstRuleCondition(rule: EntryRuleV2 | ExitRuleV2 | undefined): RuleConditionV2 {
+  return rule?.conditions[0] ?? defaultRuleCondition(0)
+}
+
+function familyIdForRuleVariable(stock: StrategyConfigV2["stocks"][string], variable: string): FamilyId {
+  for (const meta of INDICATOR_FAMILY_META) {
+    const familyId = meta.key as FamilyId
+    const family = stock.signal_construction.families[familyId]
+    if (family?.rows.some((row) => row.score_key === variable)) return familyId
+    if (defaultIndicatorRowConfig(familyId, 0).score_key === variable) return familyId
+  }
+  const enabledMeta = INDICATOR_FAMILY_META.find((meta) => stock.signal_construction.families[meta.key as FamilyId]?.enabled)
+  return (enabledMeta?.key ?? "rsi") as FamilyId
+}
+
+function SimpleIndicatorRuleCard({
+  kind,
+  horizon,
+  stock,
+  rules,
+  preview,
+  errorMessage,
+  onIndicatorChange,
+  onParamChange,
+  onConditionChange,
+}: {
+  kind: "entry" | "exit"
+  horizon: HorizonKey
+  stock: StrategyConfigV2["stocks"][string]
+  rules: EntryRuleV2[] | ExitRuleV2[]
+  preview?: { score_snapshot: Record<string, number | null>; rules: Array<{ id: string; label: string; triggered: boolean; conditions: string[] }> }
+  errorMessage?: string | null
+  onIndicatorChange: (familyId: FamilyId) => void
+  onParamChange: (familyId: FamilyId, paramKey: string, value: number) => void
+  onConditionChange: (patch: Partial<RuleConditionV2>) => void
+}) {
+  const rule = rules[0]
+  const condition = firstRuleCondition(rule)
+  const familyId = familyIdForRuleVariable(stock, condition.variable)
+  const meta = INDICATOR_FAMILY_META.find((item) => item.key === familyId) ?? INDICATOR_FAMILY_META[0]
+  const family = stock.signal_construction.families[familyId]
+  const row = family?.rows[0] ?? defaultIndicatorRowConfig(familyId, 0)
+  const previewValue = preview?.score_snapshot?.[condition.variable]
+  const previewRule = preview?.rules?.[0]
+  const title = kind === "entry" ? "Entry Rule" : "Exit Rule"
+  const description = kind === "entry"
+    ? "Choose the indicator that opens the position and tune its parameters."
+    : "Choose the indicator that closes or reduces the position and tune its parameters."
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title} - {activeRuleSymbolLabel(stock, rule?.label)}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 lg:grid-cols-3">
+          <div className="space-y-1 lg:col-span-1">
+            <Label className="text-xs">Indicator</Label>
+            <Select value={familyId} onValueChange={(value) => onIndicatorChange(value as FamilyId)}>
+              <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {INDICATOR_FAMILY_META.map((option) => (
+                  <SelectItem key={option.key} value={option.key}>{option.shortLabel}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:col-span-2">
+            <div className="space-y-1">
+              <Label className="text-xs">Trigger</Label>
+              <Select value={condition.operator} onValueChange={(value) => onConditionChange({ operator: value as RuleConditionV2["operator"] })}>
+                <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {SIMPLE_RULE_OPERATOR_OPTIONS.map((option) => (
+                    <SelectItem key={option} value={option}>{option}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Threshold</Label>
+              <Input
+                type="number"
+                className="h-9"
+                step={0.1}
+                value={condition.threshold.value}
+                onChange={(event) => onConditionChange({ threshold: manualParam(Number(event.target.value)) })}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-lg border bg-muted/20 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold">{meta.shortLabel}</p>
+              <p className="text-xs text-muted-foreground">{meta.description}</p>
+            </div>
+            <Badge variant={family?.enabled ? "default" : "secondary"}>{family?.enabled ? "Active" : "Will activate"}</Badge>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {meta.params.map((param) => {
+              const rowKey = familyId === "sma" && param.key === "period" ? "window" : param.key
+              const value = row.params[rowKey]?.value ?? meta.defaults[param.key] ?? 0
+              return (
+                <Label key={`${kind}-${familyId}-${param.key}`} className="space-y-1 text-xs">
+                  <span>{param.label}</span>
+                  <Input
+                    type="number"
+                    min={param.min}
+                    max={param.max}
+                    step={param.step}
+                    value={value}
+                    onChange={(event) => onParamChange(familyId, param.key, Number(event.target.value))}
+                    className="h-8"
+                  />
+                </Label>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="rounded-lg border bg-background px-3 py-2 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="text-muted-foreground">
+              {meta.shortLabel} score {condition.operator} {condition.threshold.value}
+            </span>
+            <span className={previewRule?.triggered ? "font-medium text-green-700" : "text-muted-foreground"}>
+              {previewRule?.triggered ? "Triggered" : "Idle"}
+            </span>
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            Current score: {previewValue == null ? "--" : previewValue.toFixed(1)}
+          </div>
+        </div>
+
+        {errorMessage ? (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            Preview unavailable: {errorMessage}
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  )
+}
+
+function activeRuleSymbolLabel(_stock: StrategyConfigV2["stocks"][string], label: string | undefined): string {
+  return label?.trim() || "Simple trigger"
+}
+
 function StrategyPageContent() {
   const searchParams = useSearchParams()
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -180,13 +316,11 @@ function StrategyPageContent() {
   const [isSaving, setIsSaving] = useState(false)
   const [activeStep, setActiveStep] = useState<StrategyStep>("capital")
   const [workflowMode, setWorkflowMode] = useState<WorkflowMode>("simple")
-  const [candidateMode, setCandidateMode] = useState<"best" | "all">("best")
   const searchStrategyId = searchParams.get("strategyId")
 
   const { data: strategies, isLoading: strategiesLoading, mutate: mutateStrategies } = useStrategies()
   const { data: loadedStrategy } = useStrategy(activeId)
-  const { data: universe, isLoading: universeLoading, error: universeError } = useUniverse(horizon, { min_abs_signal: config.portfolio.universe.min_abs_signal, min_adv20: config.portfolio.universe.min_adv20, sort_by: config.portfolio.universe.sort_by, sort_dir: config.portfolio.universe.sort_dir })
-  const { data: signalCandidates, isLoading: signalCandidatesLoading, error: signalCandidatesError } = useSignalCandidates(horizon, { mode: candidateMode, min_bars: 252, min_adv20: config.portfolio.universe.min_adv20, sector_filter: config.portfolio.universe.sector_filter, triage_filter: ["proven", "watch"], sort_by: "edge_score", sort_dir: "desc" })
+  const { data: universe, isLoading: universeLoading, error: universeError } = useUniverse(horizon)
   const { data: allocationPreview } = useStrategyAllocation(config.portfolio.universe.basket, { total_capital_mad: config.portfolio.total_capital_mad, method: config.portfolio.allocation.method, lookback_bars: config.portfolio.allocation.hrp_lookback_bars, manual_overrides_by_symbol: manualOverridesForApi(config) })
   const { data: reviewPreview } = useStrategyReview(config as unknown as Record<string, unknown>, horizon)
   const stockConfig = activeSymbol ? config.stocks[activeSymbol] : null
@@ -252,33 +386,6 @@ function StrategyPageContent() {
   const { data: exitPreview, error: exitPreviewError } = useExitRulesPreview(activeSymbol, horizon, activeStockConfig)
   const { data: riskPreview, error: riskPreviewError } = useRiskPreview(activeSymbol, horizon, activeStockConfig)
   const rowBySymbol = useMemo(() => new Map((allocationPreview?.rows ?? []).map((row) => [row.symbol, row])), [allocationPreview?.rows])
-  const selectedSignalCandidates = config.portfolio.universe.selected_signal_candidates ?? []
-  const selectedSignalIds = useMemo(() => new Set(selectedSignalCandidates.map((item) => item.candidate_id)), [selectedSignalCandidates])
-  const selectedSignalBySymbol = useMemo(() => {
-    const out = new Map<string, SignalCandidateRef[]>()
-    for (const candidate of selectedSignalCandidates) {
-      const symbol = candidate.symbol.toUpperCase()
-      out.set(symbol, [...(out.get(symbol) ?? []), candidate])
-    }
-    return out
-  }, [selectedSignalCandidates])
-  const sectors = useMemo(() => Array.from(new Set((universe ?? []).map((row) => row.sector?.trim()).filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b, "fr")), [universe])
-  const selectedSectorKeys = useMemo(
-    () => config.portfolio.universe.sector_filter.map(normalizeSectorValue).filter(Boolean),
-    [config.portfolio.universe.sector_filter],
-  )
-  const visibleUniverse = useMemo(() => {
-    const rows = universe ?? []
-    if (selectedSectorKeys.length === 0) return rows
-    const selected = new Set(selectedSectorKeys)
-    const filtered = rows.filter((stock) => selected.has(normalizeSectorValue(stock.sector)))
-    return filtered.length > 0 ? filtered : rows
-  }, [selectedSectorKeys, universe])
-  const sectorFilterHasNoMatches = Boolean(
-    (universe?.length ?? 0) > 0
-    && selectedSectorKeys.length > 0
-    && !(universe ?? []).some((stock) => selectedSectorKeys.includes(normalizeSectorValue(stock.sector))),
-  )
   const universeIsStaticFallback = Boolean((universe ?? []).some((stock) => stock.is_static_fallback))
 
   useEffect(() => { if (searchStrategyId && strategies?.some((s) => s.id === searchStrategyId) && searchStrategyId !== activeId) setActiveId(searchStrategyId) }, [activeId, searchStrategyId, strategies])
@@ -304,31 +411,30 @@ function StrategyPageContent() {
     }
   }, [activeId, horizon, loadedStrategy, universeIsStaticFallback])
   useEffect(() => { const basket = config.portfolio.universe.basket; if (basket.length === 0) setActiveSymbol(null); else if (!activeSymbol || !basket.includes(activeSymbol)) setActiveSymbol(basket[0]) }, [activeSymbol, config.portfolio.universe.basket])
+  useEffect(() => {
+    const steps = workflowMode === "simple" ? SIMPLE_STRATEGY_STEPS : ADVANCED_STRATEGY_STEPS
+    if (!steps.some((step) => step.id === activeStep)) setActiveStep("capital")
+  }, [activeStep, workflowMode])
 
   const markModified = useCallback(() => setStatus((prev) => prev === "saved" ? "modified" : prev), [])
   const updatePortfolioUniverse = useCallback((patch: Partial<StrategyConfigV2["portfolio"]["universe"]>) => { setConfig((prev) => ({ ...prev, portfolio: { ...prev.portfolio, universe: { ...prev.portfolio.universe, ...patch } } })); markModified() }, [markModified])
   const updateStock = useCallback((symbol: string, updater: (stock: StrategyConfigV2["stocks"][string]) => StrategyConfigV2["stocks"][string]) => { setConfig((prev) => ({ ...prev, stocks: { ...prev.stocks, [symbol]: updater(cloneStockStrategyConfig(prev.stocks[symbol], horizon)) } })); markModified() }, [horizon, markModified])
 
-  const toggleBasketSymbol = useCallback((symbol: string) => { setConfig((prev) => ensureBasketStocks({ ...prev, portfolio: { ...prev.portfolio, universe: { ...prev.portfolio.universe, basket: prev.portfolio.universe.basket.includes(symbol) ? prev.portfolio.universe.basket.filter((item) => item !== symbol) : [...prev.portfolio.universe.basket, symbol] } } }, horizon)); setActiveSymbol((prev) => prev ?? symbol); markModified() }, [horizon, markModified])
-  const toggleSignalCandidate = useCallback((candidate: SignalCandidate) => {
-    const ref = candidateRefFromRow(candidate)
+  const setBasketSymbolSelected = useCallback((symbol: string, selected: boolean) => {
+    const normalized = symbol.trim().toUpperCase()
+    if (!normalized) return
     setConfig((prev) => {
-      const currentRefs = prev.portfolio.universe.selected_signal_candidates ?? []
-      const exists = currentRefs.some((item) => item.candidate_id === ref.candidate_id)
-      const nextRefs = exists
-        ? currentRefs.filter((item) => item.candidate_id !== ref.candidate_id)
-        : [...currentRefs.filter((item) => item.symbol.toUpperCase() !== ref.symbol), ref]
-      const basket = prev.portfolio.universe.basket.includes(ref.symbol)
-        ? prev.portfolio.universe.basket
-        : [...prev.portfolio.universe.basket, ref.symbol]
-      const nextStocks = { ...prev.stocks }
-      if (!exists) {
-        nextStocks[ref.symbol] = buildEdgeCandidateStockStrategyConfig(horizon, ref, prev.stocks[ref.symbol])
-      } else if (nextStocks[ref.symbol]?.signal_construction.selected_signal_candidate?.candidate_id === ref.candidate_id) {
-        nextStocks[ref.symbol] = {
-          ...nextStocks[ref.symbol],
+      const currentBasket = prev.portfolio.universe.basket.map((item) => item.trim().toUpperCase()).filter(Boolean)
+      const exists = currentBasket.includes(normalized)
+      const basket = selected
+        ? exists ? currentBasket : [...currentBasket, normalized]
+        : currentBasket.filter((item) => item !== normalized)
+      const stocks = { ...prev.stocks }
+      if (selected && stocks[normalized]) {
+        stocks[normalized] = {
+          ...stocks[normalized],
           signal_construction: {
-            ...nextStocks[ref.symbol].signal_construction,
+            ...stocks[normalized].signal_construction,
             source_mode: "manual",
             selected_signal_candidate: null,
           },
@@ -341,49 +447,33 @@ function StrategyPageContent() {
           universe: {
             ...prev.portfolio.universe,
             basket,
-            selection_mode: nextRefs.length > 0 ? "edge_candidates" : "manual",
-            selected_signal_candidates: nextRefs,
-            min_abs_signal: 0,
+            selection_mode: "manual",
+            selected_signal_candidates: [],
           },
         },
-        stocks: nextStocks,
+        stocks,
       }, horizon)
     })
-    setActiveSymbol(ref.symbol)
+    setActiveSymbol((prev) => selected ? normalized : prev === normalized ? null : prev)
     markModified()
   }, [horizon, markModified])
-  const removeSignalCandidate = useCallback((candidateId: string) => {
-    setConfig((prev) => {
-      const currentRefs = prev.portfolio.universe.selected_signal_candidates ?? []
-      const removed = currentRefs.find((item) => item.candidate_id === candidateId)
-      const nextRefs = currentRefs.filter((item) => item.candidate_id !== candidateId)
-      const nextStocks = { ...prev.stocks }
-      if (removed && nextStocks[removed.symbol]?.signal_construction.selected_signal_candidate?.candidate_id === candidateId) {
-        nextStocks[removed.symbol] = {
-          ...nextStocks[removed.symbol],
-          signal_construction: {
-            ...nextStocks[removed.symbol].signal_construction,
-            source_mode: "manual",
-            selected_signal_candidate: null,
-          },
-        }
-      }
-      return {
-        ...prev,
-        portfolio: {
-          ...prev.portfolio,
-          universe: {
-            ...prev.portfolio.universe,
-            selection_mode: nextRefs.length > 0 ? "edge_candidates" : "manual",
-            selected_signal_candidates: nextRefs,
-          },
+
+  const clearBasket = useCallback(() => {
+    setConfig((prev) => ensureBasketStocks({
+      ...prev,
+      portfolio: {
+        ...prev.portfolio,
+        universe: {
+          ...prev.portfolio.universe,
+          basket: [],
+          selection_mode: "manual",
+          selected_signal_candidates: [],
         },
-        stocks: nextStocks,
-      }
-    })
+      },
+    }, horizon))
+    setActiveSymbol(null)
     markModified()
-  }, [markModified])
-  const toggleSector = useCallback((sector: string) => updatePortfolioUniverse({ sector_filter: config.portfolio.universe.sector_filter.includes(sector) ? config.portfolio.universe.sector_filter.filter((item) => item !== sector) : [...config.portfolio.universe.sector_filter, sector] }), [config.portfolio.universe.sector_filter, updatePortfolioUniverse])
+  }, [horizon, markModified])
   const applyToAll = useCallback(() => { if (!activeSymbol || !stockConfig) return; setConfig((prev) => ({ ...prev, stocks: Object.fromEntries(prev.portfolio.universe.basket.map((symbol) => { const current = cloneStockStrategyConfig(prev.stocks[symbol], horizon); const source = cloneStockStrategyConfig(stockConfig, horizon); source.risk.max_position_pct = current.risk.max_position_pct; source.risk.max_sector_pct = current.risk.max_sector_pct; return [symbol, source] })) })); markModified() }, [activeSymbol, horizon, markModified, stockConfig])
   const setSimpleIndicatorEnabled = useCallback((familyId: FamilyId, enabled: boolean) => {
     if (!activeSymbol) return
@@ -452,6 +542,64 @@ function StrategyPageContent() {
       }
     })
   }, [activeSymbol, updateStock])
+  const setSimpleRuleIndicator = useCallback((kind: "entry" | "exit", familyId: FamilyId) => {
+    if (!activeSymbol) return
+    updateStock(activeSymbol, (stock) => {
+      const meta = INDICATOR_FAMILY_META.find((item) => item.key === familyId)
+      const existingFamily = stock.signal_construction.families[familyId] ?? {
+        enabled: false,
+        source_mode: "indicator_rows" as const,
+        rows: [defaultIndicatorRowConfig(familyId, 0)],
+      }
+      const row = existingFamily.rows[0] ?? defaultIndicatorRowConfig(familyId, 0)
+      const existingRule = kind === "entry" ? stock.entry_rules[0] ?? defaultEntryRule(0) : stock.exit_rules[0] ?? defaultExitRule(0)
+      const existingCondition = firstRuleCondition(existingRule)
+      const usesDefaultConsensus = existingCondition.variable === "consensus_score"
+      const nextCondition: RuleConditionV2 = {
+        ...existingCondition,
+        variable: row.score_key,
+        operator: usesDefaultConsensus ? (kind === "entry" ? ">=" : "<=") : existingCondition.operator,
+        threshold: usesDefaultConsensus ? manualParam(kind === "entry" ? 20 : 0) : existingCondition.threshold,
+      }
+      const nextRule = {
+        ...existingRule,
+        label: `${kind === "entry" ? "Entry" : "Exit"} with ${meta?.shortLabel ?? familyId}`,
+        conditions: [nextCondition],
+      }
+      const nextStock = {
+        ...stock,
+        signal_construction: {
+          ...stock.signal_construction,
+          source_mode: "manual" as const,
+          families: {
+            ...stock.signal_construction.families,
+            [familyId]: {
+              ...existingFamily,
+              enabled: true,
+              source_mode: "indicator_rows" as const,
+              rows: existingFamily.rows.length > 0 ? existingFamily.rows : [row],
+            },
+          },
+        },
+      }
+      return kind === "entry"
+        ? { ...nextStock, entry_rules: [nextRule as EntryRuleV2] }
+        : { ...nextStock, exit_rules: [nextRule as ExitRuleV2] }
+    })
+  }, [activeSymbol, updateStock])
+  const setSimpleRuleCondition = useCallback((kind: "entry" | "exit", patch: Partial<RuleConditionV2>) => {
+    if (!activeSymbol) return
+    updateStock(activeSymbol, (stock) => {
+      const existingRule = kind === "entry" ? stock.entry_rules[0] ?? defaultEntryRule(0) : stock.exit_rules[0] ?? defaultExitRule(0)
+      const nextRule = {
+        ...existingRule,
+        conditions: [{ ...firstRuleCondition(existingRule), ...patch }],
+      }
+      return kind === "entry"
+        ? { ...stock, entry_rules: [nextRule as EntryRuleV2] }
+        : { ...stock, exit_rules: [nextRule as ExitRuleV2] }
+    })
+  }, [activeSymbol, updateStock])
 
   const save = useCallback(async () => {
     const canonicalConfig = ensureBasketStocks(config, horizon)
@@ -504,7 +652,8 @@ function StrategyPageContent() {
   }, [mutateStrategies, universeIsStaticFallback])
   const duplicate = useCallback(async () => { if (!activeId) return; const copy = await duplicateStrategy(activeId); mutateStrategies(); setActiveId(copy.id) }, [activeId, mutateStrategies])
   const archive = useCallback(async () => { if (!activeId) return; await archiveStrategy(activeId); setActiveId(null); setName("New strategy"); setSidePolicy("long_only"); setHorizon("short"); setStatus("draft"); setConfig(defaultStrategyConfigV2("short")); setActiveSymbol(null); setActiveStep("capital"); mutateStrategies() }, [activeId, mutateStrategies])
-  const activeStepIndex = STRATEGY_STEPS.findIndex((step) => step.id === activeStep)
+  const activeSteps = workflowMode === "simple" ? SIMPLE_STRATEGY_STEPS : ADVANCED_STRATEGY_STEPS
+  const activeStepIndex = Math.max(0, activeSteps.findIndex((step) => step.id === activeStep))
   const currentStock = activeSymbol ? config.stocks[activeSymbol] : null
   const noBasketSelected = config.portfolio.universe.basket.length === 0
   const currentAllocationRow = activeSymbol ? rowBySymbol.get(activeSymbol) ?? null : null
@@ -531,7 +680,7 @@ function StrategyPageContent() {
     ? "Select at least one stock before continuing."
     : null
   const goToStepOffset = (offset: number) => {
-    const next = STRATEGY_STEPS[activeStepIndex + offset]
+    const next = activeSteps[activeStepIndex + offset]
     if (next) setActiveStep(next.id)
   }
 
@@ -607,9 +756,9 @@ function StrategyPageContent() {
           <div className="sub">titres selectionnes</div>
         </div>
         <div className="alloc">
-          <div className="lbl">Edge signals</div>
-          <div className="val">{selectedSignalCandidates.length}</div>
-          <div className="sub">{config.portfolio.universe.selection_mode === "edge_candidates" ? "proof-driven" : "manual universe"}</div>
+          <div className="lbl">Active stock</div>
+          <div className="val">{activeSymbol ?? "-"}</div>
+          <div className="sub">current setup</div>
         </div>
         <div className="alloc">
           <div className="lbl">Allocated</div>
@@ -654,35 +803,6 @@ function StrategyPageContent() {
             </ul>
           </div>
 
-          <div className="savd">
-            <div className="ch"><h4>Universe</h4></div>
-            <ul>
-              <li className="active">
-                <span>MASI - {universe?.length ?? 0} titres</span>
-              </li>
-              <li>
-                <span>Basket - {config.portfolio.universe.basket.length}</span>
-              </li>
-              <li>
-                <span>{config.portfolio.universe.sector_filter.length || "Tous"} secteurs</span>
-              </li>
-            </ul>
-          </div>
-
-          <div className="savd">
-            <div className="ch"><h4>Edge Basket</h4></div>
-            <ul>
-              {selectedSignalCandidates.length === 0 ? (
-                <li><span>No edge signals selected</span></li>
-              ) : selectedSignalCandidates.slice(0, 8).map((candidate) => (
-                <li key={candidate.candidate_id} className={cn(candidate.symbol === activeSymbol && "active")} onClick={() => setActiveSymbol(candidate.symbol)}>
-                  <span className="min-w-0 truncate font-mono">{candidate.symbol}</span>
-                  <span className="ts">{candidate.triage === "proven" ? "proven" : "watch"}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
           <div className="flex gap-2">
             <Button type="button" variant="outline" size="sm" onClick={save} disabled={isSaving} className="flex-1 gap-2">
               <Save className="h-4 w-4" />
@@ -720,72 +840,46 @@ function StrategyPageContent() {
           </div>
 
           {workflowMode === "simple" ? (
-            <div className="space-y-4">
-              {universeIsStaticFallback ? (
-                <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                  API offline: using bundled sample universe data. Saving stores a local draft until the API is available again.
-                </div>
-              ) : null}
-              {universeError instanceof Error ? (
-                <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                  Universe API unavailable. Start the local API, or keep working from bundled sample data when fallback is available.
-                </div>
-              ) : null}
+            <>
+              <div className="wizard">
+                {activeSteps.map((step, index) => (
+                  <button
+                    key={step.id}
+                    type="button"
+                    className={cn("step", index < activeStepIndex && "done", step.id === activeStep && "active")}
+                    disabled={step.id !== "capital" && noBasketSelected}
+                    title={step.id !== "capital" && noBasketSelected ? "Select at least one stock first." : undefined}
+                    onClick={() => setActiveStep(step.id)}
+                  >
+                    <span className="num">{index < activeStepIndex ? <Check className="h-3 w-3" /> : index + 1}</span>
+                    <span className="lbl">{step.label}</span>
+                  </button>
+                ))}
+              </div>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Simple Strategy</CardTitle>
-                  <CardDescription>Pick stocks, choose any technical indicators, then keep the default entry, exit, and risk rules or adjust them below.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid gap-3 md:grid-cols-3">
-                    <SummaryStat label="Universe" value={universeLoading ? "..." : visibleUniverse.length} sub={universeIsStaticFallback ? "static sample" : "API"} />
-                    <SummaryStat label="Basket" value={config.portfolio.universe.basket.length} sub="selected stocks" primary={config.portfolio.universe.basket.length > 0} />
-                    <SummaryStat label="Active stock" value={activeSymbol ?? "-"} sub={currentStock ? `${Object.values(currentStock.signal_construction.families).filter((family) => family.enabled).length} indicators` : "select a stock"} />
-                  </div>
+              <div className="space-y-4">
+                {activeStep === "capital" ? (
+                  <StockUniverseSelector
+                    rows={universe ?? []}
+                    selectedSymbols={config.portfolio.universe.basket}
+                    activeSymbol={activeSymbol}
+                    loading={universeLoading}
+                    errorMessage={universeError instanceof Error ? universeError.message : null}
+                    isStaticFallback={universeIsStaticFallback}
+                    sectorFilter={config.portfolio.universe.sector_filter}
+                    sortBy={config.portfolio.universe.sort_by}
+                    sortDir={config.portfolio.universe.sort_dir}
+                    title="Stock Universe"
+                    description="Pick stocks, choose any technical indicators, then keep the default entry, exit, and risk rules or adjust them below."
+                    onSectorFilterChange={(sector_filter) => updatePortfolioUniverse({ sector_filter })}
+                    onSortChange={(patch) => updatePortfolioUniverse(patch)}
+                    onSelectedChange={setBasketSymbolSelected}
+                    onActiveSymbolChange={setActiveSymbol}
+                    onClearSelection={clearBasket}
+                  />
+                ) : null}
 
-                  <div className="overflow-x-auto rounded-md border border-line">
-                    <table className="claude-table min-w-[720px]">
-                      <thead>
-                        <tr><th className="w-8" /><th>Ticker</th><th>Sector</th><th className="r">ADV20 MAD</th><th className="r">Signal</th><th className="r">Action</th></tr>
-                      </thead>
-                      <tbody>
-                        {universeLoading ? Array.from({ length: 6 }).map((_, index) => (
-                          <tr key={index}><td colSpan={6} className="px-3 py-2"><Skeleton className="h-8 w-full" /></td></tr>
-                        )) : visibleUniverse.length === 0 ? (
-                          <tr><td colSpan={6} className="px-3 py-8 text-center text-sm text-muted-foreground">No stocks returned by the universe source.</td></tr>
-                        ) : visibleUniverse.slice(0, 20).map((stock: UniverseStock) => {
-                          const selected = config.portfolio.universe.basket.includes(stock.symbol)
-                          return (
-                            <tr key={stock.symbol} className={cn("cursor-pointer", selected && "bg-primary/5", !stock.eligible && "opacity-70")} title={stock.exclusion_reason ?? undefined} onClick={() => toggleBasketSymbol(stock.symbol)}>
-                              <td><Checkbox checked={selected} onClick={(event) => event.stopPropagation()} onCheckedChange={() => toggleBasketSymbol(stock.symbol)} /></td>
-                              <td className="font-mono font-medium">{stock.symbol}</td>
-                              <td className="text-muted-foreground">{stock.sector ?? "-"}</td>
-                              <td className="r font-mono">{stock.adv20 != null ? fmtMoney(stock.adv20) : "-"}</td>
-                              <td className="r font-mono">{stock.signal_score != null ? stock.signal_score.toFixed(1) : "-"}</td>
-                              <td className="r"><Badge variant={selected ? "default" : "outline"}>{selected ? "Selected" : "Use"}</Badge></td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {config.portfolio.universe.basket.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
-                      {config.portfolio.universe.basket.map((symbol) => (
-                        <button key={symbol} type="button" onClick={() => setActiveSymbol(symbol)} className={cn("claude-chip", symbol === activeSymbol && "active")}>
-                          <span className="font-mono">{symbol}</span>
-                          <span>{symbol === activeSymbol ? "Editing" : "Open"}</span>
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                </CardContent>
-              </Card>
-
-              {currentStock && activeSymbol ? (
-                <>
+                {activeStep === "signal" && currentStock && activeSymbol ? (
                   <Card>
                     <CardHeader>
                       <CardTitle>Indicators - {activeSymbol}</CardTitle>
@@ -855,26 +949,75 @@ function StrategyPageContent() {
                       </div>
                     </CardContent>
                   </Card>
+                ) : null}
 
-                  <EntryRulesTab horizon={horizon as HorizonKey} rules={currentStock.entry_rules} scoreOptions={currentScoreOptions} preview={entryPreview} errorMessage={entryPreviewError instanceof Error ? entryPreviewError.message : null} onChange={(next) => updateStock(activeSymbol, (stock) => ({ ...stock, entry_rules: next }))} />
-                  <ExitRulesTab horizon={horizon as HorizonKey} rules={currentStock.exit_rules} scoreOptions={currentScoreOptions} preview={exitPreview} errorMessage={exitPreviewError instanceof Error ? exitPreviewError.message : null} onChange={(next) => updateStock(activeSymbol, (stock) => ({ ...stock, exit_rules: next }))} />
+                {activeStep === "entry" && currentStock && activeSymbol ? (
+                  <SimpleIndicatorRuleCard
+                    kind="entry"
+                    horizon={horizon as HorizonKey}
+                    stock={currentStock}
+                    rules={currentStock.entry_rules}
+                    preview={entryPreview}
+                    errorMessage={entryPreviewError instanceof Error ? entryPreviewError.message : null}
+                    onIndicatorChange={(familyId) => setSimpleRuleIndicator("entry", familyId)}
+                    onParamChange={setSimpleIndicatorParam}
+                    onConditionChange={(patch) => setSimpleRuleCondition("entry", patch)}
+                  />
+                ) : null}
+
+                {activeStep === "exit" && currentStock && activeSymbol ? (
+                  <SimpleIndicatorRuleCard
+                    kind="exit"
+                    horizon={horizon as HorizonKey}
+                    stock={currentStock}
+                    rules={currentStock.exit_rules}
+                    preview={exitPreview}
+                    errorMessage={exitPreviewError instanceof Error ? exitPreviewError.message : null}
+                    onIndicatorChange={(familyId) => setSimpleRuleIndicator("exit", familyId)}
+                    onParamChange={setSimpleIndicatorParam}
+                    onConditionChange={(patch) => setSimpleRuleCondition("exit", patch)}
+                  />
+                ) : null}
+
+                {activeStep === "risk" && currentStock && activeSymbol ? (
                   <RiskTab horizon={horizon as HorizonKey} risk={currentStock.risk} preview={riskPreview} errorMessage={riskPreviewError instanceof Error ? riskPreviewError.message : null} onChange={(next: RiskConfigV2) => updateStock(activeSymbol, (stock) => ({ ...stock, risk: next }))} />
+                ) : null}
+
+                {activeStep === "review" && currentStock && activeSymbol ? (
                   <ReviewTab symbol={activeSymbol} stockConfig={currentStock} review={reviewPreview} directCompatibilityMessage={backtestBlockedReason} />
-                </>
-              ) : (
-                <Card>
-                  <CardContent className="p-8 text-center text-sm text-muted-foreground">
-                    Select at least one stock above to configure indicators and rules.
-                  </CardContent>
-                </Card>
-              )}
-            </div>
+                ) : null}
+
+                {!currentStock && activeStep !== "capital" ? (
+                  <Card>
+                    <CardContent className="p-8 text-center text-sm text-muted-foreground">
+                      Select at least one stock from Stock Universe to configure indicators and rules.
+                    </CardContent>
+                  </Card>
+                ) : null}
+              </div>
+
+              <div className="mt-4 flex items-center justify-between gap-3">
+                <Button type="button" variant="outline" onClick={() => goToStepOffset(-1)} disabled={activeStepIndex <= 0} className="gap-2">
+                  <ChevronLeft className="h-4 w-4" />
+                  Retour
+                </Button>
+                <div className="flex gap-2">
+                  <Button type="button" variant="ghost" onClick={save} disabled={isSaving}>
+                    Sauvegarder le brouillon
+                  </Button>
+                  <Button type="button" onClick={() => goToStepOffset(1)} disabled={activeStepIndex >= activeSteps.length - 1 || Boolean(nextStepBlockedReason)} title={nextStepBlockedReason ?? undefined} className="gap-2">
+                    Continuer
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </>
           ) : null}
 
           {workflowMode === "advanced" ? (
             <>
           <div className="wizard">
-            {STRATEGY_STEPS.map((step, index) => (
+            {activeSteps.map((step, index) => (
               <button
                 key={step.id}
                 type="button"
@@ -895,7 +1038,7 @@ function StrategyPageContent() {
                 <CardHeader>
                   <div className="flex items-center gap-2">
                     <CircleDollarSign className="h-4 w-4 text-muted-foreground" />
-                    <CardTitle>Capital & Univers</CardTitle>
+                    <CardTitle>Capital & Universe</CardTitle>
                   </div>
                   <CardDescription>Configure portfolio capital, HRP allocation, and the eligible stock universe.</CardDescription>
                 </CardHeader>
@@ -911,230 +1054,27 @@ function StrategyPageContent() {
                       <Input type="number" value={config.portfolio.allocation.hrp_lookback_bars} min={20} max={2000} step={5} onChange={(event) => { setConfig((prev) => ({ ...prev, portfolio: { ...prev.portfolio, allocation: { ...prev.portfolio.allocation, hrp_lookback_bars: Number(event.target.value) } } })); markModified() }} />
                       <span className="hint">Historical bars used for allocation weights.</span>
                     </div>
-                    <div className="field">
-                      <span className="lbl">Manual score gate</span>
-                      <Input type="number" value={config.portfolio.universe.min_abs_signal} onChange={(event) => updatePortfolioUniverse({ min_abs_signal: Number(event.target.value) })} />
-                      <span className="hint">Optional raw-score filter; edge candidates do not need it.</span>
-                    </div>
-                    <div className="field">
-                      <span className="lbl">Min ADV20 MAD</span>
-                      <Input type="number" value={config.portfolio.universe.min_adv20} onChange={(event) => updatePortfolioUniverse({ min_adv20: Number(event.target.value) })} />
-                      <span className="hint">Liquidity gate for tradable names.</span>
-                    </div>
-                    <div className="field">
-                      <span className="lbl">Sort by</span>
-                      <Select value={config.portfolio.universe.sort_by} onValueChange={(value: SortBy) => updatePortfolioUniverse({ sort_by: value })}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="adv20">ADV20 MAD</SelectItem>
-                          <SelectItem value="signal_score">Signal strength</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="field">
-                      <span className="lbl">Direction</span>
-                      <Select value={config.portfolio.universe.sort_dir} onValueChange={(value: SortDir) => updatePortfolioUniverse({ sort_dir: value })}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="desc">Descending</SelectItem>
-                          <SelectItem value="asc">Ascending</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  {sectors.length > 0 ? (
-                    <div className="field">
-                      <span className="lbl">Sector filter</span>
-                      <div className="flex flex-wrap gap-2">
-                        {sectors.map((sector) => (
-                          <button key={sector} type="button" onClick={() => toggleSector(sector)} className={cn("claude-chip", config.portfolio.universe.sector_filter.includes(sector) && "active")}>
-                            {sector}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <Star className="h-4 w-4 text-muted-foreground" />
-                        <CardTitle>Signal Universe</CardTitle>
-                      </div>
-                      <CardDescription>Select dashboard signals that already have proven or watchlist edge. A selected signal creates the stock setup automatically.</CardDescription>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button type="button" variant={candidateMode === "best" ? "default" : "outline"} size="sm" onClick={() => setCandidateMode("best")} className="gap-2">
-                        <ShieldCheck className="h-4 w-4" />
-                        Best per stock
-                      </Button>
-                      <Button type="button" variant={candidateMode === "all" ? "default" : "outline"} size="sm" onClick={() => setCandidateMode("all")} className="gap-2">
-                        <ListChecks className="h-4 w-4" />
-                        All candidates
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid gap-3 md:grid-cols-3">
-                    <SummaryStat label="Qualified rows" value={signalCandidates?.length ?? (signalCandidatesLoading ? "..." : 0)} sub="proven + watch" />
-                    <SummaryStat label="Selected edge signals" value={selectedSignalCandidates.length} sub="stored with proof metrics" primary={selectedSignalCandidates.length > 0} />
-                    <SummaryStat label="Threshold gate" value={config.portfolio.universe.min_abs_signal === 0 ? "Off" : `+${config.portfolio.universe.min_abs_signal}`} sub="edge proof drives selection" />
-                  </div>
-
-                  {selectedSignalCandidates.length > 0 ? (
-                    <div className="rounded-md border border-line bg-bg2 p-3">
-                      <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        <Activity className="h-3.5 w-3.5" />
-                        Selected signals
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedSignalCandidates.map((candidate) => (
-                          <button key={candidate.candidate_id} type="button" onClick={() => setActiveSymbol(candidate.symbol)} className={cn("claude-chip", candidate.symbol === activeSymbol && "active")}>
-                            <span className="font-mono">{candidate.symbol}</span>
-                            <span>{candidate.triage === "proven" ? "Proven" : "Watch"}</span>
-                            <span>{candidate.direction ?? "-"}</span>
-                            <span onClick={(event) => { event.stopPropagation(); removeSignalCandidate(candidate.candidate_id) }} className="pl-1 text-muted-foreground hover:text-foreground">x</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {signalCandidatesError instanceof Error ? (
-                    <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                      Signal candidates unavailable: {signalCandidatesError.message}
-                    </div>
-                  ) : null}
-
-                  <div className="overflow-x-auto rounded-md border border-line">
-                    <table className="claude-table min-w-[980px]">
-                      <thead>
-                        <tr>
-                          <th className="w-8" />
-                          <th>Ticker</th>
-                          <th>Method</th>
-                          <th>Triage</th>
-                          <th>Signal</th>
-                          <th className="r">Edge score</th>
-                          <th className="r">Net ER</th>
-                          <th className="r">Hit rate</th>
-                          <th className="r">Proof</th>
-                          <th className="r">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {signalCandidatesLoading ? Array.from({ length: 8 }).map((_, index) => (
-                          <tr key={index}><td colSpan={10} className="px-3 py-2"><Skeleton className="h-8 w-full" /></td></tr>
-                        )) : (signalCandidates ?? []).length === 0 ? (
-                          <tr>
-                            <td colSpan={10} className="px-3 py-8 text-center text-sm text-muted-foreground">
-                              No edge-qualified candidates returned for this horizon and filter set.
-                            </td>
-                          </tr>
-                        ) : (signalCandidates ?? []).map((candidate) => {
-                          const selected = selectedSignalIds.has(candidate.candidate_id)
-                          return (
-                            <tr
-                              key={candidate.candidate_id}
-                              className={cn(candidate.eligible && "cursor-pointer", selected && "bg-primary/5", !candidate.eligible && "opacity-60")}
-                              title={candidate.exclusion_reason ?? undefined}
-                              onClick={() => candidate.eligible && toggleSignalCandidate(candidate)}
-                            >
-                              <td>
-                                <Checkbox checked={selected} disabled={!candidate.eligible} onClick={(event) => event.stopPropagation()} onCheckedChange={() => candidate.eligible && toggleSignalCandidate(candidate)} />
-                              </td>
-                              <td>
-                                <div className="font-mono font-medium">{candidate.symbol}</div>
-                                <div className="text-xs text-muted-foreground">{candidate.sector ?? "-"}</div>
-                              </td>
-                              <td>
-                                <div className="max-w-[280px] truncate font-medium">{candidateMethodText(candidate)}</div>
-                                <div className="text-xs text-muted-foreground">{candidate.source} / {candidate.variant}</div>
-                              </td>
-                              <td><Badge variant={candidateTone(candidate)}>{candidate.triage === "proven" ? "Proven" : "Watch"}</Badge></td>
-                              <td>
-                                <div className="flex items-center gap-2">
-                                  <TrendingUp className={cn("h-4 w-4", candidate.direction === "short" ? "text-red-600" : "text-emerald-600")} />
-                                  <span>{candidate.signal_label ?? candidate.bucket ?? "-"}</span>
-                                </div>
-                              </td>
-                              <td className="r font-mono">{candidate.score != null ? candidate.score.toFixed(4) : "-"}</td>
-                              <td className="r font-mono">{fmtDecimalPct(candidate.action_expected_return_net, 2)}</td>
-                              <td className="r font-mono">{fmtDecimalPct(candidate.hit_rate, 1)}</td>
-                              <td className="r">
-                                <div className="font-mono">{candidate.proof_n ?? candidate.n ?? "-"}</div>
-                                <div className="text-xs text-muted-foreground">{candidate.proof_window_start ?? candidate.data_as_of ?? "-"}</div>
-                              </td>
-                              <td className="r">
-                                <Button type="button" variant={selected ? "default" : "outline"} size="sm" disabled={!candidate.eligible} onClick={(event) => { event.stopPropagation(); toggleSignalCandidate(candidate) }}>
-                                  {selected ? "Selected" : "Use"}
-                                </Button>
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
                   </div>
                 </CardContent>
               </Card>
-
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center gap-2">
-                    <Globe className="h-4 w-4 text-muted-foreground" />
-                    <CardTitle>Advanced Manual Universe</CardTitle>
-                  </div>
-                  <CardDescription>Use this when you want a raw stock basket instead of importing edge-qualified dashboard signals.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {universeError instanceof Error ? (
-                    <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                      Universe API unavailable. Start the local API to load live strategy data.
-                    </div>
-                  ) : null}
-                  {sectorFilterHasNoMatches ? (
-                    <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                      <span>No stocks match the saved sector filter. Showing the full universe.</span>
-                      <Button type="button" variant="outline" size="sm" onClick={() => updatePortfolioUniverse({ sector_filter: [] })}>
-                        Clear sector filter
-                      </Button>
-                    </div>
-                  ) : null}
-                  <div className="overflow-x-auto rounded-md border border-line">
-                    <table className="claude-table min-w-[680px]">
-                      <thead>
-                        <tr><th className="w-8" /><th>Ticker</th><th>Sector</th><th className="r">ADV20 MAD</th><th className="r">Signal</th><th className="r">Status</th></tr>
-                      </thead>
-                      <tbody>
-                        {universeLoading ? Array.from({ length: 8 }).map((_, index) => (
-                          <tr key={index}><td colSpan={6} className="px-3 py-2"><Skeleton className="h-8 w-full" /></td></tr>
-                        )) : visibleUniverse.length === 0 ? (
-                          <tr>
-                            <td colSpan={6} className="px-3 py-8 text-center text-sm text-muted-foreground">
-                              No stocks returned by the universe API.
-                            </td>
-                          </tr>
-                        ) : visibleUniverse.map((stock) => (
-                            <tr key={stock.symbol} className={cn("cursor-pointer", config.portfolio.universe.basket.includes(stock.symbol) && "bg-primary/5")} onClick={() => toggleBasketSymbol(stock.symbol)}>
-                              <td><Checkbox checked={config.portfolio.universe.basket.includes(stock.symbol)} onClick={(event) => event.stopPropagation()} onCheckedChange={() => toggleBasketSymbol(stock.symbol)} /></td>
-                              <td className="font-mono font-medium">{stock.symbol}</td>
-                              <td className="text-muted-foreground">{stock.sector ?? "-"}</td>
-                              <td className="r font-mono">{stock.adv20 != null ? fmtMoney(stock.adv20) : "-"}</td>
-                              <td className="r font-mono">{stock.signal_score != null ? stock.signal_score.toFixed(1) : "-"}</td>
-                              <td className="r"><Badge variant={stock.eligible ? "outline" : "secondary"}>{stock.eligible ? "Eligible" : "Filtered"}</Badge></td>
-                            </tr>
-                          ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </CardContent>
-              </Card>
+              <StockUniverseSelector
+                rows={universe ?? []}
+                selectedSymbols={config.portfolio.universe.basket}
+                activeSymbol={activeSymbol}
+                loading={universeLoading}
+                errorMessage={universeError instanceof Error ? universeError.message : null}
+                isStaticFallback={universeIsStaticFallback}
+                sectorFilter={config.portfolio.universe.sector_filter}
+                sortBy={config.portfolio.universe.sort_by}
+                sortDir={config.portfolio.universe.sort_dir}
+                title="Stock Universe"
+                description="Choose the stocks that belong in the strategy basket."
+                onSectorFilterChange={(sector_filter) => updatePortfolioUniverse({ sector_filter })}
+                onSortChange={(patch) => updatePortfolioUniverse(patch)}
+                onSelectedChange={setBasketSymbolSelected}
+                onActiveSymbolChange={setActiveSymbol}
+                onClearSelection={clearBasket}
+              />
             </div>
           ) : null}
 
@@ -1170,7 +1110,7 @@ function StrategyPageContent() {
                       </button>
                     </div>
                   ) : (
-                    <div className="rounded-lg border border-dashed border-line p-8 text-center text-sm text-muted-foreground">Select stocks in Capital & Univers to configure a strategy type.</div>
+                    <div className="rounded-lg border border-dashed border-line p-8 text-center text-sm text-muted-foreground">Select stocks in Stock Universe to configure a strategy type.</div>
                   )}
                 </CardContent>
               </Card>
@@ -1195,11 +1135,9 @@ function StrategyPageContent() {
                         {config.portfolio.universe.basket.map((symbol) => {
                           const row = rowBySymbol.get(symbol)
                           const review = reviewPreview?.stocks.find((item) => item.symbol === symbol)
-                          const edgeCount = selectedSignalBySymbol.get(symbol)?.length ?? 0
                           return (
                             <button key={symbol} type="button" onClick={() => setActiveSymbol(symbol)} className={cn("claude-chip", symbol === activeSymbol && "active")}>
                               <span className="font-mono">{symbol}</span>
-                              {edgeCount > 0 ? <span>Edge</span> : null}
                               <span>{row?.source === "manual" ? "Manual" : "HRP"}</span>
                               <span>{review?.ready ? "Ready" : "Review"}</span>
                             </button>
@@ -1209,29 +1147,12 @@ function StrategyPageContent() {
                       {currentStock && activeSymbol ? (
                         <div className="form-grid">
                           <div className="field">
-                            <span className="lbl">Sector filter</span>
-                            <div className="flex flex-wrap gap-2">
-                              {sectors.slice(0, 8).map((sector) => (
-                                <button key={sector} type="button" onClick={() => toggleSector(sector)} className={cn("claude-chip", config.portfolio.universe.sector_filter.includes(sector) && "active")}>{sector}</button>
-                              ))}
-                            </div>
-                            <span className="hint">{config.portfolio.universe.sector_filter.length || "Tous"} secteurs actifs</span>
-                          </div>
-                          <div className="field">
                             <span className="lbl">Lookback (jours)</span>
                             <div className="slider-row">
                               <input type="range" min={20} max={2000} value={config.portfolio.allocation.hrp_lookback_bars} onChange={(event) => { setConfig((prev) => ({ ...prev, portfolio: { ...prev.portfolio, allocation: { ...prev.portfolio.allocation, hrp_lookback_bars: Number(event.target.value) } } })); markModified() }} />
                               <span className="v">{config.portfolio.allocation.hrp_lookback_bars} j</span>
                             </div>
                             <span className="hint">Allocation HRP historical window.</span>
-                          </div>
-                          <div className="field">
-                            <span className="lbl">Advanced score gate</span>
-                            <div className="slider-row">
-                              <input type="range" min={0} max={100} value={config.portfolio.universe.min_abs_signal} onChange={(event) => updatePortfolioUniverse({ min_abs_signal: Number(event.target.value) })} />
-                              <span className="v">+{config.portfolio.universe.min_abs_signal}</span>
-                            </div>
-                            <span className="hint">Only affects manual raw-universe selection.</span>
                           </div>
                           <div className="field">
                             <span className="lbl">Position sizing</span>
@@ -1296,7 +1217,7 @@ function StrategyPageContent() {
           {!currentStock && activeStep !== "capital" ? (
             <Card>
               <CardContent className="space-y-3 p-8 text-center text-sm text-muted-foreground">
-                <p>Select at least one stock from Capital & Univers to continue.</p>
+                <p>Select at least one stock from Stock Universe to continue.</p>
                 <Button type="button" variant="outline" size="sm" onClick={() => setActiveStep("capital")}>Open universe</Button>
               </CardContent>
             </Card>
@@ -1311,7 +1232,7 @@ function StrategyPageContent() {
               <Button type="button" variant="ghost" onClick={save} disabled={isSaving}>
                 Sauvegarder le brouillon
               </Button>
-              <Button type="button" onClick={() => goToStepOffset(1)} disabled={activeStepIndex >= STRATEGY_STEPS.length - 1 || Boolean(nextStepBlockedReason)} title={nextStepBlockedReason ?? undefined} className="gap-2">
+              <Button type="button" onClick={() => goToStepOffset(1)} disabled={activeStepIndex >= activeSteps.length - 1 || Boolean(nextStepBlockedReason)} title={nextStepBlockedReason ?? undefined} className="gap-2">
                 Continuer
                 <ChevronRight className="h-4 w-4" />
               </Button>

@@ -156,12 +156,13 @@ class MarketCatalogRowOut(BaseModel):
     is_tracked: bool = False
     has_canonical_data: bool = False
     market: str = "masi"          # kept for backward compat; derived from asset_type/market_region
-    asset_type: str = "equity"    # "equity" | "commodity" | "forex" | "bond"
+    asset_type: str = "equity"    # "equity" | "commodity" | "forex" | "bond" | "crypto"
     market_region: Optional[str] = None  # "masi" | "us" | "european" | "asian" | null
+    asset_class: str = "equity"   # "equity" | "index" | "factor"
 
 
 class AssetCategoryPatchIn(BaseModel):
-    asset_type: str    # "equity" | "commodity" | "forex" | "bond"
+    asset_type: str    # "equity" | "commodity" | "forex" | "bond" | "crypto"
     market_region: Optional[str] = None  # "masi" | "us" | "european" | "asian" | null
 
 

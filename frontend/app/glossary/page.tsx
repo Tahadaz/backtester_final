@@ -132,13 +132,13 @@ const edgeGates = [
     href: "#mc-pvalue",
     value: "p <= 0.05",
     label: { fr: "Monte Carlo", en: "Monte Carlo" },
-    text: { fr: "resultat difficile a obtenir par hasard", en: "hard to get by chance" },
+    text: { fr: "résultat difficile à obtenir par hasard", en: "hard to get by chance" },
   },
   {
     href: "#label-shuffle",
     value: "shuffle OK",
     label: { fr: "Label shuffle", en: "Label shuffle" },
-    text: { fr: "le signal survit au test aleatoire", en: "signal survives randomization" },
+    text: { fr: "le signal survit au test aléatoire", en: "signal survives randomization" },
   },
   {
     href: "#wilson-lower-bound",
@@ -154,14 +154,14 @@ const returnMethods = [
     code: "C-C",
     from: "Close t",
     to: "Close t+h",
-    text: { fr: "cloture vers cloture", en: "close to close" },
+    text: { fr: "clôture vers clôture", en: "close to close" },
   },
   {
     href: "#close-to-open-return",
     code: "C-O",
     from: "Close t",
     to: "Open t+h",
-    text: { fr: "cloture vers ouverture", en: "close to open" },
+    text: { fr: "clôture vers ouverture", en: "close to open" },
   },
   {
     href: "#open-to-open-return",
@@ -175,7 +175,7 @@ const returnMethods = [
     code: "O-C",
     from: "Open t",
     to: "Close t+h",
-    text: { fr: "ouverture vers cloture", en: "open to close" },
+    text: { fr: "ouverture vers clôture", en: "open to close" },
   },
 ]
 
@@ -238,8 +238,8 @@ const edgeCandidateRows = [
     method: "Fast breakout",
     er: "+1.10%",
     trades: "9",
-    gates: { fr: "Echec", en: "Fail" },
-    decision: { fr: "Rejete", en: "Rejected" },
+    gates: { fr: "Échec", en: "Fail" },
+    decision: { fr: "Rejeté", en: "Rejected" },
     selected: false,
   },
 ]
@@ -249,7 +249,7 @@ const expectedReturnParts = [
     href: "#hit-rate",
     label: { fr: "P(gain)", en: "P(win)" },
     value: "55%",
-    text: { fr: "frequence des trades gagnants", en: "winning trade frequency" },
+    text: { fr: "fréquence des trades gagnants", en: "winning trade frequency" },
   },
   {
     href: "#expectancy",
@@ -261,11 +261,11 @@ const expectedReturnParts = [
     href: "#expectancy",
     label: { fr: "Perte moyenne", en: "Avg loss" },
     value: "-1.2%",
-    text: { fr: "perte quand le signal echoue", en: "loss when signal fails" },
+    text: { fr: "perte quand le signal échoue", en: "loss when signal fails" },
   },
   {
     href: "#action-er",
-    label: { fr: "Couts", en: "Costs" },
+    label: { fr: "Coûts", en: "Costs" },
     value: "-0.2%",
     text: { fr: "frais et friction", en: "fees and friction" },
   },
@@ -410,7 +410,7 @@ function GlobalScoreFigure({ lang }: { lang: GlossaryLanguage }) {
           <div className="text-sm font-semibold">{lang === "fr" ? "Score global final" : "Final global score"}</div>
           <p className="mt-1 text-xs leading-relaxed opacity-80">
             {lang === "fr"
-              ? "Somme des contributions, bornee entre -100 et +100."
+              ? "Somme des contributions, bornée entre -100 et +100."
               : "Sum of contributions, capped between -100 and +100."}
           </p>
         </div>
@@ -424,7 +424,7 @@ function ScoringMethodologyFigure({ lang }: { lang: GlossaryLanguage }) {
   const steps = [
     {
       href: "#canonical-data",
-      label: { fr: "Donnees marche", en: "Market data" },
+      label: { fr: "Données marché", en: "Market data" },
       text: { fr: "OHLCV propre et liquide", en: "clean and liquid OHLCV" },
     },
     {
@@ -444,7 +444,7 @@ function ScoringMethodologyFigure({ lang }: { lang: GlossaryLanguage }) {
     },
     {
       href: "#ticket",
-      label: { fr: "Decision", en: "Decision" },
+      label: { fr: "Décision", en: "Decision" },
       text: { fr: "ticket ou watchlist", en: "ticket or watchlist" },
     },
   ]
@@ -471,11 +471,11 @@ function EdgeSelectionFigure({ lang }: { lang: GlossaryLanguage }) {
   return (
     <div className="overflow-hidden rounded-lg border border-line">
       <div className="grid grid-cols-[1.2fr_0.8fr_0.7fr_0.8fr_0.9fr] gap-0 bg-bg2 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-        <div>{lang === "fr" ? "Methode" : "Method"}</div>
+        <div>{lang === "fr" ? "Méthode" : "Method"}</div>
         <div>E[R]</div>
         <div>{lang === "fr" ? "Trades" : "Trades"}</div>
         <div>{lang === "fr" ? "Gates" : "Gates"}</div>
-        <div>{lang === "fr" ? "Decision" : "Decision"}</div>
+        <div>{lang === "fr" ? "Décision" : "Decision"}</div>
       </div>
       {edgeCandidateRows.map((row) => (
         <a
@@ -495,7 +495,7 @@ function EdgeSelectionFigure({ lang }: { lang: GlossaryLanguage }) {
       ))}
       <div className="border-t border-line bg-bg2 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
         {lang === "fr"
-          ? "Le plus gros E[R] n'est pas choisi s'il echoue les gates ou manque d'observations."
+          ? "Le plus gros E[R] n'est pas choisi s'il échoue les gates ou manque d'observations."
           : "The largest E[R] is not selected if it fails gates or lacks observations."}
       </div>
     </div>
@@ -523,7 +523,7 @@ function ExpectedReturnFigure({ lang }: { lang: GlossaryLanguage }) {
         </div>
         <p className="mt-2 text-xs leading-relaxed opacity-80">
           {lang === "fr"
-            ? "Action E[R] remet ce resultat dans le sens de la position: long ou short."
+            ? "Action E[R] remet ce résultat dans le sens de la position: long ou short."
             : "Action E[R] maps this result to the position side: long or short."}
         </p>
       </a>
@@ -535,13 +535,13 @@ function ScoreEdgeMatrixFigure({ lang }: { lang: GlossaryLanguage }) {
   const cells = [
     {
       href: "#proven-edge",
-      title: { fr: "Priorite", en: "Priority" },
+      title: { fr: "Priorité", en: "Priority" },
       text: { fr: "Score fort et edge robuste", en: "Strong score and robust edge" },
       className: "border-emerald-200 bg-emerald-50 text-emerald-900",
     },
     {
       href: "#edge",
-      title: { fr: "A surveiller", en: "Watch" },
+      title: { fr: "À surveiller", en: "Watch" },
       text: { fr: "Score fort, preuve fragile", en: "Strong score, fragile proof" },
       className: "border-amber-200 bg-amber-50 text-amber-900",
     },
@@ -595,15 +595,15 @@ function WorkflowFigure({ lang }: { lang: GlossaryLanguage }) {
     {
       href: "#canonical-data",
       icon: Database,
-      title: { fr: "Donnees propres", en: "Clean data" },
-      text: { fr: "OHLCV, prix, volume, liquidite.", en: "OHLCV, price, volume, liquidity." },
+      title: { fr: "Données propres", en: "Clean data" },
+      text: { fr: "OHLCV, prix, volume, liquidité.", en: "OHLCV, price, volume, liquidity." },
       tone: "border-slate-200 bg-slate-50 text-slate-800",
     },
     {
       href: "#signal-engine",
       icon: Activity,
       title: { fr: "Moteur de signaux", en: "Signal engine" },
-      text: { fr: "Calcule indicateurs et regimes.", en: "Computes indicators and regimes." },
+      text: { fr: "Calcule indicateurs et régimes.", en: "Computes indicators and regimes." },
       tone: "border-sky-200 bg-sky-50 text-sky-800",
     },
     {
@@ -617,7 +617,7 @@ function WorkflowFigure({ lang }: { lang: GlossaryLanguage }) {
       href: "#proven-edge",
       icon: ShieldCheck,
       title: { fr: "Edge valide", en: "Validated edge" },
-      text: { fr: "Verifie que le signal a tenu aux tests.", en: "Checks the signal survived tests." },
+      text: { fr: "Vérifie que le signal a tenu aux tests.", en: "Checks the signal survived tests." },
       tone: "border-amber-200 bg-amber-50 text-amber-900",
     },
     {
@@ -682,7 +682,7 @@ function IndicatorFamiliesFigure({ lang }: { lang: GlossaryLanguage }) {
             {lang === "fr" ? "Score final" : "Final score"}
           </div>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            {lang === "fr" ? "Moyenne ponderee des familles." : "Weighted family average."}
+            {lang === "fr" ? "Moyenne pondérée des familles." : "Weighted family average."}
           </p>
         </div>
       </a>
@@ -731,7 +731,7 @@ function WfoTimelineFigure({ lang }: { lang: GlossaryLanguage }) {
       ))}
       <div className="rounded-lg border border-line bg-card p-3 text-xs leading-relaxed text-muted-foreground">
         {lang === "fr"
-          ? "Chaque fenetre apprend sur le passe puis teste sur une periode jamais vue. Si les resultats tiennent plusieurs fois, le signal est plus credible."
+          ? "Chaque fenêtre apprend sur le passé puis teste sur une période jamais vue. Si les résultats tiennent plusieurs fois, le signal est plus crédible."
           : "Each window learns on the past, then tests on unseen data. Repeated survival makes the signal more credible."}
       </div>
     </div>
@@ -806,7 +806,7 @@ function IcFigure({ lang }: { lang: GlossaryLanguage }) {
           <div className="font-semibold">{lang === "fr" ? "IC positif" : "Positive IC"}</div>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
             {lang === "fr"
-              ? "Les meilleurs rangs de signal tendent a avoir de meilleurs retours futurs."
+              ? "Les meilleurs rangs de signal tendent à avoir de meilleurs retours futurs."
               : "Higher signal ranks tend to map to better future returns."}
           </p>
         </a>
@@ -860,9 +860,9 @@ function BacktestFigure({ lang }: { lang: GlossaryLanguage }) {
       <div className="grid gap-2">
         {[
           { href: "#cagr", label: "CAGR", text: lang === "fr" ? "vitesse de croissance" : "growth speed" },
-          { href: "#sharpe", label: "Sharpe", text: lang === "fr" ? "rendement ajuste du risque" : "risk-adjusted return" },
+          { href: "#sharpe", label: "Sharpe", text: lang === "fr" ? "rendement ajusté du risque" : "risk-adjusted return" },
           { href: "#max-drawdown", label: "Max DD", text: lang === "fr" ? "pire baisse depuis un sommet" : "worst drop from a peak" },
-          { href: "#trade-ledger", label: lang === "fr" ? "Trades" : "Trades", text: lang === "fr" ? "details transaction par transaction" : "transaction-by-transaction detail" },
+          { href: "#trade-ledger", label: lang === "fr" ? "Trades" : "Trades", text: lang === "fr" ? "détails transaction par transaction" : "transaction-by-transaction detail" },
         ].map((metric) => (
           <a key={metric.href} href={metric.href} className="rounded-lg border border-line bg-card px-3 py-2 transition hover:bg-accent">
             <div className="text-xs font-semibold">{metric.label}</div>
@@ -883,7 +883,7 @@ function ExplanationFigures({ lang }: { lang: GlossaryLanguage }) {
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
           {lang === "fr"
-            ? "Ces diagrammes donnent une lecture visuelle des concepts les plus importants. Chaque bloc est aussi un lien vers la definition precise."
+            ? "Ces diagrammes donnent une lecture visuelle des concepts les plus importants. Chaque bloc est aussi un lien vers la définition précise."
             : "These diagrams give a visual reading of the most important concepts. Each block also links to the exact definition."}
         </p>
       </div>
@@ -904,10 +904,10 @@ function ExplanationFigures({ lang }: { lang: GlossaryLanguage }) {
       <div className="grid gap-4 xl:grid-cols-2">
         <FigureCard
           id="figure-scoring-methodology"
-          title={lang === "fr" ? "Methode de scoring" : "Scoring methodology"}
+          title={lang === "fr" ? "Méthode de scoring" : "Scoring methodology"}
           caption={
             lang === "fr"
-              ? "Le score est une lecture technique; l'edge est la verification statistique de cette lecture."
+              ? "Le score est une lecture technique; l'edge est la vérification statistique de cette lecture."
               : "The score is a technical read; edge is the statistical check behind that read."
           }
           icon={BarChart2}
@@ -917,10 +917,10 @@ function ExplanationFigures({ lang }: { lang: GlossaryLanguage }) {
 
         <FigureCard
           id="figure-score-edge-matrix"
-          title={lang === "fr" ? "Score vs edge: comment decider" : "Score vs edge: how to decide"}
+          title={lang === "fr" ? "Score vs edge: comment décider" : "Score vs edge: how to decide"}
           caption={
             lang === "fr"
-              ? "Un score fort n'est pas suffisant. L'app prefere les cas ou score et edge racontent la meme histoire."
+              ? "Un score fort n'est pas suffisant. L'app préfère les cas où score et edge racontent la même histoire."
               : "A strong score is not enough. The app prefers cases where score and edge tell the same story."
           }
           icon={ShieldCheck}
@@ -933,7 +933,7 @@ function ExplanationFigures({ lang }: { lang: GlossaryLanguage }) {
           title={lang === "fr" ? "Choix de l'edge" : "Choosing the edge"}
           caption={
             lang === "fr"
-              ? "La meilleure methode auto combine expected return, taille d'echantillon et gates de robustesse."
+              ? "La meilleure méthode auto combine expected return, taille d'échantillon et gates de robustesse."
               : "The best automatic method combines expected return, sample size, and robustness gates."
           }
           icon={Target}
@@ -946,7 +946,7 @@ function ExplanationFigures({ lang }: { lang: GlossaryLanguage }) {
           title={lang === "fr" ? "Expected return net" : "Net expected return"}
           caption={
             lang === "fr"
-              ? "E[R] explique combien le signal peut rapporter en moyenne apres probabilites, pertes et couts."
+              ? "E[R] explique combien le signal peut rapporter en moyenne après probabilités, pertes et coûts."
               : "E[R] explains how much the signal can return on average after probabilities, losses, and costs."
           }
           icon={TrendingUp}
@@ -957,10 +957,10 @@ function ExplanationFigures({ lang }: { lang: GlossaryLanguage }) {
 
       <FigureCard
         id="figure-workflow"
-        title={lang === "fr" ? "Parcours complet: donnees -> decision" : "Full path: data -> decision"}
+        title={lang === "fr" ? "Parcours complet: données -> décision" : "Full path: data -> decision"}
         caption={
           lang === "fr"
-            ? "La logique de l'app en cinq etapes, depuis les donnees propres jusqu'au ticket d'execution."
+            ? "La logique de l'app en cinq étapes, depuis les données propres jusqu'au ticket d'exécution."
             : "The app logic in five steps, from clean data to the execution ticket."
         }
         icon={GitBranch}
@@ -974,7 +974,7 @@ function ExplanationFigures({ lang }: { lang: GlossaryLanguage }) {
           title={lang === "fr" ? "Familles d'indicateurs" : "Indicator families"}
           caption={
             lang === "fr"
-              ? "Les indicateurs ne sont pas lus seuls: ils contribuent a des familles, puis au score final."
+              ? "Les indicateurs ne sont pas lus seuls: ils contribuent à des familles, puis au score final."
               : "Indicators are not read alone: they feed families, then the final score."
           }
           icon={BarChart2}
@@ -987,7 +987,7 @@ function ExplanationFigures({ lang }: { lang: GlossaryLanguage }) {
           title={lang === "fr" ? "Walk-forward optimization" : "Walk-forward optimization"}
           caption={
             lang === "fr"
-              ? "On optimise sur une fenetre passee, puis on teste sur une zone future separee."
+              ? "On optimise sur une fenêtre passée, puis on teste sur une zone future séparée."
               : "Optimize on a past window, then test on a separate future slice."
           }
           icon={RefreshCw}
@@ -1000,7 +1000,7 @@ function ExplanationFigures({ lang }: { lang: GlossaryLanguage }) {
           title={lang === "fr" ? "Validation d'edge" : "Edge validation"}
           caption={
             lang === "fr"
-              ? "Un signal n'est pas seulement bon parce que son rendement est positif: il doit passer plusieurs portes de controle."
+              ? "Un signal n'est pas seulement bon parce que son rendement est positif: il doit passer plusieurs portes de contrôle."
               : "A signal is not good only because return is positive: it has to pass several control gates."
           }
           icon={ShieldCheck}
@@ -1023,10 +1023,10 @@ function ExplanationFigures({ lang }: { lang: GlossaryLanguage }) {
 
         <FigureCard
           id="figure-return-methods"
-          title={lang === "fr" ? "Methodes de retour" : "Return methods"}
+          title={lang === "fr" ? "Méthodes de retour" : "Return methods"}
           caption={
             lang === "fr"
-              ? "Le point d'entree et le point de sortie changent le rendement mesure."
+              ? "Le point d'entrée et le point de sortie changent le rendement mesuré."
               : "Entry and exit points change the measured return."
           }
           icon={ArrowRight}
@@ -1039,7 +1039,7 @@ function ExplanationFigures({ lang }: { lang: GlossaryLanguage }) {
           title={lang === "fr" ? "Lire un backtest" : "Reading a backtest"}
           caption={
             lang === "fr"
-              ? "La courbe equity donne le trajet, mais les metriques expliquent le risque pris pour y arriver."
+              ? "La courbe equity donne le trajet, mais les métriques expliquent le risque pris pour y arriver."
               : "The equity curve gives the path, while metrics explain the risk taken to get there."
           }
           icon={LineChart}
@@ -1230,7 +1230,7 @@ export default function GlossaryPage() {
                 </h1>
                 <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
                   {lang === "fr"
-                    ? "Definitions simples avec liens directs vers chaque concept, resultat et partie de l'app."
+                    ? "Définitions simples avec liens directs vers chaque concept, résultat et partie de l'app."
                     : "Plain-language definitions with direct links to each concept, result, and app area."}
                 </p>
               </div>
@@ -1359,7 +1359,7 @@ export default function GlossaryPage() {
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   {lang === "fr"
-                    ? "Chaque carte explique une page et renvoie vers sa definition detaillee."
+                    ? "Chaque carte explique une page et renvoie vers sa définition détaillée."
                     : "Each card explains one page and links to its detailed definition."}
                 </p>
               </div>
@@ -1375,11 +1375,11 @@ export default function GlossaryPage() {
           <section id="score-scale" className="scroll-mt-24 space-y-3">
             <div>
               <h2 className="text-base font-semibold tracking-tight">
-                {lang === "fr" ? "Echelle rapide des scores" : "Quick score scale"}
+                {lang === "fr" ? "Échelle rapide des scores" : "Quick score scale"}
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {lang === "fr"
-                  ? "Cette echelle est le repere principal pour lire les badges du Tableau de Bord."
+                  ? "Cette échelle est le repère principal pour lire les badges du Tableau de Bord."
                   : "This scale is the main reference for reading Dashboard badges."}
               </p>
             </div>
@@ -1392,10 +1392,10 @@ export default function GlossaryPage() {
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
               <div>
                 <h2 className="text-base font-semibold tracking-tight">
-                  {lang === "fr" ? "Definitions" : "Definitions"}
+                  {lang === "fr" ? "Définitions" : "Definitions"}
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {filteredEntries.length} {lang === "fr" ? "termes affiches" : "terms shown"}
+                  {filteredEntries.length} {lang === "fr" ? "termes affichés" : "terms shown"}
                 </p>
               </div>
               {activeCategory !== "all" || query ? (
@@ -1410,14 +1410,14 @@ export default function GlossaryPage() {
                   }}
                 >
                   <X className="h-3.5 w-3.5" />
-                  {lang === "fr" ? "Reinitialiser" : "Reset"}
+                  {lang === "fr" ? "Réinitialiser" : "Reset"}
                 </Button>
               ) : null}
             </div>
 
             {groupedEntries.length === 0 ? (
               <div className="rounded-lg border border-dashed border-line bg-card px-4 py-12 text-center text-sm text-muted-foreground">
-                {lang === "fr" ? "Aucun terme ne correspond a cette recherche." : "No term matches this search."}
+                {lang === "fr" ? "Aucun terme ne correspond à cette recherche." : "No term matches this search."}
               </div>
             ) : (
               groupedEntries.map(({ category, entries }) => (

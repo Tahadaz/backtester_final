@@ -1,7 +1,7 @@
 """
 Asset taxonomy utilities: auto-detect asset_type and market_region from symbol.
 
-asset_type  : "equity" | "commodity" | "forex" | "bond"
+asset_type  : "equity" | "commodity" | "forex" | "bond" | "crypto"
 market_region: "masi" | "us" | "european" | "asian" | None
 """
 from __future__ import annotations

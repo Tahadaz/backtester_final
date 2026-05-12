@@ -5,6 +5,22 @@ import { signIn } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 
+const defaultRedirect = process.env.NEXT_PUBLIC_DASHBOARD_PUBLIC_ONLY === "true" ? "/v1" : "/dashboard"
+
+function resolvePostLoginUrl(): string {
+  const raw = new URLSearchParams(window.location.search).get("callbackUrl")
+  if (!raw) return defaultRedirect
+
+  try {
+    const url = new URL(raw, window.location.origin)
+    if (url.origin !== window.location.origin) return defaultRedirect
+    if (url.pathname === "/login" || url.pathname.startsWith("/signup")) return defaultRedirect
+    return `${url.pathname}${url.search}${url.hash}` || defaultRedirect
+  } catch {
+    return defaultRedirect
+  }
+}
+
 export default function LoginPage() {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
@@ -16,15 +32,15 @@ export default function LoginPage() {
     setLoading(true)
     const fd = new FormData(e.currentTarget)
     const result = await signIn("credentials", {
-      email: fd.get("email"),
-      password: fd.get("password"),
+      email: String(fd.get("email") ?? ""),
+      password: String(fd.get("password") ?? ""),
       redirect: false,
     })
     setLoading(false)
     if (result?.error) {
       setError("Email ou mot de passe incorrect.")
     } else {
-      router.push("/v1")
+      router.push(resolvePostLoginUrl())
       router.refresh()
     }
   }

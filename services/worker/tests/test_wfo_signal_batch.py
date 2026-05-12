@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 
-from services.api.app.models import StockMaster, WfoGlobalSignal, WfoSignalSummary
+from services.api.app.models import WfoGlobalSignal, WfoSignalSummary
 from services.worker.tasks import wfo_signal_batch as wfo_batch_mod
 from core.quant_core.signal_engine.domain import VariantDef
 from core.quant_core.signal_engine.modes import ALL_SIGNAL_MODE_NAMES
@@ -321,11 +321,10 @@ def test_refresh_wfo_uses_persisted_representatives_without_reselection(monkeypa
         assert rep["current_close"] == expected_close
 
 
-def test_run_weekly_wfo_batch_only_processes_weekly_stale_tuples(monkeypatch):
+def test_run_weekly_wfo_batch_only_processes_weekly_stale_data_backed_tuples(monkeypatch):
     now = dt.datetime(2026, 4, 25, 19, 0, tzinfo=dt.timezone.utc)
     fake_db = _FakeDB(
         {
-            StockMaster: [StockMaster(symbol="AAA", is_active=True)],
             WfoGlobalSignal: [
                 WfoGlobalSignal(
                     symbol="AAA",
@@ -343,6 +342,7 @@ def test_run_weekly_wfo_batch_only_processes_weekly_stale_tuples(monkeypatch):
     calls: list[tuple[str, str, str]] = []
 
     monkeypatch.setattr(wfo_batch_mod, "SessionLocal", lambda: fake_db)
+    monkeypatch.setattr(wfo_batch_mod, "list_signal_universe_symbols", lambda _db: ["AAA"])
     monkeypatch.setattr(
         wfo_batch_mod,
         "run_wfo_for_symbol_horizon",

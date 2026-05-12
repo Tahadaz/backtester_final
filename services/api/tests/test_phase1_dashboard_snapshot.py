@@ -331,6 +331,53 @@ def test_best_signal_rank_rejects_non_actionable_buckets() -> None:
     assert _best_signal_rank({**base_edge, "bucket": "strong_buy", "direction": "long"}) is not None
 
 
+def test_best_signal_payload_uses_wfo_only(monkeypatch) -> None:
+    from services.api.app.routers import analytics
+    from services.api.app.services import dashboard_builder as builder
+
+    calls: list[tuple[str, str]] = []
+
+    def fake_build_edge(*, symbol, horizon, source, variant=None, **_kwargs):
+        calls.append((source, str(variant)))
+        return {"source": source, "variant": variant}
+
+    class FakeOut:
+        def __init__(self, payload: dict[str, Any]):
+            self.payload = payload
+
+        def model_dump_json(self) -> str:
+            return json.dumps(self.payload)
+
+    def fake_edge_to_out(metrics):
+        return FakeOut({
+            "bucket": "buy",
+            "direction": "long",
+            "n": 60,
+            "gates": {"n": True},
+            "action_expected_return_net": 0.02,
+            "action_expected_return_net_ci_lower": 0.01,
+            "action_expected_return_net_ci_upper": 0.03,
+            "hit_rate": 0.6,
+            "hit_ci_lower": 0.52,
+            "hit_ci_upper": 0.68,
+            "proven_edge_net": True,
+            "proven_edge_gross": True,
+            "fwd_horizon_bars": 21,
+            "return_calc_method": "open_to_open",
+        })
+
+    monkeypatch.setattr(analytics, "_build_edge_metrics_from_db", fake_build_edge)
+    monkeypatch.setattr(analytics, "_edge_metrics_to_out", fake_edge_to_out)
+    monkeypatch.setattr(builder, "_apply_wfo_all_oos_proof_to_edge", lambda _db, **kwargs: kwargs["edge"])
+
+    best = builder._build_best_signal_payload(object(), "AAA", "monthly")
+
+    assert best is not None
+    assert best["source"] == "wfo"
+    assert calls
+    assert {source for source, _variant in calls} == {"wfo"}
+
+
 def test_best_technical_signal_prefers_strongest_absolute_score() -> None:
     from services.api.app.services.dashboard_builder import (
         _build_best_technical_signal_payload,

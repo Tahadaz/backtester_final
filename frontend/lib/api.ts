@@ -2009,8 +2009,9 @@ export const MarketCatalogRowSchema = z.object({
   has_canonical_data: z.boolean().default(false),
   market: z.string().default("masi"),
   // Asset taxonomy
-  asset_type: z.string().default("equity"),   // "equity" | "commodity" | "forex" | "bond"
+  asset_type: z.string().default("equity"),   // "equity" | "commodity" | "forex" | "bond" | "crypto"
   market_region: z.string().nullable().optional(), // "masi" | "us" | "european" | "asian" | null
+  asset_class: z.string().default("equity"),  // "equity" | "index" | "factor"
 })
 export type MarketCatalogRow = z.infer<typeof MarketCatalogRowSchema>
 
@@ -2301,6 +2302,93 @@ export async function listRefreshRuns(params?: {
 export async function getMarketHealth(): Promise<MarketHealth> {
   const row = await request<unknown>("/market-data/health")
   return MarketHealthSchema.parse(row)
+}
+
+export const BloombergBatchSchema = z.object({
+  id: z.string(),
+  bridge_id: z.string(),
+  request_id: z.string(),
+  bloomberg_source: z.string(),
+  kind: z.string(),
+  status: z.string(),
+  raw_object_key: z.string(),
+  manifest_object_key: z.string(),
+  normalized_object_key: z.string().nullable().optional(),
+  filename: z.string().nullable().optional(),
+  content_type: z.string().nullable().optional(),
+  size_bytes: z.number(),
+  data_sha256: z.string(),
+  row_count: z.number(),
+  series_count: z.number(),
+  manifest_json: z.record(z.unknown()).default({}),
+  error_message: z.string().nullable().optional(),
+  created_at: z.string(),
+  updated_at: z.string().nullable().optional(),
+})
+export type BloombergBatch = z.infer<typeof BloombergBatchSchema>
+
+export const BloombergSeriesSchema = z.object({
+  id: z.string(),
+  series_key: z.string(),
+  last_batch_id: z.string(),
+  security: z.string(),
+  field: z.string(),
+  periodicity: z.string().nullable().optional(),
+  overrides_hash: z.string(),
+  kind: z.string(),
+  object_key: z.string(),
+  start_ts: z.string().nullable().optional(),
+  end_ts: z.string().nullable().optional(),
+  row_count: z.number(),
+  metadata_json: z.record(z.unknown()).default({}),
+  created_at: z.string(),
+  updated_at: z.string().nullable().optional(),
+})
+export type BloombergSeries = z.infer<typeof BloombergSeriesSchema>
+
+export const BloombergSeriesPreviewSchema = z.object({
+  series: BloombergSeriesSchema,
+  columns: z.array(z.string()),
+  rows: z.array(z.record(z.unknown())),
+})
+export type BloombergSeriesPreview = z.infer<typeof BloombergSeriesPreviewSchema>
+
+export async function listBloombergBatches(params?: {
+  limit?: number
+  offset?: number
+}): Promise<BloombergBatch[]> {
+  const qs = new URLSearchParams()
+  if (params?.limit !== undefined) qs.set("limit", String(params.limit))
+  if (params?.offset !== undefined) qs.set("offset", String(params.offset))
+  const q = qs.toString()
+  const rows = await request<unknown[]>(`/bloomberg/batches${q ? `?${q}` : ""}`)
+  return z.array(BloombergBatchSchema).parse(rows)
+}
+
+export async function listBloombergSeries(params?: {
+  security?: string
+  field?: string
+  limit?: number
+  offset?: number
+}): Promise<BloombergSeries[]> {
+  const qs = new URLSearchParams()
+  if (params?.security) qs.set("security", params.security)
+  if (params?.field) qs.set("field", params.field)
+  if (params?.limit !== undefined) qs.set("limit", String(params.limit))
+  if (params?.offset !== undefined) qs.set("offset", String(params.offset))
+  const q = qs.toString()
+  const rows = await request<unknown[]>(`/bloomberg/series${q ? `?${q}` : ""}`)
+  return z.array(BloombergSeriesSchema).parse(rows)
+}
+
+export async function getBloombergSeriesPreview(
+  seriesId: string,
+  limit = 50,
+): Promise<BloombergSeriesPreview> {
+  const row = await request<unknown>(
+    `/bloomberg/series/${encodeURIComponent(seriesId)}/preview?limit=${limit}`,
+  )
+  return BloombergSeriesPreviewSchema.parse(row)
 }
 
 // ── Moroccan Indices API ──────────────────────────────────────────────────────
@@ -3231,7 +3319,7 @@ function recordOrEmpty(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}
 }
 
-async function fetchStaticUniverseFallback(body: {
+export async function fetchStaticUniverseFallback(body: {
   horizon: string
   min_abs_signal?: number
   min_adv20?: number
@@ -3240,7 +3328,7 @@ async function fetchStaticUniverseFallback(body: {
   sort_dir?: "asc" | "desc"
 }): Promise<UniverseStock[]> {
   const horizon = staticUniverseHorizon(body.horizon)
-  const response = await fetch(`/data/scores-${horizon}.json`, { cache: "no-store" })
+  const response = await fetch(`/data/scores-${horizon}.json`, { cache: "force-cache" })
   if (!response.ok) {
     throw new ApiError(`Static universe fallback unavailable: ${response.status}`, response.status)
   }

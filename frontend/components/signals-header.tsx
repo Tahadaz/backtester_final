@@ -1,6 +1,8 @@
 "use client"
 
+import { useTransition } from "react"
 import Link from "next/link"
+import { signOut } from "next-auth/react"
 import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -11,6 +13,8 @@ import {
   Database,
   Gauge,
   LayoutDashboard,
+  LogIn,
+  LogOut,
   RefreshCw,
   Target,
 } from "lucide-react"
@@ -33,15 +37,44 @@ const publicNavItems = [
   { href: "/signals", label: "Signaux", icon: Gauge },
 ]
 
-const navItems = isPublicDashboardOnly ? publicNavItems : defaultNavItems
+const hiddenWorkspaceNavHrefs = new Set(["/strategy", "/backtest", "/analytics"])
+
+interface SignalsHeaderProps {
+  sessionEmail?: string | null
+  hideWorkspaceNavItems?: boolean
+}
+
+function getNavItems(hideWorkspaceNavItems: boolean) {
+  if (isPublicDashboardOnly) return publicNavItems
+  if (!hideWorkspaceNavItems) return defaultNavItems
+
+  return defaultNavItems.filter((item) => !hiddenWorkspaceNavHrefs.has(item.href))
+}
 
 function toPublicHref(path: string): string {
   const withSlash = path.endsWith("/") ? path : `${path}/`
   return `${publicBasePath}${withSlash}`
 }
 
-export function SignalsHeader() {
+function initialsFromEmail(email: string | null | undefined): string {
+  const value = email?.trim()
+  if (!value) return "?"
+
+  const localPart = value.split("@")[0] || value
+  const parts = localPart.split(/[\s._-]+/).filter(Boolean)
+  const initials =
+    parts.length > 1
+      ? `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? ""}`
+      : localPart.slice(0, 2)
+
+  return initials.toUpperCase()
+}
+
+export function SignalsHeader({ sessionEmail, hideWorkspaceNavItems = false }: SignalsHeaderProps) {
   const pathname = usePathname()
+  const [isSigningOut, startSignOut] = useTransition()
+  const initials = initialsFromEmail(sessionEmail)
+  const navItems = getNavItems(hideWorkspaceNavItems)
 
   return (
     <header className="sticky top-0 z-50 h-14 w-full border-b border-line bg-[oklch(0.99_0.002_250_/_0.85)] backdrop-blur-md">
@@ -122,9 +155,55 @@ export function SignalsHeader() {
           >
             <RefreshCw className="h-3.5 w-3.5 stroke-[1.75]" />
           </Button>
-          <span className="grid h-[30px] w-[30px] place-items-center rounded-full bg-[oklch(0.86_0.04_250)] text-[11px] font-bold text-[oklch(0.30_0.06_250)]">
-            YA
-          </span>
+          {!isPublicDashboardOnly && (
+            sessionEmail ? (
+              <>
+                <Button
+                  asChild
+                  variant="ghost"
+                  size="sm"
+                  className="h-[30px] max-w-[190px] rounded-full border border-line bg-card px-1.5 pr-2 text-muted-foreground hover:bg-bg3 hover:text-foreground"
+                >
+                  <Link href="/account" title={sessionEmail}>
+                    <span className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full bg-[oklch(0.86_0.04_250)] text-[10px] font-bold text-[oklch(0.30_0.06_250)]">
+                      {initials}
+                    </span>
+                    <span className="hidden max-w-[130px] truncate text-xs lg:inline">
+                      {sessionEmail}
+                    </span>
+                  </Link>
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  title="Se deconnecter"
+                  aria-label="Se deconnecter"
+                  disabled={isSigningOut}
+                  onClick={() => {
+                    startSignOut(() => {
+                      void signOut({ redirectTo: "/login" })
+                    })
+                  }}
+                  className="h-[30px] w-[30px] rounded-md border border-transparent text-muted-foreground hover:bg-bg3 hover:text-foreground"
+                >
+                  <LogOut className="h-3.5 w-3.5 stroke-[1.75]" />
+                </Button>
+              </>
+            ) : (
+              <Button
+                asChild
+                variant="ghost"
+                size="sm"
+                className="h-[30px] rounded-md border border-line bg-card px-2.5 text-xs font-medium text-muted-foreground hover:bg-bg3 hover:text-foreground"
+              >
+                <Link href="/login">
+                  <LogIn className="h-3.5 w-3.5 stroke-[1.75]" />
+                  <span className="hidden sm:inline">Se connecter</span>
+                </Link>
+              </Button>
+            )
+          )}
         </div>
       </div>
     </header>

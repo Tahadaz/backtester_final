@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from services.api.app.models import SignalEngineGlobalResult, StockMaster
+from services.api.app.models import SignalEngineGlobalResult
 from core.quant_core.signal_engine.modes import ALL_SIGNAL_MODE_NAMES
 from services.worker.tasks import signal_engine_batch as signal_engine_batch_mod
 
@@ -98,11 +98,10 @@ def test_compute_signal_engine_propagates_triggered_by_from_rq_meta(monkeypatch)
     assert captured["batch_id"] == "batch-123"
 
 
-def test_run_signal_engine_batch_only_processes_weekly_stale_tuples(monkeypatch):
+def test_run_signal_engine_batch_only_processes_weekly_stale_data_backed_tuples(monkeypatch):
     now = dt.datetime(2026, 4, 25, 19, 0, tzinfo=dt.timezone.utc)
     fake_db = _FakeDB(
         {
-            StockMaster: [StockMaster(symbol="AAA", is_active=True)],
             SignalEngineGlobalResult: [
                 SignalEngineGlobalResult(
                     symbol="AAA",
@@ -120,6 +119,7 @@ def test_run_signal_engine_batch_only_processes_weekly_stale_tuples(monkeypatch)
     calls: list[tuple[str, str, str]] = []
 
     monkeypatch.setattr(signal_engine_batch_mod, "SessionLocal", lambda: fake_db)
+    monkeypatch.setattr(signal_engine_batch_mod, "list_signal_universe_symbols", lambda _db: ["AAA"])
     monkeypatch.setattr(
         signal_engine_batch_mod,
         "compute_signal_engine_for_symbol",

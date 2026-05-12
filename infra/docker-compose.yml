@@ -344,6 +344,8 @@ services:
       S3_SECRET_KEY: minio12345
       S3_BUCKET: quant-artifacts
       S3_SECURE: "false"
+      BLOOMBERG_BRIDGE_API_KEY: ${BLOOMBERG_BRIDGE_API_KEY:-local-bloomberg-bridge-key}
+      BLOOMBERG_BRIDGE_MAX_UPLOAD_BYTES: ${BLOOMBERG_BRIDGE_MAX_UPLOAD_BYTES:-268435456}
       PYTHONPATH: /repo
     depends_on:
       quant_postgres:
@@ -391,6 +393,7 @@ services:
       DATABASE_URL: postgresql://app:app@quant_postgres:5432/quant
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-local-demo-auth-secret-change-me}
       AUTH_SECRET: ${AUTH_SECRET:-local-demo-auth-secret-change-me}
+      AUTH_REQUIRED: ${AUTH_REQUIRED:-false}
       AUTH_TRUST_HOST: "true"
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3001}
       DASHBOARD_PUBLIC_ONLY: ${DASHBOARD_PUBLIC_ONLY:-true}

@@ -44,6 +44,8 @@ function markerKindFromSide(row) {
   return null
 }
 
+const MARKER_KINDS = new Set(["buy", "sell", "short", "cover"])
+
 export function normalizeTradeMarkers(rows) {
   if (!Array.isArray(rows)) return []
 
@@ -70,4 +72,21 @@ export function normalizeTradeMarkers(rows) {
       return left.index - right.index
     })
     .map(({ date, kind, label }) => (label ? { date, kind, label } : { date, kind }))
+}
+
+export function filterTradeMarkersByKind(markers, visibleKinds) {
+  if (!Array.isArray(markers)) return []
+
+  const allowed = visibleKinds instanceof Set
+    ? visibleKinds
+    : new Set(Array.isArray(visibleKinds) ? visibleKinds : [])
+
+  if (allowed.size === 0) return []
+
+  return markers.filter((marker) => {
+    return marker
+      && typeof marker === "object"
+      && MARKER_KINDS.has(marker.kind)
+      && allowed.has(marker.kind)
+  })
 }

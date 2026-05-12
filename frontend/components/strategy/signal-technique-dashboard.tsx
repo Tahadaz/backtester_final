@@ -729,6 +729,7 @@ export function SignalTechniqueDashboard({
             : undefined,
           axis: PRICE_AXIS_FAMILIES.has(rep.family) ? "price" : "indicator",
           family: rep.family,
+          category: FAMILY_META_BY_KEY[rep.family]?.category,
           params: rep.params,
         } satisfies IndicatorOverlaySeries
       }),

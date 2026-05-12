@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import useSWR from "swr"
 import type {
   AvailabilityCalendar,
@@ -65,6 +66,8 @@ import type {
   FactorLeaderboardRow,
   FactorSelectionActiveRow,
   FactorSelectionStage1Row,
+  BloombergBatch,
+  BloombergSeries,
 } from "@/lib/api"
 import {
   getAnalyticsSignalsOverview,
@@ -107,6 +110,7 @@ import {
   fetchStrategyHandoff,
   fetchStrategyReview,
   fetchSignalCandidates,
+  fetchStaticUniverseFallback,
   fetchUniverse,
   fetchVariantBacktest,
   fetchVariantDetail,
@@ -119,6 +123,8 @@ import {
   getMethodEvaluation,
   getFactorSelectionActive,
   getFactorSelectionStage1Cache,
+  listBloombergBatches,
+  listBloombergSeries,
 } from "@/lib/api"
 import type {
   MasiTicker,
@@ -386,6 +392,22 @@ export function useMarketHealth() {
   return useSWR<MarketHealth>(
     "/market-data/health",
     apiFetcher,
+    { refreshInterval: 30000, revalidateOnFocus: true }
+  )
+}
+
+export function useBloombergBatches() {
+  return useSWR<BloombergBatch[]>(
+    "/bloomberg/batches?limit=50",
+    () => listBloombergBatches({ limit: 50 }),
+    { refreshInterval: 30000, revalidateOnFocus: true }
+  )
+}
+
+export function useBloombergSeries() {
+  return useSWR<BloombergSeries[]>(
+    "/bloomberg/series?limit=200",
+    () => listBloombergSeries({ limit: 200 }),
     { refreshInterval: 30000, revalidateOnFocus: true }
   )
 }
@@ -735,8 +757,37 @@ export function useUniverse(
     sort_dir?: "asc" | "desc"
   },
 ) {
+  const [fallbackData, setFallbackData] = useState<UniverseStock[] | undefined>()
   const key = `/strategy/plan/universe?h=${horizon}&mb=${params?.min_bars ?? ""}&ms=${params?.min_abs_signal ?? ""}&ma=${params?.min_adv20 ?? ""}&sf=${params?.sector_filter?.join(",") ?? ""}&sb=${params?.sort_by ?? ""}&sd=${params?.sort_dir ?? ""}`
-  return useSWR<UniverseStock[]>(
+  useEffect(() => {
+    let cancelled = false
+    setFallbackData(undefined)
+    fetchStaticUniverseFallback({
+      horizon,
+      min_abs_signal: params?.min_abs_signal,
+      min_adv20: params?.min_adv20,
+      sector_filter: params?.sector_filter,
+      sort_by: params?.sort_by,
+      sort_dir: params?.sort_dir,
+    })
+      .then((rows) => {
+        if (!cancelled) setFallbackData(rows)
+      })
+      .catch(() => {
+        if (!cancelled) setFallbackData(undefined)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [
+    horizon,
+    params?.min_abs_signal,
+    params?.min_adv20,
+    params?.sector_filter?.join(","),
+    params?.sort_by,
+    params?.sort_dir,
+  ])
+  const result = useSWR<UniverseStock[]>(
     key,
     () =>
       fetchUniverse({
@@ -752,6 +803,12 @@ export function useUniverse(
       }),
     { revalidateOnFocus: false }
   )
+  return {
+    ...result,
+    data: result.data ?? fallbackData,
+    error: result.data || fallbackData ? undefined : result.error,
+    isLoading: result.isLoading && !fallbackData,
+  }
 }
 
 export function useSignalCandidates(

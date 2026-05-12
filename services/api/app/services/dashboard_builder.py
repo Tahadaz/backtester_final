@@ -20,6 +20,11 @@ from sqlalchemy.orm import Session
 
 from core.quant_core.signal_engine.domain import signal_type_label as _core_signal_type_label
 from core.quant_core.signal_engine.modes import ALL_SIGNAL_MODE_NAMES, resolve_signal_mode
+from .market_universe import (
+    dashboard_group_label,
+    is_masi_dashboard_member,
+    list_signal_universe,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -38,10 +43,10 @@ HORIZONS: dict[str, str] = {
     "quarterly": "Trimestriel",
 }
 
-DASHBOARD_PAYLOAD_VERSION = "2026-05-10-wfo-all-oos-proof-v1"
+DASHBOARD_PAYLOAD_VERSION = "2026-05-12-wfo-trade-opportunities-v1"
 
 EDGE_SIGNAL_MODES: tuple[str, ...] = ALL_SIGNAL_MODE_NAMES
-EDGE_CANDIDATE_COUNT = 2 * len(EDGE_SIGNAL_MODES)
+EDGE_CANDIDATE_COUNT = len(EDGE_SIGNAL_MODES)
 
 EDGE_SCORE_HISTORY_SOURCES: tuple[str, ...] = tuple(dict.fromkeys((
     *(f"engine:{mode}" for mode in EDGE_SIGNAL_MODES),
@@ -875,7 +880,7 @@ def _best_signal_rank(edge: dict[str, Any]) -> tuple[int, float, float] | None:
 
 
 def _build_best_signal_payload(db: Session, symbol: str, horizon: str) -> dict[str, Any] | None:
-    """Pick the best currently tradable method by net penalized edge."""
+    """Pick the best currently tradable WFO method by net penalized edge."""
     try:
         from ..routers.analytics import _build_edge_metrics_from_db, _edge_metrics_to_out
         from ..config import settings
@@ -884,7 +889,7 @@ def _build_best_signal_payload(db: Session, symbol: str, horizon: str) -> dict[s
 
     cost_bps = float(settings.EDGE_COST_BPS_PER_SIDE)
     best: tuple[tuple[int, float, float], dict[str, Any]] | None = None
-    for source in ("signal_engine", "wfo"):
+    for source in ("wfo",):
         for variant in EDGE_SIGNAL_MODES:
             try:
                 metrics = _build_edge_metrics_from_db(
@@ -1196,8 +1201,7 @@ def _load_dashboard_market_stats(db: Session, symbols: list[str]) -> dict[str, d
             SELECT DISTINCT ON (symbol)
                    symbol, close_last, prev_close, adv_20d
             FROM market_data_store
-            WHERE asset_class = 'equity'
-              AND lower(timeframe) = '1d'
+            WHERE lower(timeframe) = '1d'
               AND symbol = ANY(:symbols)
             ORDER BY symbol,
                      data_as_of DESC NULLS LAST,
@@ -1218,9 +1222,7 @@ def build_dashboard_payload(db: Session, horizon: str, *, include_edge: bool = F
     This is the single source of truth for dashboard aggregation; both the
     live-compute API path and the snapshot worker call this function.
     """
-    from ..models import StockMaster
-
-    stocks_info = db.query(StockMaster).filter_by(is_active=True).all()
+    stocks_info = list_signal_universe(db)
     stock_dict = {s.symbol: s for s in stocks_info}
     symbols = list(stock_dict.keys())
 
@@ -1372,8 +1374,7 @@ def build_dashboard_payload(db: Session, horizon: str, *, include_edge: bool = F
     stocks_out: list[dict[str, Any]] = []
 
     for symbol, stock in stock_dict.items():
-        if not stock.sector:
-            continue
+        sector = dashboard_group_label(stock)
 
         se_row = se_by_symbol.get(symbol)
         se_scores_obj: dict[str, Any] = {
@@ -1535,9 +1536,10 @@ def build_dashboard_payload(db: Session, horizon: str, *, include_edge: bool = F
         stock_obj: dict[str, Any] = {
             "symbol": symbol,
             "display_name": stock.display_name,
-            "sector": stock.sector,
+            "sector": sector,
             "asset_type": stock.asset_type,
             "market_region": stock.market_region,
+            "asset_class": stock.asset_class,
             "last_price": last_price,
             "prev_close": prev_close,
             "var1j_pct": _variation_pct(last_price, prev_close),
@@ -1664,8 +1666,9 @@ def build_dashboard_payload(db: Session, horizon: str, *, include_edge: bool = F
     wfo_cats_idx: dict[str, list[float]] = defaultdict(list)
     se_breadth: dict[str, int] = {"achat": 0, "neutre": 0, "vente": 0, "indisponible": 0}
     wfo_breadth: dict[str, int] = {"achat": 0, "neutre": 0, "vente": 0, "indisponible": 0}
+    masi_index_stocks = [st for st in stocks_out if is_masi_dashboard_member(st)]
 
-    for st in stocks_out:
+    for st in masi_index_stocks:
         se = st["scores"]["signal_engine"]
         score = se["aggregate_score_pct"]
         if score is not None:
@@ -1743,12 +1746,12 @@ def build_dashboard_payload(db: Session, horizon: str, *, include_edge: bool = F
         "sectors": sectors_out,
         "index": {
             "name": "MASI",
-            "stock_count": len(stocks_out),
+            "stock_count": len(masi_index_stocks),
             "scores": {"signal_engine": se_obj_idx, "wfo": wfo_obj_idx},
             "portfolio_edge": _build_portfolio_edge_payload_for_stocks(
                 db,
                 horizon,
-                stocks_out,
+                masi_index_stocks,
                 member_cache=portfolio_member_cache,
             ) if include_edge else None,
             "aggregate_score_pct": se_obj_idx["aggregate_score_pct"],
@@ -1772,7 +1775,7 @@ def derive_upstream_rev(db: Session, horizon: str) -> dict[str, Any]:
     can guard against stale overwrites.
     """
     data_as_of_row = db.execute(
-        text("SELECT MAX(data_as_of) FROM market_data_store WHERE asset_class = 'equity'")
+        text("SELECT MAX(data_as_of) FROM market_data_store WHERE lower(timeframe) = '1d'")
     ).scalar()
     engine_run_row = db.execute(
         text("""

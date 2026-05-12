@@ -237,7 +237,8 @@ export interface DashboardStock {
   }
   best_signal?: DashboardBestSignal | null
   best_technical_signal?: DashboardBestTechnicalSignal | null
-  asset_type?: string | null      // "equity" | "commodity" | "forex" | "bond"
+  asset_class?: string | null     // "equity" | "index" | "factor"
+  asset_type?: string | null      // "equity" | "commodity" | "forex" | "bond" | "crypto"
   market_region?: string | null   // "masi" | "us" | "european" | "asian" | null
 }
 

@@ -17,7 +17,7 @@ import {
   type SeriesMarker,
   type Time,
 } from "lightweight-charts"
-import { normalizeTradeMarkers } from "@/lib/trade-marker-utils"
+import { filterTradeMarkersByKind, normalizeTradeMarkers } from "@/lib/trade-marker-utils"
 import { cn } from "@/lib/utils"
 
 export interface IndicatorOverlaySeries {
@@ -28,6 +28,7 @@ export interface IndicatorOverlaySeries {
   macdLineValues?: Array<number | null>
   axis?: "price" | "indicator"
   family?: string
+  category?: string
   params?: Record<string, number>
 }
 
@@ -58,8 +59,25 @@ const COLORS = [
 
 const PRICE_AXIS_FAMILIES = new Set(["sma", "ema", "ema_cross", "ichimoku", "psar", "vwap"])
 const RSI_STYLE_FAMILIES = new Set(["rsi", "mfi", "stochastic", "uo"])
+const MARKER_KIND_ORDER = ["buy", "sell", "short", "cover"] as const
+const MARKER_META: Record<TradeMarkerKind, { label: string; color: string }> = {
+  buy: { label: "Buy", color: "#16a34a" },
+  sell: { label: "Sell", color: "#f97316" },
+  short: { label: "Short", color: "#dc2626" },
+  cover: { label: "Cover", color: "#7c3aed" },
+}
+const CATEGORY_ORDER = ["tendance", "momentum", "oscillation", "volume"] as const
+const CATEGORY_LABELS: Record<string, string> = {
+  tendance: "Tendance",
+  momentum: "Momentum",
+  oscillation: "Oscillation",
+  volume: "Volume",
+}
 
 type PanelKind = "rsi" | "macd" | "oscillator" | "indicator"
+type TradeMarkerKind = typeof MARKER_KIND_ORDER[number]
+type IndicatorCategory = typeof CATEGORY_ORDER[number] | string
+type ChartTradeMarker = SeriesMarker<Time> & { kind: TradeMarkerKind }
 
 type IndicatorPanel = {
   key: string
@@ -202,12 +220,20 @@ function dedupeIndicatorSeries(series: IndicatorOverlaySeries[]): IndicatorOverl
   return out
 }
 
+function orderedIndicatorCategories(series: IndicatorOverlaySeries[]): IndicatorCategory[] {
+  const present = new Set(series.map((item) => item.category).filter((category): category is string => Boolean(category)))
+  return [
+    ...CATEGORY_ORDER.filter((category) => present.has(category)),
+    ...Array.from(present).filter((category) => !CATEGORY_ORDER.includes(category as typeof CATEGORY_ORDER[number])).sort(),
+  ]
+}
+
 function createTradeMarkers(
   dates: string[],
   close: number[],
   position: number[],
-): SeriesMarker<Time>[] {
-  const markers: SeriesMarker<Time>[] = []
+): ChartTradeMarker[] {
+  const markers: ChartTradeMarker[] = []
   const length = Math.min(dates.length, close.length, position.length)
   for (let index = 1; index < length; index += 1) {
     const prev = position[index - 1] ?? 0
@@ -216,16 +242,16 @@ function createTradeMarkers(
     if (cur === prev) continue
 
     if (prev > 0 && cur < prev) {
-      markers.push({ time, position: "aboveBar", color: "#f97316", shape: "arrowDown", text: "Sell" })
+      markers.push({ kind: "sell", time, position: "aboveBar", color: "#f97316", shape: "arrowDown", text: "Sell" })
     }
     if (prev < 0 && cur > prev) {
-      markers.push({ time, position: "belowBar", color: "#7c3aed", shape: "arrowUp", text: "Cover" })
+      markers.push({ kind: "cover", time, position: "belowBar", color: "#7c3aed", shape: "arrowUp", text: "Cover" })
     }
     if (cur > 0 && cur > Math.max(prev, 0)) {
-      markers.push({ time, position: "belowBar", color: "#16a34a", shape: "arrowUp", text: "Buy" })
+      markers.push({ kind: "buy", time, position: "belowBar", color: "#16a34a", shape: "arrowUp", text: "Buy" })
     }
     if (cur < 0 && cur < Math.min(prev, 0)) {
-      markers.push({ time, position: "aboveBar", color: "#dc2626", shape: "arrowDown", text: "Short" })
+      markers.push({ kind: "short", time, position: "aboveBar", color: "#dc2626", shape: "arrowDown", text: "Short" })
     }
   }
   return markers
@@ -233,8 +259,8 @@ function createTradeMarkers(
 
 function createExplicitTradeMarkers(
   markers: NonNullable<PriceSignalsChartProps["tradeMarkers"]>,
-): SeriesMarker<Time>[] {
-  return normalizeTradeMarkers(markers).map((marker): SeriesMarker<Time> => {
+): ChartTradeMarker[] {
+  return normalizeTradeMarkers(markers).map((marker): ChartTradeMarker => {
     const text = marker.label || (
       marker.kind === "short" ? "Short"
         : marker.kind === "cover" ? "Cover"
@@ -242,16 +268,21 @@ function createExplicitTradeMarkers(
             : "Buy"
     )
     if (marker.kind === "short") {
-      return { time: toTime(marker.date), position: "aboveBar", color: "#dc2626", shape: "arrowDown", text }
+      return { kind: "short", time: toTime(marker.date), position: "aboveBar", color: "#dc2626", shape: "arrowDown", text }
     }
     if (marker.kind === "cover") {
-      return { time: toTime(marker.date), position: "belowBar", color: "#7c3aed", shape: "arrowUp", text }
+      return { kind: "cover", time: toTime(marker.date), position: "belowBar", color: "#7c3aed", shape: "arrowUp", text }
     }
     if (marker.kind === "sell") {
-      return { time: toTime(marker.date), position: "aboveBar", color: "#f97316", shape: "arrowDown", text }
+      return { kind: "sell", time: toTime(marker.date), position: "aboveBar", color: "#f97316", shape: "arrowDown", text }
     }
-    return { time: toTime(marker.date), position: "belowBar", color: "#16a34a", shape: "arrowUp", text }
+    return { kind: "buy", time: toTime(marker.date), position: "belowBar", color: "#16a34a", shape: "arrowUp", text }
   })
+}
+
+function stripMarkerKind(marker: ChartTradeMarker): SeriesMarker<Time> {
+  const { kind: _kind, ...seriesMarker } = marker
+  return seriesMarker
 }
 
 export function PriceSignalsChart({
@@ -270,15 +301,18 @@ export function PriceSignalsChart({
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(() => new Set())
+  const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(() => new Set())
+  const [hiddenMarkerKinds, setHiddenMarkerKinds] = useState<Set<TradeMarkerKind>>(() => new Set())
 
   const allIndicators = useMemo(() => dedupeIndicatorSeries(indicatorSeries ?? []), [indicatorSeries])
+  const indicatorCategories = useMemo(() => orderedIndicatorCategories(allIndicators), [allIndicators])
   const colorById = useMemo(
     () => new Map(allIndicators.map((series, index) => [series.id, COLORS[index % COLORS.length]])),
     [allIndicators],
   )
   const visibleIndicators = useMemo(
-    () => allIndicators.filter((series) => !hiddenIds.has(series.id)),
-    [allIndicators, hiddenIds],
+    () => allIndicators.filter((series) => !hiddenIds.has(series.id) && !hiddenCategories.has(series.category ?? "")),
+    [allIndicators, hiddenCategories, hiddenIds],
   )
   const priceIndicators = useMemo(() => visibleIndicators.filter(isPriceSeries), [visibleIndicators])
   const indicatorPanels = useMemo(
@@ -298,6 +332,24 @@ export function PriceSignalsChart({
     return candleData(dates, open, high, low, close)
   }, [close, dates, high, low, open])
   const hasCandleData = priceCandleData.length >= 2
+  const allTradeMarkers = useMemo(() => {
+    if (!dates || !close || !position || close.length < 2) return []
+    return tradeMarkers?.length
+      ? createExplicitTradeMarkers(tradeMarkers)
+      : createTradeMarkers(dates, close, position)
+  }, [close, dates, position, tradeMarkers])
+  const markerKinds = useMemo(
+    () => MARKER_KIND_ORDER.filter((kind) => allTradeMarkers.some((marker) => marker.kind === kind)),
+    [allTradeMarkers],
+  )
+  const visibleMarkerKinds = useMemo(
+    () => MARKER_KIND_ORDER.filter((kind) => markerKinds.includes(kind) && !hiddenMarkerKinds.has(kind)),
+    [hiddenMarkerKinds, markerKinds],
+  )
+  const visibleTradeMarkers = useMemo(
+    () => filterTradeMarkersByKind(allTradeMarkers, visibleMarkerKinds).map(stripMarkerKind),
+    [allTradeMarkers, visibleMarkerKinds],
+  )
   const compressedHeight = indicatorPanels.length > 0 ? 320 + indicatorPanels.length * 82 : height
   const chartHeight = Math.min(maxHeight, Math.max(height, compressedHeight))
 
@@ -308,6 +360,22 @@ export function PriceSignalsChart({
       return next.size === prev.size ? prev : next
     })
   }, [indicatorSeries])
+
+  useEffect(() => {
+    setHiddenCategories((prev) => {
+      const valid = new Set(indicatorCategories)
+      const next = new Set(Array.from(prev).filter((category) => valid.has(category)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [indicatorCategories])
+
+  useEffect(() => {
+    setHiddenMarkerKinds((prev) => {
+      const valid = new Set(markerKinds)
+      const next = new Set(Array.from(prev).filter((kind) => valid.has(kind)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [markerKinds])
 
   useEffect(() => {
     const container = containerRef.current
@@ -357,10 +425,6 @@ export function PriceSignalsChart({
       panes[index + 1]?.setStretchFactor(panel.kind === "macd" ? 2 : panel.kind === "indicator" ? 1 : 1.25)
     })
 
-    const markers = tradeMarkers?.length
-      ? createExplicitTradeMarkers(tradeMarkers)
-      : createTradeMarkers(dates, close, position)
-
     if (hasCandleData) {
       const priceSeries = chart.addSeries(
         CandlestickSeries,
@@ -377,7 +441,7 @@ export function PriceSignalsChart({
         0,
       )
       priceSeries.setData(priceCandleData)
-      createSeriesMarkers(priceSeries, markers)
+      createSeriesMarkers(priceSeries, visibleTradeMarkers)
       priceSeries.priceScale().applyOptions({
         scaleMargins: { top: 0.08, bottom: 0.06 },
         borderVisible: false,
@@ -395,7 +459,7 @@ export function PriceSignalsChart({
         0,
       )
       priceSeries.setData(lineData(dates, close))
-      createSeriesMarkers(priceSeries, markers)
+      createSeriesMarkers(priceSeries, visibleTradeMarkers)
       priceSeries.priceScale().applyOptions({
         scaleMargins: { top: 0.08, bottom: 0.06 },
         borderVisible: false,
@@ -581,7 +645,7 @@ export function PriceSignalsChart({
       chart.remove()
       chartRef.current = null
     }
-  }, [chartHeight, close, colorById, dates, hasCandleData, indicatorPanels, position, priceCandleData, priceIndicators, tradeMarkers])
+  }, [chartHeight, close, colorById, dates, hasCandleData, indicatorPanels, position, priceCandleData, priceIndicators, visibleTradeMarkers])
 
   if (!close || !position || !dates || close.length < 2) {
     return (
@@ -600,13 +664,76 @@ export function PriceSignalsChart({
     })
   }
 
+  const toggleCategory = (category: string) => {
+    setHiddenCategories((prev) => {
+      const next = new Set(prev)
+      if (next.has(category)) next.delete(category)
+      else next.add(category)
+      return next
+    })
+  }
+
+  const toggleMarkerKind = (kind: TradeMarkerKind) => {
+    setHiddenMarkerKinds((prev) => {
+      const next = new Set(prev)
+      if (next.has(kind)) next.delete(kind)
+      else next.add(kind)
+      return next
+    })
+  }
+
   return (
     <div className="space-y-2">
       {title ? <div className="text-xs font-semibold text-foreground">{title}</div> : null}
+      {markerKinds.length > 0 ? (
+        <div className="signals-scrollbar flex gap-1.5 overflow-x-auto rounded-md border border-line bg-bg2 p-1">
+          {markerKinds.map((kind) => {
+            const hidden = hiddenMarkerKinds.has(kind)
+            const meta = MARKER_META[kind]
+            return (
+              <button
+                key={kind}
+                type="button"
+                onClick={() => toggleMarkerKind(kind)}
+                className={cn(
+                  "inline-flex h-7 shrink-0 items-center gap-2 rounded-md border bg-card px-2 text-[11px] transition-opacity",
+                  hidden && "opacity-45",
+                )}
+                style={{ borderColor: hidden ? "var(--line)" : meta.color }}
+                title={hidden ? `Afficher ${meta.label}` : `Masquer ${meta.label}`}
+              >
+                <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: meta.color }} />
+                <span className="font-semibold">{meta.label}</span>
+              </button>
+            )
+          })}
+        </div>
+      ) : null}
+      {indicatorCategories.length > 0 ? (
+        <div className="signals-scrollbar flex gap-1.5 overflow-x-auto rounded-md border border-line bg-bg2 p-1">
+          {indicatorCategories.map((category) => {
+            const hidden = hiddenCategories.has(category)
+            return (
+              <button
+                key={category}
+                type="button"
+                onClick={() => toggleCategory(category)}
+                className={cn(
+                  "inline-flex h-7 shrink-0 items-center rounded-md border border-line bg-card px-2 text-[11px] font-semibold transition-opacity",
+                  hidden && "opacity-45",
+                )}
+                title={hidden ? `Afficher ${CATEGORY_LABELS[category] ?? category}` : `Masquer ${CATEGORY_LABELS[category] ?? category}`}
+              >
+                {CATEGORY_LABELS[category] ?? category}
+              </button>
+            )
+          })}
+        </div>
+      ) : null}
       {allIndicators.length > 0 ? (
         <div className="signals-scrollbar flex gap-1.5 overflow-x-auto rounded-md border border-line bg-bg2 p-1">
           {allIndicators.map((series, index) => {
-            const hidden = hiddenIds.has(series.id)
+            const hidden = hiddenIds.has(series.id) || hiddenCategories.has(series.category ?? "")
             const color = colorById.get(series.id) ?? COLORS[index % COLORS.length]
             return (
               <button

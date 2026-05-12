@@ -744,18 +744,32 @@ def plot_price_indicators_trades_line(
             if close_ref.empty:
                 close_map = np.full(len(t), np.nan, dtype="float64")
             else:
-                probe = pd.DataFrame({"_i": np.arange(len(t), dtype="int64"), "timestamp": t["timestamp"]})
-                probe = probe.sort_values("timestamp")
+                close_ref = close_ref.assign(
+                    _bar_ts_join=pd.to_datetime(close_ref["bar_ts"], utc=True, errors="coerce").astype(
+                        "datetime64[ns, UTC]"
+                    )
+                ).dropna(subset=["_bar_ts_join"])
+                probe = pd.DataFrame(
+                    {
+                        "_i": np.arange(len(t), dtype="int64"),
+                        "_timestamp_join": pd.to_datetime(t["timestamp"], utc=True, errors="coerce").astype(
+                            "datetime64[ns, UTC]"
+                        ),
+                    }
+                ).dropna(subset=["_timestamp_join"])
+                probe = probe.sort_values("_timestamp_join")
                 mapped = pd.merge_asof(
                     probe,
                     close_ref,
-                    left_on="timestamp",
-                    right_on="bar_ts",
+                    left_on="_timestamp_join",
+                    right_on="_bar_ts_join",
                     direction="nearest",
                     tolerance=tol,
                 )
-                mapped = mapped.sort_values("_i")
-                close_map = mapped["close"].to_numpy(dtype="float64")
+                close_map = np.full(len(t), np.nan, dtype="float64")
+                if not mapped.empty:
+                    mapped_i = mapped["_i"].to_numpy(dtype="int64")
+                    close_map[mapped_i] = mapped["close"].to_numpy(dtype="float64")
 
             price_vals = y.to_numpy(dtype="float64")
             is_price_valid = np.isfinite(price_vals) & (price_vals > 0.0)

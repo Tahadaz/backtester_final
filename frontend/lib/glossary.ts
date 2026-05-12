@@ -31,7 +31,7 @@ export const glossaryCategories: GlossaryCategory[] = [
     id: "app",
     label: { fr: "Navigation de l'app", en: "App navigation" },
     description: {
-      fr: "Ou aller dans l'application et quoi lire sur chaque page.",
+      fr: "Où aller dans l'application et quoi lire sur chaque page.",
       en: "Where to go in the application and what each page means.",
     },
   },
@@ -47,15 +47,15 @@ export const glossaryCategories: GlossaryCategory[] = [
     id: "indicators",
     label: { fr: "Indicateurs techniques", en: "Technical indicators" },
     description: {
-      fr: "Les 20 indicateurs utilises par les familles Tendance, Momentum, Oscillation et Volume.",
+      fr: "Les 20 indicateurs utilisés par les familles Tendance, Momentum, Oscillation et Volume.",
       en: "The 20 indicators used by the Trend, Momentum, Oscillation, and Volume families.",
     },
   },
   {
     id: "edge",
-    label: { fr: "Edge et decision", en: "Edge and decision" },
+    label: { fr: "Edge et décision", en: "Edge and decision" },
     description: {
-      fr: "Preuve statistique, rendement attendu, gates et ticket de decision.",
+      fr: "Preuve statistique, rendement attendu, gates et ticket de décision.",
       en: "Statistical proof, expected return, gates, and decision ticket.",
     },
   },
@@ -63,23 +63,23 @@ export const glossaryCategories: GlossaryCategory[] = [
     id: "analytics",
     label: { fr: "Analytics", en: "Analytics" },
     description: {
-      fr: "IC, hit rate, buckets, methodes OOS et facteurs macro.",
+      fr: "IC, hit rate, buckets, méthodes OOS et facteurs macro.",
       en: "IC, hit rate, buckets, OOS methods, and macro factors.",
     },
   },
   {
     id: "backtest",
-    label: { fr: "Backtest et resultats", en: "Backtest and results" },
+    label: { fr: "Backtest et résultats", en: "Backtest and results" },
     description: {
-      fr: "Metriques de performance, WFO, Monte Carlo et ledger de trades.",
+      fr: "Métriques de performance, WFO, Monte Carlo et ledger de trades.",
       en: "Performance metrics, WFO, Monte Carlo, and trade ledger.",
     },
   },
   {
     id: "data",
-    label: { fr: "Donnees", en: "Data" },
+    label: { fr: "Données", en: "Data" },
     description: {
-      fr: "Catalogue marche, liquidite, prix et champs visibles dans les tables.",
+      fr: "Catalogue marché, liquidité, prix et champs visibles dans les tables.",
       en: "Market catalog, liquidity, prices, and fields shown in tables.",
     },
   },
@@ -89,7 +89,7 @@ export const quickGlossaryLinks: GlossaryLink[] = [
   { label: { fr: "Tableau de Bord", en: "Dashboard" }, href: "#dashboard" },
   { label: { fr: "Figures", en: "Figures" }, href: "#figures-explication" },
   { label: { fr: "Score global", en: "Global score" }, href: "#score-composite" },
-  { label: { fr: "Methode scoring", en: "Scoring method" }, href: "#scoring-methodology" },
+  { label: { fr: "Méthode scoring", en: "Scoring method" }, href: "#scoring-methodology" },
   { label: { fr: "Expected return", en: "Expected return" }, href: "#expected-return" },
   { label: { fr: "Score composite", en: "Composite score" }, href: "#score-composite" },
   { label: { fr: "Signal Engine", en: "Signal Engine" }, href: "#signal-engine" },
@@ -145,7 +145,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     },
     details: [
       {
-        fr: "Commence ici quand tu veux savoir quoi regarder aujourd'hui: filtre le marche, choisis l'horizon, puis ouvre le detail d'un titre si le signal semble interessant.",
+        fr: "Commence ici quand tu veux savoir quoi regarder aujourd'hui: filtre le marché, choisis l'horizon, puis ouvre le détail d'un titre si le signal semble intéressant.",
         en: "Start here when you want to know what to review today: filter the market, choose the horizon, then open a stock detail when a signal looks interesting.",
       },
     ],
@@ -157,7 +157,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "app",
     title: { fr: "Data", en: "Data" },
     plain: {
-      fr: "La page qui verifie si les instruments ont des prix exploitables. Elle sert a controler le catalogue, la fraicheur des donnees et la couverture par marche.",
+      fr: "La page qui vérifie si les instruments ont des prix exploitables. Elle sert à contrôler le catalogue, la fraîcheur des données et la couverture par marché.",
       en: "The page that checks whether instruments have usable prices. It controls the catalog, data freshness, and market coverage.",
     },
     aliases: ["donnees", "catalogue"],
@@ -168,7 +168,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "app",
     title: { fr: "Signals", en: "Signals" },
     plain: {
-      fr: "La page d'analyse par titre. Elle explique pourquoi le Signal Engine, WFO ou Factor x TA donne un score, avec graphiques, representants, evidence WFO et backtest MC.",
+      fr: "La page d'analyse par titre. Elle explique pourquoi le Signal Engine, WFO ou Factor x TA donne un score, avec graphiques, représentants, évidence WFO et backtest MC.",
       en: "The per-stock analysis page. It explains why Signal Engine, WFO, or Factor x TA produced a score, with charts, representatives, WFO evidence, and MC backtest.",
     },
     aliases: ["signaux", "detail titre"],
@@ -179,7 +179,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "app",
     title: { fr: "Strategy", en: "Strategy" },
     plain: {
-      fr: "Le constructeur de strategie. Tu choisis l'univers, l'allocation, le type de strategie, les signaux, les regles d'entree, les sorties et le risque.",
+      fr: "Le constructeur de stratégie. Tu choisis l'univers, l'allocation, le type de stratégie, les signaux, les règles d'entrée, les sorties et le risque.",
       en: "The strategy builder. You choose the universe, allocation, strategy type, signals, entry rules, exits, and risk.",
     },
     aliases: ["constructeur", "rules", "strategie"],
@@ -190,7 +190,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "app",
     title: { fr: "Backtest", en: "Backtest" },
     plain: {
-      fr: "La page qui teste une strategie sur l'historique. Le mode Direct applique les regles actuelles; le mode WFO optimise sur des fenetres passees puis teste sur des periodes non vues.",
+      fr: "La page qui teste une stratégie sur l'historique. Le mode Direct applique les règles actuelles; le mode WFO optimise sur des fenêtres passées puis teste sur des périodes non vues.",
       en: "The page that tests a strategy on history. Direct mode applies current rules; WFO mode optimizes on past windows and tests on unseen periods.",
     },
     aliases: ["test", "runner", "wfo run"],
@@ -201,7 +201,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "app",
     title: { fr: "Analytics", en: "Analytics" },
     plain: {
-      fr: "La page qui mesure si les signaux ont vraiment predit les rendements futurs. C'est ici qu'on lit l'IC, le hit rate, les buckets et les facteurs macro.",
+      fr: "La page qui mesure si les signaux ont vraiment prédit les rendements futurs. C'est ici qu'on lit l'IC, le hit rate, les buckets et les facteurs macro.",
       en: "The page that measures whether signals really predicted future returns. This is where IC, hit rate, buckets, and macro factors are read.",
     },
     aliases: ["ic", "predictive ability", "capacite predictive"],
@@ -212,16 +212,16 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "scores",
     title: { fr: "Score composite", en: "Composite score" },
     plain: {
-      fr: "Un chiffre entre -100 et +100 qui resume la conviction directionnelle d'un titre. Positif signifie plutot achat; negatif signifie plutot vente; proche de zero signifie pas de signal clair.",
+      fr: "Un chiffre entre -100 et +100 qui résume la conviction directionnelle d'un titre. Positif signifie plutôt achat; négatif signifie plutôt vente; proche de zéro signifie pas de signal clair.",
       en: "A number from -100 to +100 summarizing directional conviction for a stock. Positive means more buy-like, negative means more sell-like, near zero means no clear signal.",
     },
     details: [
       {
-        fr: "Le score agregre les familles Tendance, Momentum, Oscillation et Volume. Il ne doit pas etre lu seul: il faut verifier l'edge, la liquidite et le contexte.",
+        fr: "Le score agrège les familles Tendance, Momentum, Oscillation et Volume. Il ne doit pas être lu seul: il faut vérifier l'edge, la liquidité et le contexte.",
         en: "The score aggregates Trend, Momentum, Oscillation, and Volume families. It should not be read alone: check edge, liquidity, and context.",
       },
       {
-        fr: "Lecture pratique: le score global dit la direction et la force du signal maintenant. L'edge et l'expected return disent si ce type de signal a historiquement produit un resultat exploitable.",
+        fr: "Lecture pratique: le score global dit la direction et la force du signal maintenant. L'edge et l'expected return disent si ce type de signal a historiquement produit un résultat exploitable.",
         en: "Practical read: the global score tells current signal direction and strength. Edge and expected return tell whether this kind of signal historically produced something usable.",
       },
     ],
@@ -236,24 +236,24 @@ export const glossaryEntries: GlossaryEntry[] = [
   {
     id: "scoring-methodology",
     categoryId: "scores",
-    title: { fr: "Methode de scoring", en: "Scoring methodology" },
+    title: { fr: "Méthode de scoring", en: "Scoring methodology" },
     plain: {
-      fr: "La methode qui transforme plusieurs indicateurs techniques en un score global lisible. L'app calcule d'abord des scores par indicateur, les regroupe par famille, puis combine les familles dans un score final.",
+      fr: "La méthode qui transforme plusieurs indicateurs techniques en un score global lisible. L'app calcule d'abord des scores par indicateur, les regroupe par famille, puis combine les familles dans un score final.",
       en: "The method that turns several technical indicators into one readable global score. The app first computes indicator scores, groups them by family, then combines the families into the final score.",
     },
     details: [
       {
-        fr: "Chaque indicateur vote dans son langage: tendance, acceleration, exces ou confirmation par volume. Le score de famille resume ces votes avant que le score global les combine.",
+        fr: "Chaque indicateur vote dans son langage: tendance, accélération, excès ou confirmation par volume. Le score de famille résume ces votes avant que le score global les combine.",
         en: "Each indicator votes in its own language: trend, acceleration, excess, or volume confirmation. The family score summarizes those votes before the global score combines them.",
       },
       {
-        fr: "Le scoring est une lecture de marche, pas une preuve statistique. Pour decider si le signal est exploitable, l'app compare ensuite ce score avec l'edge, les gates et l'expected return.",
+        fr: "Le scoring est une lecture de marché, pas une preuve statistique. Pour décider si le signal est exploitable, l'app compare ensuite ce score avec l'edge, les gates et l'expected return.",
         en: "Scoring is a market read, not statistical proof. To decide whether the signal is usable, the app then compares this score with edge, gates, and expected return.",
       },
     ],
     formula: "Indicateurs -> scores de famille -> score global -> badge signal -> validation edge",
     example: {
-      fr: "Tendance +70, Momentum +40, Oscillation -10, Volume +30 donnent un score global positif, mais l'app verifie encore l'edge avant de proposer un ticket.",
+      fr: "Tendance +70, Momentum +40, Oscillation -10, Volume +30 donnent un score global positif, mais l'app vérifie encore l'edge avant de proposer un ticket.",
       en: "Trend +70, Momentum +40, Oscillation -10, Volume +30 produce a positive global score, but the app still checks edge before proposing a ticket.",
     },
     aliases: ["methodology", "global scoring", "score methodology", "scoring"],
@@ -269,7 +269,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     },
     details: [
       {
-        fr: "Attention: les familles n'utilisent pas toutes les memes mots. Oscillation parle de Survendu/Surachete, Volume parle d'Accumulation/Distribution.",
+        fr: "Attention: les familles n'utilisent pas toutes les mêmes mots. Oscillation parle de Survendu/Suracheté, Volume parle d'Accumulation/Distribution.",
         en: "Careful: families do not all use the same wording. Oscillation uses Oversold/Overbought, Volume uses Accumulation/Distribution.",
       },
     ],
@@ -281,12 +281,12 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "scores",
     title: { fr: "Signal Engine", en: "Signal Engine" },
     plain: {
-      fr: "Le moteur qui calcule les scores techniques avec des parametres fixes et explicables. Il sert de reference rapide avant de regarder WFO ou l'edge statistique.",
+      fr: "Le moteur qui calcule les scores techniques avec des paramètres fixes et explicables. Il sert de référence rapide avant de regarder WFO ou l'edge statistique.",
       en: "The engine that computes technical scores with fixed, explainable parameters. It is the fast reference before checking WFO or statistical edge.",
     },
     details: [
       {
-        fr: "Dans l'app, Signal Engine peut etre compare a WFO. Si les deux vont dans le meme sens, la lecture est plus confortable; s'ils divergent, il faut ouvrir le detail.",
+        fr: "Dans l'app, Signal Engine peut être comparé à WFO. Si les deux vont dans le même sens, la lecture est plus confortable; s'ils divergent, il faut ouvrir le détail.",
         en: "In the app, Signal Engine can be compared with WFO. If both point the same way, the read is more comfortable; if they diverge, open the detail.",
       },
     ],
@@ -298,12 +298,12 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "scores",
     title: { fr: "WFO - Walk-Forward Optimization", en: "WFO - Walk-Forward Optimization" },
     plain: {
-      fr: "Une methode qui optimise les parametres sur une fenetre passee, puis les teste sur une fenetre future non vue. Elle imite mieux une decision prise dans le temps.",
+      fr: "Une méthode qui optimise les paramètres sur une fenêtre passée, puis les teste sur une fenêtre future non vue. Elle imite mieux une décision prise dans le temps.",
       en: "A method that optimizes parameters on a past window, then tests them on a future unseen window. It better imitates decisions made through time.",
     },
     details: [
       {
-        fr: "WFO aide a reduire le surapprentissage: une configuration brillante dans le passe mais mauvaise hors echantillon sera penalisee.",
+        fr: "WFO aide à réduire le surapprentissage: une configuration brillante dans le passé mais mauvaise hors échantillon sera pénalisée.",
         en: "WFO helps reduce overfitting: a configuration that is brilliant in-sample but poor out-of-sample is penalized.",
       },
     ],
@@ -315,7 +315,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "scores",
     title: { fr: "Source du score", en: "Score source" },
     plain: {
-      fr: "Le choix entre Signal Engine, WFO ou Both. Il determine quel score est affiche dans la table et quel signal sert de base a certains tris.",
+      fr: "Le choix entre Signal Engine, WFO ou Both. Il détermine quel score est affiché dans la table et quel signal sert de base à certains tris.",
       en: "The choice between Signal Engine, WFO, or Both. It determines which score appears in the table and which signal drives some sorting.",
     },
     aliases: ["both", "source", "wfo vs engine"],
@@ -326,7 +326,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "scores",
     title: { fr: "Familles d'indicateurs", en: "Indicator families" },
     plain: {
-      fr: "Les quatre blocs qui composent le score: Tendance, Momentum, Oscillation et Volume. Chaque famille lit un aspect different du marche.",
+      fr: "Les quatre blocs qui composent le score: Tendance, Momentum, Oscillation et Volume. Chaque famille lit un aspect différent du marché.",
       en: "The four blocks behind the score: Trend, Momentum, Oscillation, and Volume. Each family reads a different market dimension.",
     },
     aliases: ["families", "per_family"],
@@ -337,7 +337,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "scores",
     title: { fr: "Tendance", en: "Trend" },
     plain: {
-      fr: "La famille qui regarde la direction generale du prix. Un score positif indique que le prix confirme plutot une tendance haussiere.",
+      fr: "La famille qui regarde la direction générale du prix. Un score positif indique que le prix confirme plutôt une tendance haussière.",
       en: "The family that reads the general price direction. A positive score means price action is more consistent with an uptrend.",
     },
     details: [
@@ -354,7 +354,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "scores",
     title: { fr: "Momentum", en: "Momentum" },
     plain: {
-      fr: "La famille qui mesure la vitesse du mouvement. Un score positif veut dire que l'elan actuel soutient plutot une hausse.",
+      fr: "La famille qui mesure la vitesse du mouvement. Un score positif veut dire que l'élan actuel soutient plutôt une hausse.",
       en: "The family that measures movement speed. A positive score means current momentum supports an upward move.",
     },
     details: [
@@ -371,7 +371,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "scores",
     title: { fr: "Oscillation", en: "Oscillation" },
     plain: {
-      fr: "La famille qui lit les zones de surachat et de survente. Elle sert souvent a detecter un exces qui peut se normaliser.",
+      fr: "La famille qui lit les zones de surachat et de survente. Elle sert souvent à détecter un excès qui peut se normaliser.",
       en: "The family that reads overbought and oversold zones. It often detects an excess that may normalize.",
     },
     details: [
@@ -405,7 +405,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "indicators",
     title: { fr: "SMA - Simple Moving Average", en: "SMA - Simple Moving Average" },
     plain: {
-      fr: "Moyenne simple du prix sur une periode. Prix au-dessus de la SMA: tendance plus positive; prix en dessous: tendance plus negative.",
+      fr: "Moyenne simple du prix sur une période. Prix au-dessus de la SMA: tendance plus positive; prix en dessous: tendance plus négative.",
       en: "Simple average of price over a period. Price above SMA is more positive; price below SMA is more negative.",
     },
     aliases: ["simple moving average", "moyenne mobile simple"],
@@ -416,7 +416,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "indicators",
     title: { fr: "EMA - Exponential Moving Average", en: "EMA - Exponential Moving Average" },
     plain: {
-      fr: "Moyenne mobile qui donne plus de poids aux prix recents. Elle reagit plus vite que la SMA.",
+      fr: "Moyenne mobile qui donne plus de poids aux prix récents. Elle réagit plus vite que la SMA.",
       en: "Moving average that gives more weight to recent prices. It reacts faster than SMA.",
     },
     aliases: ["exponential moving average", "moyenne exponentielle"],
@@ -438,7 +438,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "indicators",
     title: { fr: "Ichimoku", en: "Ichimoku" },
     plain: {
-      fr: "Systeme de tendance avec plusieurs lignes et un nuage. Il aide a lire tendance, support, resistance et equilibre du prix.",
+      fr: "Système de tendance àvec plusieurs lignes et un nuage. Il aide à lire tendance, support, résistance et équilibre du prix.",
       en: "Trend system with several lines and a cloud. It helps read trend, support, resistance, and price balance.",
     },
     aliases: ["cloud", "nuage ichimoku"],
@@ -460,7 +460,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "indicators",
     title: { fr: "MACD", en: "MACD" },
     plain: {
-      fr: "Indicateur de momentum base sur deux moyennes exponentielles. Il lit l'acceleration et les croisements de tendance.",
+      fr: "Indicateur de momentum basé sur deux moyennes exponentielles. Il lit l'accélération et les croisements de tendance.",
       en: "Momentum indicator based on two exponential averages. It reads acceleration and trend crosses.",
     },
     aliases: ["moving average convergence divergence"],
@@ -471,7 +471,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "indicators",
     title: { fr: "ROC - Rate of Change", en: "ROC - Rate of Change" },
     plain: {
-      fr: "Variation du prix sur N periodes. Un ROC positif indique que le prix est au-dessus de son niveau passe.",
+      fr: "Variation du prix sur N périodes. Un ROC positif indique que le prix est au-dessus de son niveau passé.",
       en: "Price change over N periods. A positive ROC means price is above its past level.",
     },
     aliases: ["rate of change"],
@@ -482,7 +482,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "indicators",
     title: { fr: "TRIX", en: "TRIX" },
     plain: {
-      fr: "Momentum lisse a partir d'une triple EMA. Il filtre une partie du bruit court terme.",
+      fr: "Momentum lisse à partir d'une triple EMA. Il filtre une partie du bruit court terme.",
       en: "Smoothed momentum built from a triple EMA. It filters part of short-term noise.",
     },
     appLinks: [signalsLink, strategyLink],
@@ -492,7 +492,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "indicators",
     title: { fr: "ADX", en: "ADX" },
     plain: {
-      fr: "Mesure la force de la tendance, pas seulement sa direction. Un ADX eleve veut dire que le mouvement est plus structure.",
+      fr: "Mesure la force de la tendance, pas seulement sa direction. Un ADX élevé veut dire que le mouvement est plus structuré.",
       en: "Measures trend strength, not only direction. A high ADX means the move is more structured.",
     },
     aliases: ["average directional index"],
@@ -503,7 +503,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "indicators",
     title: { fr: "TSI - True Strength Index", en: "TSI - True Strength Index" },
     plain: {
-      fr: "Momentum doublement lisse autour de zero. Il aide a lire la force et la direction de l'elan.",
+      fr: "Momentum doublement lisse autour de zéro. Il aide à lire la force et la direction de l'élan.",
       en: "Double-smoothed momentum around zero. It helps read the strength and direction of momentum.",
     },
     appLinks: [signalsLink, strategyLink],
@@ -524,7 +524,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "indicators",
     title: { fr: "Stochastic", en: "Stochastic" },
     plain: {
-      fr: "Mesure ou se situe le prix dans son range recent. Proche du haut: pression haussiere deja avancee; proche du bas: titre potentiellement survendu.",
+      fr: "Mesure où se situe le prix dans son range récent. Proche du haut: pression haussière déjà avancée; proche du bas: titre potentiellement survendu.",
       en: "Measures where price sits within its recent range. Near the top: advanced bullish pressure; near the bottom: potentially oversold.",
     },
     aliases: ["stoch", "%K", "%D"],
@@ -535,7 +535,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "indicators",
     title: { fr: "CCI - Commodity Channel Index", en: "CCI - Commodity Channel Index" },
     plain: {
-      fr: "Mesure l'ecart du prix typique par rapport a sa moyenne. Il detecte les exces au-dessus ou en dessous du regime recent.",
+      fr: "Mesure l'écart du prix typique par rapport à sa moyenne. Il détecte les excès au-dessus ou en dessous du régime récent.",
       en: "Measures the typical price deviation from its average. It detects excess above or below the recent regime.",
     },
     aliases: ["commodity channel index"],
@@ -557,7 +557,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "indicators",
     title: { fr: "Ultimate Oscillator", en: "Ultimate Oscillator" },
     plain: {
-      fr: "Oscillateur qui combine plusieurs horizons. Il evite de juger le titre sur une seule fenetre trop courte.",
+      fr: "Oscillateur qui combine plusieurs horizons. Il évite de juger le titre sur une seule fenêtre trop courte.",
       en: "Oscillator combining several horizons. It avoids judging a stock from only one short window.",
     },
     aliases: ["ultimate oscillator"],
@@ -579,7 +579,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "indicators",
     title: { fr: "CMF - Chaikin Money Flow", en: "CMF - Chaikin Money Flow" },
     plain: {
-      fr: "Mesure si les clotures se font plutot pres des hauts ou des bas, ponderees par le volume.",
+      fr: "Mesure si les clôtures se font plutôt près des hauts ou des bas, pondérées par le volume.",
       en: "Measures whether closes happen nearer highs or lows, weighted by volume.",
     },
     aliases: ["chaikin money flow"],
@@ -590,7 +590,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "indicators",
     title: { fr: "A/D Line - Accumulation/Distribution", en: "A/D Line - Accumulation/Distribution" },
     plain: {
-      fr: "Ligne qui cumule l'accumulation ou la distribution estimee par prix et volume. Elle aide a voir si les flux confirment le prix.",
+      fr: "Ligne qui cumule l'accumulation ou la distribution estimée par prix et volume. Elle aide à voir si les flux confirment le prix.",
       en: "Line that cumulates estimated accumulation or distribution from price and volume. It helps see whether flows confirm price.",
     },
     aliases: ["ad", "a/d", "accumulation distribution"],
@@ -601,7 +601,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "indicators",
     title: { fr: "VWAP", en: "VWAP" },
     plain: {
-      fr: "Prix moyen pondere par le volume. Dans l'app, il sert a voir si le prix est cher ou bon marche par rapport aux volumes recents.",
+      fr: "Prix moyen pondéré par le volume. Dans l'app, il sert à voir si le prix est cher ou bon marché par rapport aux volumes récents.",
       en: "Volume-weighted average price. In the app, it helps see whether price is expensive or cheap relative to recent volume.",
     },
     aliases: ["volume weighted average price"],
@@ -612,7 +612,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "indicators",
     title: { fr: "Force Index", en: "Force Index" },
     plain: {
-      fr: "Combine variation de prix et volume. Il cherche si un mouvement a une vraie force derriere lui.",
+      fr: "Combine variation de prix et volume. Il cherche si un mouvement a une vraie force derrière lui.",
       en: "Combines price change and volume. It checks whether a move has real force behind it.",
     },
     aliases: ["fi"],
@@ -623,12 +623,12 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "edge",
     title: { fr: "Edge", en: "Edge" },
     plain: {
-      fr: "Avantage statistique mesure sur l'historique hors echantillon. Un signal a de l'edge quand les observations passees montrent un rendement attendu positif et robuste.",
+      fr: "Avantage statistique mesuré sur l'historique hors échantillon. Un signal a de l'edge quand les observations passées montrent un rendement attendu positif et robuste.",
       en: "Statistical advantage measured on out-of-sample history. A signal has edge when past observations show positive and robust expected return.",
     },
     details: [
       {
-        fr: "Dans le Tableau de Bord, Edge ne veut pas dire garantie. Cela veut dire: les tests disponibles sont assez bons pour classer l'idee comme exploitable ou a surveiller.",
+        fr: "Dans le Tableau de Bord, Edge ne veut pas dire garantie. Cela veut dire: les tests disponibles sont assez bons pour classer l'idée comme exploitable ou à surveiller.",
         en: "In the Dashboard, Edge does not mean guarantee. It means available tests are good enough to classify the idea as usable or watch-worthy.",
       },
     ],
@@ -638,9 +638,9 @@ export const glossaryEntries: GlossaryEntry[] = [
   {
     id: "best-signal",
     categoryId: "edge",
-    title: { fr: "Meilleure methode auto", en: "Best automatic method" },
+    title: { fr: "Meilleure méthode auto", en: "Best automatic method" },
     plain: {
-      fr: "La methode que l'app choisit comme meilleure candidate pour ce titre et cet horizon, selon l'edge net, la taille d'echantillon et les gates.",
+      fr: "La méthode que l'app choisit comme meilleure candidate pour ce titre et cet horizon, selon l'edge net, la taille d'échantillon et les gates.",
       en: "The method the app selects as the best candidate for this stock and horizon, based on net edge, sample size, and gates.",
     },
     aliases: ["best_signal", "methode auto"],
@@ -649,22 +649,22 @@ export const glossaryEntries: GlossaryEntry[] = [
   {
     id: "edge-selection",
     categoryId: "edge",
-    title: { fr: "Selection de l'edge", en: "Edge selection" },
+    title: { fr: "Sélection de l'edge", en: "Edge selection" },
     plain: {
-      fr: "La logique qui choisit quel edge mettre en avant. L'app compare les methodes candidates, retire celles qui manquent d'observations ou echouent les gates, puis privilegie le meilleur rendement attendu net robuste.",
+      fr: "La logique qui choisit quel edge mettre en avant. L'app compare les méthodes candidates, retire celles qui manquent d'observations ou échouent les gates, puis privilégie le meilleur rendement attendu net robuste.",
       en: "The logic that chooses which edge to highlight. The app compares candidate methods, removes those with too few observations or failed gates, then favors the best robust net expected return.",
     },
     details: [
       {
-        fr: "Un edge peut etre ecarte meme avec un bon rendement moyen si l'echantillon est trop petit, si le test Monte Carlo ressemble au hasard, ou si la borne Wilson rend le hit rate trop incertain.",
+        fr: "Un edge peut être écarté même avec un bon rendement moyen si l'échantillon est trop petit, si le test Monte Carlo ressemble au hasard, ou si la borne Wilson rend le hit rate trop incertain.",
         en: "An edge can be rejected even with a good average return if the sample is too small, if Monte Carlo looks like luck, or if the Wilson bound makes hit rate too uncertain.",
       },
       {
-        fr: "La meilleure methode auto n'est donc pas seulement le plus grand chiffre: c'est le meilleur compromis entre rendement attendu, robustesse, couverture et sens de l'action.",
+        fr: "La meilleure méthode auto n'est donc pas seulement le plus grand chiffre: c'est le meilleur compromis entre rendement attendu, robustesse, couverture et sens de l'action.",
         en: "The best automatic method is therefore not just the largest number: it is the best tradeoff between expected return, robustness, coverage, and action side.",
       },
     ],
-    formula: "Choix edge = max(E[R] net robuste) parmi les methodes qui passent les gates",
+    formula: "Choix edge = max(E[R] net robuste) parmi les méthodes qui passent les gates",
     aliases: ["edge choice", "edge ranking", "best edge selection"],
     appLinks: [dashboardLink, analyticsLink],
   },
@@ -673,22 +673,22 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "edge",
     title: { fr: "Expected return - E[R]", en: "Expected return - E[R]" },
     plain: {
-      fr: "Rendement moyen attendu d'une action ou d'un signal sur l'horizon choisi. Il repond a: si on reprend ce type de signal dans des conditions similaires, combien peut-on attendre en moyenne?",
+      fr: "Rendement moyen attendu d'une action ou d'un signal sur l'horizon choisi. Il répond à: si on reprend ce type de signal dans des conditions similaires, combien peut-on attendre en moyenne?",
       en: "Average expected return of an action or signal over the selected horizon. It answers: if we repeat this kind of signal in similar conditions, what can we expect on average?",
     },
     details: [
       {
-        fr: "L'app distingue Stock E[R] et Action E[R]. Stock E[R] lit le rendement futur du titre. Action E[R] remet ce rendement dans le sens de la decision: long, short ou no trade.",
+        fr: "L'app distingue Stock E[R] et Action E[R]. Stock E[R] lit le rendement futur du titre. Action E[R] remet ce rendement dans le sens de la décision: long, short ou no trade.",
         en: "The app separates Stock E[R] and Action E[R]. Stock E[R] reads the stock's future return. Action E[R] converts that return into the decision side: long, short, or no trade.",
       },
       {
-        fr: "En mode net, l'expected return retire les couts estimes. C'est ce chiffre net qui doit guider le ranking, car un signal profitable brut peut devenir inutile apres couts.",
+        fr: "En mode net, l'expected return retire les coûts estimés. C'est ce chiffre net qui doit guider le ranking, car un signal profitable brut peut devenir inutile après coûts.",
         en: "In net mode, expected return subtracts estimated costs. This net value should drive ranking because a profitable gross signal can become useless after costs.",
       },
     ],
-    formula: "E[R] net = P(gain) x gain moyen - P(perte) x perte moyenne - couts",
+    formula: "E[R] net = P(gain) x gain moyen - P(perte) x perte moyenne - coûts",
     example: {
-      fr: "Si le signal gagne 55% du temps avec +2.0% moyen, perd 45% du temps avec -1.2% moyen, et coute 0.2%, E[R] net = 0.55x2.0 - 0.45x1.2 - 0.2 = +0.36%.",
+      fr: "Si le signal gagne 55% du temps avec +2.0% moyen, perd 45% du temps avec -1.2% moyen, et coûte 0.2%, E[R] net = 0.55x2.0 - 0.45x1.2 - 0.2 = +0.36%.",
       en: "If the signal wins 55% of the time with +2.0% average win, loses 45% with -1.2% average loss, and costs 0.2%, net E[R] = 0.55x2.0 - 0.45x1.2 - 0.2 = +0.36%.",
     },
     aliases: ["E[R]", "ER", "expected value", "net expected return", "action er", "stock er"],
@@ -699,7 +699,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "edge",
     title: { fr: "Action E[R]", en: "Action E[R]" },
     plain: {
-      fr: "Rendement attendu de l'action recommandee: long, short ou no trade. En mode net, les couts sont deja retires.",
+      fr: "Rendement attendu de l'action recommandée: long, short ou no trade. En mode net, les coûts sont déjà retirés.",
       en: "Expected return of the recommended action: long, short, or no trade. In net mode, costs are already deducted.",
     },
     details: [
@@ -708,7 +708,7 @@ export const glossaryEntries: GlossaryEntry[] = [
         en: "For a long signal, Action E[R] follows the stock return. For a short signal, it flips the sign: a stock drop becomes positive for the short action.",
       },
     ],
-    formula: "Action E[R] = moyenne des rendements futurs dans le sens de l'action, apres couts si mode net",
+    formula: "Action E[R] = moyenne des rendements futurs dans le sens de l'action, après coûts si mode net",
     aliases: ["expected return", "action_expected_return_net", "best er"],
     appLinks: [dashboardLink, analyticsLink],
   },
@@ -717,12 +717,12 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "edge",
     title: { fr: "Stock E[R]", en: "Stock E[R]" },
     plain: {
-      fr: "Rendement moyen futur du titre lui-meme, avant inversion long/short. Il repond a la question: le titre a-t-il monte ou baisse apres ce type de signal?",
+      fr: "Rendement moyen futur du titre lui-même, avant inversion long/short. Il répond à la question: le titre a-t-il monté ou baissé après ce type de signal?",
       en: "Average future return of the stock itself, before long/short direction adjustment. It asks: did the stock rise or fall after this signal type?",
     },
     details: [
       {
-        fr: "Stock E[R] est utile pour comprendre le comportement du titre. Action E[R] est plus utile pour prendre une decision de portefeuille.",
+        fr: "Stock E[R] est utile pour comprendre le comportement du titre. Action E[R] est plus utile pour prendre une décision de portefeuille.",
         en: "Stock E[R] is useful for understanding the stock behavior. Action E[R] is more useful for making a portfolio decision.",
       },
     ],
@@ -732,14 +732,14 @@ export const glossaryEntries: GlossaryEntry[] = [
   {
     id: "proven-edge",
     categoryId: "edge",
-    title: { fr: "Edge prouve", en: "Proven edge" },
+    title: { fr: "Edge prouvé", en: "Proven edge" },
     plain: {
-      fr: "Statut positif quand l'echantillon est suffisant et que les tests de robustesse acceptent le signal.",
+      fr: "Statut positif quand l'échantillon est suffisant et que les tests de robustesse acceptent le signal.",
       en: "Positive status when sample size is sufficient and robustness tests accept the signal.",
     },
     details: [
       {
-        fr: "Si le badge dit A surveiller, cela peut rester interessant, mais l'evidence statistique n'est pas encore assez forte.",
+        fr: "Si le badge dit À surveiller, cela peut rester intéressant, mais l'évidence statistique n'est pas encore assez forte.",
         en: "If the badge says Watch, it may still be interesting, but statistical evidence is not strong enough yet.",
       },
     ],
@@ -751,7 +751,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "edge",
     title: { fr: "Gates d'edge", en: "Edge gates" },
     plain: {
-      fr: "Les controles que le signal doit passer avant d'etre marque comme edge prouve: taille d'echantillon, Monte Carlo, label shuffle et borne Wilson.",
+      fr: "Les contrôles que le signal doit passer avant d'être marqué comme edge prouvé: taille d'échantillon, Monte Carlo, label shuffle et borne Wilson.",
       en: "The checks a signal must pass before being marked as proven edge: sample size, Monte Carlo, label shuffle, and Wilson lower bound.",
     },
     aliases: ["gates", "mc gate", "wilson"],
@@ -762,7 +762,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "edge",
     title: { fr: "Test de chance MC", en: "MC luck test" },
     plain: {
-      fr: "Test Monte Carlo qui estime si le resultat peut venir du hasard. Une p-value basse soutient l'idee que le signal contient de l'information.",
+      fr: "Test Monte Carlo qui estime si le résultat peut venir du hasard. Une p-value basse soutient l'idée que le signal contient de l'information.",
       en: "Monte Carlo test estimating whether the result may come from luck. A low p-value supports the idea that the signal contains information.",
     },
     aliases: ["mc_luck_pvalue", "monte carlo gate"],
@@ -773,7 +773,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "edge",
     title: { fr: "Label shuffle", en: "Label shuffle" },
     plain: {
-      fr: "Test qui melange les labels de signal. Si le signal original reste meilleur que les versions melangees, il est moins probable que le resultat soit accidentel.",
+      fr: "Test qui mélange les labels de signal. Si le signal original reste meilleur que les versions mélangées, il est moins probable que le résultat soit accidentel.",
       en: "Test that shuffles signal labels. If the original signal remains better than shuffled versions, the result is less likely to be accidental.",
     },
     aliases: ["shuffle", "label_shuffle_pvalue"],
@@ -784,7 +784,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "edge",
     title: { fr: "Borne basse Wilson", en: "Wilson lower bound" },
     plain: {
-      fr: "Borne prudente du hit rate. Elle evite de trop faire confiance a un taux de reussite eleve calcule sur trop peu d'observations.",
+      fr: "Borne prudente du hit rate. Elle évite de trop faire confiance à un taux de réussite élevé calculé sur trop peu d'observations.",
       en: "Conservative lower bound for hit rate. It prevents overtrusting a high win rate computed on too few observations.",
     },
     aliases: ["wilson", "hit_ci_lower"],
@@ -795,7 +795,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "edge",
     title: { fr: "Profit factor", en: "Profit factor" },
     plain: {
-      fr: "Rapport entre gains bruts et pertes brutes. Au-dessus de 1, les gains depassent les pertes; en dessous de 1, les pertes dominent.",
+      fr: "Rapport entre gains bruts et pertes brutes. Au-dessus de 1, les gains dépassent les pertes; en dessous de 1, les pertes dominent.",
       en: "Ratio between gross gains and gross losses. Above 1, gains exceed losses; below 1, losses dominate.",
     },
     formula: "Profit factor = gains bruts / pertes brutes absolues",
@@ -807,7 +807,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "edge",
     title: { fr: "Expectance", en: "Expectancy" },
     plain: {
-      fr: "Gain moyen attendu par trade en combinant probabilite de gain, gain moyen, probabilite de perte et perte moyenne.",
+      fr: "Gain moyen attendu par trade en combinant probabilité de gain, gain moyen, probabilité de perte et perte moyenne.",
       en: "Average expected gain per trade combining win probability, average win, loss probability, and average loss.",
     },
     formula: "Expectance = P(gain) x gain moyen - P(perte) x perte moyenne",
@@ -819,7 +819,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "edge",
     title: { fr: "Side policy", en: "Side policy" },
     plain: {
-      fr: "Regle qui dit si le systeme peut seulement acheter en long, ou aussi profiter des signaux baissiers en long/short.",
+      fr: "Règle qui dit si le système peut seulement acheter en long, ou aussi profiter des signaux baissiers en long/short.",
       en: "Rule defining whether the system can only buy long, or can also use bearish signals in long/short mode.",
     },
     aliases: ["long_only", "long_short", "sens"],
@@ -830,7 +830,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "edge",
     title: { fr: "Ticket portefeuille", en: "Portfolio ticket" },
     plain: {
-      fr: "Proposition de quantites cibles a partir du capital, du cash buffer, des limites par titre/secteur et de l'edge.",
+      fr: "Proposition de quantités cibles à partir du capital, du cash buffer, des limites par titre/secteur et de l'edge.",
       en: "Proposed target quantities based on capital, cash buffer, per-stock/sector limits, and edge.",
     },
     aliases: ["portfolio ticket", "target_qty", "delta_qty"],
@@ -841,7 +841,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "edge",
     title: { fr: "Daily blotter", en: "Daily blotter" },
     plain: {
-      fr: "Liste operationnelle des actions a faire: acheter, reduire, sortir, attendre ou revoir. C'est la traduction pratique du ticket.",
+      fr: "Liste opérationnelle des actions à faire: acheter, réduire, sortir, attendre ou revoir. C'est la traduction pratique du ticket.",
       en: "Operational list of actions to take: buy, reduce, exit, wait, or review. It is the practical translation of the ticket.",
     },
     aliases: ["blotter", "BUY", "REDUCE", "WATCH", "REVIEW"],
@@ -852,7 +852,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "edge",
     title: { fr: "Fraction Kelly", en: "Kelly fraction" },
     plain: {
-      fr: "Regle de dimensionnement qui ajuste la taille selon l'avantage estime. L'app l'utilise de facon fractionnee pour rester prudente.",
+      fr: "Règle de dimensionnement qui ajuste la taille selon l'avantage estimé. L'app l'utilise de façon fractionnée pour rester prudente.",
       en: "Sizing rule that adjusts size based on estimated advantage. The app uses it fractionally to stay conservative.",
     },
     aliases: ["kelly", "kelly_pct"],
@@ -861,9 +861,9 @@ export const glossaryEntries: GlossaryEntry[] = [
   {
     id: "entry-zone",
     categoryId: "edge",
-    title: { fr: "Zone d'entree", en: "Entry zone" },
+    title: { fr: "Zone d'entrée", en: "Entry zone" },
     plain: {
-      fr: "Fourchette de prix ou l'entree est consideree acceptable. Si le prix est hors zone, l'app peut recommander d'attendre.",
+      fr: "Fourchette de prix où l'entrée est considérée acceptable. Si le prix est hors zone, l'app peut recommander d'attendre.",
       en: "Price range where entry is considered acceptable. If price is outside the zone, the app may recommend waiting.",
     },
     aliases: ["entry_zone", "entry_reference_price", "wait_for_pullback"],
@@ -874,7 +874,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "edge",
     title: { fr: "Stop loss", en: "Stop loss" },
     plain: {
-      fr: "Niveau de sortie defensive si le scenario devient invalide. Il limite la perte au lieu d'attendre que le signal se degrade.",
+      fr: "Niveau de sortie défensive si le scénario devient invalide. Il limite la perte au lieu d'attendre que le signal se dégrade.",
       en: "Defensive exit level if the scenario becomes invalid. It limits loss instead of waiting for the signal to deteriorate.",
     },
     aliases: ["SL", "stop"],
@@ -885,7 +885,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "edge",
     title: { fr: "Take profit", en: "Take profit" },
     plain: {
-      fr: "Niveau ou une partie ou toute la position peut etre vendue pour securiser le gain.",
+      fr: "Niveau où une partie ou toute la position peut être vendue pour sécuriser le gain.",
       en: "Level where part or all of a position may be sold to lock in gains.",
     },
     aliases: ["TP", "target", "target_1"],
@@ -896,7 +896,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "analytics",
     title: { fr: "IC - Information Coefficient", en: "IC - Information Coefficient" },
     plain: {
-      fr: "Correlation entre le rang du signal aujourd'hui et le rang du rendement futur. Si l'IC est positif, les meilleurs signaux ont eu tendance a etre suivis de meilleurs rendements.",
+      fr: "Corrélation entre le rang du signal aujourd'hui et le rang du rendement futur. Si l'IC est positif, les meilleurs signaux ont eu tendance à être suivis de meilleurs rendements.",
       en: "Correlation between today's signal rank and future return rank. If IC is positive, better signals tended to be followed by better returns.",
     },
     formula: "IC = correlation de Spearman(signal_t, rendement futur_t+h)",
@@ -908,7 +908,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "analytics",
     title: { fr: "t-stat", en: "t-stat" },
     plain: {
-      fr: "Mesure si un IC ou un resultat est assez loin de zero pour etre difficile a expliquer par le hasard.",
+      fr: "Mesure si un IC ou un résultat est assez loin de zéro pour être difficile à expliquer par le hasard.",
       en: "Measures whether an IC or result is far enough from zero to be hard to explain by chance.",
     },
     aliases: ["t_stat", "ic_t_stat"],
@@ -919,7 +919,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "analytics",
     title: { fr: "FDR pass", en: "FDR pass" },
     plain: {
-      fr: "Controle statistique utilise quand on teste beaucoup de signaux. Il reduit le risque de croire a un faux positif trouve par hasard.",
+      fr: "Contrôle statistique utilisé quand on teste beaucoup de signaux. Il réduit le risque de croire à un faux positif trouvé par hasard.",
       en: "Statistical control used when many signals are tested. It reduces the risk of believing a false positive found by chance.",
     },
     aliases: ["false discovery rate", "fdr_pass"],
@@ -930,7 +930,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "analytics",
     title: { fr: "Hit rate", en: "Hit rate" },
     plain: {
-      fr: "Pourcentage de cas ou le signal a donne la bonne direction. 50% ressemble a pile ou face; au-dessus de 50%, le signal commence a montrer une utilite.",
+      fr: "Pourcentage de cas où le signal a donné la bonne direction. 50% ressemble à pile ou face; au-dessus de 50%, le signal commence à montrer une utilité.",
       en: "Percentage of cases where the signal got direction right. 50% looks like a coin flip; above 50%, the signal starts to show usefulness.",
     },
     formula: "Hit rate = trades corrects / trades testes",
@@ -942,7 +942,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "analytics",
     title: { fr: "Bucket de signal", en: "Signal bucket" },
     plain: {
-      fr: "Classe discrete du signal: strong_buy, buy, hold, sell ou strong_sell. Les matrices Analytics comparent les rendements futurs par bucket.",
+      fr: "Classe discrète du signal: strong_buy, buy, hold, sell ou strong_sell. Les matrices Analytics comparent les rendements futurs par bucket.",
       en: "Discrete signal class: strong_buy, buy, hold, sell, or strong_sell. Analytics matrices compare future returns by bucket.",
     },
     aliases: ["strong_buy", "buy", "hold", "sell", "strong_sell"],
@@ -953,7 +953,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "analytics",
     title: { fr: "Forward return", en: "Forward return" },
     plain: {
-      fr: "Rendement realise apres la date du signal. Exemple: forward 21j = rendement entre aujourd'hui et environ 21 seances plus tard.",
+      fr: "Rendement réalisé après la date du signal. Exemple: forward 21j = rendement entre aujourd'hui et environ 21 séances plus tard.",
       en: "Return realized after the signal date. Example: 21d forward return = return from today to about 21 sessions later.",
     },
     aliases: ["fwd_h", "future return", "rendement futur"],
@@ -962,9 +962,9 @@ export const glossaryEntries: GlossaryEntry[] = [
   {
     id: "methodes-retour-oos",
     categoryId: "analytics",
-    title: { fr: "Methodes de retour OOS", en: "OOS return methods" },
+    title: { fr: "Méthodes de retour OOS", en: "OOS return methods" },
     plain: {
-      fr: "Facons de mesurer le rendement futur hors echantillon: close-to-close, close-to-open, open-to-open et open-to-close.",
+      fr: "Façons de mesurer le rendement futur hors échantillon: close-to-close, close-to-open, open-to-open et open-to-close.",
       en: "Ways to measure future out-of-sample return: close-to-close, close-to-open, open-to-open, and open-to-close.",
     },
     aliases: ["return_calc_method", "OOS method", "C-C", "C-O", "O-O", "O-C"],
@@ -975,7 +975,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "analytics",
     title: { fr: "C-C - Close to Close", en: "C-C - Close to Close" },
     plain: {
-      fr: "Rendement entre une cloture et une cloture future. Lecture standard quand on raisonne en prix de cloture.",
+      fr: "Rendement entre une clôture et une clôture future. Lecture standard quand on raisonne en prix de clôture.",
       en: "Return from one close to a future close. Standard read when reasoning with closing prices.",
     },
     aliases: ["close_to_close"],
@@ -986,7 +986,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "analytics",
     title: { fr: "C-O - Close to Open", en: "C-O - Close to Open" },
     plain: {
-      fr: "Rendement entre la cloture et l'ouverture suivante ou future. Utile pour lire l'effet overnight.",
+      fr: "Rendement entre la clôture et l'ouverture suivante ou future. Utile pour lire l'effet overnight.",
       en: "Return from close to next or future open. Useful for reading overnight effect.",
     },
     aliases: ["close_to_open"],
@@ -997,7 +997,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "analytics",
     title: { fr: "O-O - Open to Open", en: "O-O - Open to Open" },
     plain: {
-      fr: "Rendement entre deux ouvertures. C'est souvent coherent avec une execution a l'ouverture.",
+      fr: "Rendement entre deux ouvertures. C'est souvent cohérent avec une exécution à l'ouverture.",
       en: "Return between two opens. Often consistent with execution at the open.",
     },
     aliases: ["open_to_open", "O/O"],
@@ -1008,7 +1008,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "analytics",
     title: { fr: "O-C - Open to Close", en: "O-C - Open to Close" },
     plain: {
-      fr: "Rendement entre ouverture et cloture. Il lit plutot une logique intraday ou une exposition limitee a la seance.",
+      fr: "Rendement entre ouverture et clôture. Il lit plutôt une logique intraday ou une exposition limitée à la séance.",
       en: "Return from open to close. It reads a more intraday-like exposure limited to the session.",
     },
     aliases: ["open_to_close"],
@@ -1017,9 +1017,9 @@ export const glossaryEntries: GlossaryEntry[] = [
   {
     id: "method-evaluation",
     categoryId: "analytics",
-    title: { fr: "Evaluation des methodes", en: "Method evaluation" },
+    title: { fr: "Évaluation des méthodes", en: "Method evaluation" },
     plain: {
-      fr: "Table qui decide si une methode doit etre gardee, surveillee ou ecartee selon couverture, IC median, Sharpe, hit rate, nombre d'observations et score de preuve.",
+      fr: "Table qui décide si une méthode doit être gardée, surveillée ou écartée selon couverture, IC médian, Sharpe, hit rate, nombre d'observations et score de preuve.",
       en: "Table deciding whether a method should be kept, watched, or discarded based on coverage, median IC, Sharpe, hit rate, observations, and evidence score.",
     },
     aliases: ["verdict", "keep", "watch", "discard", "evidence_score"],
@@ -1030,7 +1030,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "analytics",
     title: { fr: "Facteur macro", en: "Macro factor" },
     plain: {
-      fr: "Serie externe comme VIX, Brent, DXY, S&P 500 ou taux US10Y. Elle sert a tester si le contexte macro aide ou degrade un signal.",
+      fr: "Série externe comme VIX, Brent, DXY, S&P 500 ou taux US10Y. Elle sert à tester si le contexte macro aide ou dégrade un signal.",
       en: "External series such as VIX, Brent, DXY, S&P 500, or US10Y yield. It tests whether macro context helps or hurts a signal.",
     },
     aliases: ["macro", "factor", "VIX", "Brent", "DXY"],
@@ -1052,10 +1052,10 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "backtest",
     title: { fr: "CAGR", en: "CAGR" },
     plain: {
-      fr: "Rendement annualise. Il transforme la performance totale en rythme annuel comparable entre strategies.",
+      fr: "Rendement annualisé. Il transforme la performance totale en rythme annuel comparable entre stratégies.",
       en: "Annualized return. It converts total performance into a yearly pace comparable across strategies.",
     },
-    formula: "CAGR = (valeur finale / valeur initiale)^(1 / annees) - 1",
+    formula: "CAGR = (valeur finale / valeur initiale)^(1 / années) - 1",
     aliases: ["compound annual growth rate"],
     appLinks: [backtestLink],
   },
@@ -1064,7 +1064,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "backtest",
     title: { fr: "Total return", en: "Total return" },
     plain: {
-      fr: "Performance cumulee sur toute la periode. Il dit combien le capital a gagne ou perdu au total.",
+      fr: "Performance cumulée sur toute la période. Il dit combien le capital a gagné ou perdu au total.",
       en: "Cumulative performance over the full period. It says how much capital gained or lost in total.",
     },
     formula: "Total return = valeur finale / valeur initiale - 1",
@@ -1076,7 +1076,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "backtest",
     title: { fr: "PnL", en: "PnL" },
     plain: {
-      fr: "Profit and Loss: gain ou perte en monnaie. Contrairement au pourcentage, il depend du capital engage.",
+      fr: "Profit and Loss: gain ou perte en monnaie. Contrairement au pourcentage, il dépend du capital engagé.",
       en: "Profit and Loss: monetary gain or loss. Unlike a percentage, it depends on deployed capital.",
     },
     aliases: ["profit and loss", "net pnl"],
@@ -1087,10 +1087,10 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "backtest",
     title: { fr: "Sharpe ratio", en: "Sharpe ratio" },
     plain: {
-      fr: "Rendement ajuste du risque. Plus il est eleve, plus la strategie a produit de rendement par unite de volatilite.",
+      fr: "Rendement ajusté du risque. Plus il est élevé, plus la stratégie a produit de rendement par unité de volatilité.",
       en: "Risk-adjusted return. The higher it is, the more return the strategy produced per unit of volatility.",
     },
-    formula: "Sharpe = rendement excedentaire moyen / volatilite des rendements",
+    formula: "Sharpe = rendement excédentaire moyen / volatilité des rendements",
     aliases: ["sharpe ratio", "oos_sharpe"],
     appLinks: [backtestLink, analyticsLink],
   },
@@ -1099,7 +1099,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "backtest",
     title: { fr: "Max drawdown", en: "Max drawdown" },
     plain: {
-      fr: "Pire baisse entre un sommet et un creux de la courbe d'equite. C'est une mesure tres concrete de douleur de portefeuille.",
+      fr: "Pire baisse entre un sommet et un creux de la courbe d'équité. C'est une mesure très concrète de douleur de portefeuille.",
       en: "Worst drop from a peak to a trough in the equity curve. It is a very concrete measure of portfolio pain.",
     },
     aliases: ["MDD", "max dd", "drawdown"],
@@ -1110,7 +1110,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "backtest",
     title: { fr: "Win rate", en: "Win rate" },
     plain: {
-      fr: "Pourcentage de trades gagnants. Il doit etre lu avec le gain moyen et la perte moyenne; seul, il peut etre trompeur.",
+      fr: "Pourcentage de trades gagnants. Il doit être lu avec le gain moyen et la perte moyenne; seul, il peut être trompeur.",
       en: "Percentage of winning trades. It must be read with average win and average loss; alone, it can be misleading.",
     },
     aliases: ["win%", "win_pct"],
@@ -1121,7 +1121,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "backtest",
     title: { fr: "Nombre de trades", en: "Number of trades" },
     plain: {
-      fr: "Nombre d'operations realisees. Beaucoup de trades augmente les couts et exige une preuve plus solide.",
+      fr: "Nombre d'opérations réalisées. Beaucoup de trades augmente les coûts et exige une preuve plus solide.",
       en: "Number of executed trades. Many trades increase costs and require stronger evidence.",
     },
     aliases: ["n_trades", "number_of_trades", "fills"],
@@ -1132,7 +1132,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "backtest",
     title: { fr: "Monte Carlo", en: "Monte Carlo" },
     plain: {
-      fr: "Simulation de nombreux chemins alternatifs pour voir si la performance depend trop d'un ordre chanceux des trades ou des rendements.",
+      fr: "Simulation de nombreux chemins alternatifs pour voir si la performance dépend trop d'un ordre chanceux des trades ou des rendements.",
       en: "Simulation of many alternative paths to see whether performance depends too much on lucky ordering of trades or returns.",
     },
     aliases: ["MC", "fan chart"],
@@ -1143,7 +1143,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "backtest",
     title: { fr: "Block bootstrap", en: "Block bootstrap" },
     plain: {
-      fr: "Monte Carlo qui reechantillonne des blocs de temps. Il garde une partie de la structure temporelle du marche.",
+      fr: "Monte Carlo qui rééchantillonne des blocs de temps. Il garde une partie de la structure temporelle du marché.",
       en: "Monte Carlo that resamples time blocks. It keeps part of market time structure.",
     },
     aliases: ["block_bootstrap"],
@@ -1154,7 +1154,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "backtest",
     title: { fr: "Trade bootstrap", en: "Trade bootstrap" },
     plain: {
-      fr: "Monte Carlo qui reechantillonne les trades. Il teste si la distribution des trades reste acceptable dans d'autres ordres possibles.",
+      fr: "Monte Carlo qui rééchantillonne les trades. Il teste si la distribution des trades reste acceptable dans d'autres ordres possibles.",
       en: "Monte Carlo that resamples trades. It tests whether the trade distribution remains acceptable in other possible orders.",
     },
     aliases: ["trade_bootstrap"],
@@ -1163,9 +1163,9 @@ export const glossaryEntries: GlossaryEntry[] = [
   {
     id: "equity-curve",
     categoryId: "backtest",
-    title: { fr: "Courbe d'equite", en: "Equity curve" },
+    title: { fr: "Courbe d'équité", en: "Equity curve" },
     plain: {
-      fr: "Evolution du capital au fil du temps. Elle montre si la strategie gagne de facon reguliere ou par quelques periodes isolees.",
+      fr: "Evolution du capital au fil du temps. Elle montre si la stratégie gagne de façon régulière ou par quelques périodes isolées.",
       en: "Capital evolution through time. It shows whether the strategy wins regularly or through a few isolated periods.",
     },
     aliases: ["equity", "cumreturn_vs_benchmark"],
@@ -1176,7 +1176,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "backtest",
     title: { fr: "Trade ledger", en: "Trade ledger" },
     plain: {
-      fr: "Journal detaille des trades: date, sens, prix, quantite, regle declenchee, PnL realise et latent.",
+      fr: "Journal détaillé des trades: date, sens, prix, quantité, règle déclenchée, PnL réalisé et latent.",
       en: "Detailed trade journal: date, side, price, quantity, triggered rule, realized PnL, and latent PnL.",
     },
     aliases: ["ledger", "fills", "CMP"],
@@ -1185,9 +1185,9 @@ export const glossaryEntries: GlossaryEntry[] = [
   {
     id: "wfo-window",
     categoryId: "backtest",
-    title: { fr: "Fenetre WFO", en: "WFO window" },
+    title: { fr: "Fenêtre WFO", en: "WFO window" },
     plain: {
-      fr: "Bloc compose d'une periode d'apprentissage et d'une periode OOS. Les parametres sont choisis dans la premiere puis controles dans la seconde.",
+      fr: "Bloc composé d'une période d'apprentissage et d'une période OOS. Les paramètres sont choisis dans la première puis contrôlés dans la seconde.",
       en: "Block made of a training period and an OOS period. Parameters are chosen in the first and checked in the second.",
     },
     aliases: ["window", "fold", "walk forward"],
@@ -1198,7 +1198,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "backtest",
     title: { fr: "Held-out test", en: "Held-out test" },
     plain: {
-      fr: "Test final sur une periode gardee a part. Elle sert a eviter de juger la strategie sur les memes donnees que l'optimisation.",
+      fr: "Test final sur une période gardée à part. Elle sert à éviter de juger la stratégie sur les mêmes données que l'optimisation.",
       en: "Final test on a period kept aside. It avoids judging the strategy on the same data used for optimization.",
     },
     aliases: ["test_period", "OOS final"],
@@ -1209,7 +1209,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "backtest",
     title: { fr: "WFE - Walk-Forward Efficiency", en: "WFE - Walk-Forward Efficiency" },
     plain: {
-      fr: "Compare la performance OOS a la performance in-sample. Une WFE faible signale que l'optimisation ne se transfere pas bien.",
+      fr: "Compare la performance OOS à la performance in-sample. Une WFE faible signale que l'optimisation ne se transfère pas bien.",
       en: "Compares OOS performance with in-sample performance. A low WFE signals optimization does not transfer well.",
     },
     aliases: ["walk-forward efficiency"],
@@ -1220,7 +1220,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "backtest",
     title: { fr: "Robustness ratio", en: "Robustness ratio" },
     plain: {
-      fr: "Mesure de stabilite d'une configuration entre fenetres. Plus elle est haute, moins la performance semble dependre d'un cas unique.",
+      fr: "Mesure de stabilité d'une configuration entre fenêtres. Plus elle est haute, moins la performance semble dépendre d'un cas unique.",
       en: "Stability measure for a configuration across windows. Higher means performance depends less on one isolated case.",
     },
     aliases: ["robustness"],
@@ -1231,7 +1231,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "data",
     title: { fr: "ADV20", en: "ADV20" },
     plain: {
-      fr: "Average Daily Value sur 20 jours: moyenne de la valeur echangee, calculee comme prix de cloture x nombre de titres echanges. Elle mesure la liquidite recente en MAD.",
+      fr: "Average Daily Value sur 20 jours: moyenne de la valeur échangée, calculée comme prix de clôture x nombre de titres échangés. Elle mesure la liquidité récente en MAD.",
       en: "Average Daily Value over 20 days: average traded value, computed as close price x number of shares traded. It measures recent liquidity in MAD.",
     },
     aliases: ["average daily value", "average daily volume", "liquidite", "volume moyen", "valeur echangee"],
@@ -1240,9 +1240,9 @@ export const glossaryEntries: GlossaryEntry[] = [
   {
     id: "liquidity-filter",
     categoryId: "data",
-    title: { fr: "Filtre liquidite", en: "Liquidity filter" },
+    title: { fr: "Filtre liquidité", en: "Liquidity filter" },
     plain: {
-      fr: "Filtre qui retire les titres trop peu traites. Dans l'app, le seuil courant le plus visible est ADV20 >= 1 000 000 MAD.",
+      fr: "Filtre qui retire les titres trop peu traités. Dans l'app, le seuil courant le plus visible est ADV20 >= 1 000 000 MAD.",
       en: "Filter that removes thinly traded stocks. In the app, the most visible current threshold is ADV20 >= 1,000,000 MAD.",
     },
     aliases: ["ADV20 >= 1000000 MAD", "ADV >= 1000", "liquid_masi"],
@@ -1251,9 +1251,9 @@ export const glossaryEntries: GlossaryEntry[] = [
   {
     id: "market-catalog",
     categoryId: "data",
-    title: { fr: "Catalogue marche", en: "Market catalog" },
+    title: { fr: "Catalogue marché", en: "Market catalog" },
     plain: {
-      fr: "Liste des instruments connus par l'app, avec type d'actif, region, nom affiche et disponibilite des donnees.",
+      fr: "Liste des instruments connus par l'app, avec type d'actif, région, nom affiché et disponibilité des données.",
       en: "List of instruments known by the app, with asset type, region, display name, and data availability.",
     },
     aliases: ["catalog", "instruments"],
@@ -1262,9 +1262,9 @@ export const glossaryEntries: GlossaryEntry[] = [
   {
     id: "canonical-data",
     categoryId: "data",
-    title: { fr: "Donnees canoniques", en: "Canonical data" },
+    title: { fr: "Données canoniques", en: "Canonical data" },
     plain: {
-      fr: "Serie de prix officielle que l'app utilise pour les calculs. Si un instrument n'a pas de donnees canoniques, les scores ne sont pas fiables ou indisponibles.",
+      fr: "Série de prix officielle que l'app utilise pour les calculs. Si un instrument n'a pas de données canoniques, les scores ne sont pas fiables ou indisponibles.",
       en: "Official price series used by the app for calculations. If an instrument has no canonical data, scores are unreliable or unavailable.",
     },
     aliases: ["has_canonical_data", "canonical"],
@@ -1275,7 +1275,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "data",
     title: { fr: "OHLCV", en: "OHLCV" },
     plain: {
-      fr: "Open, High, Low, Close, Volume: ouverture, plus haut, plus bas, cloture et volume d'une seance.",
+      fr: "Open, High, Low, Close, Volume: ouverture, plus haut, plus bas, clôture et volume d'une séance.",
       en: "Open, High, Low, Close, Volume: opening, high, low, closing price, and volume for a session.",
     },
     aliases: ["open", "high", "low", "close", "volume"],
@@ -1286,7 +1286,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "data",
     title: { fr: "Dernier prix", en: "Last price" },
     plain: {
-      fr: "Dernier prix disponible pour l'instrument. Il sert a afficher le niveau courant et a situer les signaux techniques.",
+      fr: "Dernier prix disponible pour l'instrument. Il sert à afficher le niveau courant et à situer les signaux techniques.",
       en: "Latest available price for the instrument. It displays the current level and positions technical signals.",
     },
     aliases: ["last_price", "close_used", "prix"],
@@ -1297,7 +1297,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "data",
     title: { fr: "Variation 1j", en: "1-day change" },
     plain: {
-      fr: "Variation du prix sur la derniere seance disponible. Elle donne le mouvement tres court terme, pas une preuve de signal.",
+      fr: "Variation du prix sur la dernière séance disponible. Elle donne le mouvement très court terme, pas une preuve de signal.",
       en: "Price change over the latest available session. It gives very short-term movement, not signal proof.",
     },
     aliases: ["var1j_pct", "1d change"],
@@ -1319,7 +1319,7 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "data",
     title: { fr: "Type d'actif", en: "Asset type" },
     plain: {
-      fr: "Classe d'instrument: action, matiere premiere, obligation, devise ou indice. Elle sert aux filtres et a l'organisation du catalogue.",
+      fr: "Classe d'instrument: action, matière première, obligation, devise ou indice. Elle sert aux filtres et à l'organisation du catalogue.",
       en: "Instrument class: equity, commodity, bond, currency, or index. It is used for filters and catalog organization.",
     },
     aliases: ["asset_type", "equity", "commodity", "bond"],
@@ -1328,9 +1328,9 @@ export const glossaryEntries: GlossaryEntry[] = [
   {
     id: "market-region",
     categoryId: "data",
-    title: { fr: "Region marche", en: "Market region" },
+    title: { fr: "Région marché", en: "Market region" },
     plain: {
-      fr: "Zone geographique ou groupe de marche: MASI, US, Europe, Asie, etc. Elle sert a filtrer l'univers complet.",
+      fr: "Zone géographique ou groupe de marché: MASI, US, Europe, Asie, etc. Elle sert à filtrer l'univers complet.",
       en: "Geographic zone or market group: MASI, US, Europe, Asia, and so on. It filters the full universe.",
     },
     aliases: ["market_region", "region"],

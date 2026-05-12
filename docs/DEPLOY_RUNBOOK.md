@@ -15,6 +15,21 @@ This is the source-of-truth deploy runbook for the Oracle VM path.
 | `frontend/Dockerfile` | Next.js standalone image. |
 | `services/api/alembic/` | DB migrations. Current audit: one Alembic head, `f7a8b9c1d2e3`. |
 
+## Known Current Oracle VM
+
+These values describe the current OCI test VM, not a reusable default for every deployment:
+
+| Item | Value |
+| --- | --- |
+| Public IP | `84.8.218.252` |
+| Current temporary domain | `84.8.218.252.sslip.io` |
+| Requested free domain | `taha-signal.is-a.dev` via `is-a-dev/register` |
+| Cloud-image sudo user | `opc` |
+| Application/docker user | `deploy` |
+| Local private key path on the Windows workstation | `C:\Users\taha\Downloads\ssh-key-2026-05-07.key` |
+
+Operational rule: use `opc` for sudo work such as editing `/etc/bt/env`, firewalld, or systemd. Use `deploy` for Docker Compose. Running `sudo docker compose` as `opc/root` can fail with `unauthorized` against GHCR because Docker registry credentials are user-scoped.
+
 ## Fixed During This Audit
 
 - VM workers now use `ghcr.io/tahadaz/bt-worker:${IMAGE_TAG}` instead of building on the VM.
@@ -36,6 +51,8 @@ This is the source-of-truth deploy runbook for the Oracle VM path.
 | Oracle VM architecture mismatch | High | Current image workflow builds `linux/arm64`. Use an Ampere ARM VM or change workflow platforms. |
 | GHCR image access | High if packages are private | Log in to GHCR on the VM with a PAT that can read packages. |
 | Caddy IP allowlist blocks supervisor | High for demo | Add supervisor CIDRs to `ALLOWED_REMOTE_IPS`. |
+| Corporate firewall blocks dynamic DNS | High for bank network access | Replace `sslip.io` with a normal domain or ask IT for a whitelist/internal DNS record. |
+| Free domain review delay | Medium | `is-a.dev` requires maintainer/code-owner review; approval can take hours or days. |
 | No active user | High for demo | Create or approve a user before the demo. |
 | Empty DB or stale data | High for demo | Restore a known-good backup or run refresh/warmup jobs. |
 | Hardcoded Postgres password `app` | Medium | Accept for private VM or plan coordinated secret rotation. |
@@ -52,11 +69,13 @@ NEXTAUTH_SECRET=replace_with_openssl_rand_hex_32
 API_KEY=replace_with_openssl_rand_hex_32
 ADMIN_API_KEY=replace_with_openssl_rand_hex_32
 INTERNAL_JWT_SECRET=replace_with_openssl_rand_hex_32
+BLOOMBERG_BRIDGE_API_KEY=replace_with_openssl_rand_hex_32
+BLOOMBERG_BRIDGE_MAX_UPLOAD_BYTES=268435456
 
 MINIO_ROOT_USER=btminio
 MINIO_ROOT_PASSWORD=replace_with_long_random_secret
 
-ALLOWED_REMOTE_IPS="197.230.23.178/32 196.127.81.67/32"
+ALLOWED_REMOTE_IPS="197.230.23.178/32 196.127.81.67/32 196.70.253.81/32"
 API_WORKERS=1
 WORKER_CONCURRENCY=1
 OMP_NUM_THREADS=1
@@ -68,20 +87,28 @@ SENTRY_DSN=
 
 Notes:
 
-- Add the supervisor office IP as another CIDR in `ALLOWED_REMOTE_IPS`, separated by a space.
+- Add the supervisor office public egress IP as another CIDR in `ALLOWED_REMOTE_IPS`, separated by a space. For a single IP, use `/32`.
+- Use the public IP shown by `curl https://api.ipify.org` from the client network, not the workstation's private `10.x` or `172.x` intranet address.
 - `API_KEY` protects API routes. The Next.js server injects it when browser code calls `/api/...`.
 - `ADMIN_API_KEY` is required for admin-only snapshot, batch, and edge warmup endpoints.
-- `NEXTAUTH_SECRET`, `API_KEY`, `ADMIN_API_KEY`, `INTERNAL_JWT_SECRET`, and `MINIO_ROOT_PASSWORD` can be generated with `openssl rand -hex 32`.
+- `BLOOMBERG_BRIDGE_API_KEY` only authorizes `/bridge/bloomberg/*` ingestion calls from the Bloomberg bridge.
+- `NEXTAUTH_SECRET`, `API_KEY`, `ADMIN_API_KEY`, `INTERNAL_JWT_SECRET`, `BLOOMBERG_BRIDGE_API_KEY`, and `MINIO_ROOT_PASSWORD` can be generated with `openssl rand -hex 32`.
 
 ## Oracle VM Checklist
 
 1. Provision an Oracle Linux or Ubuntu VM. Prefer `VM.Standard.A1.Flex` ARM64 because CI builds ARM64 images.
-2. In the OCI network security list, allow inbound `22/tcp` from admin IPs and `80/tcp`, `443/tcp` as needed. Caddy still enforces the app allowlist.
-3. Point `DOMAIN` to the public VM IP. `84.8.218.252.sslip.io` works only while the VM public IP is `84.8.218.252`.
+2. In the OCI network security list, allow inbound `22/tcp` from admin IPs and `80/tcp`, `443/tcp` as needed. For OCI ingress rules, use source type `CIDR`. Use `x.x.x.x/32` for a single admin/company public IP, or `0.0.0.0/0` temporarily for public web access. Caddy still enforces the app allowlist.
+3. Point `DOMAIN` to the public VM IP. `84.8.218.252.sslip.io` works only while the VM public IP is `84.8.218.252`, but some corporate firewalls classify `sslip.io` as dynamic DNS and block it.
 4. Bootstrap with the cloud-image user, then create the Actions deploy user:
 
 ```bash
 ssh -i ~/Downloads/ssh-key-2026-05-07.key opc@84.8.218.252
+```
+
+From Windows PowerShell, use:
+
+```powershell
+ssh -i C:\Users\taha\Downloads\ssh-key-2026-05-07.key -o IdentitiesOnly=yes opc@84.8.218.252
 ```
 
 The current Oracle VM uses the `opc` user. GitHub Actions deploys as `deploy`, so install the same public key for `deploy` before relying on `.github/workflows/deploy-vm.yml`.
@@ -127,9 +154,11 @@ NEXTAUTH_SECRET=replace_me
 API_KEY=replace_me
 ADMIN_API_KEY=replace_me
 INTERNAL_JWT_SECRET=replace_me
+BLOOMBERG_BRIDGE_API_KEY=replace_me
+BLOOMBERG_BRIDGE_MAX_UPLOAD_BYTES=268435456
 MINIO_ROOT_USER=btminio
 MINIO_ROOT_PASSWORD=replace_me
-ALLOWED_REMOTE_IPS="197.230.23.178/32 196.127.81.67/32"
+ALLOWED_REMOTE_IPS="197.230.23.178/32 196.127.81.67/32 196.70.253.81/32"
 API_WORKERS=1
 WORKER_CONCURRENCY=1
 OMP_NUM_THREADS=1
@@ -154,6 +183,8 @@ cd /opt/bt
 ```bash
 echo '<ghcr_pat_with_read_packages>' | docker login ghcr.io -u Tahadaz --password-stdin
 ```
+
+Run this as `deploy`. If it is run only as `deploy`, later `sudo docker compose ... pull` as `root` can still fail with `unauthorized`.
 
 9. First deploy manually:
 
@@ -207,6 +238,93 @@ Deploy flow:
 1. Push to `main`.
 2. `build-images.yml` builds and pushes `bt-api`, `bt-worker`, and `bt-frontend` images tagged by commit SHA and `latest`.
 3. `deploy-vm.yml` SSHes to `/opt/bt`, resets to `origin/main`, pulls images with `IMAGE_TAG=<sha>`, runs Alembic, starts compose, prunes old images, then smokes the app locally through Caddy.
+
+## Domain And Corporate Network Notes
+
+What the current rollout proved:
+
+- `84.8.218.252.sslip.io` resolves correctly to `84.8.218.252` and Caddy can issue a valid certificate for it.
+- Bank/corporate filtering can still block `sslip.io` because it is categorized as dynamic DNS. DNS success does not mean HTTPS access will be allowed.
+- Cloudflare Worker proxy hostnames can also be blocked by corporate filtering and are not a reliable replacement for a normal domain in this environment.
+- The pending free-domain route is `taha-signal.is-a.dev`; `is-a.dev` requires code-owner review before DNS is active.
+- For same-day reliable access from a filtered bank network, use a normal paid domain or ask company IT to create/whitelist a DNS name.
+
+When a normal domain is ready, point it to the VM with an `A` record:
+
+```text
+Type: A
+Name: @
+Value: 84.8.218.252
+TTL: Auto
+```
+
+Optional `www`:
+
+```text
+Type: CNAME
+Name: www
+Value: <domain>
+TTL: Auto
+```
+
+Then update the VM env as `opc`. Set `NEW_DOMAIN` to the approved free domain or paid domain:
+
+```bash
+NEW_DOMAIN=taha-signal.is-a.dev
+sudo cp /etc/bt/env /etc/bt/env.bak.$(date -u +%Y%m%dT%H%M%SZ)
+sudo sed -i -E "s|^DOMAIN=.*|DOMAIN=${NEW_DOMAIN}|; s|^NEXTAUTH_URL=.*|NEXTAUTH_URL=https://${NEW_DOMAIN}|" /etc/bt/env
+sudo grep -E '^(DOMAIN|NEXTAUTH_URL)=' /etc/bt/env
+```
+
+Recreate the frontend and Caddy as `deploy` so `NEXTAUTH_URL` and the Caddy site name are refreshed:
+
+```bash
+cd /opt/bt
+TAG=$(docker inspect -f '{{.Config.Image}}' quant_frontend | sed 's|^ghcr.io/tahadaz/bt-frontend:||')
+IMAGE_TAG="$TAG" docker compose --env-file /etc/bt/env -f infra/docker-compose.gcp.yml up -d --no-deps --force-recreate quant_frontend edge_proxy
+```
+
+## Allowlist Updates
+
+To add a client/company public IP to the Caddy allowlist, run these as `opc`:
+
+```bash
+NEW_IP=196.70.253.81
+sudo cp /etc/bt/env /etc/bt/env.bak.$(date -u +%Y%m%dT%H%M%SZ)
+sudo sed -i -E "s|^ALLOWED_REMOTE_IPS=\"([^\"]*)\"|ALLOWED_REMOTE_IPS=\"\1 ${NEW_IP}/32\"|" /etc/bt/env
+sudo grep '^ALLOWED_REMOTE_IPS=' /etc/bt/env
+```
+
+Then recreate only Caddy as `deploy`:
+
+```bash
+cd /opt/bt
+TAG=$(docker inspect -f '{{.Config.Image}}' quant_frontend | sed 's|^ghcr.io/tahadaz/bt-frontend:||')
+IMAGE_TAG="$TAG" docker compose --env-file /etc/bt/env -f infra/docker-compose.gcp.yml up -d --no-deps --force-recreate edge_proxy
+```
+
+Avoid heredocs and pasted multi-line Python in a remote terminal for simple env changes; indentation and line wrapping caused avoidable failures during the rollout.
+
+## Troubleshooting Client Access
+
+Run these from the client network that cannot reach the app:
+
+```powershell
+curl.exe -s https://api.ipify.org
+nslookup 84.8.218.252.sslip.io
+Test-NetConnection 84.8.218.252 -Port 443
+curl.exe -4 -I https://84.8.218.252.sslip.io/login
+```
+
+Interpretation:
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| DNS resolves but `Test-NetConnection` to `443` fails | OCI security list, route table, host firewall, or Caddy container is not reachable | Check OCI ingress, Oracle Linux `firewalld`, and `docker compose ps edge_proxy`. |
+| TCP connects but FortiGuard says dynamic DNS/intrusion prevention | Corporate filter blocks `sslip.io` category | Use a normal domain, wait for `is-a.dev`, or ask IT to whitelist/create DNS. |
+| HTTPS returns Caddy `403 Forbidden` | Client public IP is missing from `ALLOWED_REMOTE_IPS` | Add the public egress IP with `/32` and recreate `edge_proxy`. |
+| `docker compose` reports `unauthorized` pulling GHCR images | Running Docker as a user that is not logged in to GHCR | Run Docker as `deploy` or log in to GHCR for the same Linux user running Compose. |
+| Shell says `no such service: edge_proxysudo` or splits a compose filename | Two commands were pasted without a newline, or the terminal line-wrapped in the middle of a token | Re-run one complete command at a time. |
 
 ## Migrations
 

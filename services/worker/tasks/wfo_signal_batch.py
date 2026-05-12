@@ -18,10 +18,10 @@ from sqlalchemy.orm import Session
 from services.worker.db import SessionLocal
 from services.worker.redis_utils import connect_redis_with_fallback
 from services.api.app.models import (
-    StockMaster,
     WfoGlobalSignal,
     WfoSignalSummary,
 )
+from services.api.app.services.market_universe import list_signal_universe_symbols
 from services.api.app.services.weekly_recompute_policy import iter_wfo_weekly_stale_tuples
 from services.api.app.market_data_loader import load_ohlcv_for_symbol
 from core.quant_core.horizons import DEFAULT_COST_BPS_PER_SIDE, HORIZON_SPECS
@@ -51,11 +51,11 @@ CATEGORIES = ("tendance", "momentum", "oscillation", "volume")
 # ---------------------------------------------------------------------------
 
 def _active_symbols(db: Session) -> list[str]:
-    return [row.symbol for row in db.query(StockMaster).filter_by(is_active=True).all()]
+    return list_signal_universe_symbols(db)
 
 
 def run_weekly_wfo_batch(*, now: datetime | None = None) -> dict:
-    """Compute WFO signals only for weekly-stale active tuples.
+    """Compute WFO signals only for weekly-stale data-backed tuples.
 
     Called by RQ scheduler or cron. Returns a summary dict.
     """

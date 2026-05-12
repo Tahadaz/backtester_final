@@ -9,6 +9,7 @@ const UPSTREAM =
 const API_KEY = process.env.API_KEY ?? ""
 const IS_PROD = process.env.NODE_ENV === "production"
 const UPSTREAM_TIMEOUT_MS = Number(process.env.UPSTREAM_TIMEOUT_MS ?? "120000")
+const STRATEGY_UNIVERSE_TIMEOUT_MS = Number(process.env.STRATEGY_UNIVERSE_TIMEOUT_MS ?? "4000")
 const OFFLINE_EMPTY_GET_PATHS = new Set([
   "/runs",
   "/defaults/runs",
@@ -65,6 +66,12 @@ function maybeOfflineFallback(method: string, pathParts: string[]): NextResponse
   })
 }
 
+function timeoutForPath(pathParts: string[]): number {
+  const path = `/${pathParts.join("/")}`
+  if (path === "/strategy/plan/universe") return STRATEGY_UNIVERSE_TIMEOUT_MS
+  return UPSTREAM_TIMEOUT_MS
+}
+
 async function proxy(req: NextRequest, { params }: RouteContext) {
   const resolved = await params
   const pathParts = normalizePathParts(resolved?.path)
@@ -84,8 +91,9 @@ async function proxy(req: NextRequest, { params }: RouteContext) {
     if (body.byteLength > 0) init.body = body
   }
 
+  const upstreamTimeoutMs = timeoutForPath(pathParts)
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS)
+  const timeoutId = setTimeout(() => controller.abort(), upstreamTimeoutMs)
   init.signal = controller.signal
 
   try {
@@ -100,7 +108,7 @@ async function proxy(req: NextRequest, { params }: RouteContext) {
 
     const detail =
       error instanceof Error && error.name === "AbortError"
-        ? `Upstream request timed out after ${UPSTREAM_TIMEOUT_MS}ms`
+        ? `Upstream request timed out after ${upstreamTimeoutMs}ms`
         : error instanceof Error
           ? error.message
           : String(error)

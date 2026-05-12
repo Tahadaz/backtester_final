@@ -1,7 +1,14 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { useMarketCatalog, useTrackedStocks, useMasiTickers, useMacroCatalog } from "@/hooks/use-api"
+import {
+  useBloombergBatches,
+  useBloombergSeries,
+  useMarketCatalog,
+  useTrackedStocks,
+  useMasiTickers,
+  useMacroCatalog,
+} from "@/hooks/use-api"
 import {
   ApiError,
   refreshAllStocks,
@@ -10,7 +17,7 @@ import {
   enqueueAllMacroIngest,
   enqueueMacroIngest,
 } from "@/lib/api"
-import type { MarketCatalogRow, MasiTicker } from "@/lib/api"
+import type { BloombergBatch, BloombergSeries, MarketCatalogRow, MasiTicker } from "@/lib/api"
 import { PublicDataPage } from "@/components/data/public-data-page"
 import { StockDetailPanel } from "@/components/data/stock-detail-panel"
 import { ExcelUploadDialog } from "@/components/data/excel-upload-dialog"
@@ -46,6 +53,7 @@ import { cn } from "@/lib/utils"
 import {
   CheckCircle2,
   Coins,
+  Database,
   Download,
   Eye,
   FileSpreadsheet,
@@ -61,7 +69,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 
-type CategoryTab = "equity" | "commodity" | "forex" | "bond" | "crypto"
+type CategoryTab = "equity" | "commodity" | "forex" | "bond" | "crypto" | "bloomberg"
 type SubcategoryTab = "all" | "masi" | "us" | "european" | "asian"
 
 const CATEGORY_TABS: { key: CategoryTab; label: string; icon: LucideIcon }[] = [
@@ -70,6 +78,7 @@ const CATEGORY_TABS: { key: CategoryTab; label: string; icon: LucideIcon }[] = [
   { key: "forex", label: "Devises", icon: Globe },
   { key: "bond", label: "Obligations", icon: Landmark },
   { key: "crypto", label: "Crypto", icon: Coins },
+  { key: "bloomberg", label: "Bloomberg", icon: Database },
 ]
 
 const SUBCATEGORY_TABS: { key: SubcategoryTab; label: string }[] = [
@@ -142,6 +151,8 @@ function getCategoryLabel(tab: CategoryTab | string | null | undefined) {
       return "Obligations"
     case "crypto":
       return "Crypto"
+    case "bloomberg":
+      return "Bloomberg"
     default:
       return tab || "Autre"
   }
@@ -193,6 +204,14 @@ function PrivateDataPage() {
   const { mutate: mutateTracked } = useTrackedStocks()
   const { data: masiTickers } = useMasiTickers()
   const { data: macroCatalog, mutate: mutateMacroCatalog } = useMacroCatalog()
+  const {
+    data: bloombergBatches,
+    error: bloombergBatchesError,
+  } = useBloombergBatches()
+  const {
+    data: bloombergSeries,
+    error: bloombergSeriesError,
+  } = useBloombergSeries()
 
   const [categoryTab, setCategoryTab] = useState<CategoryTab>("equity")
   const [subcategoryTab, setSubcategoryTab] = useState<SubcategoryTab>("all")
@@ -237,8 +256,9 @@ function PrivateDataPage() {
     for (const r of visibleCatalog) {
       counts[r.asset_type ?? "equity"] = (counts[r.asset_type ?? "equity"] ?? 0) + 1
     }
+    counts.bloomberg = bloombergSeries?.length ?? 0
     return counts
-  }, [visibleCatalog])
+  }, [visibleCatalog, bloombergSeries])
 
   const activeRows = useMemo(() => {
     const byType = visibleCatalog.filter((r) => (r.asset_type ?? "equity") === categoryTab)
@@ -438,44 +458,48 @@ function PrivateDataPage() {
               Ajouter un titre
             </Button>
           )}
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5 border-purple-600 text-purple-700 hover:bg-purple-50 hover:text-purple-800"
-            onClick={() => setAddFactorOpen(true)}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Ajouter un facteur
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5 border-green-600 text-green-700 hover:bg-green-50 hover:text-green-800"
-            onClick={() => setUploadOpen(true)}
-          >
-            <FileSpreadsheet className="h-3.5 w-3.5" />
-            Importer Excel
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5"
-            onClick={() => setDownloadOpen(true)}
-            disabled={isDownloading}
-          >
-            <Download className={`h-3.5 w-3.5 ${isDownloading ? "animate-pulse" : ""}`} />
-            {isDownloading ? "Telechargement..." : "Telecharger"}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5 border-blue-600 text-blue-700 hover:bg-blue-50 hover:text-blue-800"
-            onClick={handleRefreshAll}
-            disabled={refreshingAll}
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${refreshingAll ? "animate-spin" : ""}`} />
-            Mettre a jour
-          </Button>
+          {categoryTab !== "bloomberg" && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 border-purple-600 text-purple-700 hover:bg-purple-50 hover:text-purple-800"
+                onClick={() => setAddFactorOpen(true)}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Ajouter un facteur
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 border-green-600 text-green-700 hover:bg-green-50 hover:text-green-800"
+                onClick={() => setUploadOpen(true)}
+              >
+                <FileSpreadsheet className="h-3.5 w-3.5" />
+                Importer Excel
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => setDownloadOpen(true)}
+                disabled={isDownloading}
+              >
+                <Download className={`h-3.5 w-3.5 ${isDownloading ? "animate-pulse" : ""}`} />
+                {isDownloading ? "Telechargement..." : "Telecharger"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 border-blue-600 text-blue-700 hover:bg-blue-50 hover:text-blue-800"
+                onClick={handleRefreshAll}
+                disabled={refreshingAll}
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${refreshingAll ? "animate-spin" : ""}`} />
+                Mettre a jour
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -531,6 +555,14 @@ function PrivateDataPage() {
       {/* Indices data page content — kept for reference, tab no longer shown */}
       {/* IndicesTabContent removed: indices now surface in Actions/MASI subtab */}
 
+      {categoryTab === "bloomberg" ? (
+        <BloombergBridgePanel
+          batches={bloombergBatches}
+          series={bloombergSeries}
+          error={bloombergBatchesError ?? bloombergSeriesError}
+        />
+      ) : (
+        <>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="claude-stat primary">
           <div className="lbl">Symbols</div>
@@ -877,6 +909,215 @@ function PrivateDataPage() {
           )}
         </>
       )}
+        </>
+      )}
+    </div>
+  )
+}
+
+function BloombergBridgePanel({
+  batches,
+  series,
+  error,
+}: {
+  batches: BloombergBatch[] | undefined
+  series: BloombergSeries[] | undefined
+  error: unknown
+}) {
+  const totalRows = (batches ?? []).reduce((sum, batch) => sum + batch.row_count, 0)
+  const latestBatch = (batches ?? [])[0]
+  const latestDate = latestBatch ? dateOnly(latestBatch.created_at) : null
+  const uniqueSecurities = new Set((series ?? []).map((row) => row.security)).size
+  const uniqueFields = new Set((series ?? []).map((row) => row.field)).size
+
+  if (error) {
+    return (
+      <Card className="claude-card">
+        <CardContent className="flex min-h-32 flex-col items-center justify-center gap-2 px-5 py-8 text-center">
+          <p className="text-sm font-medium text-destructive">Impossible de charger les donnees Bloomberg.</p>
+          <p className="max-w-xl text-sm text-muted-foreground">
+            {error instanceof Error ? error.message : "Erreur proxy/API inconnue."}
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="claude-stat primary">
+          <div className="lbl">Batches</div>
+          <div className="val">{formatCount(batches?.length)}</div>
+          <div className="sub">{latestDate ? `dernier ${latestDate}` : "aucun upload"}</div>
+        </div>
+        <div className="claude-stat">
+          <div className="lbl">Series indexees</div>
+          <div className="val">{formatCount(series?.length)}</div>
+          <div className="sub">{formatCount(uniqueSecurities)} titres</div>
+        </div>
+        <div className="claude-stat">
+          <div className="lbl">Champs</div>
+          <div className="val">{formatCount(uniqueFields)}</div>
+          <div className="sub">Bloomberg fields</div>
+        </div>
+        <div className="claude-stat">
+          <div className="lbl">Lignes brutes</div>
+          <div className="val">{formatCount(totalRows)}</div>
+          <div className="sub">uploads stockes</div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card className="claude-card">
+          <CardHeader className="px-5 pb-3 pt-4">
+            <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+              <Database className="h-4 w-4" />
+              Recent batches
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="!p-0">
+            {!batches ? (
+              <div className="space-y-2 p-5">
+                {[...Array(4)].map((_, i) => (
+                  <Skeleton key={i} className="h-10 w-full" />
+                ))}
+              </div>
+            ) : batches.length === 0 ? (
+              <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
+                Aucun batch Bloomberg recu.
+              </div>
+            ) : (
+              <Table className="claude-table">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Bridge</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead className="text-right">Lignes</TableHead>
+                    <TableHead className="text-right">Series</TableHead>
+                    <TableHead className="text-right">Date</TableHead>
+                    <TableHead className="text-right">Fichiers</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {batches.slice(0, 12).map((batch) => (
+                    <TableRow key={batch.id}>
+                      <TableCell>
+                        <div className="font-mono text-xs font-semibold">{batch.bridge_id}</div>
+                        <div className="max-w-[180px] truncate font-mono text-[10px] text-muted-foreground">
+                          {batch.request_id}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-[10px]">
+                          {batch.bloomberg_source}/{batch.kind}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs">
+                        {formatCount(batch.row_count)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs">
+                        {formatCount(batch.series_count)}
+                      </TableCell>
+                      <TableCell className="text-right text-xs text-muted-foreground">
+                        {dateOnly(batch.created_at) ?? "-"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 gap-1 px-2 text-[11px]"
+                            onClick={() => window.open(`/api/bloomberg/batches/${batch.id}/raw`, "_blank")}
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                            Raw
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 gap-1 px-2 text-[11px]"
+                            disabled={!batch.normalized_object_key}
+                            onClick={() => window.open(`/api/bloomberg/batches/${batch.id}/normalized`, "_blank")}
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                            Parquet
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="claude-card">
+          <CardHeader className="px-5 pb-3 pt-4">
+            <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+              <TrendingUp className="h-4 w-4" />
+              Indexed series
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="!p-0">
+            {!series ? (
+              <div className="space-y-2 p-5">
+                {[...Array(4)].map((_, i) => (
+                  <Skeleton key={i} className="h-10 w-full" />
+                ))}
+              </div>
+            ) : series.length === 0 ? (
+              <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
+                Aucune serie indexee.
+              </div>
+            ) : (
+              <Table className="claude-table">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Security</TableHead>
+                    <TableHead>Field</TableHead>
+                    <TableHead className="text-right">Debut</TableHead>
+                    <TableHead className="text-right">Fin</TableHead>
+                    <TableHead className="text-right">Points</TableHead>
+                    <TableHead className="text-right">Fichier</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {series.slice(0, 12).map((row) => (
+                    <TableRow key={row.id}>
+                      <TableCell className="font-mono text-xs font-semibold">{row.security}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-[10px]">
+                          {row.field}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right text-xs text-muted-foreground">
+                        {dateOnly(row.start_ts) ?? "-"}
+                      </TableCell>
+                      <TableCell className="text-right text-xs text-muted-foreground">
+                        {dateOnly(row.end_ts) ?? "-"}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs">{formatCount(row.row_count)}</TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 gap-1 px-2 text-[11px]"
+                          onClick={() => window.open(`/api/bloomberg/series/${row.id}/download`, "_blank")}
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          Parquet
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }

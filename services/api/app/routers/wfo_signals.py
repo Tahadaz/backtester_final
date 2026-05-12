@@ -24,7 +24,8 @@ from core.quant_core.signal_engine.modes import (
 
 from ..auth import rate_limit_trigger, require_admin
 from ..db import get_db
-from ..models import StockMaster, WfoGlobalSignal, WfoSignalSummary
+from ..models import WfoGlobalSignal, WfoSignalSummary
+from ..services.market_universe import list_signal_universe_symbols
 
 router = APIRouter(prefix="/strategy/wfo", tags=["wfo-signals"])
 
@@ -576,7 +577,7 @@ def trigger_all_wfo(
     body: WfoTriggerAllRequest,
     db: Session = Depends(get_db),
 ) -> WfoTriggerAllResponse:
-    """Fan out WFO jobs for every active symbol × horizon × variant."""
+    """Fan out WFO jobs for every data-backed symbol x horizon x variant."""
     from redis import Redis
     from rq import Queue
     from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -587,7 +588,7 @@ def trigger_all_wfo(
 
     horizons: list[CanonicalHorizon] = ["weekly", "monthly", "quarterly"]
     categories = ["tendance", "momentum", "oscillation", "volume"]
-    symbols = [row.symbol for row in db.query(StockMaster).filter_by(is_active=True).all()]
+    symbols = list_signal_universe_symbols(db)
     variants = list(dict.fromkeys(signal_mode_storage_name(v) for v in (body.variants or list(ALL_SIGNAL_MODE_NAMES))))
 
     overrides: dict[str, Any] = {

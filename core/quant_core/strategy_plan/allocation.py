@@ -131,8 +131,8 @@ def compute_hrp_weights(
         return _equal_weights(clean_symbols)
 
     ordered_symbols = list(returns.columns)
-    cov = returns.cov().to_numpy(dtype=float)
-    corr = returns.corr().fillna(0.0).to_numpy(dtype=float)
+    cov = returns.cov().to_numpy(dtype=float, copy=True)
+    corr = returns.corr().fillna(0.0).to_numpy(dtype=float, copy=True)
     np.fill_diagonal(corr, 1.0)
 
     linkage = _single_linkage(corr)

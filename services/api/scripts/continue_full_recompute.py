@@ -21,6 +21,7 @@ from core.quant_core.signal_engine.modes import ALL_SIGNAL_MODE_NAMES
 from services.api.app import models
 from services.api.app.config import settings
 from services.api.app.db import _ensure_session_factory
+from services.api.app.services.market_universe import list_signal_universe_symbols
 
 
 LOG_PATH = os.getenv("FULL_RECOMPUTE_MONITOR_LOG", "/repo/services/api/scripts/full_recompute_monitor.log")
@@ -138,7 +139,7 @@ def queues_idle(counts: dict[str, dict[str, int]]) -> bool:
 
 
 def _active_symbols(db: Session) -> list[str]:
-    return [s for (s,) in db.query(models.StockMaster.symbol).filter_by(is_active=True).all()]
+    return list_signal_universe_symbols(db)
 
 
 def _missing_signal_engine(db: Session) -> list[tuple[str, str, str]]:

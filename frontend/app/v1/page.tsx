@@ -22,6 +22,7 @@ import {
 } from "@/lib/api"
 import type { DashboardDisplayMode, DashboardScoreSource, DashboardStock, DashboardView, Horizon } from "@/lib/dashboard-types"
 import { resolveHorizonPreset } from "@/lib/horizon"
+import { signalEvidenceUrl } from "@/lib/signal-evidence-url"
 import { IndexTab } from "@/components/dashboard-v1/index-tab"
 import { SectorTable } from "@/components/dashboard-v1/sector-table"
 import { StockTable } from "@/components/dashboard-v1/stock-table"
@@ -40,7 +41,7 @@ import { formatPercent } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 type ViewMode = "masi" | "complet"
-type AssetTab = "all" | "equity" | "commodity" | "bond"
+type AssetTab = "all" | "equity" | "commodity" | "forex" | "bond" | "crypto"
 type RegionTab = "all" | "masi" | "us" | "european" | "asian"
 type FamilyColumn = "tendance" | "momentum" | "oscillation" | "volume"
 
@@ -120,6 +121,7 @@ function clampNumber(value: number, min: number, max: number) {
 function bestActionableSignal(stock: DashboardStock) {
   const signal = stock.best_signal ?? null
   if (!signal) return null
+  if (signal.source !== "wfo") return null
   if (signal.direction === "none" || signal.bucket === "hold") return null
   if ((signal.bucket === "buy" || signal.bucket === "strong_buy") && signal.direction !== "long") return null
   if ((signal.bucket === "sell" || signal.bucket === "strong_sell") && signal.direction !== "short") return null
@@ -144,10 +146,10 @@ function hasProvenEdgeForMode(
 
 function TopActionableSignals({
   stocks,
-  onOpenEdge,
+  horizon,
 }: {
   stocks: DashboardStock[]
-  onOpenEdge: (stock: DashboardStock) => void
+  horizon: Horizon
 }) {
   const rows = useMemo(
     () =>
@@ -187,13 +189,24 @@ function TopActionableSignals({
         </div>
       ) : (
         <div className="grid divide-y divide-border">
-          {rows.map(({ stock, signal }) => (
-            <button
-              key={`${stock.symbol}-${signal.source}-${signal.variant}`}
-              type="button"
-              onClick={() => onOpenEdge(stock)}
-              className="grid gap-3 px-4 py-3 text-left transition hover:bg-bg2 md:grid-cols-[0.8fr_1.4fr_0.8fr_0.8fr_0.8fr]"
-            >
+          {rows.map(({ stock, signal }) => {
+            const evidenceHref = signalEvidenceUrl({
+              symbol: stock.symbol,
+              horizon,
+              view: signal.variant,
+              source: signal.source,
+              evidenceVariant: signal.variant,
+              tab: "evidence",
+            })
+
+            return (
+              <Link
+                key={`${stock.symbol}-${signal.source}-${signal.variant}`}
+                href={evidenceHref}
+                title={`Voir la preuve OOS ${stock.symbol}: ${signal.label}`}
+                aria-label={`Voir la preuve OOS ${stock.symbol}: ${signal.label}`}
+                className="grid gap-3 px-4 py-3 text-left transition hover:bg-bg2 md:grid-cols-[0.8fr_1.4fr_0.8fr_0.8fr_0.8fr]"
+              >
               <div>
                 <div className="dashboard-mono text-[13px] font-semibold">{stock.symbol}</div>
                 <div className="truncate text-[11px] text-muted-foreground">{stock.display_name ?? stock.sector ?? "-"}</div>
@@ -201,7 +214,7 @@ function TopActionableSignals({
               <div>
                 <div className="text-[12px] font-semibold">{signal.label}</div>
                 <div className="dashboard-mono mt-0.5 text-[10px] text-muted-foreground">
-                  {signal.source === "wfo" ? "WFO" : "Signal Engine"} · {displayVariantLabel(signal.variant)}
+                  WFO · {displayVariantLabel(signal.variant)}
                 </div>
               </div>
               <div>
@@ -223,11 +236,15 @@ function TopActionableSignals({
                   <span className="dashboard-mono text-muted-foreground">
                     %succés {formatPercent(signal.hit_rate)} · {signal.fwd_horizon_bars ?? "--"}j
                   </span>
+                  <span className="dashboard-mono text-muted-foreground">
+                    n={signal.proof_n ?? signal.n ?? "--"}
+                  </span>
                   <ExternalLink className="h-3 w-3 text-muted-foreground" />
                 </div>
               </div>
-            </button>
-          ))}
+              </Link>
+            )
+          })}
         </div>
       )}
     </div>
@@ -236,12 +253,13 @@ function TopActionableSignals({
 
 function downloadStocksCsv(stocks: DashboardStock[]) {
   const lines = [
-    ["symbol", "display_name", "sector", "asset_type", "market_region", "adv20_mad"].join(","),
+    ["symbol", "display_name", "sector", "asset_class", "asset_type", "market_region", "adv20_mad"].join(","),
     ...stocks.map((stock) =>
       [
         stock.symbol,
         stock.display_name ?? "",
         stock.sector ?? "",
+        stock.asset_class ?? "",
         stock.asset_type ?? "",
         stock.market_region ?? "",
         stock.adv ?? "",
@@ -310,6 +328,51 @@ function parsePositionsText(text: string): { positions: DashboardManualPosition[
   return { positions, error: null }
 }
 
+function shareMapFromPositions(positions: DashboardManualPosition[]) {
+  const out: Record<string, string> = {}
+  for (const position of positions) {
+    const symbol = String(position.symbol ?? "").trim().toUpperCase()
+    if (!symbol || position.side === "short" || position.quantity <= 0) continue
+    out[symbol] = String(position.quantity)
+  }
+  return out
+}
+
+function parseShareQuantity(value: string | number | null | undefined) {
+  const parsed = Number(String(value ?? "").replace(",", "."))
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
+
+function positionsFromShareMap(
+  sharesBySymbol: Record<string, string | number | null | undefined>,
+  savedPositions: DashboardManualPosition[],
+) {
+  const existingLongPositions = new Map(
+    savedPositions
+      .filter((position) => position.side !== "short")
+      .map((position) => [String(position.symbol ?? "").trim().toUpperCase(), position]),
+  )
+  const nextPositions: DashboardManualPosition[] = savedPositions
+    .filter((position) => position.side === "short" && position.quantity > 0)
+    .map((position) => ({ ...position, symbol: String(position.symbol ?? "").trim().toUpperCase() }))
+    .filter((position) => position.symbol)
+
+  for (const [rawSymbol, rawQuantity] of Object.entries(sharesBySymbol)) {
+    const symbol = rawSymbol.trim().toUpperCase()
+    const quantity = parseShareQuantity(rawQuantity)
+    if (!symbol || quantity == null) continue
+    const existing = existingLongPositions.get(symbol)
+    nextPositions.push({
+      ...(existing ?? {}),
+      symbol,
+      side: "long",
+      quantity,
+    })
+  }
+
+  return nextPositions.sort((left, right) => left.symbol.localeCompare(right.symbol))
+}
+
 function downloadBlotterCsv(blotter: DashboardDailyBlotterResponse | null) {
   if (!blotter) return
   const header = [
@@ -369,10 +432,11 @@ export default function DashboardV1Page() {
   const [horizon, setHorizon] = useState<Horizon>("monthly")
   const [view, setView] = useState<DashboardView>("stocks")
   const [showFilters, setShowFilters] = useState(true)
+  const [showTopActionableSignals, setShowTopActionableSignals] = useState(true)
   const [liquidityFilter, setLiquidityFilter] = useState(false)
   const [dashboardMode, setDashboardMode] = useState<DashboardDisplayMode>("trade_opportunities")
   const signalView: "expanded" = "expanded"
-  const scoreSource: DashboardScoreSource = "signal_engine"
+  const scoreSource: DashboardScoreSource = dashboardMode === "trade_opportunities" ? "wfo" : "signal_engine"
   const [visibleFamilies, setVisibleFamilies] = useState<Record<FamilyColumn, boolean>>({
     tendance: true,
     momentum: true,
@@ -397,6 +461,10 @@ export default function DashboardV1Page() {
   const [positionsDirty, setPositionsDirty] = useState(false)
   const [positionsSaving, setPositionsSaving] = useState(false)
   const [positionsSaveError, setPositionsSaveError] = useState<string | null>(null)
+  const [sectorShareQuantities, setSectorShareQuantities] = useState<Record<string, string>>({})
+  const [sectorSharesDirty, setSectorSharesDirty] = useState(false)
+  const [sectorSharesSaving, setSectorSharesSaving] = useState(false)
+  const [sectorSharesError, setSectorSharesError] = useState<string | null>(null)
   const [dashboardIndexActionError, setDashboardIndexActionError] = useState<string | null>(null)
 
   const { data, error, isLoading, mutate } = useDashboardData(horizon)
@@ -419,6 +487,12 @@ export default function DashboardV1Page() {
     }
   }, [positionsDirty, savedPositions])
 
+  useEffect(() => {
+    if (!sectorSharesDirty) {
+      setSectorShareQuantities(shareMapFromPositions(savedPositions))
+    }
+  }, [savedPositions, sectorSharesDirty])
+
   const parsedPositions = useMemo(() => parsePositionsText(positionText), [positionText])
   const activeManualPositions = parsedPositions.error ? savedPositions : parsedPositions.positions
 
@@ -438,6 +512,48 @@ export default function DashboardV1Page() {
       setPositionsSaveError(err instanceof Error ? err.message : "Position save failed")
     } finally {
       setPositionsSaving(false)
+    }
+  }
+
+  const updateSectorPortfolioShare = (symbol: string, value: string) => {
+    const normalizedSymbol = symbol.trim().toUpperCase()
+    if (!normalizedSymbol) return
+    setSectorSharesDirty(true)
+    setSectorSharesError(null)
+    setSectorShareQuantities((previous) => {
+      const next = { ...previous }
+      const quantity = parseShareQuantity(value)
+      if (quantity == null) {
+        delete next[normalizedSymbol]
+      } else {
+        next[normalizedSymbol] = value.trim()
+      }
+      return next
+    })
+  }
+
+  const resetSectorPortfolioShares = () => {
+    setSectorShareQuantities(shareMapFromPositions(savedPositions))
+    setSectorSharesDirty(false)
+    setSectorSharesError(null)
+  }
+
+  const saveSectorPortfolioShares = async () => {
+    setSectorSharesSaving(true)
+    setSectorSharesError(null)
+    try {
+      const nextPositions = positionsFromShareMap(sectorShareQuantities, savedPositions)
+      const saved = await saveDashboardPortfolioPositions(nextPositions)
+      await mutatePortfolioPositions(saved, false)
+      setSectorSharesDirty(false)
+      setSectorShareQuantities(shareMapFromPositions(saved))
+      if (!positionsDirty) {
+        setPositionText(formatPositionsText(saved))
+      }
+    } catch (err) {
+      setSectorSharesError(err instanceof Error ? err.message : "Position save failed")
+    } finally {
+      setSectorSharesSaving(false)
     }
   }
 
@@ -463,9 +579,13 @@ export default function DashboardV1Page() {
     runDashboardIndexAction(() => deleteDashboardIndex(id))
 
   const taxonomyMap = useMemo(() => {
-    const out: Record<string, { asset_type: string; market_region: string | null }> = {}
+    const out: Record<string, { asset_class: string | null; asset_type: string; market_region: string | null }> = {}
     for (const row of catalogData ?? []) {
-      out[row.symbol] = { asset_type: row.asset_type ?? "equity", market_region: row.market_region ?? null }
+      out[row.symbol] = {
+        asset_class: row.asset_class ?? "equity",
+        asset_type: row.asset_type ?? "equity",
+        market_region: row.market_region ?? null,
+      }
     }
     return out
   }, [catalogData])
@@ -474,6 +594,7 @@ export default function DashboardV1Page() {
     () =>
       (data?.stocks ?? []).map((stock) => ({
         ...stock,
+        asset_class: stock.asset_class ?? taxonomyMap[stock.symbol]?.asset_class ?? "equity",
         asset_type: stock.asset_type ?? taxonomyMap[stock.symbol]?.asset_type ?? "equity",
         market_region: stock.market_region ?? taxonomyMap[stock.symbol]?.market_region ?? null,
       })),
@@ -483,13 +604,16 @@ export default function DashboardV1Page() {
   const masiStocks = useMemo(
     () =>
       allStocks.filter(
-        (stock) => (stock.asset_type ?? "equity") === "equity" && (stock.market_region ?? "masi") === "masi",
+        (stock) =>
+          (stock.asset_class ?? "equity") === "equity" &&
+          (stock.asset_type ?? "equity") === "equity" &&
+          stock.market_region === "masi",
       ),
     [allStocks],
   )
 
   const edgeSource = scoreSource === "signal_engine" ? "signal_engine" : "wfo"
-  const ticketSource = dashboardMode === "trade_opportunities" ? "auto" : edgeSource
+  const ticketSource = dashboardMode === "trade_opportunities" ? "wfo" : edgeSource
   const edgeHorizon = resolveHorizonPreset(horizon).value
   const horizonDays = horizon === "weekly" ? 5 : horizon === "monthly" ? 21 : 63
 
@@ -627,9 +751,8 @@ export default function DashboardV1Page() {
   const completStocks = useMemo(() => {
     return allStocks
       .filter((stock) => assetTab === "all" || (stock.asset_type ?? "equity") === assetTab)
-      .filter((stock) => regionTab === "all" || (stock.market_region ?? "masi") === regionTab)
-      .filter((stock) => dashboardMode !== "trade_opportunities" || bestActionableSignal(stock) !== null)
-  }, [allStocks, assetTab, dashboardMode, regionTab])
+      .filter((stock) => regionTab === "all" || stock.market_region === regionTab)
+  }, [allStocks, assetTab, regionTab])
 
   const completeBullishCount = completStocks.filter((stock) =>
     dashboardMode === "technical_directions"
@@ -649,6 +772,9 @@ export default function DashboardV1Page() {
     [completStocks],
   )
   const medianCompleteTechnicalScore = median(completeTechnicalScoreValues)
+  const completeProvenEdgeCount = useMemo(() => {
+    return completStocks.filter((stock) => hasProvenEdgeForMode(stock, edgeMap[stock.symbol], edgeMode)).length
+  }, [completStocks, edgeMap, edgeMode])
 
   const bullishCount = visibleMasiStocks.filter((stock) =>
     dashboardMode === "technical_directions"
@@ -761,7 +887,7 @@ export default function DashboardV1Page() {
             Tableau de Bord <span className="dashboard-meta align-middle">v1</span>
           </h1>
           <p className="text-[12px] text-muted-foreground">
-            Signaux techniques · <span className="font-medium text-foreground">Marché MASI</span>
+            Signaux techniques · <span className="font-medium text-foreground">Univers multi-actifs</span>
             {data ? <span className="dashboard-meta ml-2">Mis à jour le {new Date(data.generated_at).toLocaleDateString("fr-FR")}</span> : null}
           </p>
         </div>
@@ -795,6 +921,19 @@ export default function DashboardV1Page() {
             <Filter className="h-3.5 w-3.5" />
             Filtres
           </Button>
+          {dashboardMode === "trade_opportunities" ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-md px-4 text-[13px]"
+              onClick={() => setShowTopActionableSignals((value) => !value)}
+              aria-pressed={showTopActionableSignals}
+              title={showTopActionableSignals ? "Masquer Top signaux actionnables" : "Afficher Top signaux actionnables"}
+            >
+              {showTopActionableSignals ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              {showTopActionableSignals ? "Masquer top signaux" : "Afficher top signaux"}
+            </Button>
+          ) : null}
           {dashboardMode === "technical_directions" ? (
             <Button
               variant="outline"
@@ -819,10 +958,10 @@ export default function DashboardV1Page() {
         </div>
       </div>
 
-      {data && dashboardMode === "trade_opportunities" ? (
+      {data && dashboardMode === "trade_opportunities" && showTopActionableSignals ? (
         <TopActionableSignals
           stocks={viewMode === "masi" ? visibleMasiStocks : completStocks}
-          onOpenEdge={setSelectedStock}
+          horizon={horizon}
         />
       ) : null}
 
@@ -850,14 +989,14 @@ export default function DashboardV1Page() {
         </div>
       ) : (
         <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-          <KpiTile label="Univers total" value={completStocks.length.toLocaleString("fr-FR")} sub={dashboardMode === "technical_directions" ? "directions techniques" : "opportunites tradables"} />
+          <KpiTile label="Univers total" value={completStocks.length.toLocaleString("fr-FR")} sub={dashboardMode === "technical_directions" ? "directions techniques" : "instruments disponibles"} />
           <KpiTile label={dashboardMode === "technical_directions" ? "Directions haussieres" : "Opportunites long"} value={completeBullishCount.toLocaleString("fr-FR")} tone="positive" sub={dashboardMode === "technical_directions" ? "best technique > +15" : "edge eligible"} />
           <KpiTile label={dashboardMode === "technical_directions" ? "Directions baissieres" : "Opportunites short"} value={completeBearishCount.toLocaleString("fr-FR")} tone="negative" sub={dashboardMode === "technical_directions" ? "best technique < -15" : "edge eligible"} />
           <KpiTile
             label={dashboardMode === "technical_directions" ? "Score technique median" : "Edge prouve"}
-            value={dashboardMode === "technical_directions" ? (medianCompleteTechnicalScore != null ? formatDecimal(medianCompleteTechnicalScore, 1) : "--") : provenEdgeCount.toLocaleString("fr-FR")}
+            value={dashboardMode === "technical_directions" ? (medianCompleteTechnicalScore != null ? formatDecimal(medianCompleteTechnicalScore, 1) : "--") : completeProvenEdgeCount.toLocaleString("fr-FR")}
             tone={dashboardMode === "technical_directions" ? undefined : "positive"}
-            sub={dashboardMode === "technical_directions" ? `${completeTechnicalScoreValues.length} directions techniques` : `sur ${Object.keys(edgeMap).length} instruments`}
+            sub={dashboardMode === "technical_directions" ? `${completeTechnicalScoreValues.length} directions techniques` : `sur ${completStocks.length} instruments`}
           />
         </div>
       )}
@@ -1038,6 +1177,13 @@ export default function DashboardV1Page() {
               edgeEnabled={edgeEnabled}
               showTechnicalLevels={false}
               visibleFamilies={visibleFamilies}
+              portfolioShares={sectorShareQuantities}
+              portfolioSharesDirty={sectorSharesDirty}
+              portfolioSharesSaving={sectorSharesSaving}
+              portfolioSharesError={sectorSharesError}
+              onPortfolioShareChange={updateSectorPortfolioShare}
+              onSavePortfolioShares={isPublicDashboardOnly ? undefined : () => void saveSectorPortfolioShares()}
+              onResetPortfolioShares={resetSectorPortfolioShares}
             />
           ) : view === "index" ? (
             <IndexTab
@@ -1124,8 +1270,8 @@ export default function DashboardV1Page() {
           }}
           symbol={selectedStock?.symbol ?? null}
           horizon={edgeHorizon}
-          initialSource={selectedStock?.best_signal?.source ?? edgeSource}
-          initialVariant={selectedStock?.best_signal?.variant ?? null}
+          initialSource={(selectedStock ? bestActionableSignal(selectedStock)?.source : null) ?? edgeSource}
+          initialVariant={(selectedStock ? bestActionableSignal(selectedStock)?.variant : null) ?? null}
           mode={edgeMode}
           onModeChange={setEdgeMode}
           costBps={EDGE_COST_BPS}
@@ -1650,7 +1796,9 @@ const ASSET_TABS: { value: AssetTab; label: string }[] = [
   { value: "all", label: "Tous" },
   { value: "equity", label: "Actions" },
   { value: "commodity", label: "Matières prem." },
+  { value: "forex", label: "Forex" },
   { value: "bond", label: "Obligations" },
+  { value: "crypto", label: "Crypto" },
 ]
 
 const REGION_TABS: { value: RegionTab; label: string }[] = [

@@ -92,6 +92,7 @@ function isActionableBestSignal(signal: DashboardBestSignal | null | undefined):
 
 function bestSignalForDisplay(stock: DashboardStock): DashboardBestSignal | null {
   const signal = stock.best_signal ?? null
+  if (signal?.source !== "wfo") return null
   if (!isActionableBestSignal(signal)) return null
   if (signal.action_expected_return_net == null || signal.hit_rate == null) return null
   return signal
@@ -172,7 +173,7 @@ function bestSignalTriage(signal: DashboardBestSignal | null | undefined): EdgeT
 }
 
 function shortMethodLabel(signal: DashboardBestSignal | null | undefined) {
-  if (!signal) return "No eligible edge"
+  if (!signal) return "No eligible WFO edge"
   return signal.label
     .replace("Signal Engine - ", "Engine ")
     .replace("Factor x TA", "FX")
@@ -254,7 +255,7 @@ function GlossaryHelpLink({ href, label }: { href: string; label: string }) {
 
 function BestSignalMethodCell({ signal }: { signal: DashboardBestSignal | null }) {
   if (!signal) {
-    return <span className="text-[11px] text-muted-foreground">No eligible edge</span>
+    return <span className="text-[11px] text-muted-foreground">No eligible WFO edge</span>
   }
   return (
     <div className="space-y-1">
@@ -306,7 +307,7 @@ export function StockTable({
   horizon,
   horizonDays,
   signalView = "expanded",
-  scoreSource = "signal_engine",
+  scoreSource = "wfo",
   displayMode = "trade_opportunities",
   hideDetails = false,
   edgeEnabled = true,

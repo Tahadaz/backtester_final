@@ -1,7 +1,7 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 
-import { normalizeTradeMarkers } from "./trade-marker-utils.js"
+import { filterTradeMarkersByKind, normalizeTradeMarkers } from "./trade-marker-utils.js"
 
 test("normalizeTradeMarkers maps long open and close ledger rows", () => {
   const markers = normalizeTradeMarkers([
@@ -77,4 +77,25 @@ test("normalizeTradeMarkers skips rows without usable dates or sides", () => {
   assert.deepEqual(markers, [
     { date: "2026-01-03", kind: "sell" },
   ])
+})
+
+test("filterTradeMarkersByKind keeps only selected marker kinds", () => {
+  const markers = normalizeTradeMarkers([
+    { date: "2026-01-02", side: "ACHAT", position: 1 },
+    { date: "2026-01-03", side: "VENTE", position: -1 },
+    { date: "2026-01-04", side: "VENTE", position: 0 },
+    { date: "2026-01-05", side: "ACHAT", position: 0 },
+  ])
+
+  assert.deepEqual(filterTradeMarkersByKind(markers, ["buy", "cover"]), [
+    { date: "2026-01-02", kind: "buy" },
+    { date: "2026-01-05", kind: "cover" },
+  ])
+})
+
+test("filterTradeMarkersByKind hides all markers when no kinds are visible", () => {
+  assert.deepEqual(
+    filterTradeMarkersByKind([{ date: "2026-01-02", kind: "buy" }], []),
+    [],
+  )
 })

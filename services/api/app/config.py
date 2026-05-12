@@ -100,6 +100,10 @@ class Settings(BaseModel):
     S3_USE_SSL: bool = _getenv_any("S3_USE_SSL", "S3_SECURE", default="false").lower() == "true"
 
     INTERNAL_JWT_SECRET: str = os.getenv("INTERNAL_JWT_SECRET", "").strip()
+    BLOOMBERG_BRIDGE_API_KEY: str = os.getenv("BLOOMBERG_BRIDGE_API_KEY", "").strip()
+    BLOOMBERG_BRIDGE_MAX_UPLOAD_BYTES: int = int(
+        os.getenv("BLOOMBERG_BRIDGE_MAX_UPLOAD_BYTES", "268435456")
+    )
 
     # Phase 0 — snapshot-cutover scaffolding.
     # ``legacy`` keeps the live-compute path; ``shadow`` serves legacy AND queries

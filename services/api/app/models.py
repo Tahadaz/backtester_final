@@ -398,7 +398,7 @@ class StockMaster(Base):
     isin = Column(String, nullable=True)                       # e.g. "MA0000011926"
     sector = Column(String, nullable=True)                     # e.g. "Banques"
     market_cap_class = Column(String, nullable=True)           # "large"|"mid"|"small"
-    asset_type = Column(String, nullable=False, default="equity")    # "equity"|"commodity"|"forex"|"bond"
+    asset_type = Column(String, nullable=False, default="equity")    # "equity"|"commodity"|"forex"|"bond"|"crypto"
     market_region = Column(String, nullable=True)              # "masi"|"us"|"european"|"asian"|null
     is_active = Column(Boolean, nullable=False, default=True)
     track_source = Column(String, nullable=False, default="bourse_direct")
@@ -452,6 +452,65 @@ class MacroFactorMeta(Base):
     __table_args__ = (
         Index("ix_macro_factor_meta_active", "active"),
         Index("ix_macro_factor_meta_asset_type", "asset_type"),
+    )
+
+
+class BloombergIngestBatch(Base):
+    """Immutable raw Bloomberg bridge upload plus normalized batch metadata."""
+    __tablename__ = "bloomberg_ingest_batch"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    bridge_id = Column(String(128), nullable=False)
+    request_id = Column(String(160), nullable=False)
+    bloomberg_source = Column(String(32), nullable=False)
+    kind = Column(String(32), nullable=False)
+    status = Column(String(32), nullable=False, default="succeeded")
+    raw_object_key = Column(String, nullable=False)
+    manifest_object_key = Column(String, nullable=False)
+    normalized_object_key = Column(String, nullable=True)
+    filename = Column(String, nullable=True)
+    content_type = Column(String, nullable=True)
+    size_bytes = Column(BigInteger, nullable=False, default=0)
+    data_sha256 = Column(String(64), nullable=False)
+    row_count = Column(Integer, nullable=False, default=0)
+    series_count = Column(Integer, nullable=False, default=0)
+    manifest_json = Column(JSONB, nullable=False, default=dict)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("bridge_id", "request_id", name="uq_bloomberg_ingest_batch_bridge_request"),
+        Index("ix_bloomberg_ingest_batch_created_at", "created_at"),
+        Index("ix_bloomberg_ingest_batch_bridge_id", "bridge_id"),
+        Index("ix_bloomberg_ingest_batch_kind", "kind"),
+    )
+
+
+class BloombergSeries(Base):
+    """Indexed Bloomberg time series derived from generic bridge uploads."""
+    __tablename__ = "bloomberg_series"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    series_key = Column(String(64), nullable=False, unique=True)
+    last_batch_id = Column(UUID(as_uuid=True), ForeignKey("bloomberg_ingest_batch.id"), nullable=False)
+    security = Column(String(256), nullable=False)
+    field = Column(String(128), nullable=False)
+    periodicity = Column(String(32), nullable=True)
+    overrides_hash = Column(String(64), nullable=False)
+    kind = Column(String(32), nullable=False, default="time_series")
+    object_key = Column(String, nullable=False)
+    start_ts = Column(DateTime(timezone=True), nullable=True)
+    end_ts = Column(DateTime(timezone=True), nullable=True)
+    row_count = Column(Integer, nullable=False, default=0)
+    metadata_json = Column(JSONB, nullable=False, default=dict)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_bloomberg_series_security", "security"),
+        Index("ix_bloomberg_series_field", "field"),
+        Index("ix_bloomberg_series_updated_at", "updated_at"),
     )
 
 

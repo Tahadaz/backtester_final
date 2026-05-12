@@ -12,6 +12,7 @@ from core.quant_core.horizons import canonical_horizon
 from core.quant_core.signal_engine.domain import ALL_FAMILIES, VARIANT_FAMILIES
 from core.quant_core.signal_engine.modes import resolve_signal_mode, signal_mode_storage_name
 from services.api.app.models import SignalEngineBatchJob
+from services.api.app.services.market_universe import list_signal_universe_symbols
 from services.api.app.services.weekly_recompute_policy import iter_signal_engine_weekly_stale_tuples
 from services.api.app.services.signal_engine_persistence import (
     DEFAULT_COOLDOWN_BARS,
@@ -39,9 +40,7 @@ def _require_canonical_signal_horizon(horizon: str) -> str:
 
 
 def _active_symbols(db: Session) -> list[str]:
-    from services.api.app.models import StockMaster
-
-    return [row.symbol for row in db.query(StockMaster).filter_by(is_active=True).all()]
+    return list_signal_universe_symbols(db)
 
 
 def _resolve_rq_meta_value(key: str) -> str | None:

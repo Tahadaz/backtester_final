@@ -96,6 +96,18 @@ def require_admin(
 require_api_key = require_auth
 
 
+def require_bloomberg_bridge_key(
+    x_bloomberg_bridge_key: str | None = Header(default=None),
+) -> None:
+    """Authenticate the dedicated Bloomberg bridge ingestion surface."""
+    bridge_key = settings.BLOOMBERG_BRIDGE_API_KEY.strip()
+    if not bridge_key:
+        raise HTTPException(status_code=503, detail="Bloomberg bridge is not configured")
+    if x_bloomberg_bridge_key and hmac.compare_digest(x_bloomberg_bridge_key, bridge_key):
+        return
+    raise HTTPException(status_code=401, detail="missing or invalid Bloomberg bridge key")
+
+
 # ---------------------------------------------------------------------------
 # Phase 0 — per-IP rate limit for trigger endpoints
 # ---------------------------------------------------------------------------

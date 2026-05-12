@@ -17,7 +17,6 @@ from services.api.app.models import (
     SignalEngineFamilyResult,
     SignalEngineGlobalResult,
     SignalScoreHistory,
-    StockMaster,
     WfoGlobalSignal,
     WfoSignalSummary,
 )
@@ -1109,7 +1108,7 @@ def test_signal_backtest_results_selected_direction_filters_chart_and_ledger():
     assert result["metrics"]["n_trades"] == 1
 
 
-def test_trigger_all_signal_engine_enqueues_all_active_symbols_and_horizons(monkeypatch):
+def test_trigger_all_signal_engine_enqueues_all_data_backed_symbols_and_horizons(monkeypatch):
     calls: list[tuple[str, str, str, str, str | None, str | None]] = []
     factor_jobs: list[tuple[str, bool]] = []
 
@@ -1136,11 +1135,12 @@ def test_trigger_all_signal_engine_enqueues_all_active_symbols_and_horizons(monk
         "services.api.app.queue._get_macro_ingest_queue",
         lambda: _FakeFactorQueue(),
     )
+    monkeypatch.setattr(
+        "services.api.app.services.market_universe.list_signal_universe_symbols",
+        lambda _db: ["AAA", "BBB"],
+    )
 
-    active_a = StockMaster(symbol="AAA", is_active=True)
-    active_b = StockMaster(symbol="BBB", is_active=True)
-    inactive = StockMaster(symbol="ZZZ", is_active=False)
-    client = TestClient(_app(_FakeDB({StockMaster: [active_a, active_b, inactive]})))
+    client = TestClient(_app(_FakeDB({})))
 
     response = client.post("/strategy/engine/trigger-all", json={})
 

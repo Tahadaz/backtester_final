@@ -132,6 +132,8 @@ services:
       ADMIN_API_KEY: ${ADMIN_API_KEY:-}
       ADMIN_SCOPES: ${ADMIN_SCOPES:-admin}
       INTERNAL_JWT_SECRET: ${INTERNAL_JWT_SECRET:-}
+      BLOOMBERG_BRIDGE_API_KEY: ${BLOOMBERG_BRIDGE_API_KEY:-}
+      BLOOMBERG_BRIDGE_MAX_UPLOAD_BYTES: ${BLOOMBERG_BRIDGE_MAX_UPLOAD_BYTES:-268435456}
       SENTRY_DSN: ${SENTRY_DSN:-}
       PYTHONPATH: /repo
     depends_on:
@@ -296,8 +298,10 @@ services:
       DATABASE_URL: postgresql://app:app@quant_postgres:5432/quant
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       AUTH_SECRET: ${NEXTAUTH_SECRET}
+      AUTH_REQUIRED: "true"
       AUTH_TRUST_HOST: "true"
       NEXTAUTH_URL: ${NEXTAUTH_URL:-https://84.8.218.252.sslip.io}
+      HIDE_WORKSPACE_NAV_ITEMS: "true"
       # Sentry (optional — no-op when unset)
       NEXT_PUBLIC_SENTRY_DSN: ${SENTRY_DSN:-}
     depends_on:

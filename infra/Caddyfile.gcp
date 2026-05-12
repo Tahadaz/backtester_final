@@ -9,6 +9,13 @@
     @allowed {
         remote_ip 127.0.0.1/32 172.16.0.0/12 {$ALLOWED_REMOTE_IPS:197.230.23.178/32}
     }
+    @bridge_allowed {
+        path /bridge/bloomberg/*
+        remote_ip 127.0.0.1/32 172.16.0.0/12 {$ALLOWED_REMOTE_IPS:197.230.23.178/32}
+    }
+    handle @bridge_allowed {
+        reverse_proxy quant_api:8000
+    }
     handle @allowed {
         reverse_proxy quant_frontend:3000
     }

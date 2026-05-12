@@ -4573,13 +4573,13 @@ def trigger_signal_engine(body: _TriggerBody, db: Session = Depends(get_db)):
 
 @router.post(
     "/engine/trigger-all",
-    summary="Trigger signal engine batch for all active symbols/horizons",
+    summary="Trigger signal engine batch for all data-backed symbols/horizons",
     dependencies=[Depends(require_admin), Depends(rate_limit_trigger)],
 )
 def trigger_all_signal_engine(body: _TriggerAllBody, db: Session = Depends(get_db)):
-    """Fan out signal-engine jobs for every active symbol × horizon × variant."""
-    from services.api.app.models import StockMaster
+    """Fan out signal-engine jobs for every data-backed symbol x horizon x variant."""
     from services.api.app.queue import _get_macro_ingest_queue
+    from services.api.app.services.market_universe import list_signal_universe_symbols
     from services.worker.tasks.signal_enqueue import enqueue_signal_engine_for_symbol
 
     horizons: list[CanonicalHorizon] = ["weekly", "monthly", "quarterly"]
@@ -4599,7 +4599,7 @@ def trigger_all_signal_engine(body: _TriggerAllBody, db: Session = Depends(get_d
     if not variants:
         variants = list(ALL_SIGNAL_MODE_NAMES)
 
-    symbols = [row.symbol for row in db.query(StockMaster).filter_by(is_active=True).all()]
+    symbols = list_signal_universe_symbols(db)
 
     total_jobs = 0
     factor_selection_jobs: dict[str, str] = {}

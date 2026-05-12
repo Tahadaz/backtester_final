@@ -41,6 +41,10 @@ class _FakeDB:
     def query(self, model):
         return _FakeQuery(self.rows_by_model.get(model, []))
 
+    def execute(self, stmt):
+        self.last_execute = stmt
+        return None
+
     def commit(self):
         return None
 
@@ -108,6 +112,38 @@ def test_trigger_wfo_computation_passes_max_reps_override(monkeypatch):
     rows = fake_db.rows_by_model[WfoSignalSummary]
     assert len(rows) == 4
     assert all(row.status == "running" for row in rows)
+
+
+def test_trigger_all_wfo_enqueues_data_backed_symbols(monkeypatch):
+    fake_db = _FakeDB({WfoSignalSummary: []})
+    enqueued: list[tuple[tuple, dict]] = []
+
+    class _FakeRedis:
+        @staticmethod
+        def from_url(*_args, **_kwargs):
+            return object()
+
+    class _FakeQueue:
+        def __init__(self, _name, connection=None):
+            self.connection = connection
+
+        def enqueue(self, *args, **kwargs):
+            enqueued.append((args, kwargs))
+            return types.SimpleNamespace(id=f"job-{len(enqueued)}")
+
+    monkeypatch.setattr(wfo_signals_router, "list_signal_universe_symbols", lambda _db: ["AAA", "VIX"])
+    monkeypatch.setitem(sys.modules, "redis", types.SimpleNamespace(Redis=_FakeRedis))
+    monkeypatch.setitem(sys.modules, "rq", types.SimpleNamespace(Queue=_FakeQueue))
+
+    body = wfo_signals_router.WfoTriggerAllRequest(variants=["expanded"])
+    response = wfo_signals_router.trigger_all_wfo(body, db=fake_db)
+
+    assert response.symbols == 2
+    assert response.horizons == ["weekly", "monthly", "quarterly"]
+    assert response.variants == ["expanded_ta_simple"]
+    assert response.total_jobs == 6
+    assert len(enqueued) == 6
+    assert {call[0][1] for call in enqueued} == {"AAA", "VIX"}
 
 
 def test_get_wfo_detail_honors_variant_selection():
