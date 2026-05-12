@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { Suspense, useEffect, useMemo, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { AlertTriangle, MoreHorizontal } from "lucide-react"
+import { AlertTriangle, BookOpen, MoreHorizontal, Play } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -294,9 +294,9 @@ function KeyValueList({
   return (
     <div className="grid gap-2 sm:grid-cols-2">
       {Object.entries(value).map(([key, raw]) => (
-        <div key={key} className="rounded-md border border-border/60 bg-secondary/10 px-3 py-2">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{key.replace(/_/g, " ")}</p>
-          <p className="mt-1 break-all font-mono text-xs text-foreground">
+        <div key={key} className="claude-stat">
+          <p className="lbl">{key.replace(/_/g, " ")}</p>
+          <p className="val !text-xs break-all">
             {typeof raw === "number" ? formatNumber(raw, 4) : typeof raw === "string" ? raw : JSON.stringify(raw)}
           </p>
         </div>
@@ -307,10 +307,48 @@ function KeyValueList({
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-border/70 bg-secondary/20 p-3">
-      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className="mt-1 text-lg font-semibold text-foreground">{value}</p>
+    <div className="claude-stat">
+      <p className="lbl">{label}</p>
+      <p className="val">{value}</p>
     </div>
+  )
+}
+
+function EdgeSignalSummary({ signals }: { signals: unknown[] }) {
+  const rows = signals.filter(isRecord)
+  if (rows.length === 0) return null
+  return (
+    <Card className="claude-card">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">Selected Edge Signals</CardTitle>
+        <CardDescription>These dashboard signal references are frozen into the strategy snapshot for this backtest.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto rounded-md border border-line">
+          <table className="claude-table min-w-[760px]">
+            <thead>
+              <tr><th>Ticker</th><th>Method</th><th>Triage</th><th>Direction</th><th className="r">Net ER</th><th className="r">Hit</th><th className="r">Proof</th></tr>
+            </thead>
+            <tbody>
+              {rows.map((signal, index) => (
+                <tr key={String(signal.candidate_id ?? index)}>
+                  <td className="font-mono font-medium">{String(signal.symbol ?? "--")}</td>
+                  <td>
+                    <div className="max-w-[320px] truncate">{String(signal.label ?? "--")}</div>
+                    <div className="text-xs text-muted-foreground">{String(signal.source ?? "--")} / {String(signal.variant ?? "--")}</div>
+                  </td>
+                  <td>{String(signal.triage ?? "watch")}</td>
+                  <td>{String(signal.direction ?? "--")}</td>
+                  <td className="r font-mono">{formatPercent(toNumber(signal.action_expected_return_net) ?? 0)}</td>
+                  <td className="r font-mono">{formatPercent(toNumber(signal.hit_rate) ?? 0)}</td>
+                  <td className="r font-mono">{String(signal.proof_n ?? signal.n ?? "--")}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -332,12 +370,12 @@ function WindowSummaryTable({
   const isClickable = Boolean(runId && symbol)
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-border/70">
-      <table className="w-full text-sm">
+    <div className="overflow-x-auto rounded-md border border-line">
+      <table className="claude-table">
         <thead>
-          <tr className="border-b border-border bg-secondary/20">
+          <tr>
             {["#", "Train", "OOS", "IS Return", "OOS Return", "Profile"].map((header) => (
-              <th key={header} className="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{header}</th>
+              <th key={header}>{header}</th>
             ))}
           </tr>
         </thead>
@@ -348,15 +386,15 @@ function WindowSummaryTable({
             return (
               <tr
                 key={String(summary.window_index ?? index)}
-                className={`border-b border-border/40 last:border-0 ${isClickable ? "cursor-pointer hover:bg-secondary/40" : ""}`}
+                className={isClickable ? "cursor-pointer" : ""}
                 onClick={isClickable ? () => router.push(`/backtest/window/${runId}/${encodeURIComponent(symbol!)}/${windowIndex}`) : undefined}
               >
-                <td className="px-3 py-2 font-mono text-xs">{formatNumber(toNumber(summary.window_index) ?? index, 0)}</td>
-                <td className="px-3 py-2 text-xs">{String(summary.train_start ?? "--")} to {String(summary.train_end ?? "--")}</td>
-                <td className="px-3 py-2 text-xs">{String(summary.oos_start ?? "--")} to {String(summary.oos_end ?? "--")}</td>
-                <td className="px-3 py-2 font-mono text-xs">{formatPercent(toNumber(summary.is_total_return) ?? 0)}</td>
-                <td className="px-3 py-2 font-mono text-xs">{formatPercent(toNumber(summary.oos_total_return) ?? 0)}</td>
-                <td className="px-3 py-2 text-xs">{Boolean(summary.profile_passes) ? "pass" : "warn"}</td>
+                <td className="font-mono text-xs">{formatNumber(toNumber(summary.window_index) ?? index, 0)}</td>
+                <td className="text-xs">{String(summary.train_start ?? "--")} to {String(summary.train_end ?? "--")}</td>
+                <td className="text-xs">{String(summary.oos_start ?? "--")} to {String(summary.oos_end ?? "--")}</td>
+                <td className="font-mono text-xs">{formatPercent(toNumber(summary.is_total_return) ?? 0)}</td>
+                <td className="font-mono text-xs">{formatPercent(toNumber(summary.oos_total_return) ?? 0)}</td>
+                <td className="text-xs">{Boolean(summary.profile_passes) ? "pass" : "warn"}</td>
               </tr>
             )
           })}
@@ -373,16 +411,13 @@ function ConfigComparisonTable({
 }) {
   if (!configs || configs.length === 0) return null
   return (
-    <div className="overflow-x-auto rounded-lg border border-border/70">
-      <table className="w-full text-sm">
+    <div className="overflow-x-auto rounded-md border border-line">
+      <table className="claude-table">
         <thead>
-          <tr className="border-b border-border bg-secondary/20">
+          <tr>
             {["Train", "OOS", "Windows", "WFE", "Robustness", "Profile", "Viable"].map(
               (h) => (
-                <th
-                  key={h}
-                  className="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground"
-                >
+                <th key={h}>
                   {h}
                 </th>
               ),
@@ -396,17 +431,17 @@ function ConfigComparisonTable({
             return (
               <tr
                 key={i}
-                className={`border-b border-border/40 last:border-0 ${Boolean(c.viable) ? "bg-green-500/5" : ""}`}
+                className={Boolean(c.viable) ? "bg-green-500/5" : ""}
               >
-                <td className="px-3 py-2 font-mono text-xs">{String(c.train_bars ?? "--")}</td>
-                <td className="px-3 py-2 font-mono text-xs">{String(c.oos_bars ?? "--")}</td>
-                <td className="px-3 py-2 font-mono text-xs">{String(c.window_count ?? "--")}</td>
-                <td className={`px-3 py-2 font-mono text-xs ${wfe >= 0.5 ? "text-green-600" : "text-amber-600"}`}>
+                <td className="font-mono text-xs">{String(c.train_bars ?? "--")}</td>
+                <td className="font-mono text-xs">{String(c.oos_bars ?? "--")}</td>
+                <td className="font-mono text-xs">{String(c.window_count ?? "--")}</td>
+                <td className={`font-mono text-xs ${wfe >= 0.5 ? "text-green-600" : "text-amber-600"}`}>
                   {formatPercent(wfe)}
                 </td>
-                <td className="px-3 py-2 font-mono text-xs">{formatPercent(robustness)}</td>
-                <td className="px-3 py-2 text-xs">{Boolean(c.profile_passes) ? "pass" : "warn"}</td>
-                <td className="px-3 py-2 text-xs font-semibold">{Boolean(c.viable) ? "Yes" : "No"}</td>
+                <td className="font-mono text-xs">{formatPercent(robustness)}</td>
+                <td className="text-xs">{Boolean(c.profile_passes) ? "pass" : "warn"}</td>
+                <td className="text-xs font-semibold">{Boolean(c.viable) ? "Yes" : "No"}</td>
               </tr>
             )
           })}
@@ -419,19 +454,19 @@ function ConfigComparisonTable({
 function MetricTable({ rows }: { rows: StrategyBacktestMetricRow[] }) {
   if (rows.length === 0) return <p className="text-sm text-muted-foreground">No trade performance rows yet.</p>
   return (
-    <div className="overflow-x-auto rounded-lg border border-border/70">
-      <table className="w-full text-sm">
+    <div className="overflow-x-auto rounded-md border border-line">
+      <table className="claude-table">
         <thead>
-          <tr className="border-b border-border bg-secondary/20">
-            <th className="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Metric</th>
-            <th className="px-3 py-2 text-right text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Value</th>
+          <tr>
+            <th>Metric</th>
+            <th className="r">Value</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.metric} className="border-b border-border/50 last:border-0">
-              <td className="px-3 py-2">{row.metric}</td>
-              <td className="px-3 py-2 text-right font-mono text-xs">{renderMetric(row.metric, row.value)}</td>
+            <tr key={row.metric}>
+              <td>{row.metric}</td>
+              <td className="r font-mono text-xs">{renderMetric(row.metric, row.value)}</td>
             </tr>
           ))}
         </tbody>
@@ -452,14 +487,12 @@ function TradeLedgerTable({
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-border/70">
-      <table className="w-full text-xs whitespace-nowrap">
+    <div className="overflow-x-auto rounded-md border border-line">
+      <table className="claude-table whitespace-nowrap">
         <thead>
-          <tr className="border-b border-border bg-secondary/20">
+          <tr>
             {["Date", "Side", "Open", "CMP", "Close", "Qty", "Rule Triggered", "Realized", "Latent"].map((header) => (
-              <th key={header} className="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                {header}
-              </th>
+              <th key={header}>{header}</th>
             ))}
           </tr>
         </thead>
@@ -468,18 +501,18 @@ function TradeLedgerTable({
             const realized = toNumber(row.pnl_realise)
             const latent = toNumber(row.pnl_latent)
             return (
-              <tr key={`${String(row.timestamp ?? "row")}-${index}`} className="border-b border-border/40 hover:bg-secondary/20">
-                <td className="px-3 py-1.5 font-mono">{formatDateTime(String(row.timestamp ?? ""))}</td>
-                <td className={`px-3 py-1.5 font-semibold uppercase ${sideTone(row.side)}`}>{String(row.side ?? "--")}</td>
-                <td className="px-3 py-1.5 tabular-nums">{formatNumber(toNumber(row.prix_execution_open_jour), 4)}</td>
-                <td className="px-3 py-1.5 tabular-nums">{formatNumber(toNumber(row.cmp), 4)}</td>
-                <td className="px-3 py-1.5 tabular-nums">{formatNumber(toNumber(row.close_du_jour), 4)}</td>
-                <td className="px-3 py-1.5 tabular-nums">{formatNumber(toNumber(row.quantite), 0)}</td>
-                <td className={`px-3 py-1.5 font-semibold ${sideTone(row.side)}`}>{triggeredRuleDisplay(row, stockConfig)}</td>
-                <td className={`px-3 py-1.5 tabular-nums font-semibold ${realized != null && realized > 0 ? "text-emerald-600" : realized != null && realized < 0 ? "text-red-600" : "text-muted-foreground"}`}>
+              <tr key={`${String(row.timestamp ?? "row")}-${index}`}>
+                <td className="font-mono">{formatDateTime(String(row.timestamp ?? ""))}</td>
+                <td className={`font-semibold uppercase ${sideTone(row.side)}`}>{String(row.side ?? "--")}</td>
+                <td className="tabular-nums">{formatNumber(toNumber(row.prix_execution_open_jour), 4)}</td>
+                <td className="tabular-nums">{formatNumber(toNumber(row.cmp), 4)}</td>
+                <td className="tabular-nums">{formatNumber(toNumber(row.close_du_jour), 4)}</td>
+                <td className="tabular-nums">{formatNumber(toNumber(row.quantite), 0)}</td>
+                <td className={`font-semibold ${sideTone(row.side)}`}>{triggeredRuleDisplay(row, stockConfig)}</td>
+                <td className={`tabular-nums font-semibold ${realized != null && realized > 0 ? "text-emerald-600" : realized != null && realized < 0 ? "text-red-600" : "text-muted-foreground"}`}>
                   {formatNumber(realized, 2)}
                 </td>
-                <td className={`px-3 py-1.5 tabular-nums font-semibold ${latent != null && latent > 0 ? "text-emerald-600" : latent != null && latent < 0 ? "text-red-600" : "text-muted-foreground"}`}>
+                <td className={`tabular-nums font-semibold ${latent != null && latent > 0 ? "text-emerald-600" : latent != null && latent < 0 ? "text-red-600" : "text-muted-foreground"}`}>
                   {formatNumber(latent, 2)}
                 </td>
               </tr>
@@ -635,11 +668,19 @@ function BacktestContentSaved() {
     if ([2, 3].includes(Number(config.schema_version))) {
       const portfolio = (config.portfolio as Record<string, unknown> | undefined) ?? {}
       const universe = (portfolio.universe as Record<string, unknown> | undefined) ?? {}
-      return { capital: portfolio.total_capital_mad, basket: Array.isArray(universe.basket) ? universe.basket : [] }
+      return {
+        capital: portfolio.total_capital_mad,
+        basket: Array.isArray(universe.basket) ? universe.basket : [],
+        edgeSignals: Array.isArray(universe.selected_signal_candidates) ? universe.selected_signal_candidates : [],
+      }
     }
     const capital = (config.capital as Record<string, unknown> | undefined) ?? {}
     const universe = (config.universe as Record<string, unknown> | undefined) ?? {}
-    return { capital: capital.total_capital_mad, basket: Array.isArray(universe.basket) ? universe.basket : [] }
+    return {
+      capital: capital.total_capital_mad,
+      basket: Array.isArray(universe.basket) ? universe.basket : [],
+      edgeSignals: [],
+    }
   }, [strategy])
 
   const runProgress = useMemo(() => (isRecord(strategyRun?.progress) ? strategyRun.progress : {}), [strategyRun?.progress])
@@ -779,11 +820,464 @@ function BacktestContentSaved() {
   }
 
   return (
-    <div className="flex flex-col gap-6 xl:flex-row">
+    <>
+      <div className="claude-backtest-shell">
+        <aside className="runs-sidebar">
+          <div className="rsh">
+            <h4>Saved Backtests</h4>
+            <Button asChild variant="ghost" size="icon" className="h-7 w-7">
+              <Link href={selectedStrategyId ? `/strategy?strategyId=${selectedStrategyId}` : "/strategy"}>+</Link>
+            </Button>
+          </div>
+          <div className="space-y-2 border-b border-line p-2">
+            <Input value={librarySearch} onChange={(event) => setLibrarySearch(event.target.value)} placeholder="Search runs" className="h-8 text-xs" />
+            <div className="grid grid-cols-2 gap-2">
+              <Select value={libraryModeFilter} onValueChange={setLibraryModeFilter}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All modes</SelectItem>
+                  <SelectItem value="direct">Direct</SelectItem>
+                  <SelectItem value="wfo">WFO</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={libraryStatusFilter} onValueChange={setLibraryStatusFilter}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All status</SelectItem>
+                  <SelectItem value="queued">Queued</SelectItem>
+                  <SelectItem value="running">Running</SelectItem>
+                  <SelectItem value="succeeded">Succeeded</SelectItem>
+                  <SelectItem value="failed">Failed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Select value={libraryStrategyFilter} onValueChange={setLibraryStrategyFilter}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All strategies</SelectItem>
+                {(strategies ?? []).map((item) => (
+                  <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="runs">
+            {(savedRuns ?? []).length === 0 ? (
+              <div className="rounded-md border border-dashed border-line px-3 py-6 text-xs text-muted-foreground">
+                No saved backtests yet.
+              </div>
+            ) : (
+              (savedRuns ?? []).map((item) => (
+                <div key={item.run_id} className={`run-item ${item.run_id === runId ? "active" : ""}`}>
+                  <div className="flex items-start gap-2">
+                    <button type="button" className="min-w-0 flex-1 text-left" onClick={() => openSavedRun(item.run_id, item.mode)}>
+                      <div className="ri-name truncate">{item.title}</div>
+                      <div className="ri-meta">{formatDateTime(item.created_at)}</div>
+                      <div className="ri-stats">
+                        <span className={item.status === "succeeded" ? "t-pos" : item.status === "failed" ? "t-neg" : "t-mut"}>{item.status}</span>
+                        <span className="t-mut">-</span>
+                        <span>{item.mode.toUpperCase()}</span>
+                      </div>
+                    </button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button type="button" variant="ghost" size="icon" className="h-7 w-7 shrink-0">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {isActiveStrategyBacktestStatus(item.status) ? (
+                          <DropdownMenuItem disabled={item.status === "cancel_requested" || cancelingRunId === item.run_id} onClick={() => void cancelSavedRun(item.run_id)}>
+                            {item.status === "cancel_requested" ? "Cancel requested" : cancelingRunId === item.run_id ? "Canceling..." : "Cancel"}
+                          </DropdownMenuItem>
+                        ) : null}
+                        <DropdownMenuItem onClick={() => { setRenameRunId(item.run_id); setRenameTitle(item.title) }}>Rename</DropdownMenuItem>
+                        <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeleteRunId(item.run_id)}>Delete</DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </aside>
+
+        <section className="bt-main">
+          <div className="mode-bar">
+            <h3>Configurer le backtest</h3>
+            <span className="seg ml-auto">
+              <button type="button" className={runMode === "direct" ? "active" : ""}>Direct</button>
+              <button type="button" className={runMode === "wfo" ? "active" : ""}>WFO</button>
+            </span>
+            <Button type="button" size="sm" onClick={runBacktest} disabled={!selectedStrategyId || isRunning || Boolean(compatibility?.blocking)} className="gap-2">
+              <Play className="h-4 w-4" />
+              {isRunning ? "Launching" : "Lancer"}
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href={selectedStrategyId ? `/strategy?strategyId=${selectedStrategyId}` : "/strategy"}>Open Strategy</Link>
+            </Button>
+            <Button asChild variant="ghost" size="sm" className="gap-2 text-muted-foreground">
+              <Link href="/glossary#backtest">
+                <BookOpen className="h-4 w-4" />
+                Glossaire
+              </Link>
+            </Button>
+          </div>
+
+          <div className="cfg-panel">
+            <div className="cfg-grid">
+              <div className="cfg-field">
+                <label>Strategie</label>
+                {strategiesLoading ? <Skeleton className="h-[30px] rounded-md" /> : (
+                  <Select value={selectedStrategyId ?? undefined} onValueChange={(value) => {
+                    setSetupStrategyId(value)
+                    setErrorMessage(null)
+                    setDirectResult(null)
+                    if (searchRunId) router.replace(`${pathname}?strategyId=${value}`, { scroll: false })
+                  }}>
+                    <SelectTrigger className="select"><SelectValue placeholder="Select strategy" /></SelectTrigger>
+                    <SelectContent>
+                      {(strategies ?? []).map((item) => (
+                        <SelectItem key={item.id} value={item.id}>{item.name} - {item.horizon} - {item.basket_count} stocks</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+              <div className="cfg-field">
+                <label>{runMode === "wfo" ? "Held-out start" : "Start date"}</label>
+                <Input className="input" type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+              </div>
+              <div className="cfg-field">
+                <label>{runMode === "wfo" ? "Held-out end" : "End date"}</label>
+                <Input className="input" type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
+              </div>
+              <div className="cfg-field">
+                <label>Capital initial</label>
+                <Input className="input" value={strategySummary ? formatCurrency(toNumber(strategySummary.capital) ?? 0) : "--"} readOnly />
+              </div>
+            </div>
+            <div className="cfg-row">
+              <div className="cfg-field">
+                <label>Brokerage</label>
+                <Input className="input" type="number" value={costModel.brokerage_bps} onChange={(event) => setCostModel((prev) => ({ ...prev, brokerage_bps: Number(event.target.value) }))} />
+              </div>
+              <div className="cfg-field">
+                <label>Slippage</label>
+                <Input className="input" type="number" value={costModel.slippage_bps} onChange={(event) => setCostModel((prev) => ({ ...prev, slippage_bps: Number(event.target.value) }))} />
+              </div>
+              <div className="cfg-field">
+                <label>Volume gate</label>
+                <Select value={volumeGateKind} onValueChange={(value) => setVolumeGateKind(value as "min_abs" | "min_ratio_adv")}>
+                  <SelectTrigger className="select"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="min_ratio_adv">Min ratio ADV</SelectItem>
+                    <SelectItem value="min_abs">Min absolute volume</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="cfg-field">
+                <label>Gate value</label>
+                {volumeGateKind === "min_abs" ? (
+                  <Input className="input" type="number" value={volumeGateMinAbs} onChange={(event) => setVolumeGateMinAbs(Number(event.target.value))} />
+                ) : (
+                  <Input className="input" type="number" step="0.01" value={volumeGateMinRatioAdv} onChange={(event) => setVolumeGateMinRatioAdv(Number(event.target.value))} />
+                )}
+              </div>
+              <div className="cfg-field">
+                <label>Family history</label>
+                <Select value={familyHistoryMode} onValueChange={(value) => setFamilyHistoryMode(value as FamilyHistoryMode)}>
+                  <SelectTrigger className="select"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="static_current_reps">Fixed reps</SelectItem>
+                    <SelectItem value="dynamic_point_in_time">Point-in-time</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {runMode === "wfo" ? (
+                <div className="cfg-field">
+                  <label>Min WFO</label>
+                  <Input className="input" type="number" min={1} value={wfoMinWalkForwards} onChange={(event) => setWfoMinWalkForwards(Number(event.target.value))} />
+                </div>
+              ) : null}
+              <div className="cfg-field">
+                <label>Cooldown</label>
+                <div className="flex h-[30px] items-center gap-2 rounded-md border border-line bg-card px-2">
+                  <Switch checked={cooldownEnabled} onCheckedChange={setCooldownEnabled} />
+                  <Input type="number" value={cooldownBars} onChange={(event) => setCooldownBars(Number(event.target.value))} disabled={!cooldownEnabled} className="h-6 w-16 border-0 p-0 text-xs shadow-none focus-visible:ring-0" />
+                </div>
+              </div>
+              <div className="ml-auto flex items-end">
+                <span className={`claude-chip ${volumeGateEnabled ? "amber" : ""}`}>
+                  <span className="dot" />
+                  {volumeGateEnabled ? "Volume gate actif" : "Volume gate off"}
+                </span>
+              </div>
+            </div>
+            {compatibility ? (
+              <div className={`mt-3 rounded-md border px-3 py-2 text-sm ${compatibility.blocking ? "border-destructive/30 bg-destructive/10 text-destructive" : "border-amber-300 bg-amber-50 text-amber-900"}`}>
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4" />
+                  <span>{compatibility.text}</span>
+                </div>
+              </div>
+            ) : null}
+            {errorMessage ? <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{errorMessage}</div> : null}
+          </div>
+
+          <div className="results">
+            {strategySummary ? (
+              <>
+                <div className="kpi4">
+                  <StatCard label="Capital" value={formatCurrency(toNumber(strategySummary?.capital) ?? 0)} />
+                  <StatCard label="Basket" value={`${strategySummary?.basket.length ?? 0} stocks`} />
+                  <StatCard label="Edge Signals" value={`${strategySummary?.edgeSignals.length ?? 0}`} />
+                  <StatCard label="Mode" value={runMode === "wfo" ? "WFO" : "Direct"} />
+                  <StatCard label="Timeframe" value="1D" />
+                </div>
+                <EdgeSignalSummary signals={strategySummary!.edgeSignals} />
+              </>
+            ) : null}
+
+            {runId && !strategyRun ? <Skeleton className="h-72 rounded-xl" /> : null}
+
+            {strategyRun ? (
+              <Card>
+                <CardHeader>
+                  <div className="claude-section-h m-0">
+                    <div>
+                      <h2>{strategyRun.title}</h2>
+                      <span className="meta">{strategyRun.strategy_name} - {strategyRun.status} - {formatDateTime(strategyRun.created_at)}</span>
+                    </div>
+                    {isActiveStrategyBacktestStatus(strategyRun.status) ? (
+                      <Button type="button" variant="outline" size="sm" disabled={strategyRun.status === "cancel_requested" || cancelingRunId === strategyRun.run_id} onClick={() => void cancelSavedRun(strategyRun.run_id)}>
+                        {strategyRun.status === "cancel_requested" ? "Cancel requested" : cancelingRunId === strategyRun.run_id ? "Canceling..." : "Cancel run"}
+                      </Button>
+                    ) : null}
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="kpi4">
+                    <StatCard label="Status" value={strategyRun.status} />
+                    <StatCard label="Mode" value={strategyRun.mode} />
+                    <StatCard label="Completed" value={`${formatNumber(toNumber(runProgress.completed) ?? 0, 0)} / ${formatNumber(toNumber(runProgress.total) ?? strategyRun.stocks.length, 0)}`} />
+                    <StatCard label="Message" value={String(runProgress.message ?? "--")} />
+                  </div>
+                  {strategyRun.error_text ? <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{strategyRun.error_text}</div> : null}
+                </CardContent>
+              </Card>
+            ) : null}
+
+            {showingSavedWfo ? (
+              <>
+                <Card>
+                  <CardHeader><CardTitle>Portfolio Held-Out Summary</CardTitle></CardHeader>
+                  <CardContent className="space-y-4">
+                    <KeyValueList value={((runSummary.portfolio as Record<string, unknown> | undefined)?.test_period as Record<string, unknown> | undefined)?.metrics as Record<string, unknown> | undefined} />
+                    <KeyValueList value={(runSummary.portfolio as Record<string, unknown> | undefined)?.robustness as Record<string, unknown> | undefined} />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader><CardTitle>Per Stock</CardTitle></CardHeader>
+                  <CardContent>
+                    <Tabs value={activeStock ?? undefined} onValueChange={setActiveStock}>
+                      <TabsList className="h-auto flex-wrap justify-start">
+                        {strategyRun?.stocks.map((stock) => <TabsTrigger key={stock.symbol} value={stock.symbol}>{stock.symbol}</TabsTrigger>)}
+                      </TabsList>
+                      {strategyRun?.stocks.map((stock) => {
+                        const detail = activeRunStockDetail?.symbol === stock.symbol ? activeRunStockDetail : null
+                        const stockResult = (detail?.result as Record<string, unknown> | undefined) ?? {}
+                        const windows = Array.isArray(stockResult.windows) ? (stockResult.windows as Array<Record<string, unknown>>) : []
+                        return (
+                          <TabsContent key={stock.symbol} value={stock.symbol} className="space-y-4 pt-4">
+                            <div className="kpi4">
+                              <StatCard label="Status" value={stock.status} />
+                              <StatCard label="WFE" value={formatNumber(toNumber(stock.summary.wfe ?? stock.summary.best_wfe) ?? 0, 3)} />
+                              <StatCard label="Robustness" value={formatPercent(toNumber(stock.summary.robustness_ratio ?? stock.summary.best_robustness_ratio) ?? 0)} />
+                              <StatCard label="Final Test Return" value={formatPercent(toNumber(stock.summary.final_test_return) ?? 0)} />
+                            </div>
+                            {detail ? (
+                              <div className="grid gap-4 xl:grid-cols-2">
+                                <Card><CardHeader><CardTitle>Winning Config</CardTitle></CardHeader><CardContent><KeyValueList value={stockResult.winning_config as Record<string, unknown> | undefined} /></CardContent></Card>
+                                <Card><CardHeader><CardTitle>Held-Out Test</CardTitle></CardHeader><CardContent><KeyValueList value={(stockResult.test_period as Record<string, unknown> | undefined)?.metrics as Record<string, unknown> | undefined} /></CardContent></Card>
+                                <Card className="xl:col-span-2"><CardHeader><CardTitle>Windows</CardTitle></CardHeader><CardContent><WindowSummaryTable windows={windows} runId={runId} symbol={stock.symbol} /></CardContent></Card>
+                              </div>
+                            ) : <p className="text-sm text-muted-foreground">Loading stock detail...</p>}
+                          </TabsContent>
+                        )
+                      })}
+                    </Tabs>
+                  </CardContent>
+                </Card>
+              </>
+            ) : null}
+
+            {showingSavedDirect || showingLocalDirect ? (
+              <>
+                <Card>
+                  <CardHeader>
+                    <div className="claude-section-h m-0">
+                      <div>
+                        <h2>Resultats - {showingSavedDirect ? strategyRun?.strategy_name : strategy?.name ?? "Selected strategy"}</h2>
+                        <span className="meta">{showingSavedDirect ? "saved direct run" : "direct backtest result"}</span>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {(() => {
+                      const m = isRecord((directGeneralResults as Record<string, unknown>).metrics)
+                        ? (directGeneralResults as Record<string, unknown>).metrics as Record<string, unknown>
+                        : null
+                      if (!m) return null
+                      return (
+                        <>
+                          <div className="kpi4">
+                            <StatCard label="Rendement total" value={formatPercent(toNumber(m.total_return) ?? 0)} />
+                            <StatCard label="Sharpe ratio" value={formatNumber(toNumber(m.sharpe) ?? 0, 2)} />
+                            <StatCard label="Max drawdown" value={formatPercent(toNumber(m.max_drawdown) ?? 0)} />
+                            <StatCard label="Win rate" value={formatPercent(toNumber(m.win_rate) ?? 0)} />
+                          </div>
+                          <div className="kpi8">
+                            <StatCard label="Net PnL" value={formatCurrency(toNumber(m.net_pnl) ?? 0)} />
+                            <StatCard label="CAGR" value={formatPercent(toNumber(m.cagr) ?? 0)} />
+                            <StatCard label="Trades" value={formatNumber(toNumber(m.number_of_trades) ?? 0, 0)} />
+                            <StatCard label="Fees" value={formatCurrency(toNumber(m.total_fees) ?? 0)} />
+                            <StatCard label="Sortino" value={formatNumber(toNumber(m.sortino) ?? 0, 2)} />
+                            <StatCard label="Calmar" value={formatNumber(toNumber(m.calmar) ?? 0, 2)} />
+                            <StatCard label="Profit factor" value={formatNumber(toNumber(m.profit_factor) ?? 0, 2)} />
+                            <StatCard label="Alpha" value={formatPercent(toNumber(m.alpha) ?? 0)} />
+                          </div>
+                        </>
+                      )
+                    })()}
+                    <div className="grid gap-4 xl:grid-cols-2">
+                      <Card><CardHeader><CardTitle>Courbe d'equite vs benchmark</CardTitle></CardHeader><CardContent className="bt-chart">{equityFigure ? <PlotlyChart figure={equityFigure} /> : <p className="p-4 text-sm text-muted-foreground">No cumulative plot available.</p>}</CardContent></Card>
+                      <Card><CardHeader><CardTitle>Drawdown</CardTitle></CardHeader><CardContent className="bt-chart">{drawdownFigure ? <PlotlyChart figure={drawdownFigure} /> : <p className="p-4 text-sm text-muted-foreground">No drawdown plot available.</p>}</CardContent></Card>
+                    </div>
+                    <div className="grid gap-4 xl:grid-cols-2">
+                      <Card><CardHeader><CardTitle>Monthly Returns</CardTitle></CardHeader><CardContent className="bt-chart">{monthlyFigure ? <PlotlyChart figure={monthlyFigure} /> : <p className="p-4 text-sm text-muted-foreground">No monthly heatmap available.</p>}</CardContent></Card>
+                      <Card><CardHeader><CardTitle>Yearly Returns</CardTitle></CardHeader><CardContent className="bt-chart">{yearlyFigure ? <PlotlyChart figure={yearlyFigure} /> : <p className="p-4 text-sm text-muted-foreground">No yearly plot available.</p>}</CardContent></Card>
+                    </div>
+                    <MetricTable rows={metricRowsFromValue((directGeneralResults as Record<string, unknown>).trade_performance ?? (directGeneralResults as Record<string, unknown>).metrics)} />
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader><CardTitle>By Stock</CardTitle></CardHeader>
+                  <CardContent>
+                    <Tabs value={activeStock ?? undefined} onValueChange={setActiveStock}>
+                      <TabsList className="h-auto flex-wrap justify-start">
+                        {showingSavedDirect
+                          ? strategyRun?.stocks.map((stock) => <TabsTrigger key={stock.symbol} value={stock.symbol}>{stock.symbol}</TabsTrigger>)
+                          : (directResult?.stocks ?? []).map((stock) => <TabsTrigger key={stock.symbol} value={stock.symbol}>{stock.symbol}</TabsTrigger>)}
+                      </TabsList>
+                      {showingSavedDirect
+                        ? strategyRun?.stocks.map((stock) => {
+                            const detail = activeRunStockDetail?.symbol === stock.symbol ? activeRunStockDetail : null
+                            const stockResult = (detail?.result as Record<string, unknown> | undefined) ?? {}
+                            const stockSummary = isRecord(stock.summary) ? stock.summary : {}
+                            const savedStockEquity = asFigure(stockResult.cumreturn_vs_benchmark)
+                            return (
+                              <TabsContent key={stock.symbol} value={stock.symbol} className="space-y-4 pt-4">
+                                <div className="kpi8">
+                                  <StatCard label="Allocation" value={formatCurrency(toNumber(stockSummary.capital_mad) ?? 0)} />
+                                  <StatCard label="Weight" value={formatPercent((toNumber(stockSummary.weight_pct) ?? 0) / 100)} />
+                                  <StatCard label="Net PnL" value={formatCurrency(toNumber(stockSummary.net_pnl) ?? 0)} />
+                                  <StatCard label="Return" value={formatPercent(toNumber(stockSummary.total_return) ?? 0)} />
+                                  <StatCard label="CAGR" value={formatPercent(toNumber(stockSummary.cagr) ?? 0)} />
+                                  <StatCard label="Sharpe" value={formatNumber(toNumber(stockSummary.sharpe) ?? 0, 2)} />
+                                  <StatCard label="Max DD" value={formatPercent(toNumber(stockSummary.max_drawdown) ?? 0)} />
+                                  <StatCard label="Trades" value={formatNumber(toNumber(stockSummary.number_of_trades ?? stockSummary.n_trades) ?? 0, 0)} />
+                                </div>
+                                {detail ? (
+                                  <>
+                                    <div className="grid gap-4 xl:grid-cols-2">
+                                      <Card><CardHeader><CardTitle>Price + Trades</CardTitle></CardHeader><CardContent className="bt-chart">{priceFigure ? <PlotlyChart figure={priceFigure} /> : <p className="p-4 text-sm text-muted-foreground">No price chart available.</p>}</CardContent></Card>
+                                      <Card><CardHeader><CardTitle>Equity vs Benchmark</CardTitle></CardHeader><CardContent className="bt-chart">{savedStockEquity ? <PlotlyChart figure={savedStockEquity} /> : <p className="p-4 text-sm text-muted-foreground">No equity chart available.</p>}</CardContent></Card>
+                                    </div>
+                                    <Card><CardHeader><CardTitle>Trade Ledger</CardTitle></CardHeader><CardContent><TradeLedgerTable rows={(stockResult.trade_ledger as Array<Record<string, unknown>>) ?? []} stockConfig={activeStrategyStockConfig} /></CardContent></Card>
+                                  </>
+                                ) : <p className="text-sm text-muted-foreground">Loading stock detail...</p>}
+                              </TabsContent>
+                            )
+                          })
+                        : (directResult?.stocks ?? []).map((stock) => {
+                            const summary = isRecord(stock.summary_metrics) ? stock.summary_metrics : {}
+                            const allocation = isRecord(stock.allocation) ? stock.allocation : {}
+                            const localStockEquity = asFigure((stock as Record<string, unknown>).cumreturn_vs_benchmark)
+                            return (
+                              <TabsContent key={stock.symbol} value={stock.symbol} className="space-y-4 pt-4">
+                                <div className="kpi8">
+                                  <StatCard label="Allocation" value={formatCurrency(toNumber(allocation.capital_mad) ?? 0)} />
+                                  <StatCard label="Weight" value={formatPercent((toNumber(allocation.weight_pct) ?? 0) / 100)} />
+                                  <StatCard label="Net PnL" value={formatCurrency(toNumber(summary.net_pnl) ?? 0)} />
+                                  <StatCard label="Return" value={formatPercent(toNumber(summary.total_return) ?? 0)} />
+                                  <StatCard label="CAGR" value={formatPercent(toNumber(summary.cagr) ?? 0)} />
+                                  <StatCard label="Sharpe" value={formatNumber(toNumber(summary.sharpe) ?? 0, 2)} />
+                                  <StatCard label="Max DD" value={formatPercent(toNumber(summary.max_drawdown) ?? 0)} />
+                                  <StatCard label="Trades" value={formatNumber(toNumber(summary.n_trades) ?? 0, 0)} />
+                                </div>
+                                <div className="grid gap-4 xl:grid-cols-2">
+                                  <Card><CardHeader><CardTitle>Price + Trades</CardTitle></CardHeader><CardContent className="bt-chart">{priceFigure ? <PlotlyChart figure={priceFigure} /> : <p className="p-4 text-sm text-muted-foreground">No price chart available.</p>}</CardContent></Card>
+                                  <Card><CardHeader><CardTitle>Equity vs Benchmark</CardTitle></CardHeader><CardContent className="bt-chart">{localStockEquity ? <PlotlyChart figure={localStockEquity} /> : <p className="p-4 text-sm text-muted-foreground">No equity chart available.</p>}</CardContent></Card>
+                                </div>
+                                <Card><CardHeader><CardTitle>Trade Ledger</CardTitle></CardHeader><CardContent><TradeLedgerTable rows={(stock.trade_ledger as Array<Record<string, unknown>>) ?? []} stockConfig={activeStrategyStockConfig} /></CardContent></Card>
+                              </TabsContent>
+                            )
+                          })}
+                    </Tabs>
+                  </CardContent>
+                </Card>
+              </>
+            ) : null}
+
+            {!runId && !showingLocalDirect ? (
+              <div className="flex h-64 items-center justify-center rounded-lg border border-dashed border-line bg-card text-sm text-muted-foreground">
+                Select a saved strategy and launch a direct or WFO backtest.
+              </div>
+            ) : null}
+          </div>
+        </section>
+      </div>
+
+      <Dialog open={Boolean(renameRunId)} onOpenChange={(open) => { if (!open) { setRenameRunId(null); setRenameTitle("") } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename Backtest</DialogTitle>
+            <DialogDescription>Update the saved title. The run contents stay immutable.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="rename-backtest-title">Title</Label>
+            <Input id="rename-backtest-title" value={renameTitle} onChange={(event) => setRenameTitle(event.target.value)} maxLength={200} />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setRenameRunId(null); setRenameTitle("") }}>Cancel</Button>
+            <Button onClick={submitRename} disabled={!renameTitle.trim()}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={Boolean(deleteRunId)} onOpenChange={(open) => { if (!open) setDeleteRunId(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Saved Backtest</AlertDialogTitle>
+            <AlertDialogDescription>This permanently removes the run and its persisted stock and WFO window details.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  )
+
+  return (
+    <div className="claude-page flex flex-col gap-6 xl:flex-row">
       <RetractableSavedSidebar storageKey="backtestSavedSidebar" label="Backtests" expandedWidth={320} className="xl:shrink-0">
-        <Card className="h-fit">
+        <Card className="claude-card h-fit">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Saved Backtests</CardTitle>
+          <CardTitle>Saved Backtests</CardTitle>
           <CardDescription>Open any persisted direct or WFO run from the library.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -824,7 +1318,7 @@ function BacktestContentSaved() {
               </div>
             ) : (
               (savedRuns ?? []).map((item) => (
-                <div key={item.run_id} className={`rounded-lg border ${item.run_id === runId ? "border-primary bg-primary/5" : "border-border/70"}`}>
+                <div key={item.run_id} className={`rounded-md border ${item.run_id === runId ? "border-[oklch(0.82_0.06_260)] bg-[oklch(0.94_0.04_260_/_0.55)]" : "border-transparent hover:border-line hover:bg-bg3"}`}>
                   <div className="flex items-start gap-2 p-3">
                     <button type="button" className="min-w-0 flex-1 text-left" onClick={() => openSavedRun(item.run_id, item.mode)}>
                       <p className="truncate text-sm font-semibold text-foreground">{item.title}</p>
@@ -864,19 +1358,19 @@ function BacktestContentSaved() {
       </RetractableSavedSidebar>
 
       <div className="min-w-0 flex-1 space-y-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="claude-page-h">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">Backtest</h1>
-            <p className="text-sm text-muted-foreground">Mode is auto-detected from your strategy. Strategies with WFO-marked parameters use the async walk-forward workflow.</p>
+            <h1>Backtest</h1>
+            <p className="sub">Configure direct or WFO execution, inspect saved runs, and review immutable result evidence.</p>
           </div>
           <Button asChild variant="outline" size="sm">
             <Link href={selectedStrategyId ? `/strategy?strategyId=${selectedStrategyId}` : "/strategy"}>Open Strategy</Link>
           </Button>
         </div>
 
-        <Card>
+        <Card className="claude-card">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Setup</CardTitle>
+            <CardTitle>Configure Backtest</CardTitle>
             <CardDescription>
               {runMode === "direct"
                 ? "No WFO-marked parameters detected. Direct mode now launches as an async saved run."
@@ -935,29 +1429,29 @@ function BacktestContentSaved() {
             ) : null}
 
             {strategySummary ? (
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-lg border border-border/70 bg-secondary/20 p-3">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Capital</p>
-                  <p className="mt-1 text-lg font-semibold text-foreground">{formatCurrency(toNumber(strategySummary.capital) ?? 0)}</p>
+              <>
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                  <StatCard label="Capital" value={formatCurrency(toNumber(strategySummary!.capital) ?? 0)} />
+                  <StatCard label="Basket" value={`${strategySummary!.basket.length} stocks`} />
+                  <StatCard label="Edge Signals" value={`${strategySummary!.edgeSignals.length}`} />
+                  <StatCard label="Mode" value={runMode === "wfo" ? "WFO" : "Direct"} />
+                  <StatCard label="Timeframe" value="1D" />
                 </div>
-                <div className="rounded-lg border border-border/70 bg-secondary/20 p-3">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Basket</p>
-                  <p className="mt-1 text-lg font-semibold text-foreground">{strategySummary.basket.length} stocks</p>
-                </div>
-              </div>
+                <EdgeSignalSummary signals={strategySummary!.edgeSignals} />
+              </>
             ) : null}
 
             {compatibility ? (
-              <div className={`rounded-lg border px-3 py-2 text-sm ${compatibility.blocking ? "border-destructive/30 bg-destructive/10 text-destructive" : "border-amber-300 bg-amber-50 text-amber-900"}`}>
+              <div className={`rounded-lg border px-3 py-2 text-sm ${compatibility?.blocking ? "border-destructive/30 bg-destructive/10 text-destructive" : "border-amber-300 bg-amber-50 text-amber-900"}`}>
                 <div className="flex items-start gap-2">
                   <AlertTriangle className="mt-0.5 h-4 w-4" />
-                  <span>{compatibility.text}</span>
+                  <span>{compatibility?.text}</span>
                 </div>
               </div>
             ) : null}
 
             <div className="grid gap-4 xl:grid-cols-3">
-              <Card className="border-dashed">
+              <Card className="claude-card border-dashed">
                 <CardHeader className="pb-2"><CardTitle className="text-sm">Costs</CardTitle></CardHeader>
                 <CardContent className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1.5"><Label>Brokerage</Label><Input type="number" value={costModel.brokerage_bps} onChange={(e) => setCostModel((prev) => ({ ...prev, brokerage_bps: Number(e.target.value) }))} /></div>
@@ -966,7 +1460,7 @@ function BacktestContentSaved() {
                   <div className="space-y-1.5"><Label>Slippage</Label><Input type="number" value={costModel.slippage_bps} onChange={(e) => setCostModel((prev) => ({ ...prev, slippage_bps: Number(e.target.value) }))} /></div>
                 </CardContent>
               </Card>
-              <Card className="border-dashed">
+              <Card className="claude-card border-dashed">
                 <CardHeader className="pb-2"><CardTitle className="text-sm">Volume Gate</CardTitle></CardHeader>
                 <CardContent className="space-y-3">
                   <div className="flex items-center justify-between"><Label>Enable volume gate</Label><Switch checked={volumeGateEnabled} onCheckedChange={setVolumeGateEnabled} /></div>
@@ -978,7 +1472,7 @@ function BacktestContentSaved() {
                   <Input type="number" value={volumeGateAdvWindow} onChange={(e) => setVolumeGateAdvWindow(Number(e.target.value))} />
                 </CardContent>
               </Card>
-              <Card className="border-dashed">
+              <Card className="claude-card border-dashed">
                 <CardHeader className="pb-2"><CardTitle className="text-sm">Run</CardTitle></CardHeader>
                 <CardContent className="space-y-3">
                   <div className="space-y-1.5">
@@ -1012,53 +1506,53 @@ function BacktestContentSaved() {
         {runId && !strategyRun ? <Skeleton className="h-72 rounded-xl" /> : null}
 
         {strategyRun ? (
-          <Card>
+          <Card className="claude-card">
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">{strategyRun.title}</CardTitle>
-              <CardDescription>{strategyRun.strategy_name} - {strategyRun.status} - {formatDateTime(strategyRun.created_at)}</CardDescription>
+              <CardTitle>{strategyRun?.title}</CardTitle>
+              <CardDescription>{strategyRun?.strategy_name} - {strategyRun?.status} - {formatDateTime(strategyRun?.created_at)}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-3 md:grid-cols-4">
-                <div className="rounded-lg border border-border/70 bg-secondary/20 p-3"><p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Status</p><p className="mt-1 text-lg font-semibold text-foreground">{strategyRun.status}</p></div>
-                <div className="rounded-lg border border-border/70 bg-secondary/20 p-3"><p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Mode</p><p className="mt-1 text-lg font-semibold text-foreground">{strategyRun.mode}</p></div>
-                <div className="rounded-lg border border-border/70 bg-secondary/20 p-3"><p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Completed</p><p className="mt-1 text-lg font-semibold text-foreground">{formatNumber(toNumber(runProgress.completed) ?? 0, 0)} / {formatNumber(toNumber(runProgress.total) ?? strategyRun.stocks.length, 0)}</p></div>
-                <div className="rounded-lg border border-border/70 bg-secondary/20 p-3"><p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Message</p><p className="mt-1 text-sm text-foreground">{String(runProgress.message ?? "--")}</p></div>
+                <StatCard label="Status" value={strategyRun?.status ?? "--"} />
+                <StatCard label="Mode" value={strategyRun?.mode ?? "--"} />
+                <StatCard label="Completed" value={`${formatNumber(toNumber(runProgress.completed) ?? 0, 0)} / ${formatNumber(toNumber(runProgress.total) ?? strategyRun?.stocks.length ?? 0, 0)}`} />
+                <StatCard label="Message" value={String(runProgress.message ?? "--")} />
               </div>
-              {isActiveStrategyBacktestStatus(strategyRun.status) ? (
+              {strategyRun && isActiveStrategyBacktestStatus(strategyRun!.status) ? (
                 <div className="flex justify-end">
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    disabled={strategyRun.status === "cancel_requested" || cancelingRunId === strategyRun.run_id}
-                    onClick={() => void cancelSavedRun(strategyRun.run_id)}
+                    disabled={strategyRun!.status === "cancel_requested" || cancelingRunId === strategyRun!.run_id}
+                    onClick={() => void cancelSavedRun(strategyRun!.run_id)}
                   >
-                    {strategyRun.status === "cancel_requested"
+                    {strategyRun!.status === "cancel_requested"
                       ? "Cancel requested"
-                      : cancelingRunId === strategyRun.run_id
+                      : cancelingRunId === strategyRun!.run_id
                         ? "Canceling..."
                         : "Cancel run"}
                   </Button>
                 </div>
               ) : null}
-              {strategyRun.error_text ? <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{strategyRun.error_text}</div> : null}
+              {strategyRun?.error_text ? <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{strategyRun?.error_text}</div> : null}
             </CardContent>
           </Card>
         ) : null}
         {showingSavedWfo ? (
           <>
-            <Card>
+            <Card className="claude-card">
               <CardHeader className="pb-3">
-                <CardTitle className="text-base">Portfolio Held-Out Summary</CardTitle>
+                <CardTitle>Portfolio Held-Out Summary</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <KeyValueList value={((runSummary.portfolio as Record<string, unknown> | undefined)?.test_period as Record<string, unknown> | undefined)?.metrics as Record<string, unknown> | undefined} />
                 <KeyValueList value={(runSummary.portfolio as Record<string, unknown> | undefined)?.robustness as Record<string, unknown> | undefined} />
               </CardContent>
             </Card>
-            <Card>
+            <Card className="claude-card">
               <CardHeader className="pb-3">
-                <CardTitle className="text-base">Per Stock</CardTitle>
+                <CardTitle>Per Stock</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <Tabs value={activeStock ?? undefined} onValueChange={setActiveStock}>
@@ -1072,10 +1566,10 @@ function BacktestContentSaved() {
                     return (
                       <TabsContent key={stock.symbol} value={stock.symbol} className="space-y-4">
                         <div className="grid gap-3 md:grid-cols-4">
-                          <div className="rounded-lg border border-border/70 bg-secondary/20 p-3"><p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Status</p><p className="mt-1 text-lg font-semibold text-foreground">{stock.status}</p></div>
-                          <div className="rounded-lg border border-border/70 bg-secondary/20 p-3"><p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">WFE</p><p className="mt-1 text-lg font-semibold text-foreground">{formatNumber(toNumber(stock.summary.wfe ?? stock.summary.best_wfe) ?? 0, 3)}</p></div>
-                          <div className="rounded-lg border border-border/70 bg-secondary/20 p-3"><p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Robustness</p><p className="mt-1 text-lg font-semibold text-foreground">{formatPercent(toNumber(stock.summary.robustness_ratio ?? stock.summary.best_robustness_ratio) ?? 0)}</p></div>
-                          <div className="rounded-lg border border-border/70 bg-secondary/20 p-3"><p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Final Test Return</p><p className="mt-1 text-lg font-semibold text-foreground">{formatPercent(toNumber(stock.summary.final_test_return) ?? 0)}</p></div>
+                          <StatCard label="Status" value={stock.status} />
+                          <StatCard label="WFE" value={formatNumber(toNumber(stock.summary.wfe ?? stock.summary.best_wfe) ?? 0, 3)} />
+                          <StatCard label="Robustness" value={formatPercent(toNumber(stock.summary.robustness_ratio ?? stock.summary.best_robustness_ratio) ?? 0)} />
+                          <StatCard label="Final Test Return" value={formatPercent(toNumber(stock.summary.final_test_return) ?? 0)} />
                         </div>
                         {stock.error_text ? <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{stock.error_text}</div> : null}
                         {(stock.status === "not_viable" || stockResult.status === "not_viable") &&
@@ -1094,12 +1588,12 @@ function BacktestContentSaved() {
                         )}
                         {detail ? (
                           <>
-                            <Card><CardHeader className="pb-2"><CardTitle className="text-sm">{stockResult.status === "not_viable" ? "Best Config (Not Viable)" : "Winning Config"}</CardTitle></CardHeader><CardContent><KeyValueList value={stockResult.winning_config as Record<string, unknown> | undefined} /></CardContent></Card>
-                            <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Final Params</CardTitle></CardHeader><CardContent><KeyValueList value={stockResult.final_params as Record<string, unknown> | undefined} /></CardContent></Card>
-                            <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Windows</CardTitle></CardHeader><CardContent><WindowSummaryTable windows={windows} runId={runId} symbol={stock.symbol} /></CardContent></Card>
+                            <Card className="claude-card"><CardHeader className="pb-2"><CardTitle className="text-sm">{stockResult.status === "not_viable" ? "Best Config (Not Viable)" : "Winning Config"}</CardTitle></CardHeader><CardContent><KeyValueList value={stockResult.winning_config as Record<string, unknown> | undefined} /></CardContent></Card>
+                            <Card className="claude-card"><CardHeader className="pb-2"><CardTitle className="text-sm">Final Params</CardTitle></CardHeader><CardContent><KeyValueList value={stockResult.final_params as Record<string, unknown> | undefined} /></CardContent></Card>
+                            <Card className="claude-card"><CardHeader className="pb-2"><CardTitle className="text-sm">Windows</CardTitle></CardHeader><CardContent><WindowSummaryTable windows={windows} runId={runId} symbol={stock.symbol} /></CardContent></Card>
                             {Array.isArray(stockResult.all_configs_tested) &&
                               stockResult.all_configs_tested.length > 0 && (
-                              <Card>
+                              <Card className="claude-card">
                                 <CardHeader className="pb-2">
                                   <CardTitle className="text-sm">All Configs Tested</CardTitle>
                                 </CardHeader>
@@ -1110,7 +1604,7 @@ function BacktestContentSaved() {
                                 </CardContent>
                               </Card>
                             )}
-                            <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Held-Out Test</CardTitle></CardHeader><CardContent><KeyValueList value={(stockResult.test_period as Record<string, unknown> | undefined)?.metrics as Record<string, unknown> | undefined} /></CardContent></Card>
+                            <Card className="claude-card"><CardHeader className="pb-2"><CardTitle className="text-sm">Held-Out Test</CardTitle></CardHeader><CardContent><KeyValueList value={(stockResult.test_period as Record<string, unknown> | undefined)?.metrics as Record<string, unknown> | undefined} /></CardContent></Card>
                           </>
                         ) : <p className="text-sm text-muted-foreground">Loading stock detail...</p>}
                       </TabsContent>
@@ -1124,9 +1618,9 @@ function BacktestContentSaved() {
 
         {showingSavedDirect || showingLocalDirect ? (
           <>
-            <Card>
+            <Card className="claude-card">
               <CardHeader className="pb-3">
-                <CardTitle className="text-base">General Results</CardTitle>
+                <CardTitle>General Results</CardTitle>
                 <CardDescription>
                   {showingSavedDirect
                     ? `${strategyRun?.strategy_name} - saved direct run`
@@ -1141,31 +1635,31 @@ function BacktestContentSaved() {
                   if (!m) return null
                   return (
                     <div className="grid gap-3 md:grid-cols-4 xl:grid-cols-8">
-                      <StatCard label="Net PnL" value={formatCurrency(toNumber(m.net_pnl) ?? 0)} />
-                      <StatCard label="Return" value={formatPercent(toNumber(m.total_return) ?? 0)} />
-                      <StatCard label="CAGR" value={formatPercent(toNumber(m.cagr) ?? 0)} />
-                      <StatCard label="Sharpe" value={formatNumber(toNumber(m.sharpe) ?? 0, 2)} />
-                      <StatCard label="Max DD" value={formatPercent(toNumber(m.max_drawdown) ?? 0)} />
-                      <StatCard label="Win Rate" value={formatPercent(toNumber(m.win_rate) ?? 0)} />
-                      <StatCard label="Trades" value={formatNumber(toNumber(m.number_of_trades) ?? 0, 0)} />
-                      <StatCard label="Fees" value={formatCurrency(toNumber(m.total_fees) ?? 0)} />
+                      <StatCard label="Net PnL" value={formatCurrency(toNumber(m?.net_pnl) ?? 0)} />
+                      <StatCard label="Return" value={formatPercent(toNumber(m?.total_return) ?? 0)} />
+                      <StatCard label="CAGR" value={formatPercent(toNumber(m?.cagr) ?? 0)} />
+                      <StatCard label="Sharpe" value={formatNumber(toNumber(m?.sharpe) ?? 0, 2)} />
+                      <StatCard label="Max DD" value={formatPercent(toNumber(m?.max_drawdown) ?? 0)} />
+                      <StatCard label="Win Rate" value={formatPercent(toNumber(m?.win_rate) ?? 0)} />
+                      <StatCard label="Trades" value={formatNumber(toNumber(m?.number_of_trades) ?? 0, 0)} />
+                      <StatCard label="Fees" value={formatCurrency(toNumber(m?.total_fees) ?? 0)} />
                     </div>
                   )
                 })()}
                 <div className="grid gap-4 xl:grid-cols-2">
-                  <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Equity vs Benchmark</CardTitle></CardHeader><CardContent>{equityFigure ? <PlotlyChart figure={equityFigure} /> : <p className="text-sm text-muted-foreground">No cumulative plot available.</p>}</CardContent></Card>
-                  <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Drawdown</CardTitle></CardHeader><CardContent>{drawdownFigure ? <PlotlyChart figure={drawdownFigure} /> : <p className="text-sm text-muted-foreground">No drawdown plot available.</p>}</CardContent></Card>
+                  <Card className="claude-card"><CardHeader className="pb-2"><CardTitle className="text-sm">Equity vs Benchmark</CardTitle></CardHeader><CardContent>{equityFigure ? <PlotlyChart figure={equityFigure ?? undefined} /> : <p className="text-sm text-muted-foreground">No cumulative plot available.</p>}</CardContent></Card>
+                  <Card className="claude-card"><CardHeader className="pb-2"><CardTitle className="text-sm">Drawdown</CardTitle></CardHeader><CardContent>{drawdownFigure ? <PlotlyChart figure={drawdownFigure ?? undefined} /> : <p className="text-sm text-muted-foreground">No drawdown plot available.</p>}</CardContent></Card>
                 </div>
                 <div className="grid gap-4 xl:grid-cols-2">
-                  <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Monthly Returns</CardTitle></CardHeader><CardContent>{monthlyFigure ? <PlotlyChart figure={monthlyFigure} /> : <p className="text-sm text-muted-foreground">No monthly heatmap available.</p>}</CardContent></Card>
-                  <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Yearly Returns</CardTitle></CardHeader><CardContent>{yearlyFigure ? <PlotlyChart figure={yearlyFigure} /> : <p className="text-sm text-muted-foreground">No yearly plot available.</p>}</CardContent></Card>
+                  <Card className="claude-card"><CardHeader className="pb-2"><CardTitle className="text-sm">Monthly Returns</CardTitle></CardHeader><CardContent>{monthlyFigure ? <PlotlyChart figure={monthlyFigure ?? undefined} /> : <p className="text-sm text-muted-foreground">No monthly heatmap available.</p>}</CardContent></Card>
+                  <Card className="claude-card"><CardHeader className="pb-2"><CardTitle className="text-sm">Yearly Returns</CardTitle></CardHeader><CardContent>{yearlyFigure ? <PlotlyChart figure={yearlyFigure ?? undefined} /> : <p className="text-sm text-muted-foreground">No yearly plot available.</p>}</CardContent></Card>
                 </div>
                 <MetricTable rows={metricRowsFromValue((directGeneralResults as Record<string, unknown>).trade_performance ?? (directGeneralResults as Record<string, unknown>).metrics)} />
               </CardContent>
             </Card>
-            <Card>
+            <Card className="claude-card">
               <CardHeader className="pb-3">
-                <CardTitle className="text-base">By Stock</CardTitle>
+                <CardTitle>By Stock</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <Tabs value={activeStock ?? undefined} onValueChange={setActiveStock}>
@@ -1196,10 +1690,10 @@ function BacktestContentSaved() {
                             {detail ? (
                               <>
                                 <div className="grid gap-4 xl:grid-cols-2">
-                                  <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Price + Trades</CardTitle></CardHeader><CardContent>{priceFigure ? <PlotlyChart figure={priceFigure} /> : <p className="text-sm text-muted-foreground">No price chart available.</p>}</CardContent></Card>
-                                  <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Equity vs Benchmark</CardTitle></CardHeader><CardContent>{savedStockEquity ? <PlotlyChart figure={savedStockEquity} /> : <p className="text-sm text-muted-foreground">No equity chart available.</p>}</CardContent></Card>
+                                  <Card className="claude-card"><CardHeader className="pb-2"><CardTitle className="text-sm">Price + Trades</CardTitle></CardHeader><CardContent>{priceFigure ? <PlotlyChart figure={priceFigure} /> : <p className="text-sm text-muted-foreground">No price chart available.</p>}</CardContent></Card>
+                                  <Card className="claude-card"><CardHeader className="pb-2"><CardTitle className="text-sm">Equity vs Benchmark</CardTitle></CardHeader><CardContent>{savedStockEquity ? <PlotlyChart figure={savedStockEquity} /> : <p className="text-sm text-muted-foreground">No equity chart available.</p>}</CardContent></Card>
                                 </div>
-                                <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Trade Ledger</CardTitle></CardHeader><CardContent><TradeLedgerTable rows={(stockResult.trade_ledger as Array<Record<string, unknown>>) ?? []} stockConfig={activeStrategyStockConfig} /></CardContent></Card>
+                                <Card className="claude-card"><CardHeader className="pb-2"><CardTitle className="text-sm">Trade Ledger</CardTitle></CardHeader><CardContent><TradeLedgerTable rows={(stockResult.trade_ledger as Array<Record<string, unknown>>) ?? []} stockConfig={activeStrategyStockConfig} /></CardContent></Card>
                                 <MetricTable rows={metricRowsFromValue(stockResult.trade_performance ?? stockResult.summary_metrics)} />
                               </>
                             ) : <p className="text-sm text-muted-foreground">Loading stock detail...</p>}
@@ -1223,10 +1717,10 @@ function BacktestContentSaved() {
                               <StatCard label="Trades" value={formatNumber(toNumber(summary.n_trades) ?? 0, 0)} />
                             </div>
                             <div className="grid gap-4 xl:grid-cols-2">
-                              <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Price + Trades</CardTitle></CardHeader><CardContent>{priceFigure ? <PlotlyChart figure={priceFigure} /> : <p className="text-sm text-muted-foreground">No price chart available.</p>}</CardContent></Card>
-                              <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Equity vs Benchmark</CardTitle></CardHeader><CardContent>{localStockEquity ? <PlotlyChart figure={localStockEquity} /> : <p className="text-sm text-muted-foreground">No equity chart available.</p>}</CardContent></Card>
+                              <Card className="claude-card"><CardHeader className="pb-2"><CardTitle className="text-sm">Price + Trades</CardTitle></CardHeader><CardContent>{priceFigure ? <PlotlyChart figure={priceFigure} /> : <p className="text-sm text-muted-foreground">No price chart available.</p>}</CardContent></Card>
+                              <Card className="claude-card"><CardHeader className="pb-2"><CardTitle className="text-sm">Equity vs Benchmark</CardTitle></CardHeader><CardContent>{localStockEquity ? <PlotlyChart figure={localStockEquity} /> : <p className="text-sm text-muted-foreground">No equity chart available.</p>}</CardContent></Card>
                             </div>
-                            <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Trade Ledger</CardTitle></CardHeader><CardContent><TradeLedgerTable rows={(stock.trade_ledger as Array<Record<string, unknown>>) ?? []} stockConfig={activeStrategyStockConfig} /></CardContent></Card>
+                            <Card className="claude-card"><CardHeader className="pb-2"><CardTitle className="text-sm">Trade Ledger</CardTitle></CardHeader><CardContent><TradeLedgerTable rows={(stock.trade_ledger as Array<Record<string, unknown>>) ?? []} stockConfig={activeStrategyStockConfig} /></CardContent></Card>
                             <MetricTable rows={metricRowsFromValue(stock.trade_performance ?? stock.summary_metrics)} />
                           </TabsContent>
                         )

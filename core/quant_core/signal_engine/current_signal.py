@@ -31,6 +31,7 @@ from .indicator_series import (
 )
 from .oos_eval import compute_signal_array
 from .rsi_semantics import is_rsi_level_variant, latest_rsi_variant_signal
+from .ta_combo import is_combo_variant, variant_from_component
 
 
 def build_current_signal(
@@ -90,6 +91,8 @@ def compute_current_signals(
 
 def _get_indicator_value(close: np.ndarray, variant, *, volume=None, high=None, low=None) -> float | None:
     """Return the primary indicator value at the last bar."""
+    if is_combo_variant(variant):
+        return None
     p = variant.params
     arch = variant.archetype
     value: float | None = None
@@ -171,6 +174,17 @@ def _fmt(value: float | None) -> str:
 
 def _build_explanation(current_close: float, indicator_val: float | None, variant, label: str, signal_val: float, *, volume=None, high=None, low=None) -> str:
     """Build a human-readable explanation string."""
+    if is_combo_variant(variant):
+        components = []
+        for payload in variant.params.get("components", []):
+            if isinstance(payload, dict):
+                try:
+                    component = variant_from_component(payload)
+                    components.append(component.description or component.variant_id)
+                except Exception:
+                    continue
+        joined = " AND ".join(components) if components else "components"
+        return f"Combo strict AND: {joined} -> {label}"
     p = variant.params
     arch = variant.archetype
     if arch == "price_vs_sma":

@@ -7,6 +7,20 @@ from services.api.app.db import get_db
 from services.api.app.routers import analytics
 
 
+def test_predictive_score_source_resolution_accepts_canonical_and_legacy_aliases() -> None:
+    fx = analytics._resolve_score_source("engine:expanded_factor_x_ta_combo")
+    assert fx.axis == "engine"
+    assert fx.variant == "expanded_factor_x_ta_combo"
+    assert fx.canonical_source == "engine:expanded_factor_x_ta_combo"
+
+    legacy = analytics._resolve_score_source("engine_legacy")
+    assert legacy.canonical_source == "engine:legacy_ta_simple"
+    assert legacy.read_sources == ("engine:legacy_ta_simple", "engine_legacy")
+
+    wfo = analytics._resolve_score_source("wfo", "legacy_ta_combo")
+    assert wfo.canonical_source == "wfo:legacy_ta_combo"
+
+
 def _app() -> TestClient:
     app = FastAPI()
     app.include_router(analytics.router)
@@ -28,6 +42,10 @@ def test_happy_path(monkeypatch) -> None:
         "n": 42,
         "window_start": "2026-01-01",
         "window_end": "2026-03-01",
+        "side_policy": "long_short",
+        "action_expected_return_gross": 0.01,
+        "action_expected_return_net": 0.0034,
+        "stock_expected_return": 0.01,
         "expected_return_gross": 0.01,
         "expected_return_net": 0.0034,
         "hit_rate": 0.62,
@@ -45,7 +63,7 @@ def test_happy_path(monkeypatch) -> None:
         "label_shuffle_pvalue_net": 0.03,
         "proven_edge_gross": True,
         "proven_edge_net": True,
-        "gates": {"mc_gross": True, "mc_net": True, "wilson": True, "n": True},
+        "gates": {"mc_gross": True, "mc_net": True, "label_shuffle_gross": True, "label_shuffle_net": True, "wilson": True, "n": True},
         "cost_bps_per_side": 33.0,
         "methodology_version": "2026-05-07",
     }
@@ -62,6 +80,9 @@ def test_happy_path(monkeypatch) -> None:
     assert res.headers["X-Edge-Cache"] == "hit"
     assert res.json()["symbol"] == "ATW"
     assert res.json()["gates"]["mc_net"] is True
+    assert res.json()["gates"]["label_shuffle_net"] is True
+    assert res.json()["action_expected_return_net"] == 0.0034
+    assert res.json()["stock_expected_return"] == 0.01
 
 
 def test_cold_cache_returns_null_with_header(monkeypatch) -> None:
@@ -76,3 +97,21 @@ def test_cold_cache_returns_null_with_header(monkeypatch) -> None:
     assert res.status_code == 200
     assert res.headers["X-Edge-Cache"] == "cold"
     assert res.json() is None
+
+
+def test_variant_query_is_normalized_and_passed_to_cache(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_cache_payload(**kwargs):
+        captured.update(kwargs)
+        return None, "cold"
+
+    monkeypatch.setattr(analytics, "_edge_cache_payload", fake_cache_payload)
+
+    client = _app()
+    res = client.get(
+        "/analytics/edge?symbol=ATW&horizon=monthly&source=wfo&variant=legacy_ta_combo"
+    )
+    assert res.status_code == 200
+    assert res.headers["X-Edge-Cache"] == "cold"
+    assert captured["variant"] == "legacy_ta_combo"

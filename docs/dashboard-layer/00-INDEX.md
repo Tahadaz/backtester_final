@@ -5,6 +5,8 @@
 Client-facing dashboard showing per-stock signal evaluations for the MASI equity universe.
 Deployable as a static site on GitHub Pages — no backend dependency at runtime.
 
+Note: documents 01-07 describe the original static-export dashboard path. The active app route now lives at `/dashboard` -> `frontend/app/v1/page.tsx`; use [08-ui-goals-and-design.md](./08-ui-goals-and-design.md) for current Dashboard UI intent and ownership.
+
 ## Document index
 
 | # | Document | What it covers |
@@ -16,6 +18,7 @@ Deployable as a static site on GitHub Pages — no backend dependency at runtime
 | 05 | [Navigation and Routing](./05-navigation-and-routing.md) | Header update, root redirect |
 | 06 | [Static Export and GitHub Pages](./06-static-export.md) | next.config changes, dynamic route fixes, deploy workflow |
 | 07 | [Gotchas and Verification](./07-gotchas-and-verification.md) | Common mistakes, verification checklists |
+| 08 | [UI Goals and Design](./08-ui-goals-and-design.md) | Active Dashboard UI intent, design references, current route/components, states, and Edge/blotter ownership |
 
 ## Implementation order
 

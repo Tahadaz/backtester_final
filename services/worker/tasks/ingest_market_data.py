@@ -36,6 +36,26 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _finite_float(value) -> float | None:
+    try:
+        out = float(value)
+    except Exception:
+        return None
+    return out if np.isfinite(out) else None
+
+
+def _compute_adv_20d_value(frame: pd.DataFrame) -> float | None:
+    if frame.empty or "Close" not in frame.columns or "Volume" not in frame.columns:
+        return None
+    recent = frame.tail(20)
+    close = pd.to_numeric(recent["Close"], errors="coerce")
+    volume = pd.to_numeric(recent["Volume"], errors="coerce")
+    traded_value = (close * volume).replace([np.inf, -np.inf], np.nan).dropna()
+    if traded_value.empty:
+        return None
+    return _finite_float(traded_value.mean())
+
+
 def _report_object_key(dataset_id: UUID) -> str:
     return f"market_data/uploads/{dataset_id}/ingest_report.json"
 
@@ -621,15 +641,20 @@ def ingest_excel_to_store(dataset_id: str) -> dict:
                 start_ts = merged.index.min().to_pydatetime()
                 end_ts = merged.index.max().to_pydatetime()
                 row_count = int(len(merged))
+                close_last = _finite_float(merged["Close"].iloc[-1]) if "Close" in merged.columns and len(merged) >= 1 else None
+                prev_close = _finite_float(merged["Close"].iloc[-2]) if "Close" in merged.columns and len(merged) >= 2 else None
+                adv_20d = _compute_adv_20d_value(merged)
 
                 db.execute(
                     text("""
                         insert into market_data_store(
                             symbol, timeframe, object_key, start_ts, end_ts, row_count,
-                            last_dataset_id, source_provider, data_as_of, created_at, updated_at
+                            last_dataset_id, source_provider, data_as_of,
+                            close_last, prev_close, adv_20d, created_at, updated_at
                         ) values (
                             :symbol, :timeframe, :object_key, :start_ts, :end_ts, :row_count,
-                            :last_dataset_id, :source_provider, :data_as_of, now(), now()
+                            :last_dataset_id, :source_provider, :data_as_of,
+                            :close_last, :prev_close, :adv_20d, now(), now()
                         )
                         on conflict (symbol, timeframe)
                         do update set
@@ -640,6 +665,9 @@ def ingest_excel_to_store(dataset_id: str) -> dict:
                             last_dataset_id = excluded.last_dataset_id,
                             source_provider = excluded.source_provider,
                             data_as_of      = excluded.data_as_of,
+                            close_last      = excluded.close_last,
+                            prev_close      = excluded.prev_close,
+                            adv_20d         = excluded.adv_20d,
                             updated_at      = now()
                     """),
                     {
@@ -652,6 +680,9 @@ def ingest_excel_to_store(dataset_id: str) -> dict:
                         "last_dataset_id": rid,
                         "source_provider": "bmce_excel",
                         "data_as_of":      end_ts.date(),
+                        "close_last":      close_last,
+                        "prev_close":      prev_close,
+                        "adv_20d":         adv_20d,
                     },
                 )
 

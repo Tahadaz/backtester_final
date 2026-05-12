@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 
 from services.api.app.models import SignalEngineGlobalResult, StockMaster
+from core.quant_core.signal_engine.modes import ALL_SIGNAL_MODE_NAMES
 from services.worker.tasks import signal_engine_batch as signal_engine_batch_mod
 
 
@@ -105,40 +106,14 @@ def test_run_signal_engine_batch_only_processes_weekly_stale_tuples(monkeypatch)
             SignalEngineGlobalResult: [
                 SignalEngineGlobalResult(
                     symbol="AAA",
-                    horizon="weekly",
-                    variant="legacy",
-                    computed_at=now - dt.timedelta(days=8),
-                ),
-                SignalEngineGlobalResult(
-                    symbol="AAA",
-                    horizon="weekly",
-                    variant="expanded",
-                    computed_at=now - dt.timedelta(days=2),
-                ),
-                SignalEngineGlobalResult(
-                    symbol="AAA",
-                    horizon="monthly",
-                    variant="legacy",
-                    computed_at=now - dt.timedelta(days=2),
-                ),
-                SignalEngineGlobalResult(
-                    symbol="AAA",
-                    horizon="monthly",
-                    variant="expanded",
-                    computed_at=now - dt.timedelta(days=2),
-                ),
-                SignalEngineGlobalResult(
-                    symbol="AAA",
-                    horizon="quarterly",
-                    variant="legacy",
-                    computed_at=now - dt.timedelta(days=2),
-                ),
-                SignalEngineGlobalResult(
-                    symbol="AAA",
-                    horizon="quarterly",
-                    variant="expanded",
-                    computed_at=now - dt.timedelta(days=2),
-                ),
+                    horizon=horizon,
+                    variant=variant,
+                    computed_at=now - dt.timedelta(
+                        days=8 if (horizon, variant) == ("weekly", "legacy_ta_simple") else 2
+                    ),
+                )
+                for horizon in ("weekly", "monthly", "quarterly")
+                for variant in ALL_SIGNAL_MODE_NAMES
             ],
         }
     )
@@ -156,4 +131,12 @@ def test_run_signal_engine_batch_only_processes_weekly_stale_tuples(monkeypatch)
     result = signal_engine_batch_mod.run_signal_engine_batch(now=now)
 
     assert result == {"total": 1, "succeeded": 1, "failed": 0}
-    assert calls == [("AAA", "weekly", "legacy")]
+    assert calls == [("AAA", "weekly", "legacy_ta_simple")]
+
+
+def test_compute_signal_engine_rejects_legacy_horizon_with_clear_error():
+    result = signal_engine_batch_mod.compute_signal_engine_for_symbol("AAA", "short", "expanded")
+
+    assert result["status"] == "failed"
+    assert "canonical horizon" in str(result["error"])
+    assert result["horizon"] == "short"

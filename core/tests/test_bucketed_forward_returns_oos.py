@@ -1,5 +1,5 @@
 """Unit tests for the OOS / recent_window / max_lookback_years extension of
-`bucketed_forward_returns` (§4.1.c of docs/plans/edge-deploy-plan.md).
+`bucketed_forward_returns`.
 
 Synthetic data only — no DB. Default-call behavior MUST match the legacy
 contract because non-Edge callers (frontend predictive-history endpoints,

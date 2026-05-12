@@ -40,6 +40,7 @@ import type {
   StrategyBacktestWindowDetail,
   StrategyReview,
   StrategyAllocation,
+  SignalCandidate,
   ExecutionPlan,
   SignalConstructionPreview,
   RulePreview,
@@ -105,6 +106,7 @@ import {
   fetchStrategyBacktestWindowDetail,
   fetchStrategyHandoff,
   fetchStrategyReview,
+  fetchSignalCandidates,
   fetchUniverse,
   fetchVariantBacktest,
   fetchVariantDetail,
@@ -114,6 +116,7 @@ import {
   getCategoryCombinations,
   fetchPredictiveHistoryBatchStatus,
   getPredictiveAbilityLeaderboard,
+  getMethodEvaluation,
   getFactorSelectionActive,
   getFactorSelectionStage1Cache,
 } from "@/lib/api"
@@ -124,6 +127,7 @@ import type {
   CategoryCombinations,
   PredictiveHistoryStatus,
   PredictiveLeaderboard,
+  MethodEvaluation,
 } from "@/lib/api"
 
 const API_BASE = "/api"
@@ -750,6 +754,40 @@ export function useUniverse(
   )
 }
 
+export function useSignalCandidates(
+  horizon: string,
+  params?: {
+    mode?: "best" | "all"
+    min_bars?: number
+    min_adv20?: number
+    sector_filter?: string[]
+    triage_filter?: string[]
+    source_filter?: string[]
+    cost_bps?: number
+    sort_by?: "edge_score" | "expected_return" | "hit_rate" | "adv20" | "symbol"
+    sort_dir?: "asc" | "desc"
+  },
+) {
+  const key = `/strategy/plan/signal-candidates?h=${horizon}&mode=${params?.mode ?? "best"}&mb=${params?.min_bars ?? ""}&ma=${params?.min_adv20 ?? ""}&sf=${params?.sector_filter?.join(",") ?? ""}&tf=${params?.triage_filter?.join(",") ?? ""}&src=${params?.source_filter?.join(",") ?? ""}&sb=${params?.sort_by ?? ""}&sd=${params?.sort_dir ?? ""}`
+  return useSWR<SignalCandidate[]>(
+    key,
+    () =>
+      fetchSignalCandidates({
+        horizon,
+        mode: params?.mode,
+        min_bars: params?.min_bars,
+        min_adv20: params?.min_adv20,
+        sector_filter: params?.sector_filter,
+        triage_filter: params?.triage_filter,
+        source_filter: params?.source_filter,
+        cost_bps: params?.cost_bps,
+        sort_by: params?.sort_by,
+        sort_dir: params?.sort_dir,
+      }),
+    { revalidateOnFocus: false },
+  )
+}
+
 export function usePersistedSignalEngineSummaries(
   symbols: string[],
   horizon: string,
@@ -1308,7 +1346,7 @@ export function usePredictiveAbility(args: PredictiveAbilityArgs | null) {
         args.fwdHorizons ?? []
       ).join(",")}&lookback_days=${args.lookback_days ?? 0}&return_calc_method=${
         args.return_calc_method ?? "close_to_close"
-      }`
+      }&variant=${args.variant ?? ""}`
     : null
   return useSWR<PredictiveAbilityMatrix>(key, () => getPredictiveAbility(args!), {
     revalidateOnFocus: false,
@@ -1319,7 +1357,8 @@ export function usePredictiveAbility(args: PredictiveAbilityArgs | null) {
 export function useCategoryCombinations(
   args: {
     symbol: string
-    source: "engine_legacy" | "engine_expanded" | "wfo" | "factor_x_ta"
+    source: string
+    variant?: string
     horizon: "short" | "medium" | "long"
     fwd_h?: number
     lookback_days?: number
@@ -1331,7 +1370,7 @@ export function useCategoryCombinations(
         args.source
       }&horizon=${args.horizon}&fwd_h=${args.fwd_h ?? 5}&lookback_days=${
         args.lookback_days ?? 0
-      }&return_calc_method=${args.return_calc_method ?? "close_to_close"}`
+      }&return_calc_method=${args.return_calc_method ?? "close_to_close"}&variant=${args.variant ?? ""}`
     : null
   return useSWR<CategoryCombinations>(key, () => getCategoryCombinations(args!), {
     revalidateOnFocus: false,
@@ -1347,6 +1386,19 @@ export function usePredictiveAbilityLeaderboard(
   return useSWR<PredictiveLeaderboard>(
     `/analytics/predictive-ability/leaderboard?engine_horizon=${engineHorizon}&lookback_days=${lookback_days}&return_calc_method=${return_calc_method}`,
     () => getPredictiveAbilityLeaderboard(engineHorizon, lookback_days, return_calc_method),
+    { revalidateOnFocus: false, keepPreviousData: true },
+  )
+}
+
+export function useMethodEvaluation(
+  engineHorizon: "short" | "medium" | "long",
+  universe: "all" | "masi" | "liquid_masi" = "liquid_masi",
+  lookback_days: number = 0,
+  return_calc_method: string = "open_to_open",
+) {
+  return useSWR<MethodEvaluation>(
+    `/analytics/method-evaluation?engine_horizon=${engineHorizon}&universe=${universe}&lookback_days=${lookback_days}&return_calc_method=${return_calc_method}`,
+    () => getMethodEvaluation(engineHorizon, universe, lookback_days, return_calc_method),
     { revalidateOnFocus: false, keepPreviousData: true },
   )
 }

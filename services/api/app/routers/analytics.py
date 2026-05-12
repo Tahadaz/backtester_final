@@ -12,7 +12,8 @@ from __future__ import annotations
 
 import math
 import time
-from dataclasses import replace
+from collections import defaultdict
+from dataclasses import dataclass, replace
 from typing import Any, Optional
 
 import numpy as np
@@ -43,6 +44,8 @@ from ..schemas.analytics import (
     PredictiveHistoryTriggerOut,
     LeaderboardRow,
     LeaderboardOut,
+    MethodEvaluationRow,
+    MethodEvaluationOut,
     EdgeMetricsOut,
     EdgeGatesOut,
     ExpectancyDecompOut,
@@ -63,6 +66,8 @@ from core.quant_core.research.factors.signals import (
 from core.quant_core.research.score_history import (
         BUCKET_NAMES, aggregate_subset, bucketed_forward_returns,_bucket_for, ic_table, _calculate_forward_returns, _strip_tz,
     )
+from core.quant_core.horizons import LEGACY_HORIZON_ALIASES, canonical_horizon
+from core.quant_core.signal_engine.modes import SIGNAL_MODE_ALIASES, SIGNAL_MODES, resolve_signal_mode, signal_mode_read_names
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -513,7 +518,7 @@ def get_factor_leaderboard(
 ):
     """Cross-stock leaderboard: rank stocks by macro-factor statistical significance.
 
-    For each tracked symbol computes Spearman IC vs all 6 macro factors and
+    For each tracked symbol computes Spearman IC vs all active macro factors and
     returns one row per stock sorted by n_significant DESC, max_t_stat DESC.
     """
     cache_key = f"{lookback_days}:{forward_horizon}:{return_method}"
@@ -609,7 +614,7 @@ def get_factor_relevance_for_stock(
     lookback_days: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ):
-    """Compute factor-relevance matrix for one stock vs all 6 macro factors.
+    """Compute factor-relevance matrix for one stock vs all active macro factors.
 
     Spearman rank IC + Newey-West t-stat for each (factor, stock) pair.
     Factor series are loaded from market_data_store (asset_class='factor').
@@ -773,7 +778,7 @@ def _zeroed_robustness() -> RobustnessOut:
         dsr=0.0, psr=0.0,
         sharpe_bootstrap_ci=[0.0, 0.0],
         ic_bootstrap_ci=[0.0, 0.0],
-        ic_cv=0.0, sharpe_cv=0.0, n_variants=6,
+        ic_cv=0.0, sharpe_cv=0.0, n_variants=len(REGISTERED_FACTOR_SIGNALS),
     )
 
 
@@ -784,10 +789,10 @@ def evaluate_factor_signals(
     lookback_days: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ):
-    """Phase 1: evaluate all 6 pre-registered factor signals for one stock.
+    """Phase 1: evaluate all pre-registered factor signals for one stock.
 
     Returns one FactorSignalEvalOut per registered signal.
-    Sector channel gate removed — all 6 signals evaluated for every stock.
+    Sector channel gate removed; all registered signals are evaluated for every stock.
     BH-FDR at q=0.10 applied across all conditional-return p-values.
 
     return_method: open_to_open | open_to_close
@@ -827,7 +832,7 @@ def evaluate_factor_signals(
             open_series = open_series[open_series.index >= cutoff]
         ic_prices = open_series.shift(-1)  # shift so pct_change(h).shift(-h) = open[t+h+1]/open[t+1]-1
 
-    # Load all 6 macro factors and align
+    # Load all active macro factors and align
     aligned_factors: dict[str, pd.Series] = {}
     for macro_spec in MACRO_SERIES:
         factor_series = _load_factor_series(db, macro_spec.canonical_id)
@@ -988,26 +993,124 @@ def evaluate_factor_signals(
 # ---------------------------------------------------------------------------
 
 _DEFAULT_FWD_HORIZONS = [1, 2, 3, 4, 5, 6, 10, 15, 21, 30, 60, 120, 200]
-_VALID_SOURCES = {"engine_legacy", "engine_expanded", "wfo"}
 _VALID_CATEGORIES = ["tendance", "momentum", "oscillation", "volume"]
+
+
+@dataclass(frozen=True)
+class _ScoreSourceSpec:
+    axis: str
+    variant: str
+    canonical_source: str
+    read_sources: tuple[str, ...]
+
+
+def _score_source(axis: str, variant: str) -> str:
+    return f"{axis}:{resolve_signal_mode(variant).name}"
+
+
+def _score_source_aliases(axis: str, variant: str) -> tuple[str, ...]:
+    variant = resolve_signal_mode(variant).name
+    aliases: list[str] = []
+    if axis == "engine":
+        if variant == "legacy_ta_simple":
+            aliases.append("engine_legacy")
+        elif variant == "expanded_ta_simple":
+            aliases.append("engine_expanded")
+        elif variant == "expanded_factor_x_ta_simple":
+            aliases.append("factor_x_ta")
+    elif axis == "wfo" and variant == "expanded_ta_simple":
+        aliases.append("wfo")
+    return tuple(aliases)
+
+
+def _resolve_score_source(source: str, variant: str | None = None) -> _ScoreSourceSpec:
+    raw_source = str(source or "").strip().lower()
+    raw_variant = str(variant or "").strip().lower() or None
+
+    if raw_source in {"signal_engine", "engine"}:
+        axis = "engine"
+        selected_variant = raw_variant or "expanded_ta_simple"
+    elif raw_source == "wfo":
+        axis = "wfo"
+        selected_variant = raw_variant or "expanded_ta_simple"
+    elif raw_source in {"engine_legacy", "legacy"}:
+        axis = "engine"
+        selected_variant = "legacy_ta_simple"
+    elif raw_source in {"engine_expanded", "expanded"}:
+        axis = "engine"
+        selected_variant = "expanded_ta_simple"
+    elif raw_source == "factor_x_ta":
+        axis = "engine"
+        selected_variant = "expanded_factor_x_ta_simple"
+    elif ":" in raw_source:
+        axis_part, variant_part = raw_source.split(":", 1)
+        if axis_part in {"signal_engine", "engine"}:
+            axis = "engine"
+        elif axis_part == "wfo":
+            axis = "wfo"
+        else:
+            raise ValueError("source axis must be engine|signal_engine|wfo")
+        selected_variant = raw_variant or variant_part
+    elif raw_source in SIGNAL_MODES or raw_source in SIGNAL_MODE_ALIASES:
+        axis = "engine"
+        selected_variant = raw_variant or raw_source
+    else:
+        raise ValueError(
+            "source must be engine|wfo, an old alias, or axis:signal_mode"
+        )
+
+    mode = resolve_signal_mode(selected_variant)
+    canonical = _score_source(axis, mode.name)
+    read_sources = tuple(dict.fromkeys((canonical, *_score_source_aliases(axis, mode.name))))
+    return _ScoreSourceSpec(
+        axis=axis,
+        variant=mode.name,
+        canonical_source=canonical,
+        read_sources=read_sources,
+    )
+
+
+def _score_history_horizons(horizon: str) -> tuple[str, ...]:
+    try:
+        canonical = canonical_horizon(horizon, allow_legacy=True)
+    except ValueError:
+        return (str(horizon).strip().lower(),)
+    aliases = [
+        legacy
+        for legacy, mapped in LEGACY_HORIZON_ALIASES.items()
+        if mapped == canonical
+    ]
+    return tuple(dict.fromkeys((canonical, *aliases)))
 
 
 def _load_score_history(
     db: Session, *, symbol: str, source: str, horizon: str,
 ) -> dict[str, pd.Series]:
+    spec = _resolve_score_source(source)
+    source_priority = {name: idx for idx, name in enumerate(spec.read_sources)}
     rows = (
         db.query(models.SignalScoreHistory)
-        .filter_by(symbol=symbol, source=source, horizon=horizon)
+        .filter(
+            models.SignalScoreHistory.symbol == symbol,
+            models.SignalScoreHistory.source.in_(spec.read_sources),
+            models.SignalScoreHistory.horizon.in_(_score_history_horizons(horizon)),
+        )
         .order_by(models.SignalScoreHistory.date.asc())
         .all()
     )
-    by_cat: dict[str, dict[pd.Timestamp, float]] = {}
+    by_cat: dict[str, dict[pd.Timestamp, tuple[int, float]]] = {}
     for r in rows:
-        by_cat.setdefault(r.category, {})[pd.Timestamp(r.date)] = r.score_pct
+        ts = pd.Timestamp(r.date)
+        if ts.tzinfo is not None:
+            ts = ts.tz_convert(None)
+        priority = source_priority.get(r.source, len(source_priority))
+        current = by_cat.setdefault(r.category, {}).get(ts)
+        if current is None or priority < current[0]:
+            by_cat[r.category][ts] = (priority, r.score_pct)
     out: dict[str, pd.Series] = {}
     for cat, mapping in by_cat.items():
         idx = pd.DatetimeIndex(sorted(mapping.keys()))
-        vals = [mapping[t] for t in idx]
+        vals = [mapping[t][1] for t in idx]
         out[cat] = pd.Series(vals, index=idx, name=cat)
     return out
 
@@ -1022,31 +1125,45 @@ def _load_current_live_score(
     directly from WfoGlobalSignal / SignalEngineGlobalResult which hold the true
     continuous ensemble scores.
     """
-    if source == "wfo":
+    spec = _resolve_score_source(source)
+    horizons = _score_history_horizons(horizon)
+    variants = signal_mode_read_names(spec.variant)
+    if spec.axis == "wfo":
         row = (
             db.query(models.WfoGlobalSignal)
-            .filter_by(symbol=symbol, horizon=horizon)
+            .filter(
+                models.WfoGlobalSignal.symbol == symbol,
+                models.WfoGlobalSignal.horizon.in_(horizons),
+                models.WfoGlobalSignal.variant.in_(variants),
+            )
             .order_by(models.WfoGlobalSignal.updated_at.desc())
             .first()
         )
         if row is None or row.raw_score_pct is None:
             return None
         return float(row.raw_score_pct)
-    else:
-        row = (
-            db.query(models.SignalEngineGlobalResult)
-            .filter_by(symbol=symbol, horizon=horizon)
-            .order_by(models.SignalEngineGlobalResult.updated_at.desc())
-            .first()
+
+    row = (
+        db.query(models.SignalEngineGlobalResult)
+        .filter(
+            models.SignalEngineGlobalResult.symbol == symbol,
+            models.SignalEngineGlobalResult.horizon.in_(horizons),
+            models.SignalEngineGlobalResult.variant.in_(variants),
         )
-        if row is None:
-            return None
-        score = (
-            row.aggregate_score_pct
-            if source == "engine_legacy"
-            else row.expanded_aggregate_score_pct
-        )
-        return float(score) if score is not None else None
+        .order_by(models.SignalEngineGlobalResult.updated_at.desc())
+        .first()
+    )
+    if row is None:
+        return None
+    mode = resolve_signal_mode(spec.variant)
+    score = (
+        row.aggregate_score_pct
+        if mode.is_legacy and row.aggregate_score_pct is not None
+        else row.expanded_aggregate_score_pct
+    )
+    if score is None:
+        score = row.aggregate_score_pct
+    return float(score) if score is not None else None
 
 
 def _load_pricing_data(db: Session, symbol: str) -> pd.DataFrame:
@@ -1055,6 +1172,8 @@ def _load_pricing_data(db: Session, symbol: str) -> pd.DataFrame:
     df = load_ohlcv_for_symbol(db, symbol)
     # Ensure index is DatetimeIndex
     df.index = pd.DatetimeIndex(df.index)
+    if df.index.tz is not None:
+        df.index = df.index.tz_convert(None)
     return df
 
 
@@ -1072,6 +1191,7 @@ def get_predictive_ability(
     symbol: str = Query(...),
     source: str = Query(...),
     horizon: str = Query(...),
+    variant: Optional[str] = Query(None, description="Canonical signal mode when source is engine|wfo"),
     categories: Optional[str] = Query(None, description="CSV subset of categories"),
     fwd_horizons: Optional[str] = Query(None, description="CSV of forward horizons"),
     lookback_days: int = Query(0, ge=0),
@@ -1080,10 +1200,11 @@ def get_predictive_ability(
 ) -> PredictiveAbilityMatrix:
     """Return the bucket × forward-horizon matrix for one (symbol, source, horizon)."""
 
-    if source not in _VALID_SOURCES:
-        raise HTTPException(400, f"source must be one of {sorted(_VALID_SOURCES)}")
-    if horizon not in {"short", "medium", "long"}:
-        raise HTTPException(400, "horizon must be short|medium|long")
+    try:
+        source_spec = _resolve_score_source(source, variant)
+        canonical_horizon(horizon, allow_legacy=True)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
     if categories:
         cats = [c.strip() for c in categories.split(",") if c.strip()]
@@ -1101,10 +1222,15 @@ def get_predictive_ability(
     else:
         fhs = list(_DEFAULT_FWD_HORIZONS)
 
-    series_by_cat = _load_score_history(db, symbol=symbol, source=source, horizon=horizon)
+    series_by_cat = _load_score_history(
+        db,
+        symbol=symbol,
+        source=source_spec.canonical_source,
+        horizon=horizon,
+    )
     if not series_by_cat:
         return PredictiveAbilityMatrix(
-            symbol=symbol, source=source, horizon=horizon,
+            symbol=symbol, source=source_spec.canonical_source, horizon=horizon,
             categories=cats, n_obs=0,
             buckets=list(BUCKET_NAMES), fwd_horizons=fhs, cells=[],
             available=False,
@@ -1120,7 +1246,7 @@ def get_predictive_ability(
     score = aggregate_subset(series_by_cat, cats)
     if score is None or score.dropna().empty:
         return PredictiveAbilityMatrix(
-            symbol=symbol, source=source, horizon=horizon,
+            symbol=symbol, source=source_spec.canonical_source, horizon=horizon,
             categories=cats, n_obs=0,
             buckets=list(BUCKET_NAMES), fwd_horizons=fhs, cells=[],
             available=False,
@@ -1128,7 +1254,12 @@ def get_predictive_ability(
         )
 
     score_clean = score.dropna()
-    current_score = _load_current_live_score(db, symbol=symbol, source=source, horizon=horizon)
+    current_score = _load_current_live_score(
+        db,
+        symbol=symbol,
+        source=source_spec.canonical_source,
+        horizon=horizon,
+    )
     current_bucket = _bucket_for(current_score) if current_score is not None else None
 
     try:
@@ -1139,7 +1270,7 @@ def get_predictive_ability(
     cells_raw = bucketed_forward_returns(score, prices, fhs, return_calc_method=return_calc_method)
     cells = [PredictiveAbilityCell(**c) for c in cells_raw]
     return PredictiveAbilityMatrix(
-        symbol=symbol, source=source, horizon=horizon,
+        symbol=symbol, source=source_spec.canonical_source, horizon=horizon,
         categories=cats, n_obs=int(score_clean.shape[0]),
         buckets=list(BUCKET_NAMES), fwd_horizons=fhs, cells=cells,
         available=True,
@@ -1153,6 +1284,7 @@ def get_category_combinations(
     symbol: str = Query(...),
     source: str = Query(...),
     horizon: str = Query(...),
+    variant: Optional[str] = Query(None, description="Canonical signal mode when source is engine|wfo"),
     fwd_h: int = Query(5, ge=1, le=400),
     lookback_days: int = Query(0, ge=0),
     return_calc_method: str = Query("close_to_close"),
@@ -1162,11 +1294,19 @@ def get_category_combinations(
     at one forward horizon and return a ranked list."""
     from itertools import combinations as _comb
 
-    if source not in _VALID_SOURCES:
-        raise HTTPException(400, f"source must be one of {sorted(_VALID_SOURCES)}")
-    series_by_cat = _load_score_history(db, symbol=symbol, source=source, horizon=horizon)
+    try:
+        source_spec = _resolve_score_source(source, variant)
+        canonical_horizon(horizon, allow_legacy=True)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    series_by_cat = _load_score_history(
+        db,
+        symbol=symbol,
+        source=source_spec.canonical_source,
+        horizon=horizon,
+    )
     if not series_by_cat:
-        return CategoryCombinationsOut(symbol=symbol, source=source, horizon=horizon,
+        return CategoryCombinationsOut(symbol=symbol, source=source_spec.canonical_source, horizon=horizon,
                                        fwd_h=fwd_h, rows=[])
     sample_idx = next((s.index for s in series_by_cat.values() if len(s) > 0), None)
     if sample_idx is not None:
@@ -1176,7 +1316,7 @@ def get_category_combinations(
     try:
         prices = _load_pricing_data(db, symbol)
     except Exception:
-        return CategoryCombinationsOut(symbol=symbol, source=source, horizon=horizon,
+        return CategoryCombinationsOut(symbol=symbol, source=source_spec.canonical_source, horizon=horizon,
                                        fwd_h=fwd_h, rows=[])
 
     rows: list[CategoryCombinationRow] = []
@@ -1206,7 +1346,7 @@ def get_category_combinations(
 
     rows.sort(key=lambda x: (x.monotonicity_score is None, -(x.monotonicity_score or 0)))
     return CategoryCombinationsOut(
-        symbol=symbol, source=source, horizon=horizon, fwd_h=fwd_h, rows=rows,
+        symbol=symbol, source=source_spec.canonical_source, horizon=horizon, fwd_h=fwd_h, rows=rows,
     )
 
 
@@ -1255,20 +1395,27 @@ def get_predictive_ability_leaderboard(
 
     pairs = (
         db.query(models.SignalScoreHistory.symbol, models.SignalScoreHistory.source)
-        .filter(models.SignalScoreHistory.horizon == engine_horizon)
+        .filter(models.SignalScoreHistory.horizon.in_(_score_history_horizons(engine_horizon)))
         .distinct()
         .all()
     )
 
     price_cache: dict[str, pd.DataFrame] = {}
     rows: list[LeaderboardRow] = []
+    seen_pairs: set[tuple[str, str]] = set()
 
     for sym, src in pairs:
-        if src not in _VALID_SOURCES:
+        try:
+            source_spec = _resolve_score_source(src)
+        except ValueError:
             continue
+        pair_key = (sym, source_spec.canonical_source)
+        if pair_key in seen_pairs:
+            continue
+        seen_pairs.add(pair_key)
         try:
             series_by_cat = _load_score_history(
-                db, symbol=sym, source=src, horizon=engine_horizon,
+                db, symbol=sym, source=source_spec.canonical_source, horizon=engine_horizon,
             )
         except Exception:
             continue
@@ -1333,7 +1480,7 @@ def get_predictive_ability_leaderboard(
 
         rows.append(LeaderboardRow(
             symbol=sym,
-            source=src,
+            source=source_spec.canonical_source,
             n=n,
             ic_by_fwd_h={int(k): v for k, v in ic_by_h.items()},
             tstat_by_fwd_h={int(k): v for k, v in t_by_h.items()},
@@ -1348,6 +1495,229 @@ def get_predictive_ability_leaderboard(
     )
     _LEADERBOARD_CACHE[cache_key] = out
     return out
+
+
+def _finite_float(value: Any) -> float | None:
+    try:
+        out = float(value)
+    except Exception:
+        return None
+    if not math.isfinite(out):
+        return None
+    return out
+
+
+def _median_or_none(values: list[float]) -> float | None:
+    finite = [float(v) for v in values if math.isfinite(float(v))]
+    if not finite:
+        return None
+    return float(np.median(finite))
+
+
+def _method_source_label(source: str) -> str:
+    try:
+        spec = _resolve_score_source(source)
+        mode = resolve_signal_mode(spec.variant)
+    except Exception:
+        return source
+    axis = "WFO" if spec.axis == "wfo" else "Signal Engine"
+    universe = "Legacy" if mode.is_legacy else "Expanded"
+    conditioning = "Factor x TA" if mode.is_factor_x_ta else "TA"
+    complexity = "Combo" if mode.is_combo else "Simple"
+    return f"{axis} - {universe} {conditioning} {complexity}"
+
+
+def _symbols_for_method_universe(
+    db: Session,
+    *,
+    universe: str,
+    min_adv: float,
+) -> set[str] | None:
+    normalized = str(universe or "all").strip().lower()
+    if normalized == "all":
+        return None
+
+    if normalized not in {"masi", "liquid_masi"}:
+        raise HTTPException(400, "universe must be all|masi|liquid_masi")
+
+    try:
+        masters = db.query(models.StockMaster).filter(models.StockMaster.is_active == True).all()  # noqa: E712
+    except Exception:
+        db.rollback()
+        return None
+
+    masi_symbols = {
+        str(row.symbol).upper()
+        for row in masters
+        if (getattr(row, "asset_type", None) or "equity") == "equity"
+        and (getattr(row, "market_region", None) or "masi") == "masi"
+    }
+    if normalized == "masi":
+        return masi_symbols
+
+    try:
+        from sqlalchemy import text as _text
+
+        rows = db.execute(
+            _text("""
+            SELECT DISTINCT ON (symbol) symbol, adv_20d
+            FROM market_data_store
+            WHERE asset_class = 'equity'
+              AND timeframe IN ('1D', '1d')
+            ORDER BY symbol, CASE WHEN timeframe = '1D' THEN 0 ELSE 1 END
+            """)
+        ).mappings().all()
+    except Exception:
+        db.rollback()
+        return masi_symbols
+
+    liquid = {
+        str(row["symbol"]).upper()
+        for row in rows
+        if _finite_float(row.get("adv_20d")) is not None
+        and float(row.get("adv_20d") or 0.0) >= min_adv
+    }
+    return masi_symbols & liquid
+
+
+def _is_method_row_eligible(row: LeaderboardRow) -> bool:
+    ic = _finite_float(row.mean_ic)
+    sharpe = _finite_float(row.mean_sharpe)
+    hit = _finite_float(row.mean_hit_rate)
+    return (
+        row.n >= 30
+        and ic is not None
+        and sharpe is not None
+        and hit is not None
+        and ic > 0.0
+        and sharpe > 0.0
+        and hit >= 0.50
+    )
+
+
+@router.get("/method-evaluation", response_model=MethodEvaluationOut)
+def get_method_evaluation(
+    engine_horizon: str = Query("short"),
+    universe: str = Query("liquid_masi"),
+    lookback_days: int = Query(0, ge=0),
+    return_calc_method: str = Query("open_to_open"),
+    min_adv: float = Query(1_000_000.0, ge=0.0),
+    db: Session = Depends(get_db),
+) -> MethodEvaluationOut:
+    """Evaluate each signal method across the selected universe.
+
+    The output answers the operational question: which method families have
+    enough positive OOS evidence to keep using, and which should be demoted.
+    """
+
+    if engine_horizon not in _FWD_BY_ENGINE_H:
+        raise HTTPException(400, "engine_horizon must be short|medium|long")
+
+    leaderboard = get_predictive_ability_leaderboard(
+        engine_horizon=engine_horizon,
+        lookback_days=lookback_days,
+        return_calc_method=return_calc_method,
+        db=db,
+    )
+
+    symbol_filter = _symbols_for_method_universe(db, universe=universe, min_adv=min_adv)
+    source_groups: dict[str, list[LeaderboardRow]] = defaultdict(list)
+    for row in leaderboard.rows:
+        if symbol_filter is not None and row.symbol.upper() not in symbol_filter:
+            continue
+        source_groups[row.source].append(row)
+    for axis in ("engine", "wfo"):
+        for mode_name in SIGNAL_MODES:
+            source_groups.setdefault(_score_source(axis, mode_name), [])
+
+    out_rows: list[MethodEvaluationRow] = []
+    for source, rows in source_groups.items():
+        tested = len(rows)
+        eligible = [row for row in rows if _is_method_row_eligible(row)]
+        med_n = _median_or_none([float(row.n) for row in rows])
+        med_ic = _median_or_none([v for row in rows for v in [_finite_float(row.mean_ic)] if v is not None])
+        med_sharpe = _median_or_none([v for row in rows for v in [_finite_float(row.mean_sharpe)] if v is not None])
+        med_hit = _median_or_none([v for row in rows for v in [_finite_float(row.mean_hit_rate)] if v is not None])
+        med_abs_t = _median_or_none([
+            abs(v)
+            for row in rows
+            for raw in row.tstat_by_fwd_h.values()
+            for v in [_finite_float(raw)]
+            if v is not None
+        ])
+        coverage = (eligible and tested > 0) and (len(eligible) / tested) or 0.0
+
+        evidence_score: float | None = None
+        if med_ic is not None and med_sharpe is not None and med_hit is not None and med_n is not None:
+            sample_penalty = min(1.0, max(0.0, med_n / 120.0))
+            evidence_score = med_ic * med_sharpe * (med_hit - 0.5) * sample_penalty
+
+        reasons: list[str] = []
+        if med_n is not None and med_n < 30:
+            reasons.append("low_sample")
+        if med_ic is not None and med_ic <= 0:
+            reasons.append("negative_ic")
+        if med_sharpe is not None and med_sharpe <= 0:
+            reasons.append("negative_sharpe")
+        if med_hit is not None and med_hit < 0.50:
+            reasons.append("weak_hit_rate")
+
+        min_keep = max(3, math.ceil(tested * 0.20))
+        if tested <= 0:
+            verdict = "no_data"
+            reasons.append("no_history")
+        elif len(eligible) >= min_keep and (med_ic or 0.0) > 0 and (med_sharpe or 0.0) > 0 and (med_hit or 0.0) >= 0.50:
+            verdict = "keep"
+            reasons.append("enough_positive_rows")
+        elif tested >= 5 and len(eligible) == 0 and reasons:
+            verdict = "discard"
+        else:
+            verdict = "watch"
+            if len(eligible) < min_keep:
+                reasons.append("sparse_eligible_rows")
+
+        out_rows.append(MethodEvaluationRow(
+            source=source,
+            label=_method_source_label(source),
+            verdict=verdict,
+            tested_count=tested,
+            eligible_count=len(eligible),
+            coverage_pct=round(float(coverage) * 100.0, 2),
+            median_n=round(med_n, 2) if med_n is not None else None,
+            median_ic=round(med_ic, 6) if med_ic is not None else None,
+            median_abs_tstat=round(med_abs_t, 4) if med_abs_t is not None else None,
+            median_hit_rate=round(med_hit, 6) if med_hit is not None else None,
+            median_sharpe=round(med_sharpe, 6) if med_sharpe is not None else None,
+            evidence_score=round(evidence_score, 8) if evidence_score is not None else None,
+            reason_codes=list(dict.fromkeys(reasons)),
+        ))
+
+    if not out_rows:
+        out_rows.append(MethodEvaluationRow(
+            source="none",
+            label="No method history",
+            verdict="no_data",
+            tested_count=0,
+            eligible_count=0,
+            coverage_pct=0.0,
+            reason_codes=["no_history"],
+        ))
+
+    verdict_order = {"keep": 0, "watch": 1, "discard": 2, "no_data": 3}
+    out_rows.sort(
+        key=lambda row: (
+            verdict_order.get(row.verdict, 9),
+            -(row.evidence_score if row.evidence_score is not None else -999.0),
+            row.label,
+        )
+    )
+
+    return MethodEvaluationOut(
+        engine_horizon=engine_horizon,
+        universe=universe,
+        return_calc_method=return_calc_method,
+        rows=out_rows,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1381,7 +1751,7 @@ def trigger_predictive_history(
     job = q.enqueue(
         "services.worker.tasks.score_history_batch.enqueue_score_history_for_symbol",
         symbol,
-        job_timeout=1800,
+        job_timeout=7200,
     )
     row.rq_job_id = str(job.id)
     db.commit()
@@ -1420,7 +1790,7 @@ def trigger_all_predictive_history(db: Session = Depends(get_db)) -> PredictiveH
         job = q.enqueue(
             "services.worker.tasks.score_history_batch.enqueue_score_history_for_symbol",
             sym,
-            job_timeout=1800,
+            job_timeout=7200,
         )
         row.rq_job_id = str(job.id)
         job_ids.append(str(job.id))
@@ -1466,6 +1836,7 @@ def _edge_redis() -> "Any":
 def _edge_cache_key(
     *,
     source: str,
+    variant: str,
     symbol: str,
     horizon: str,
     cost_bps: float,
@@ -1473,7 +1844,7 @@ def _edge_cache_key(
     score_revision_hash: str,
 ) -> str:
     return (
-        f"edge:v{methodology_version}:{source}:{symbol}:{horizon}"
+        f"edge:v{methodology_version}:{source}:{variant}:{symbol}:{horizon}"
         f":c{int(cost_bps)}:{score_revision_hash}"
     )
 
@@ -1508,30 +1879,123 @@ def _edge_db_horizons(canonical_horizon_name: str) -> list[str]:
     return out
 
 
+def _edge_multiple_testing_count() -> int:
+    return 2 * len(SIGNAL_MODES)
+
+
+def _oos_sample_from_dates(base: Any, dates: Any) -> Any:
+    from core.quant_core.research.oos_index import OosSample, OosWindow
+
+    idx = pd.DatetimeIndex(dates).dropna().sort_values().unique()
+    windows: tuple[Any, ...]
+    if len(idx) == 0:
+        windows = ()
+    else:
+        windows = (
+            OosWindow(
+                fold_id=None,
+                start=pd.Timestamp(idx[0]),
+                end=pd.Timestamp(idx[-1]),
+                winner_variant_id=None,
+                winner_params=None,
+            ),
+        )
+    return OosSample(
+        source=base.source,
+        horizon=base.horizon,
+        windows=windows,
+        dates=idx,
+        score_mode=base.score_mode,
+    )
+
+
+def _date_union_from_windows(windows: tuple[Any, ...]) -> pd.DatetimeIndex:
+    parts: list[pd.DatetimeIndex] = []
+    for w in windows:
+        parts.append(pd.date_range(start=w.start, end=w.end, freq="B"))
+    if not parts:
+        return pd.DatetimeIndex([])
+    return pd.DatetimeIndex(sorted(set().union(*[set(part) for part in parts])))
+
+
+def _oos_sample_from_windows(base: Any, windows: tuple[Any, ...]) -> Any:
+    from core.quant_core.research.oos_index import OosSample
+
+    return OosSample(
+        source=base.source,
+        horizon=base.horizon,
+        windows=windows,
+        dates=_date_union_from_windows(windows),
+        score_mode=base.score_mode,
+    )
+
+
+def _split_wfo_oos_for_edge(oos_sample: Any) -> tuple[Any, Any]:
+    windows = tuple(
+        sorted(
+            tuple(oos_sample.windows or ()),
+            key=lambda w: (pd.Timestamp(w.start), pd.Timestamp(w.end), str(w.fold_id)),
+        )
+    )
+    if len(windows) >= 2:
+        proof_count = max(1, int(math.ceil(len(windows) / 3.0)))
+        proof_count = min(proof_count, len(windows) - 1)
+        return (
+            _oos_sample_from_windows(oos_sample, windows[:-proof_count]),
+            _oos_sample_from_windows(oos_sample, windows[-proof_count:]),
+        )
+
+    dates = pd.DatetimeIndex(oos_sample.dates).dropna().sort_values().unique()
+    if len(dates) < 2:
+        return _oos_sample_from_dates(oos_sample, []), _oos_sample_from_dates(oos_sample, [])
+    cut = max(1, min(len(dates) - 1, int(math.floor(len(dates) * 2.0 / 3.0))))
+    return _oos_sample_from_dates(oos_sample, dates[:cut]), _oos_sample_from_dates(oos_sample, dates[cut:])
+
+
+def _signal_engine_selection_sample(
+    oos_sample: Any,
+    *,
+    score_index: pd.DatetimeIndex,
+    holdout_bars: int,
+) -> Any:
+    dates = pd.DatetimeIndex(score_index).dropna().sort_values().unique()
+    proof_dates = pd.DatetimeIndex(oos_sample.dates).dropna().sort_values().unique()
+    if len(proof_dates) > 0:
+        dates = dates[dates < pd.Timestamp(proof_dates[0])]
+    elif int(holdout_bars) > 0 and len(dates) > int(holdout_bars):
+        dates = dates[:-int(holdout_bars)]
+    selection_bars = max(1, int(holdout_bars or 0))
+    return _oos_sample_from_dates(oos_sample, dates[-selection_bars:])
+
+
 def _edge_revision_context(
     *,
     db: "Session",
     symbol: str,
     horizon: str,
     source: str,
-) -> tuple[str, str] | None:
+    variant: str | None = None,
+) -> tuple[str, str, str] | None:
     from core.quant_core.horizons import canonical_horizon
     from sqlalchemy import func as _func
 
     try:
         canonical_h = canonical_horizon(horizon, allow_legacy=True)
+        source_spec = _resolve_score_source(source, variant)
     except ValueError:
         return None
 
     symbol_upper = symbol.upper()
     db_horizons = _edge_db_horizons(canonical_h)
+    variants = signal_mode_read_names(source_spec.variant)
 
-    if source == "wfo":
+    if source_spec.axis == "wfo":
         summary = (
             db.query(models.WfoSignalSummary)
             .filter(
                 models.WfoSignalSummary.symbol == symbol_upper,
                 models.WfoSignalSummary.horizon.in_(db_horizons),
+                models.WfoSignalSummary.variant.in_(variants),
                 models.WfoSignalSummary.status == "succeeded",
             )
             .order_by(models.WfoSignalSummary.updated_at.desc())
@@ -1544,7 +2008,7 @@ def _edge_revision_context(
             .select_from(models.SignalScoreHistory)
             .filter(
                 models.SignalScoreHistory.symbol == symbol_upper,
-                models.SignalScoreHistory.source == "wfo",
+                models.SignalScoreHistory.source.in_(source_spec.read_sources),
                 models.SignalScoreHistory.horizon.in_(db_horizons),
             )
             .scalar()
@@ -1557,14 +2021,15 @@ def _edge_revision_context(
             row_count=row_count,
             folds_hash=_folds_hash(summary.folds_json),
         )
-        return canonical_h, rev_hash
+        return canonical_h, source_spec.variant, rev_hash
 
-    if source == "signal_engine":
+    if source_spec.axis == "engine":
         global_row = (
             db.query(models.SignalEngineGlobalResult)
             .filter(
                 models.SignalEngineGlobalResult.symbol == symbol_upper,
                 models.SignalEngineGlobalResult.horizon.in_(db_horizons),
+                models.SignalEngineGlobalResult.variant.in_(variants),
                 models.SignalEngineGlobalResult.status == "succeeded",
             )
             .order_by(models.SignalEngineGlobalResult.updated_at.desc())
@@ -1575,7 +2040,7 @@ def _edge_revision_context(
             .select_from(models.SignalScoreHistory)
             .filter(
                 models.SignalScoreHistory.symbol == symbol_upper,
-                models.SignalScoreHistory.source.in_(("engine_expanded", "engine_legacy")),
+                models.SignalScoreHistory.source.in_(source_spec.read_sources),
                 models.SignalScoreHistory.horizon.in_(db_horizons),
             )
             .scalar()
@@ -1583,12 +2048,23 @@ def _edge_revision_context(
         )
         if global_row is None and row_count <= 0:
             return None
+        data_as_of = getattr(global_row, "data_as_of", None) if global_row is not None else None
+        if data_as_of is None:
+            data_as_of = (
+                db.query(_func.max(models.SignalScoreHistory.date))
+                .filter(
+                    models.SignalScoreHistory.symbol == symbol_upper,
+                    models.SignalScoreHistory.source.in_(source_spec.read_sources),
+                    models.SignalScoreHistory.horizon.in_(db_horizons),
+                )
+                .scalar()
+            )
         rev_hash = _score_revision_hash(
-            data_as_of=str(getattr(global_row, "data_as_of", "") or ""),
+            data_as_of=str(data_as_of or ""),
             row_count=row_count,
             folds_hash="none",
         )
-        return canonical_h, rev_hash
+        return canonical_h, source_spec.variant, rev_hash
 
     return None
 
@@ -1599,18 +2075,20 @@ def _edge_cache_payload(
     symbol: str,
     horizon: str,
     source: str,
+    variant: str | None = None,
     cost_bps: float,
 ) -> tuple[dict[str, Any] | None, str]:
     import json
     from core.quant_core.research.edge import METHODOLOGY_VERSION
 
-    ctx = _edge_revision_context(db=db, symbol=symbol, horizon=horizon, source=source)
+    ctx = _edge_revision_context(db=db, symbol=symbol, horizon=horizon, source=source, variant=variant)
     if ctx is None:
         return None, "missing"
 
-    canonical_h, rev_hash = ctx
+    canonical_h, canonical_variant, rev_hash = ctx
     cache_key = _edge_cache_key(
         source=source,
+        variant=canonical_variant,
         symbol=symbol.upper(),
         horizon=canonical_h,
         cost_bps=cost_bps,
@@ -1638,20 +2116,22 @@ def _store_edge_cache_payload(
     symbol: str,
     horizon: str,
     source: str,
+    variant: str | None = None,
     cost_bps: float,
     out_json: str,
 ) -> bool:
     from core.quant_core.research.edge import METHODOLOGY_VERSION
 
-    ctx = _edge_revision_context(db=db, symbol=symbol, horizon=horizon, source=source)
+    ctx = _edge_revision_context(db=db, symbol=symbol, horizon=horizon, source=source, variant=variant)
     if ctx is None:
         return False
-    canonical_h, rev_hash = ctx
+    canonical_h, canonical_variant, rev_hash = ctx
     redis = _edge_redis()
     if redis is None:
         return False
     cache_key = _edge_cache_key(
         source=source,
+        variant=canonical_variant,
         symbol=symbol.upper(),
         horizon=canonical_h,
         cost_bps=cost_bps,
@@ -1670,8 +2150,10 @@ def _build_edge_metrics_from_db(
     symbol: str,
     horizon: str,
     source: str,
+    variant: str | None = None,
     cost_bps: float,
     db: "Session",
+    multiple_testing_count: int | None = None,
 ) -> "EdgeMetrics | None":
     """Load all required data from DB and compute EdgeMetrics. Returns None on missing data."""
     from core.quant_core.horizons import HORIZON_SPECS, canonical_horizon
@@ -1682,35 +2164,27 @@ def _build_edge_metrics_from_db(
     # Resolve legacy horizon aliases (short/medium/long → weekly/monthly/quarterly).
     try:
         canonical_h = canonical_horizon(horizon, allow_legacy=True)
+        source_spec = _resolve_score_source(source, variant)
     except ValueError:
         return None
 
     spec = HORIZON_SPECS[canonical_h]
-
-    # --- Determine DB source strings ---
-    # API source: 'signal_engine' | 'wfo'
-    # DB source column: 'engine_legacy' | 'engine_expanded' | 'wfo'
-    if source == "signal_engine":
-        db_sources = ("engine_expanded", "engine_legacy")
-    elif source == "wfo":
-        db_sources = ("wfo",)
-    else:
-        return None
+    public_source = "wfo" if source_spec.axis == "wfo" else "signal_engine"
+    db_sources = source_spec.read_sources
+    variants = signal_mode_read_names(source_spec.variant)
+    multiple_testing_count = int(multiple_testing_count or _edge_multiple_testing_count())
 
     # --- Load score history rows for all categories ---
     # Try candidate horizons: canonical first, then legacy alias.
     db_horizons = _edge_db_horizons(canonical_h)
 
-    series_by_cat: dict[str, pd.Series] = {}
-    used_horizon_key = None
-    for db_src in db_sources:
-        for db_h in db_horizons:
-            series_by_cat = _load_score_history(db, symbol=symbol, source=db_src, horizon=db_h)
-            if series_by_cat:
-                used_horizon_key = db_h
-                break
-        if series_by_cat:
-            break
+    symbol_upper = symbol.upper()
+    series_by_cat = _load_score_history(
+        db,
+        symbol=symbol_upper,
+        source=source_spec.canonical_source,
+        horizon=canonical_h,
+    )
 
     if not series_by_cat:
         return None
@@ -1720,11 +2194,8 @@ def _build_edge_metrics_from_db(
         return None
 
     # --- Determine today's bucket ---
-    live_source = "wfo" if source == "wfo" else (
-        "engine_expanded" if "engine_expanded" in db_sources else "engine_legacy"
-    )
     live_score_raw = _load_current_live_score(
-        db, symbol=symbol, source=live_source, horizon=used_horizon_key or canonical_h,
+        db, symbol=symbol_upper, source=source_spec.canonical_source, horizon=canonical_h,
     )
     if live_score_raw is None:
         # Fall back to the latest bar in score history.
@@ -1733,7 +2204,7 @@ def _build_edge_metrics_from_db(
 
     # --- Load prices ---
     try:
-        prices = _load_pricing_data(db, symbol)
+        prices = _load_pricing_data(db, symbol_upper)
     except Exception:
         return None
 
@@ -1747,6 +2218,7 @@ def _build_edge_metrics_from_db(
                 .filter(
                     models.WfoSignalSummary.symbol == sym,
                     models.WfoSignalSummary.horizon == db_h,
+                    models.WfoSignalSummary.variant.in_(variants),
                     models.WfoSignalSummary.status == "succeeded",
                     models.WfoSignalSummary.folds_json.isnot(None),
                 )
@@ -1759,47 +2231,66 @@ def _build_edge_metrics_from_db(
 
     def score_history_loader(sym: str, h: str) -> list[dict]:
         out = []
-        for db_src in db_sources:
-            for db_h in db_horizons:
-                rows = (
-                    db.query(models.SignalScoreHistory)
-                    .filter_by(symbol=sym, source=db_src, horizon=db_h)
-                    .order_by(models.SignalScoreHistory.date.asc())
-                    .all()
-                )
-                if rows:
-                    out.extend({"date": r.date, "is_oos": bool(getattr(r, "is_oos", False))} for r in rows)
-                    return out
+        rows = (
+            db.query(models.SignalScoreHistory)
+            .filter(
+                models.SignalScoreHistory.symbol == sym,
+                models.SignalScoreHistory.source.in_(db_sources),
+                models.SignalScoreHistory.horizon.in_(db_horizons),
+            )
+            .order_by(models.SignalScoreHistory.date.asc())
+            .all()
+        )
+        if rows:
+            out.extend({"date": r.date, "is_oos": bool(getattr(r, "is_oos", False))} for r in rows)
         return out
 
     oos_sample = oos_sample_for(
-        symbol=symbol,
+        symbol=symbol_upper,
         horizon=canonical_h,
-        source=source,
-        wfo_loader=wfo_loader if source == "wfo" else None,
-        score_history_loader=score_history_loader if source == "signal_engine" else None,
+        source=public_source,
+        wfo_loader=wfo_loader if public_source == "wfo" else None,
+        score_history_loader=score_history_loader if public_source == "signal_engine" else None,
         ohlcv_index_loader=lambda sym: ohlcv_idx,
         holdout_bars=spec.signal_engine_holdout_bars,
     )
+    if public_source == "wfo":
+        selection_oos_sample, proof_oos_sample = _split_wfo_oos_for_edge(oos_sample)
+    else:
+        selection_oos_sample = _signal_engine_selection_sample(
+            oos_sample,
+            score_index=pd.DatetimeIndex(score.dropna().index),
+            holdout_bars=spec.signal_engine_holdout_bars,
+        )
+        proof_oos_sample = oos_sample
+
+    if len(pd.DatetimeIndex(selection_oos_sample.dates)) == 0 or len(pd.DatetimeIndex(proof_oos_sample.dates)) == 0:
+        return None
 
     metrics = build_edge_payload(
-        symbol=symbol,
+        symbol=symbol_upper,
         horizon=canonical_h,
-        source=source,
+        source=public_source,
         score_series=score,
         prices=prices,
-        oos_sample=oos_sample,
+        oos_sample=proof_oos_sample,
         today_bucket=today_bucket,
         fwd_horizon_bars=spec.reference_forward_days,
+        holding_period_candidates=tuple(range(spec.prediction_min_days, spec.prediction_max_days + 1)),
         cost_bps_per_side=cost_bps,
+        return_calc_method="open_to_exit_ladder",
+        variant=source_spec.variant,
+        selection_oos_sample=selection_oos_sample,
+        multiple_testing_count=multiple_testing_count,
     )
-    if source != "wfo":
+    if public_source != "wfo":
         return metrics
 
     fragility = _edge_fragility_from_db(
         db=db,
-        symbol=symbol,
+        symbol=symbol_upper,
         db_horizons=db_horizons,
+        variant=source_spec.variant,
     )
     return replace(
         metrics,
@@ -1814,6 +2305,7 @@ def _edge_fragility_from_db(
     db: "Session",
     symbol: str,
     db_horizons: list[str],
+    variant: str | None = None,
 ) -> dict[str, Any]:
     severity = {
         "unavailable": 0,
@@ -1826,6 +2318,7 @@ def _edge_fragility_from_db(
         .filter(
             models.WfoSignalSummary.symbol == symbol.upper(),
             models.WfoSignalSummary.horizon.in_(db_horizons),
+            models.WfoSignalSummary.variant.in_(signal_mode_read_names(variant or "expanded_ta_simple")),
             models.WfoSignalSummary.status == "succeeded",
             models.WfoSignalSummary.fragility_json.isnot(None),
         )
@@ -1861,13 +2354,39 @@ def _edge_metrics_to_out(m: "EdgeMetrics") -> "EdgeMetricsOut":
         symbol=m.symbol,
         horizon=m.horizon,
         source=m.source,
+        variant=m.variant,
         bucket=m.bucket,
         direction=m.direction,
         n=m.n,
         window_start=m.window_start.date().isoformat() if m.window_start else None,
         window_end=m.window_end.date().isoformat() if m.window_end else None,
+        fwd_horizon_bars=m.fwd_horizon_bars,
+        return_calc_method=m.return_calc_method,
+        entry_price_kind=m.entry_price_kind,
+        entry_lag_bars=m.entry_lag_bars,
+        exit_price_kind=m.exit_price_kind,
+        exit_lag_bars=m.exit_lag_bars,
+        exit_timing_label=m.exit_timing_label,
+        holding_period_min_bars=m.holding_period_min_bars,
+        holding_period_max_bars=m.holding_period_max_bars,
+        holding_period_candidate_count=m.holding_period_candidate_count,
+        holding_period_selection_metric=m.holding_period_selection_metric,
+        side_policy=m.side_policy,
+        action_expected_return_gross=m.action_expected_return_gross,
+        action_expected_return_gross_ci_lower=m.action_expected_return_gross_ci_lower,
+        action_expected_return_gross_ci_upper=m.action_expected_return_gross_ci_upper,
+        action_expected_return_net=m.action_expected_return_net,
+        action_expected_return_net_ci_lower=m.action_expected_return_net_ci_lower,
+        action_expected_return_net_ci_upper=m.action_expected_return_net_ci_upper,
+        stock_expected_return=m.stock_expected_return,
+        stock_expected_return_ci_lower=m.stock_expected_return_ci_lower,
+        stock_expected_return_ci_upper=m.stock_expected_return_ci_upper,
         expected_return_gross=m.expected_return_gross,
+        expected_return_gross_ci_lower=m.expected_return_gross_ci_lower,
+        expected_return_gross_ci_upper=m.expected_return_gross_ci_upper,
         expected_return_net=m.expected_return_net,
+        expected_return_net_ci_lower=m.expected_return_net_ci_lower,
+        expected_return_net_ci_upper=m.expected_return_net_ci_upper,
         hit_rate=m.hit_rate,
         hit_ci_lower=m.hit_ci_lower,
         hit_ci_upper=m.hit_ci_upper,
@@ -1881,16 +2400,45 @@ def _edge_metrics_to_out(m: "EdgeMetrics") -> "EdgeMetricsOut":
         mc_luck_pvalue_net=m.mc_luck_pvalue_net,
         label_shuffle_pvalue_gross=m.label_shuffle_pvalue_gross,
         label_shuffle_pvalue_net=m.label_shuffle_pvalue_net,
+        mc_luck_pvalue_gross_adj=m.mc_luck_pvalue_gross_adj,
+        mc_luck_pvalue_net_adj=m.mc_luck_pvalue_net_adj,
+        label_shuffle_pvalue_gross_adj=m.label_shuffle_pvalue_gross_adj,
+        label_shuffle_pvalue_net_adj=m.label_shuffle_pvalue_net_adj,
         proven_edge_gross=m.proven_edge_gross,
         proven_edge_net=m.proven_edge_net,
         gates=EdgeGatesOut(
             mc_gross=m.gates.mc_gross,
             mc_net=m.gates.mc_net,
+            label_shuffle_gross=m.gates.label_shuffle_gross,
+            label_shuffle_net=m.gates.label_shuffle_net,
             wilson=m.gates.wilson,
             n=m.gates.n,
+            freshness_gross=m.gates.freshness_gross,
+            freshness_net=m.gates.freshness_net,
         ),
         cost_bps_per_side=m.cost_bps_per_side,
         methodology_version=m.methodology_version,
+        proof_max_lookback_years=m.proof_max_lookback_years,
+        freshness_lookback_years=m.freshness_lookback_years,
+        freshness_min_n=m.freshness_min_n,
+        freshness_n=m.freshness_n,
+        freshness_window_start=m.freshness_window_start.date().isoformat() if m.freshness_window_start else None,
+        freshness_window_end=m.freshness_window_end.date().isoformat() if m.freshness_window_end else None,
+        freshness_action_expected_return_gross=m.freshness_action_expected_return_gross,
+        freshness_action_expected_return_net=m.freshness_action_expected_return_net,
+        freshness_hit_rate=m.freshness_hit_rate,
+        freshness_status=m.freshness_status,
+        selection_n=m.selection_n,
+        selection_window_start=m.selection_window_start.date().isoformat() if m.selection_window_start else None,
+        selection_window_end=m.selection_window_end.date().isoformat() if m.selection_window_end else None,
+        selection_action_expected_return_gross=m.selection_action_expected_return_gross,
+        selection_action_expected_return_net=m.selection_action_expected_return_net,
+        selection_hit_rate=m.selection_hit_rate,
+        proof_n=m.proof_n,
+        proof_window_start=m.proof_window_start.date().isoformat() if m.proof_window_start else None,
+        proof_window_end=m.proof_window_end.date().isoformat() if m.proof_window_end else None,
+        proof_method=m.proof_method,
+        multiple_testing_count=m.multiple_testing_count,
         fragility_label=m.fragility_label,
         fragility_fold_count=m.fragility_fold_count,
         fragility_details=list(m.fragility_details or ()),
@@ -1903,6 +2451,7 @@ def _warm_edge_cache_entries(
     symbols: list[str] | None,
     horizons: list[str] | None,
     sources: list[str] | None,
+    variants: list[str] | None,
     cost_bps: float,
 ) -> dict[str, int]:
     from core.quant_core.horizons import VALID_HORIZONS, canonical_horizon
@@ -1911,6 +2460,9 @@ def _warm_edge_cache_entries(
         horizons = list(VALID_HORIZONS)
     if not sources:
         sources = ["signal_engine", "wfo"]
+    if not variants:
+        variants = list(SIGNAL_MODES)
+    variants = [resolve_signal_mode(v).name for v in variants]
     if not symbols:
         wfo_syms = {s for (s,) in db.query(models.WfoSignalSummary.symbol).distinct().all()}
         eng_syms = {s for (s,) in db.query(models.SignalEngineGlobalResult.symbol).distinct().all()}
@@ -1925,28 +2477,32 @@ def _warm_edge_cache_entries(
             except ValueError:
                 continue
             for src in sources:
-                try:
-                    metrics = _build_edge_metrics_from_db(
-                        symbol=sym,
-                        horizon=canonical_h,
-                        source=src,
-                        cost_bps=cost_bps,
-                        db=db,
-                    )
-                    if metrics is None:
-                        continue
-                    out_json = _edge_metrics_to_out(metrics).model_dump_json()
-                    if _store_edge_cache_payload(
-                        db=db,
-                        symbol=sym,
-                        horizon=canonical_h,
-                        source=src,
-                        cost_bps=cost_bps,
-                        out_json=out_json,
-                    ):
-                        warmed += 1
-                except Exception:
-                    errors += 1
+                for variant in variants:
+                    try:
+                        metrics = _build_edge_metrics_from_db(
+                            symbol=sym,
+                            horizon=canonical_h,
+                            source=src,
+                            variant=variant,
+                            cost_bps=cost_bps,
+                            db=db,
+                            multiple_testing_count=_edge_multiple_testing_count(),
+                        )
+                        if metrics is None:
+                            continue
+                        out_json = _edge_metrics_to_out(metrics).model_dump_json()
+                        if _store_edge_cache_payload(
+                            db=db,
+                            symbol=sym,
+                            horizon=canonical_h,
+                            source=src,
+                            variant=variant,
+                            cost_bps=cost_bps,
+                            out_json=out_json,
+                        ):
+                            warmed += 1
+                    except Exception:
+                        errors += 1
 
     return {"warmed": warmed, "errors": errors, "symbols": len(symbols)}
 
@@ -1956,6 +2512,7 @@ def get_edge_metrics(
     symbol: str = Query(...),
     horizon: str = Query(..., description="weekly | monthly | quarterly (short/medium/long also accepted)"),
     source: str = Query(..., description="signal_engine | wfo"),
+    variant: Optional[str] = Query(None, description="Signal mode variant; defaults to expanded_ta_simple"),
     cost_bps: float | None = Query(default=None, ge=0.0, le=500.0),
     db: Session = Depends(get_db),
 ) -> Any:
@@ -1971,12 +2528,18 @@ def get_edge_metrics(
     _VALID_EDGE_SOURCES = {"signal_engine", "wfo"}
     if source not in _VALID_EDGE_SOURCES:
         raise HTTPException(400, f"source must be one of {sorted(_VALID_EDGE_SOURCES)}")
+    if variant is not None:
+        try:
+            variant = resolve_signal_mode(variant).name
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
     cost_bps_value = float(settings.EDGE_COST_BPS_PER_SIDE if cost_bps is None else cost_bps)
     payload, state = _edge_cache_payload(
         db=db,
         symbol=symbol.upper(),
         horizon=horizon,
         source=source,
+        variant=variant,
         cost_bps=cost_bps_value,
     )
     if state == "missing":
@@ -1997,6 +2560,7 @@ def warm_edge_cache(
     symbols: Optional[list[str]] = None,
     horizons: Optional[list[str]] = None,
     sources: Optional[list[str]] = None,
+    variants: Optional[list[str]] = None,
     cost_bps: float | None = Query(default=None, ge=0.0, le=500.0),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -2012,5 +2576,6 @@ def warm_edge_cache(
         symbols=symbols,
         horizons=horizons,
         sources=sources,
+        variants=variants,
         cost_bps=float(settings.EDGE_COST_BPS_PER_SIDE if cost_bps is None else cost_bps),
     )

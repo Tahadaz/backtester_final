@@ -36,9 +36,11 @@ from core.quant_core.data import (
     CasablancaBourseIndicesAdapter,
 )
 from core.quant_core.s3_keys import build_market_store_object_key
+from core.quant_core.signal_engine.modes import ALL_SIGNAL_MODE_NAMES
 
 # Reuse merge helper from the existing ingest task
 from services.worker.tasks.ingest_market_data import (
+    _compute_adv_20d_value,
     _merge_overwrite_if_different,
     _try_load_existing_parquet,
     _save_parquet,
@@ -49,6 +51,14 @@ from services.api.app.services.weekly_recompute_policy import (
     iter_signal_engine_weekly_stale_tuples,
     iter_wfo_weekly_stale_tuples,
 )
+
+
+def _finite_float(value) -> float | None:
+    try:
+        out = float(value)
+    except Exception:
+        return None
+    return out if out == out and out not in (float("inf"), float("-inf")) else None
 
 
 def _enqueue_signal_layers_after_refresh(
@@ -72,7 +82,7 @@ def _enqueue_signal_layers_after_refresh(
         from services.worker.tasks.signal_engine_batch import enqueue_signal_engine_for_symbol
 
         for horizon in ("weekly", "monthly", "quarterly"):
-            for variant in ("legacy", "expanded"):
+            for variant in ALL_SIGNAL_MODE_NAMES:
                 if _SIGNAL_ENGINE_REFRESH_ON_MARKET_REFRESH:
                     enqueue_signal_engine_refresh_for_symbol(
                         symbol,
@@ -206,9 +216,55 @@ def _upsert_market_data_store(
     row_count: int,
     source_provider: str,
     data_as_of: datetime.date,
+    close_last: float | None = None,
+    prev_close: float | None = None,
+    adv_20d: float | None = None,
 ) -> None:
-    db.execute(
-        text("""
+    params = {
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "object_key": object_key,
+        "start_ts": start_ts,
+        "end_ts": end_ts,
+        "row_count": row_count,
+        "source_provider": source_provider,
+        "data_as_of": data_as_of,
+        "close_last": close_last,
+        "prev_close": prev_close,
+        "adv_20d": adv_20d,
+    }
+    try:
+        db.execute(
+            text("""
+            INSERT INTO market_data_store
+                (symbol, timeframe, object_key, start_ts, end_ts, row_count,
+                 source_provider, data_as_of, close_last, prev_close, adv_20d,
+                 created_at, updated_at)
+            VALUES
+                (:symbol, :timeframe, :object_key, :start_ts, :end_ts, :row_count,
+                 :source_provider, :data_as_of, :close_last, :prev_close, :adv_20d,
+                 now(), now())
+            ON CONFLICT (symbol, timeframe)
+            DO UPDATE SET
+                object_key      = excluded.object_key,
+                start_ts        = excluded.start_ts,
+                end_ts          = excluded.end_ts,
+                row_count       = excluded.row_count,
+                source_provider = excluded.source_provider,
+                data_as_of      = excluded.data_as_of,
+                close_last      = excluded.close_last,
+                prev_close      = excluded.prev_close,
+                adv_20d         = excluded.adv_20d,
+                updated_at      = now()
+            """),
+            params,
+        )
+    except Exception as exc:
+        if "close_last" not in str(exc) and "adv_20d" not in str(exc):
+            raise
+        db.rollback()
+        db.execute(
+            text("""
             INSERT INTO market_data_store
                 (symbol, timeframe, object_key, start_ts, end_ts, row_count,
                  source_provider, data_as_of, created_at, updated_at)
@@ -224,18 +280,9 @@ def _upsert_market_data_store(
                 source_provider = excluded.source_provider,
                 data_as_of      = excluded.data_as_of,
                 updated_at      = now()
-        """),
-        {
-            "symbol": symbol,
-            "timeframe": timeframe,
-            "object_key": object_key,
-            "start_ts": start_ts,
-            "end_ts": end_ts,
-            "row_count": row_count,
-            "source_provider": source_provider,
-            "data_as_of": data_as_of,
-        },
-    )
+            """),
+            params,
+        )
     db.commit()
 
 
@@ -257,6 +304,74 @@ def _resolve_provider_symbol(db: Session, symbol: str, provider: str) -> str:
     if provider == "yahoo":
         return f"{symbol}.CS"
     return symbol
+
+
+def _update_stock_metadata_from_bourse(db: Session, symbol: str, provider_symbol: str) -> None:
+    """Best-effort enrichment from the live Bourse instrument page."""
+    import html as _html
+    import re as _re
+
+    try:
+        import requests
+    except ImportError:
+        return
+
+    try:
+        url = f"https://www.casablanca-bourse.com/fr/live-market/instruments/{provider_symbol}?pwa=1"
+        resp = requests.get(
+            url,
+            timeout=10,
+            verify=False,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                )
+            },
+        )
+        if resp.status_code != 200:
+            return
+        html = resp.text
+        isin_match = _re.search(r"\b(MA[A-Z0-9]{10})\b", html)
+        sector_match = _re.search(
+            r"<th[^>]*>\s*Secteur\s*</th>\s*<td[^>]*>(?:<[^>]+>)*([^<]+)",
+            html,
+            _re.IGNORECASE | _re.DOTALL,
+        )
+        name_match = _re.search(
+            rf'href=["\']/fr/live-market/instruments/{_re.escape(provider_symbol)}\?pwa[^"\']*["\'][^>]*>([^<]+)<',
+            html,
+            _re.IGNORECASE,
+        )
+        isin = isin_match.group(1) if isin_match else None
+        sector = _html.unescape(sector_match.group(1)).strip() if sector_match else None
+        display_name = _html.unescape(name_match.group(1)).strip() if name_match else None
+
+        db.execute(
+            text(
+                """
+                UPDATE stock_master
+                SET
+                  isin = COALESCE(NULLIF(isin, ''), :isin),
+                  sector = COALESCE(NULLIF(sector, ''), :sector),
+                  display_name = COALESCE(NULLIF(display_name, ''), :display_name),
+                  bourse_url = COALESCE(NULLIF(bourse_url, ''), :bourse_url),
+                  updated_at = now()
+                WHERE symbol = :symbol
+                """
+            ),
+            {
+                "symbol": symbol,
+                "isin": isin,
+                "sector": sector,
+                "display_name": display_name if display_name and display_name.upper() != provider_symbol else None,
+                "bourse_url": url,
+            },
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
 
 
 def _do_refresh_symbol(
@@ -305,6 +420,8 @@ def _do_refresh_symbol(
         }
 
     provider_symbol = _resolve_provider_symbol(db, symbol, source)
+    if is_bourse_source(source):
+        _update_stock_metadata_from_bourse(db, symbol, provider_symbol)
 
     # Pick adapter
     use_session_adapter = False
@@ -370,6 +487,9 @@ def _do_refresh_symbol(
     start_ts = merged.index.min().to_pydatetime()
     end_ts = merged.index.max().to_pydatetime()
     data_as_of = end_ts.date()
+    close_last = _finite_float(merged["Close"].iloc[-1]) if "Close" in merged.columns and len(merged) >= 1 else None
+    prev_close = _finite_float(merged["Close"].iloc[-2]) if "Close" in merged.columns and len(merged) >= 2 else None
+    adv_20d = _compute_adv_20d_value(merged)
 
     _upsert_market_data_store(
         db=db,
@@ -381,6 +501,9 @@ def _do_refresh_symbol(
         row_count=int(len(merged)),
         source_provider=source,
         data_as_of=data_as_of,
+        close_last=close_last,
+        prev_close=prev_close,
+        adv_20d=adv_20d,
     )
 
     return {

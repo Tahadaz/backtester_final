@@ -180,12 +180,12 @@ Deliverables:
 Files:
   services/api/app/routers/backtest_wfo.py     — API endpoints
   services/api/app/schemas/backtest_wfo.py     — Pydantic schemas
-  quant-backtesting-frontend/components/backtest/wfo-results.tsx
-  quant-backtesting-frontend/components/backtest/optimization-profile.tsx
-  quant-backtesting-frontend/components/backtest/parameter-evolution.tsx
-  quant-backtesting-frontend/components/backtest/sizing-summary.tsx
-  quant-backtesting-frontend/components/backtest/test-period-results.tsx
-  quant-backtesting-frontend/hooks/use-wfo.ts
+  frontend/components/backtest/wfo-results.tsx
+  frontend/components/backtest/optimization-profile.tsx
+  frontend/components/backtest/parameter-evolution.tsx
+  frontend/components/backtest/sizing-summary.tsx
+  frontend/components/backtest/test-period-results.tsx
+  frontend/hooks/use-wfo.ts
 
 Deliverables:
   - POST /api/backtest/wfo — submit WFO analysis

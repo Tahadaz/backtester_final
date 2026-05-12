@@ -143,8 +143,8 @@ Query parameters are the primary mechanism for cross-page state transfer. They a
 
 ## Cross-Links
 
-- Navigation components: `quant-backtesting-frontend/components/layout/`
-- Signal page components: `quant-backtesting-frontend/components/strategy/`
-- Data page components: `quant-backtesting-frontend/components/data/`
-- API hooks: `quant-backtesting-frontend/hooks/use-api.ts`
-- Type definitions: `quant-backtesting-frontend/lib/api.ts`
+- Navigation components: `frontend/components/layout/`
+- Signal page components: `frontend/components/strategy/`
+- Data page components: `frontend/components/data/`
+- API hooks: `frontend/hooks/use-api.ts`
+- Type definitions: `frontend/lib/api.ts`

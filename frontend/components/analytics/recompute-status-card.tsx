@@ -78,7 +78,7 @@ export function RecomputeStatusCard() {
   if (!wfoHasData && !engineHasData && !historyHasData) return null
 
   return (
-    <Card className="border-blue-100 bg-blue-50/40 dark:bg-blue-950/20 dark:border-blue-900">
+    <Card className="claude-card border-dashed bg-bg2">
       <CardContent className="px-4 py-3 space-y-2">
         <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
           Progression des calculs

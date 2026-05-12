@@ -39,6 +39,59 @@ class UniverseStockOut(BaseModel):
     exclusion_reason: str | None = None
 
 
+class SignalCandidateRequest(BaseModel):
+    horizon: str = Field(default="medium", pattern=r"^(short|medium|long)$")
+    mode: str = Field(default="best", pattern=r"^(best|all)$")
+    timeframe: str = Field(default="1D", min_length=1)
+    cost_bps: float = Field(default=10.0, ge=0, le=100)
+    min_bars: int = Field(default=252, ge=0)
+    min_adv20: float = Field(default=0.0, ge=0)
+    sector_filter: list[str] | None = None
+    triage_filter: list[str] = Field(default_factory=lambda: ["proven", "watch"])
+    source_filter: list[str] | None = None
+    sort_by: str = Field(default="edge_score", pattern=r"^(edge_score|expected_return|hit_rate|adv20|symbol)$")
+    sort_dir: str = Field(default="desc", pattern=r"^(asc|desc)$")
+
+
+class SignalCandidateOut(BaseModel):
+    candidate_id: str
+    symbol: str
+    display_name: str | None = None
+    sector: str | None = None
+    row_count: int | None = None
+    data_as_of: str | None = None
+    adv20: float | None = None
+    source: str
+    variant: str
+    label: str
+    triage: str
+    bucket: str | None = None
+    direction: str | None = None
+    signal_label: str | None = None
+    score: float | None = None
+    action_expected_return_net: float | None = None
+    action_expected_return_net_ci_lower: float | None = None
+    action_expected_return_net_ci_upper: float | None = None
+    hit_rate: float | None = None
+    hit_ci_lower: float | None = None
+    hit_ci_upper: float | None = None
+    n: int | None = None
+    proof_n: int | None = None
+    proof_window_start: str | None = None
+    proof_window_end: str | None = None
+    fwd_horizon_bars: int | None = None
+    return_calc_method: str | None = None
+    entry_price_kind: str | None = None
+    entry_lag_bars: int | None = None
+    exit_price_kind: str | None = None
+    exit_lag_bars: int | None = None
+    exit_timing_label: str | None = None
+    gates: dict[str, bool] = Field(default_factory=dict)
+    proven_edge_net: bool | None = None
+    eligible: bool
+    exclusion_reason: str | None = None
+
+
 # ---------------------------------------------------------------------------
 # Allocation
 # ---------------------------------------------------------------------------
@@ -301,6 +354,7 @@ class HandoffOut(BaseModel):
     strategy_name: str
     portfolio: dict[str, Any] = Field(default_factory=dict)
     stocks: dict[str, Any] = Field(default_factory=dict)
+    selected_signal_candidates: list[dict[str, Any]] = Field(default_factory=list)
     wfo_params: WFOParamManifestOut = Field(default_factory=WFOParamManifestOut)
     total_wfo_param_count: int = 0
     warnings: list[str] = Field(default_factory=list)

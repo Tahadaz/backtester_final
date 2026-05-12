@@ -204,7 +204,7 @@ export function LeaderboardTable({
               </Label>
             </div>
             <Button variant="outline" size="sm" asChild className="h-8 gap-1 text-xs">
-              <Link href="/glossary" target="_blank">
+              <Link href="/glossary#backtest" target="_blank">
                 <BookOpen className="h-3 w-3" />
                 Definitions
               </Link>

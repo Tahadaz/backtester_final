@@ -87,6 +87,62 @@ def test_run_wfo_category_signal_manual_override_marks_policy(monkeypatch) -> No
     assert result.config_used["train_bars"] == 40
 
 
+def test_run_wfo_category_signal_records_horizon_cap_offset(monkeypatch) -> None:
+    variant = VariantDef(
+        variant_id="sma_5",
+        family="sma",
+        archetype="price_vs_sma",
+        params={"window": 5},
+        description="SMA 5",
+    )
+
+    monkeypatch.setattr(
+        "core.quant_core.signal_engine.wfo_signal.build_category_candidate_grid",
+        lambda category, horizon, families=None: [variant],
+    )
+    monkeypatch.setattr(
+        "core.quant_core.signal_engine.wfo_signal.run_wfo_engine",
+        lambda **kwargs: SimpleNamespace(
+            windows=[
+                SimpleNamespace(
+                    smoothed_scores={0: 0.9},
+                    oos_return=0.1,
+                )
+            ],
+            wfe=0.6,
+            robustness_ratio=0.7,
+        ),
+    )
+    monkeypatch.setattr(
+        "core.quant_core.signal_engine.wfo_signal.compute_signal_array",
+        lambda close, variant, **kwargs: np.ones(len(close), dtype=float),
+    )
+    monkeypatch.setattr(
+        "core.quant_core.signal_engine.wfo_signal.build_current_signal",
+        lambda variant, close, **kwargs: VariantCurrentSignal(
+            variant_id=variant.variant_id,
+            signal=1.0,
+            signal_label="HAUSSIER",
+            reliability_weight=kwargs.get("reliability_weight", 1.0),
+            current_close=float(close[-1]),
+            indicator_value=None,
+            explanation="",
+        ),
+    )
+
+    result = run_wfo_category_signal(
+        "tendance",
+        "weekly",
+        np.linspace(100.0, 200.0, 2_000),
+        min_walk_forwards=1,
+        top_k_folds=1,
+    )
+
+    assert result.status == "succeeded"
+    assert result.window_diagnostics["horizon_cap_bars_used"] == 1_260
+    assert result.window_diagnostics["horizon_cap_start_offset"] == 740
+
+
 def test_run_wfo_category_signal_defaults_to_single_best_rep(monkeypatch) -> None:
     best = VariantDef(
         variant_id="v_best",

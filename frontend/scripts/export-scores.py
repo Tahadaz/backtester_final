@@ -499,8 +499,14 @@ def compute_symbol_scores(db, symbol: str, horizon: str) -> dict | None:
     low = ohlcv["Low"].values.astype("float64") if "Low" in ohlcv.columns else None
     volume = ohlcv["Volume"].values.astype("float64") if "Volume" in ohlcv.columns else None
 
-    finite_vol = volume[np.isfinite(volume)] if volume is not None else np.array([])
-    adv = float(np.mean(finite_vol)) if len(finite_vol) > 0 else None
+    if volume is not None:
+        recent_close = close[-20:]
+        recent_volume = volume[-20:]
+        finite_adv = np.isfinite(recent_close) & np.isfinite(recent_volume)
+        adv_values = recent_close[finite_adv] * recent_volume[finite_adv]
+        adv = float(np.mean(adv_values)) if len(adv_values) > 0 else None
+    else:
+        adv = None
 
     ohlcv_data_as_of = ohlcv.index[-1].date() if len(ohlcv) > 0 else None
     has_volume = _has_valid_volume(ohlcv)

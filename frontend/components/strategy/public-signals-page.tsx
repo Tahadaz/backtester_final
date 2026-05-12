@@ -13,14 +13,26 @@ import { usePublicSignals } from "@/hooks/use-public-signals"
 import { formatScore } from "@/lib/dashboard-constants"
 import type { Horizon } from "@/lib/dashboard-types"
 import { signalVariantLabel } from "@/lib/signal-variant-label"
+import { SignalEvidenceTab } from "@/components/strategy/signal-evidence-tab"
 import type {
   PublicFamilySignalDetail,
   PublicSignalRepresentative,
   PublicSupportResistanceDetail,
 } from "@/lib/public-signals-types"
-import { Activity, LineChart } from "lucide-react"
+import { Activity, Gauge, LineChart } from "lucide-react"
 
 const HORIZON_VALUES = new Set<Horizon>(["short", "medium", "long"])
+type PublicSignalsTab = "technique" | "evidence" | "indicateurs"
+type EvidenceSource = "auto" | "signal_engine" | "wfo"
+type PublicSignalView = "legacy" | "expanded" | "factor_x_ta"
+
+const sourceAliases: Record<string, EvidenceSource> = {
+  auto: "auto",
+  best: "auto",
+  engine: "signal_engine",
+  signal_engine: "signal_engine",
+  wfo: "wfo",
+}
 const FAMILY_ORDER = ["trend", "momentum", "oscillation", "volume"] as const
 const FAMILY_LABELS: Record<string, string> = {
   trend: "Tendance",
@@ -47,7 +59,73 @@ function parseHorizon(value: string | null): Horizon {
   if (value && HORIZON_VALUES.has(value as Horizon)) {
     return value as Horizon
   }
+  if (value === "weekly") return "short"
+  if (value === "monthly") return "medium"
+  if (value === "quarterly") return "long"
   return "short"
+}
+
+function parseTab(value: string | null): PublicSignalsTab {
+  return value === "evidence" || value === "indicateurs" ? value : "technique"
+}
+
+function parseEvidenceSource(value: string | null): EvidenceSource {
+  return sourceAliases[String(value ?? "").trim().toLowerCase()] ?? "auto"
+}
+
+function parseSignalView(value: string | null): PublicSignalView {
+  const token = String(value ?? "").trim().toLowerCase()
+  if (token === "legacy" || token.startsWith("legacy_")) return "legacy"
+  if (token === "factor_x_ta" || token.includes("factor_x_ta")) return "factor_x_ta"
+  return "expanded"
+}
+
+function evidenceVariantFromQuery(value: string | null, fallbackView: string | null, legacyVariant: string | null): string {
+  const token = String(value ?? "").trim().toLowerCase()
+  const legacyToken = String(legacyVariant ?? "").trim().toLowerCase()
+  const fallbackToken = String(fallbackView ?? "").trim().toLowerCase()
+  const aliases: Record<string, string> = {
+    legacy: "legacy_ta_simple",
+    expanded: "expanded_ta_simple",
+    factor_x_ta: "expanded_factor_x_ta_simple",
+  }
+  const validModes = new Set([
+    "legacy_ta_simple",
+    "expanded_ta_simple",
+    "legacy_factor_x_ta_simple",
+    "expanded_factor_x_ta_simple",
+    "legacy_ta_combo",
+    "expanded_ta_combo",
+    "legacy_factor_x_ta_combo",
+    "expanded_factor_x_ta_combo",
+  ])
+  for (const candidate of [token, legacyToken, fallbackToken]) {
+    if (aliases[candidate]) return aliases[candidate]
+    if (validModes.has(candidate)) return candidate
+  }
+  return "expanded_ta_simple"
+}
+
+function selectedSignalVariantIdFromQuery(value: string | null): string | null {
+  const token = String(value ?? "").trim()
+  const normalized = token.toLowerCase()
+  if (!token) return null
+  if (
+    normalized === "legacy" ||
+    normalized === "expanded" ||
+    normalized === "factor_x_ta" ||
+    normalized === "legacy_ta_simple" ||
+    normalized === "expanded_ta_simple" ||
+    normalized === "legacy_factor_x_ta_simple" ||
+    normalized === "expanded_factor_x_ta_simple" ||
+    normalized === "legacy_ta_combo" ||
+    normalized === "expanded_ta_combo" ||
+    normalized === "legacy_factor_x_ta_combo" ||
+    normalized === "expanded_factor_x_ta_combo"
+  ) {
+    return null
+  }
+  return token
 }
 
 function representativeLabel(rep: PublicSignalRepresentative): string {
@@ -195,12 +273,21 @@ export function PublicSignalsPage() {
   const searchParams = useSearchParams()
   const requestedSymbol = (searchParams.get("symbol") ?? "").toUpperCase()
   const requestedHorizon = parseHorizon(searchParams.get("horizon"))
-  const requestedView = (searchParams.get("view") ?? "legacy") as "legacy" | "expanded" | "factor_x_ta"
+  const requestedView = parseSignalView(searchParams.get("view"))
+  const requestedEvidenceVariant = evidenceVariantFromQuery(
+    searchParams.get("evidence_variant"),
+    searchParams.get("view"),
+    searchParams.get("variant"),
+  )
+  const requestedSelectedVariantId = selectedSignalVariantIdFromQuery(searchParams.get("variant"))
+  const requestedTab = parseTab(searchParams.get("tab"))
+  const requestedSource = parseEvidenceSource(searchParams.get("source"))
 
   const [horizon, setHorizon] = useState<Horizon>(requestedHorizon)
   const [search, setSearch] = useState("")
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(requestedSymbol || null)
-  const [signalView, setSignalView] = useState<"legacy" | "expanded" | "factor_x_ta">(requestedView)
+  const [signalView, setSignalView] = useState<PublicSignalView>(requestedView)
+  const [activeTab, setActiveTab] = useState<PublicSignalsTab>(requestedTab)
 
   const { data, error, isLoading } = usePublicSignals(horizon)
 
@@ -211,6 +298,10 @@ export function PublicSignalsPage() {
   useEffect(() => {
     setSignalView(requestedView)
   }, [requestedView])
+
+  useEffect(() => {
+    setActiveTab(requestedTab)
+  }, [requestedTab, requestedSymbol])
 
   useEffect(() => {
     if (requestedSymbol) {
@@ -321,11 +412,15 @@ export function PublicSignalsPage() {
             <HorizonSelector value={horizon} onChange={(value) => setHorizon(parseHorizon(value))} />
           </div>
 
-          <Tabs defaultValue="technique">
+          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as PublicSignalsTab)}>
             <TabsList>
               <TabsTrigger value="technique" className="gap-1.5 text-xs">
                 <Activity className="h-3.5 w-3.5" />
                 Analyse technique
+              </TabsTrigger>
+              <TabsTrigger value="evidence" className="gap-1.5 text-xs" disabled={!selectedStock}>
+                <Gauge className="h-3.5 w-3.5" />
+                Signal Evidence
               </TabsTrigger>
               <TabsTrigger value="indicateurs" className="gap-1.5 text-xs" disabled>
                 <LineChart className="h-3.5 w-3.5" />
@@ -334,7 +429,7 @@ export function PublicSignalsPage() {
             </TabsList>
 
             <p className="mt-2 text-xs text-muted-foreground">
-              L&apos;onglet Indicateurs est reserve au mode prive avec backend.
+              Signal Evidence audite le signal du jour avec le backend; Indicateurs reste reserve au mode prive complet.
             </p>
 
             <TabsContent value="technique" className="mt-4">
@@ -404,6 +499,24 @@ export function PublicSignalsPage() {
                     )
                   })}
                 </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="evidence" className="mt-4">
+              {selectedStock ? (
+                <SignalEvidenceTab
+                  symbol={selectedStock.symbol}
+                  horizon={horizon}
+                  variant={requestedEvidenceVariant}
+                  source={requestedSource}
+                  selectedVariantId={requestedSelectedVariantId}
+                />
+              ) : (
+                <Card>
+                  <CardContent className="py-4 text-sm text-muted-foreground">
+                    Selectionnez un titre pour afficher la preuve OOS du signal.
+                  </CardContent>
+                </Card>
               )}
             </TabsContent>
           </Tabs>

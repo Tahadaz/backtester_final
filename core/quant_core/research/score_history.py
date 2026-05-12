@@ -23,9 +23,12 @@ import pandas as pd
 
 from ..signal_engine.domain import (
     CATEGORY_FAMILIES,
+    VARIANT_FAMILIES,
     LEGACY_CATEGORY_FAMILIES,
+    FactorConditionMeta,
     VariantDef,
 )
+from ..signal_engine.modes import signal_mode_storage_name
 from ..signal_engine.variant_detail import compute_variant_signal_array
 from .stats.hit_rate import wilson_ci
 from .stats.robustness import stationary_bootstrap_ci
@@ -65,12 +68,27 @@ def _variant_from_rep(rep: dict[str, Any]) -> VariantDef | None:
     params = rep.get("params") or {}
     if not isinstance(params, dict):
         return None
+    factor_condition = None
+    raw_condition = rep.get("factor_condition")
+    if isinstance(raw_condition, dict):
+        try:
+            factor_condition = FactorConditionMeta(
+                condition_id=str(raw_condition["condition_id"]),
+                factor_ticker=str(raw_condition["factor_ticker"]),
+                form=str(raw_condition["form"]),
+                lookback=int(raw_condition["lookback"]),
+                threshold=float(raw_condition["threshold"]),
+                direction=str(raw_condition["direction"]),
+            )
+        except Exception:
+            factor_condition = None
     return VariantDef(
         variant_id=variant_id,
         family=family,
         archetype=archetype,
         params=dict(params),
         description=str(rep.get("description") or ""),
+        factor_condition=factor_condition,
     )
 
 
@@ -81,6 +99,7 @@ def _weighted_family_signal(
     volume: np.ndarray | None,
     high: np.ndarray | None,
     low: np.ndarray | None,
+    precomputed_signals: dict[str, np.ndarray] | None = None,
 ) -> np.ndarray | None:
     """Combine representative variants into a per-bar family score in [-100, +100]."""
     n = len(close)
@@ -90,6 +109,7 @@ def _weighted_family_signal(
     weighted = np.zeros(n, dtype="float64")
     total_w = 0.0
     any_signal = False
+    precomputed = precomputed_signals or {}
 
     for rep in representatives:
         variant = _variant_from_rep(rep)
@@ -103,10 +123,17 @@ def _weighted_family_signal(
         except (TypeError, ValueError):
             w = 1.0
         try:
-            sig = compute_variant_signal_array(
-                close, variant, volume=volume, high=high, low=low,
-            )
+            if variant.variant_id in precomputed:
+                sig = np.asarray(precomputed[variant.variant_id], dtype="float64")
+            elif variant.factor_condition is not None or variant.family.endswith("@fx"):
+                continue
+            else:
+                sig = compute_variant_signal_array(
+                    close, variant, volume=volume, high=high, low=low,
+                )
         except Exception:
+            continue
+        if len(sig) != n:
             continue
         weighted += w * sig
         total_w += w
@@ -123,7 +150,10 @@ def _weighted_family_signal(
 # ---------------------------------------------------------------------------
 
 def _category_for_variant(variant: str) -> dict[str, list[str]]:
-    return LEGACY_CATEGORY_FAMILIES if variant == "legacy" else CATEGORY_FAMILIES
+    try:
+        return VARIANT_FAMILIES[signal_mode_storage_name(variant)]
+    except Exception:
+        return LEGACY_CATEGORY_FAMILIES if variant == "legacy" else CATEGORY_FAMILIES
 
 
 def build_engine_category_series(
@@ -137,6 +167,7 @@ def build_engine_category_series(
     low: np.ndarray | None,
     family_rows: dict[str, list[dict[str, Any]]],
     index: pd.DatetimeIndex,
+    precomputed_signals: dict[str, np.ndarray] | None = None,
 ) -> dict[str, pd.Series]:
     """For each category, build the per-bar aggregated score series.
 
@@ -153,6 +184,7 @@ def build_engine_category_series(
             reps = family_rows.get(fam) or []
             sig = _weighted_family_signal(
                 reps, close=close, volume=volume, high=high, low=low,
+                precomputed_signals=precomputed_signals,
             )
             if sig is not None:
                 family_series.append(sig)
@@ -174,6 +206,7 @@ def build_wfo_category_series(
     low: np.ndarray | None,
     category_reps: dict[str, list[dict[str, Any]]],
     index: pd.DatetimeIndex,
+    precomputed_signals: dict[str, np.ndarray] | None = None,
 ) -> dict[str, pd.Series]:
     """Build per-category WFO score series from picked representatives.
 
@@ -184,6 +217,7 @@ def build_wfo_category_series(
     for category, reps in category_reps.items():
         sig = _weighted_family_signal(
             reps, close=close, volume=volume, high=high, low=low,
+            precomputed_signals=precomputed_signals,
         )
         if sig is None:
             continue

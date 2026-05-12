@@ -30,12 +30,14 @@ def _cas_upsert(db, horizon: str, as_of: date, payload: dict, upstream_rev: dict
     result = db.execute(
         text("""
         INSERT INTO dashboard_snapshot (horizon, as_of_date, payload_jsonb, upstream_rev, computed_at)
-        VALUES (:horizon, :as_of_date, :payload::jsonb, :upstream_rev::jsonb, now())
+        VALUES (:horizon, :as_of_date, CAST(:payload AS jsonb), CAST(:upstream_rev AS jsonb), now())
         ON CONFLICT (horizon, as_of_date) DO UPDATE
             SET payload_jsonb  = EXCLUDED.payload_jsonb,
                 upstream_rev   = EXCLUDED.upstream_rev,
                 computed_at    = EXCLUDED.computed_at
-            WHERE dashboard_snapshot.upstream_rev::text < EXCLUDED.upstream_rev::text
+            WHERE dashboard_snapshot.upstream_rev IS DISTINCT FROM EXCLUDED.upstream_rev
+              AND COALESCE(dashboard_snapshot.upstream_rev->>'revision_key', '')
+                  <= COALESCE(EXCLUDED.upstream_rev->>'revision_key', '')
         RETURNING horizon
         """),
         {
@@ -57,7 +59,7 @@ def _write_pipeline_revision(db, horizon: str, upstream_rev: dict, payload: dict
     db.execute(
         text("""
         INSERT INTO pipeline_revision (stage, upstream_rev, content_hash, created_at)
-        VALUES (:stage, :upstream_rev::jsonb, :content_hash, now())
+        VALUES (:stage, CAST(:upstream_rev AS jsonb), :content_hash, now())
         ON CONFLICT (stage, content_hash) DO NOTHING
         """),
         {
@@ -92,7 +94,7 @@ def refresh_dashboard_snapshot(horizon: str | None = None) -> dict[str, bool]:
         db = Session()
         try:
             upstream_rev = derive_upstream_rev(db, h)
-            payload = build_dashboard_payload(db, h)
+            payload = build_dashboard_payload(db, h, include_edge=True)
             as_of = date.today()
             wrote = _cas_upsert(db, h, as_of, payload, upstream_rev)
             if wrote:

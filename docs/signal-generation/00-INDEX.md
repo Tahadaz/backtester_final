@@ -7,7 +7,7 @@
 - A-G signal pipeline: `Implemented (4 families), expanding to 20 families`
 - Variant detail and signal-page drill-down: `Implemented`
 - Regime-aware conditioning: `Implemented (v0.1 experimental)`
-- Indicator explorer: `Partial / deferred`
+- Indicator explorer: `Implemented / partial` (chart, sidebar, live indicator API, and Signals-page tab exist; polish and product fit remain active)
 - **Indicator expansion**: `Planned — 4 → 20 indicators (5 per category)`. See [10-indicator-expansion-plan.md](./10-indicator-expansion-plan.md)
 
 ## Documents
@@ -25,8 +25,10 @@
 | 09 | [api-and-frontend.md](./09-api-and-frontend.md) | API endpoints and signal-page UX |
 | 10 | [methodology-and-sources.md](./10-methodology-and-sources.md) | Sources and justification |
 | 11 | [regime-aware-conditioning.md](./11-regime-aware-conditioning.md) | Experimental regime-aware family weighting, now wired on the signal page with equal-weight fallback |
-| 12 | [indicator-explorer.md](./12-indicator-explorer.md) | Planned indicator explorer, still deferred from the shipped four-page surface |
+| 12 | [indicator-explorer.md](./12-indicator-explorer.md) | Indicator explorer design plus current implementation notes |
 | 13 | [13-implementation.md](./13-implementation.md) | Page implementation status and deferred work |
+| 14 | [indicator-recalibration.md](./14-indicator-recalibration.md) | Per-horizon parameter-grid recalibration for expanded indicator families |
+| 15 | [ui-goals-and-design.md](./15-ui-goals-and-design.md) | Signals page product/UI contract, design reference, current ownership, states, and known gaps |
 
 ### Expansion Plan
 

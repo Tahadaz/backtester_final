@@ -65,7 +65,7 @@ class BacktestReport:
     """
     Canonical, UI-agnostic backtest report container.
 
-    NOTE: This class is consumed directly by the Streamlit app.  The `explain`
+    NOTE: This class is consumed directly by UI clients. The `explain`
     field is critical for the in-app popovers / tooltips – do not remove it.
     """
     metrics: Dict[str, float]
@@ -88,7 +88,7 @@ class ResultsAnalyzer:
       - Prepare plot-ready payloads (Series/DataFrames) for the UI
 
     Non-responsibilities:
-      - No matplotlib/plotly/streamlit rendering
+      - No UI-framework rendering
       - No colormaps, fills, marker styles (UI layer handles that)
     """
 

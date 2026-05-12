@@ -5,7 +5,6 @@ import os
 import signal
 import socket
 import sys
-import inspect
 from typing import Iterable
 
 from redis import Redis
@@ -103,7 +102,9 @@ def _run_single_worker(*, worker_name: str | None = None) -> None:
         queues,
         connection=redis,
         name=worker_name or os.getenv("WORKER_NAME") or None,
-        default_worker_ttl=int(os.getenv("WORKER_TTL_SECONDS", "420")),
+        worker_ttl=int(os.getenv("WORKER_TTL_SECONDS", "420")),
+        maintenance_interval=int(os.getenv("WORKER_MAINTENANCE_INTERVAL_SECONDS", "86400")),
+        job_monitoring_interval=int(os.getenv("WORKER_JOB_MONITORING_INTERVAL", "30")),
     )
 
     def _handle_sig(signum, _frame):
@@ -121,10 +122,6 @@ def _run_single_worker(*, worker_name: str | None = None) -> None:
             "with_scheduler": with_scheduler,
             "logging_level": LOG_LEVEL,
         }
-        if "job_monitoring_interval" in inspect.signature(worker.work).parameters:
-            work_kwargs["job_monitoring_interval"] = int(
-                os.getenv("WORKER_JOB_MONITORING_INTERVAL", "30")
-            )
         worker.work(**work_kwargs)
     except JobTimeoutException:
         log.exception("Job timed out.")

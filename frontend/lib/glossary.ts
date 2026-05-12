@@ -1,0 +1,1339 @@
+export type GlossaryLanguage = "fr" | "en"
+
+export type LocalizedText = Record<GlossaryLanguage, string>
+
+export type GlossaryLink = {
+  label: LocalizedText
+  href: string
+}
+
+export type GlossaryCategory = {
+  id: string
+  label: LocalizedText
+  description: LocalizedText
+}
+
+export type GlossaryEntry = {
+  id: string
+  categoryId: string
+  title: LocalizedText
+  plain: LocalizedText
+  details?: LocalizedText[]
+  example?: LocalizedText
+  formula?: string
+  aliases?: string[]
+  tags?: string[]
+  appLinks?: GlossaryLink[]
+}
+
+export const glossaryCategories: GlossaryCategory[] = [
+  {
+    id: "app",
+    label: { fr: "Navigation de l'app", en: "App navigation" },
+    description: {
+      fr: "Ou aller dans l'application et quoi lire sur chaque page.",
+      en: "Where to go in the application and what each page means.",
+    },
+  },
+  {
+    id: "scores",
+    label: { fr: "Scores et signaux", en: "Scores and signals" },
+    description: {
+      fr: "Lecture des scores, badges et familles du Signal Engine.",
+      en: "How to read Signal Engine scores, badges, and families.",
+    },
+  },
+  {
+    id: "indicators",
+    label: { fr: "Indicateurs techniques", en: "Technical indicators" },
+    description: {
+      fr: "Les 20 indicateurs utilises par les familles Tendance, Momentum, Oscillation et Volume.",
+      en: "The 20 indicators used by the Trend, Momentum, Oscillation, and Volume families.",
+    },
+  },
+  {
+    id: "edge",
+    label: { fr: "Edge et decision", en: "Edge and decision" },
+    description: {
+      fr: "Preuve statistique, rendement attendu, gates et ticket de decision.",
+      en: "Statistical proof, expected return, gates, and decision ticket.",
+    },
+  },
+  {
+    id: "analytics",
+    label: { fr: "Analytics", en: "Analytics" },
+    description: {
+      fr: "IC, hit rate, buckets, methodes OOS et facteurs macro.",
+      en: "IC, hit rate, buckets, OOS methods, and macro factors.",
+    },
+  },
+  {
+    id: "backtest",
+    label: { fr: "Backtest et resultats", en: "Backtest and results" },
+    description: {
+      fr: "Metriques de performance, WFO, Monte Carlo et ledger de trades.",
+      en: "Performance metrics, WFO, Monte Carlo, and trade ledger.",
+    },
+  },
+  {
+    id: "data",
+    label: { fr: "Donnees", en: "Data" },
+    description: {
+      fr: "Catalogue marche, liquidite, prix et champs visibles dans les tables.",
+      en: "Market catalog, liquidity, prices, and fields shown in tables.",
+    },
+  },
+]
+
+export const quickGlossaryLinks: GlossaryLink[] = [
+  { label: { fr: "Tableau de Bord", en: "Dashboard" }, href: "#dashboard" },
+  { label: { fr: "Figures", en: "Figures" }, href: "#figures-explication" },
+  { label: { fr: "Score global", en: "Global score" }, href: "#score-composite" },
+  { label: { fr: "Methode scoring", en: "Scoring method" }, href: "#scoring-methodology" },
+  { label: { fr: "Expected return", en: "Expected return" }, href: "#expected-return" },
+  { label: { fr: "Score composite", en: "Composite score" }, href: "#score-composite" },
+  { label: { fr: "Signal Engine", en: "Signal Engine" }, href: "#signal-engine" },
+  { label: { fr: "WFO", en: "WFO" }, href: "#wfo" },
+  { label: { fr: "Edge", en: "Edge" }, href: "#edge" },
+  { label: { fr: "IC", en: "IC" }, href: "#ic" },
+  { label: { fr: "Hit rate", en: "Hit rate" }, href: "#hit-rate" },
+  { label: { fr: "ADV20", en: "ADV20" }, href: "#adv20" },
+  { label: { fr: "Blotter", en: "Blotter" }, href: "#daily-blotter" },
+  { label: { fr: "CAGR", en: "CAGR" }, href: "#cagr" },
+  { label: { fr: "Sharpe", en: "Sharpe" }, href: "#sharpe" },
+  { label: { fr: "Max drawdown", en: "Max drawdown" }, href: "#max-drawdown" },
+]
+
+const dashboardLink: GlossaryLink = {
+  label: { fr: "Voir le Tableau de Bord", en: "Open Dashboard" },
+  href: "/dashboard",
+}
+
+const dataLink: GlossaryLink = {
+  label: { fr: "Voir Data", en: "Open Data" },
+  href: "/data",
+}
+
+const signalsLink: GlossaryLink = {
+  label: { fr: "Voir Signals", en: "Open Signals" },
+  href: "/signals",
+}
+
+const strategyLink: GlossaryLink = {
+  label: { fr: "Voir Strategy", en: "Open Strategy" },
+  href: "/strategy",
+}
+
+const backtestLink: GlossaryLink = {
+  label: { fr: "Voir Backtest", en: "Open Backtest" },
+  href: "/backtest",
+}
+
+const analyticsLink: GlossaryLink = {
+  label: { fr: "Voir Analytics", en: "Open Analytics" },
+  href: "/analytics",
+}
+
+export const glossaryEntries: GlossaryEntry[] = [
+  {
+    id: "dashboard",
+    categoryId: "app",
+    title: { fr: "Tableau de Bord", en: "Dashboard" },
+    plain: {
+      fr: "La page de pilotage rapide. Elle classe les titres, montre les scores par famille, le signal final, le meilleur edge disponible et le ticket de portefeuille.",
+      en: "The fast decision page. It ranks stocks and shows family scores, the final signal, the best available edge, and the portfolio ticket.",
+    },
+    details: [
+      {
+        fr: "Commence ici quand tu veux savoir quoi regarder aujourd'hui: filtre le marche, choisis l'horizon, puis ouvre le detail d'un titre si le signal semble interessant.",
+        en: "Start here when you want to know what to review today: filter the market, choose the horizon, then open a stock detail when a signal looks interesting.",
+      },
+    ],
+    aliases: ["home", "v1", "tableau"],
+    appLinks: [dashboardLink],
+  },
+  {
+    id: "data",
+    categoryId: "app",
+    title: { fr: "Data", en: "Data" },
+    plain: {
+      fr: "La page qui verifie si les instruments ont des prix exploitables. Elle sert a controler le catalogue, la fraicheur des donnees et la couverture par marche.",
+      en: "The page that checks whether instruments have usable prices. It controls the catalog, data freshness, and market coverage.",
+    },
+    aliases: ["donnees", "catalogue"],
+    appLinks: [dataLink],
+  },
+  {
+    id: "signals",
+    categoryId: "app",
+    title: { fr: "Signals", en: "Signals" },
+    plain: {
+      fr: "La page d'analyse par titre. Elle explique pourquoi le Signal Engine, WFO ou Factor x TA donne un score, avec graphiques, representants, evidence WFO et backtest MC.",
+      en: "The per-stock analysis page. It explains why Signal Engine, WFO, or Factor x TA produced a score, with charts, representatives, WFO evidence, and MC backtest.",
+    },
+    aliases: ["signaux", "detail titre"],
+    appLinks: [signalsLink],
+  },
+  {
+    id: "strategy",
+    categoryId: "app",
+    title: { fr: "Strategy", en: "Strategy" },
+    plain: {
+      fr: "Le constructeur de strategie. Tu choisis l'univers, l'allocation, le type de strategie, les signaux, les regles d'entree, les sorties et le risque.",
+      en: "The strategy builder. You choose the universe, allocation, strategy type, signals, entry rules, exits, and risk.",
+    },
+    aliases: ["constructeur", "rules", "strategie"],
+    appLinks: [strategyLink],
+  },
+  {
+    id: "backtest",
+    categoryId: "app",
+    title: { fr: "Backtest", en: "Backtest" },
+    plain: {
+      fr: "La page qui teste une strategie sur l'historique. Le mode Direct applique les regles actuelles; le mode WFO optimise sur des fenetres passees puis teste sur des periodes non vues.",
+      en: "The page that tests a strategy on history. Direct mode applies current rules; WFO mode optimizes on past windows and tests on unseen periods.",
+    },
+    aliases: ["test", "runner", "wfo run"],
+    appLinks: [backtestLink],
+  },
+  {
+    id: "analytics",
+    categoryId: "app",
+    title: { fr: "Analytics", en: "Analytics" },
+    plain: {
+      fr: "La page qui mesure si les signaux ont vraiment predit les rendements futurs. C'est ici qu'on lit l'IC, le hit rate, les buckets et les facteurs macro.",
+      en: "The page that measures whether signals really predicted future returns. This is where IC, hit rate, buckets, and macro factors are read.",
+    },
+    aliases: ["ic", "predictive ability", "capacite predictive"],
+    appLinks: [analyticsLink],
+  },
+  {
+    id: "score-composite",
+    categoryId: "scores",
+    title: { fr: "Score composite", en: "Composite score" },
+    plain: {
+      fr: "Un chiffre entre -100 et +100 qui resume la conviction directionnelle d'un titre. Positif signifie plutot achat; negatif signifie plutot vente; proche de zero signifie pas de signal clair.",
+      en: "A number from -100 to +100 summarizing directional conviction for a stock. Positive means more buy-like, negative means more sell-like, near zero means no clear signal.",
+    },
+    details: [
+      {
+        fr: "Le score agregre les familles Tendance, Momentum, Oscillation et Volume. Il ne doit pas etre lu seul: il faut verifier l'edge, la liquidite et le contexte.",
+        en: "The score aggregates Trend, Momentum, Oscillation, and Volume families. It should not be read alone: check edge, liquidity, and context.",
+      },
+      {
+        fr: "Lecture pratique: le score global dit la direction et la force du signal maintenant. L'edge et l'expected return disent si ce type de signal a historiquement produit un resultat exploitable.",
+        en: "Practical read: the global score tells current signal direction and strength. Edge and expected return tell whether this kind of signal historically produced something usable.",
+      },
+    ],
+    formula: "Score global = somme(score famille x poids famille), borne entre -100 et +100",
+    example: {
+      fr: "+62 peut devenir Achat fort; -34 peut devenir Vente; +4 reste Neutre.",
+      en: "+62 may become Strong Buy; -34 may become Sell; +4 remains Neutral.",
+    },
+    aliases: ["aggregate_score_pct", "score", "global score", "consensus score"],
+    appLinks: [dashboardLink, signalsLink],
+  },
+  {
+    id: "scoring-methodology",
+    categoryId: "scores",
+    title: { fr: "Methode de scoring", en: "Scoring methodology" },
+    plain: {
+      fr: "La methode qui transforme plusieurs indicateurs techniques en un score global lisible. L'app calcule d'abord des scores par indicateur, les regroupe par famille, puis combine les familles dans un score final.",
+      en: "The method that turns several technical indicators into one readable global score. The app first computes indicator scores, groups them by family, then combines the families into the final score.",
+    },
+    details: [
+      {
+        fr: "Chaque indicateur vote dans son langage: tendance, acceleration, exces ou confirmation par volume. Le score de famille resume ces votes avant que le score global les combine.",
+        en: "Each indicator votes in its own language: trend, acceleration, excess, or volume confirmation. The family score summarizes those votes before the global score combines them.",
+      },
+      {
+        fr: "Le scoring est une lecture de marche, pas une preuve statistique. Pour decider si le signal est exploitable, l'app compare ensuite ce score avec l'edge, les gates et l'expected return.",
+        en: "Scoring is a market read, not statistical proof. To decide whether the signal is usable, the app then compares this score with edge, gates, and expected return.",
+      },
+    ],
+    formula: "Indicateurs -> scores de famille -> score global -> badge signal -> validation edge",
+    example: {
+      fr: "Tendance +70, Momentum +40, Oscillation -10, Volume +30 donnent un score global positif, mais l'app verifie encore l'edge avant de proposer un ticket.",
+      en: "Trend +70, Momentum +40, Oscillation -10, Volume +30 produce a positive global score, but the app still checks edge before proposing a ticket.",
+    },
+    aliases: ["methodology", "global scoring", "score methodology", "scoring"],
+    appLinks: [dashboardLink, signalsLink],
+  },
+  {
+    id: "signal-badge",
+    categoryId: "scores",
+    title: { fr: "Badge signal", en: "Signal badge" },
+    plain: {
+      fr: "La traduction lisible du score. Exemple: Achat fort, Achat, Neutre, Vente ou Vente forte pour le signal final.",
+      en: "The readable translation of a score. Example: Strong Buy, Buy, Neutral, Sell, or Strong Sell for the final signal.",
+    },
+    details: [
+      {
+        fr: "Attention: les familles n'utilisent pas toutes les memes mots. Oscillation parle de Survendu/Surachete, Volume parle d'Accumulation/Distribution.",
+        en: "Careful: families do not all use the same wording. Oscillation uses Oversold/Overbought, Volume uses Accumulation/Distribution.",
+      },
+    ],
+    aliases: ["aggregate_signal_label", "label", "badge"],
+    appLinks: [dashboardLink, signalsLink],
+  },
+  {
+    id: "signal-engine",
+    categoryId: "scores",
+    title: { fr: "Signal Engine", en: "Signal Engine" },
+    plain: {
+      fr: "Le moteur qui calcule les scores techniques avec des parametres fixes et explicables. Il sert de reference rapide avant de regarder WFO ou l'edge statistique.",
+      en: "The engine that computes technical scores with fixed, explainable parameters. It is the fast reference before checking WFO or statistical edge.",
+    },
+    details: [
+      {
+        fr: "Dans l'app, Signal Engine peut etre compare a WFO. Si les deux vont dans le meme sens, la lecture est plus confortable; s'ils divergent, il faut ouvrir le detail.",
+        en: "In the app, Signal Engine can be compared with WFO. If both point the same way, the read is more comfortable; if they diverge, open the detail.",
+      },
+    ],
+    aliases: ["engine", "A-G", "A->G", "score source"],
+    appLinks: [dashboardLink, signalsLink],
+  },
+  {
+    id: "wfo",
+    categoryId: "scores",
+    title: { fr: "WFO - Walk-Forward Optimization", en: "WFO - Walk-Forward Optimization" },
+    plain: {
+      fr: "Une methode qui optimise les parametres sur une fenetre passee, puis les teste sur une fenetre future non vue. Elle imite mieux une decision prise dans le temps.",
+      en: "A method that optimizes parameters on a past window, then tests them on a future unseen window. It better imitates decisions made through time.",
+    },
+    details: [
+      {
+        fr: "WFO aide a reduire le surapprentissage: une configuration brillante dans le passe mais mauvaise hors echantillon sera penalisee.",
+        en: "WFO helps reduce overfitting: a configuration that is brilliant in-sample but poor out-of-sample is penalized.",
+      },
+    ],
+    aliases: ["walk forward", "walk-forward", "optimization", "optimise"],
+    appLinks: [signalsLink, backtestLink],
+  },
+  {
+    id: "score-source",
+    categoryId: "scores",
+    title: { fr: "Source du score", en: "Score source" },
+    plain: {
+      fr: "Le choix entre Signal Engine, WFO ou Both. Il determine quel score est affiche dans la table et quel signal sert de base a certains tris.",
+      en: "The choice between Signal Engine, WFO, or Both. It determines which score appears in the table and which signal drives some sorting.",
+    },
+    aliases: ["both", "source", "wfo vs engine"],
+    appLinks: [dashboardLink],
+  },
+  {
+    id: "familles-indicateurs",
+    categoryId: "scores",
+    title: { fr: "Familles d'indicateurs", en: "Indicator families" },
+    plain: {
+      fr: "Les quatre blocs qui composent le score: Tendance, Momentum, Oscillation et Volume. Chaque famille lit un aspect different du marche.",
+      en: "The four blocks behind the score: Trend, Momentum, Oscillation, and Volume. Each family reads a different market dimension.",
+    },
+    aliases: ["families", "per_family"],
+    appLinks: [dashboardLink, signalsLink, strategyLink],
+  },
+  {
+    id: "tendance",
+    categoryId: "scores",
+    title: { fr: "Tendance", en: "Trend" },
+    plain: {
+      fr: "La famille qui regarde la direction generale du prix. Un score positif indique que le prix confirme plutot une tendance haussiere.",
+      en: "The family that reads the general price direction. A positive score means price action is more consistent with an uptrend.",
+    },
+    details: [
+      {
+        fr: "Indicateurs inclus: SMA, EMA, EMA Cross, Ichimoku et PSAR.",
+        en: "Included indicators: SMA, EMA, EMA Cross, Ichimoku, and PSAR.",
+      },
+    ],
+    aliases: ["trend", "trend_score"],
+    appLinks: [dashboardLink, signalsLink],
+  },
+  {
+    id: "momentum",
+    categoryId: "scores",
+    title: { fr: "Momentum", en: "Momentum" },
+    plain: {
+      fr: "La famille qui mesure la vitesse du mouvement. Un score positif veut dire que l'elan actuel soutient plutot une hausse.",
+      en: "The family that measures movement speed. A positive score means current momentum supports an upward move.",
+    },
+    details: [
+      {
+        fr: "Indicateurs inclus: MACD, ROC, TRIX, ADX et TSI.",
+        en: "Included indicators: MACD, ROC, TRIX, ADX, and TSI.",
+      },
+    ],
+    aliases: ["momentum_score"],
+    appLinks: [dashboardLink, signalsLink],
+  },
+  {
+    id: "oscillation",
+    categoryId: "scores",
+    title: { fr: "Oscillation", en: "Oscillation" },
+    plain: {
+      fr: "La famille qui lit les zones de surachat et de survente. Elle sert souvent a detecter un exces qui peut se normaliser.",
+      en: "The family that reads overbought and oversold zones. It often detects an excess that may normalize.",
+    },
+    details: [
+      {
+        fr: "Indicateurs inclus: RSI, Stochastic, CCI, MFI et Ultimate Oscillator.",
+        en: "Included indicators: RSI, Stochastic, CCI, MFI, and Ultimate Oscillator.",
+      },
+    ],
+    aliases: ["oscillator", "oscillation_score"],
+    appLinks: [dashboardLink, signalsLink],
+  },
+  {
+    id: "volume",
+    categoryId: "scores",
+    title: { fr: "Volume", en: "Volume" },
+    plain: {
+      fr: "La famille qui regarde si les volumes confirment l'achat ou la vente. Accumulation signifie pression acheteuse; distribution signifie pression vendeuse.",
+      en: "The family that checks whether volume confirms buying or selling. Accumulation means buying pressure; distribution means selling pressure.",
+    },
+    details: [
+      {
+        fr: "Indicateurs inclus: OBV, CMF, A/D Line, VWAP et Force Index.",
+        en: "Included indicators: OBV, CMF, A/D Line, VWAP, and Force Index.",
+      },
+    ],
+    aliases: ["volume_score", "accumulation", "distribution"],
+    appLinks: [dashboardLink, signalsLink],
+  },
+  {
+    id: "sma",
+    categoryId: "indicators",
+    title: { fr: "SMA - Simple Moving Average", en: "SMA - Simple Moving Average" },
+    plain: {
+      fr: "Moyenne simple du prix sur une periode. Prix au-dessus de la SMA: tendance plus positive; prix en dessous: tendance plus negative.",
+      en: "Simple average of price over a period. Price above SMA is more positive; price below SMA is more negative.",
+    },
+    aliases: ["simple moving average", "moyenne mobile simple"],
+    appLinks: [signalsLink, strategyLink],
+  },
+  {
+    id: "ema",
+    categoryId: "indicators",
+    title: { fr: "EMA - Exponential Moving Average", en: "EMA - Exponential Moving Average" },
+    plain: {
+      fr: "Moyenne mobile qui donne plus de poids aux prix recents. Elle reagit plus vite que la SMA.",
+      en: "Moving average that gives more weight to recent prices. It reacts faster than SMA.",
+    },
+    aliases: ["exponential moving average", "moyenne exponentielle"],
+    appLinks: [signalsLink, strategyLink],
+  },
+  {
+    id: "ema-cross",
+    categoryId: "indicators",
+    title: { fr: "EMA Cross", en: "EMA Cross" },
+    plain: {
+      fr: "Compare une EMA rapide et une EMA lente. Quand la rapide passe au-dessus, le signal devient plus haussier; l'inverse devient plus baissier.",
+      en: "Compares a fast EMA and a slow EMA. When the fast line crosses above, the signal turns more bullish; the reverse is more bearish.",
+    },
+    aliases: ["ema_cross", "croisement ema"],
+    appLinks: [signalsLink, strategyLink],
+  },
+  {
+    id: "ichimoku",
+    categoryId: "indicators",
+    title: { fr: "Ichimoku", en: "Ichimoku" },
+    plain: {
+      fr: "Systeme de tendance avec plusieurs lignes et un nuage. Il aide a lire tendance, support, resistance et equilibre du prix.",
+      en: "Trend system with several lines and a cloud. It helps read trend, support, resistance, and price balance.",
+    },
+    aliases: ["cloud", "nuage ichimoku"],
+    appLinks: [signalsLink, strategyLink],
+  },
+  {
+    id: "psar",
+    categoryId: "indicators",
+    title: { fr: "PSAR - Parabolic SAR", en: "PSAR - Parabolic SAR" },
+    plain: {
+      fr: "Points de suivi de tendance. Quand les points changent de cote par rapport au prix, cela signale souvent un retournement.",
+      en: "Trend-following dots. When dots switch side relative to price, it often signals a reversal.",
+    },
+    aliases: ["parabolic sar"],
+    appLinks: [signalsLink, strategyLink],
+  },
+  {
+    id: "macd",
+    categoryId: "indicators",
+    title: { fr: "MACD", en: "MACD" },
+    plain: {
+      fr: "Indicateur de momentum base sur deux moyennes exponentielles. Il lit l'acceleration et les croisements de tendance.",
+      en: "Momentum indicator based on two exponential averages. It reads acceleration and trend crosses.",
+    },
+    aliases: ["moving average convergence divergence"],
+    appLinks: [signalsLink, strategyLink],
+  },
+  {
+    id: "roc",
+    categoryId: "indicators",
+    title: { fr: "ROC - Rate of Change", en: "ROC - Rate of Change" },
+    plain: {
+      fr: "Variation du prix sur N periodes. Un ROC positif indique que le prix est au-dessus de son niveau passe.",
+      en: "Price change over N periods. A positive ROC means price is above its past level.",
+    },
+    aliases: ["rate of change"],
+    appLinks: [signalsLink, strategyLink],
+  },
+  {
+    id: "trix",
+    categoryId: "indicators",
+    title: { fr: "TRIX", en: "TRIX" },
+    plain: {
+      fr: "Momentum lisse a partir d'une triple EMA. Il filtre une partie du bruit court terme.",
+      en: "Smoothed momentum built from a triple EMA. It filters part of short-term noise.",
+    },
+    appLinks: [signalsLink, strategyLink],
+  },
+  {
+    id: "adx",
+    categoryId: "indicators",
+    title: { fr: "ADX", en: "ADX" },
+    plain: {
+      fr: "Mesure la force de la tendance, pas seulement sa direction. Un ADX eleve veut dire que le mouvement est plus structure.",
+      en: "Measures trend strength, not only direction. A high ADX means the move is more structured.",
+    },
+    aliases: ["average directional index"],
+    appLinks: [signalsLink, strategyLink],
+  },
+  {
+    id: "tsi",
+    categoryId: "indicators",
+    title: { fr: "TSI - True Strength Index", en: "TSI - True Strength Index" },
+    plain: {
+      fr: "Momentum doublement lisse autour de zero. Il aide a lire la force et la direction de l'elan.",
+      en: "Double-smoothed momentum around zero. It helps read the strength and direction of momentum.",
+    },
+    appLinks: [signalsLink, strategyLink],
+  },
+  {
+    id: "rsi",
+    categoryId: "indicators",
+    title: { fr: "RSI - Relative Strength Index", en: "RSI - Relative Strength Index" },
+    plain: {
+      fr: "Oscillateur entre 0 et 100. Haut = risque de surachat; bas = risque de survente.",
+      en: "Oscillator from 0 to 100. High means overbought risk; low means oversold risk.",
+    },
+    aliases: ["relative strength index"],
+    appLinks: [signalsLink, strategyLink],
+  },
+  {
+    id: "stochastic",
+    categoryId: "indicators",
+    title: { fr: "Stochastic", en: "Stochastic" },
+    plain: {
+      fr: "Mesure ou se situe le prix dans son range recent. Proche du haut: pression haussiere deja avancee; proche du bas: titre potentiellement survendu.",
+      en: "Measures where price sits within its recent range. Near the top: advanced bullish pressure; near the bottom: potentially oversold.",
+    },
+    aliases: ["stoch", "%K", "%D"],
+    appLinks: [signalsLink, strategyLink],
+  },
+  {
+    id: "cci",
+    categoryId: "indicators",
+    title: { fr: "CCI - Commodity Channel Index", en: "CCI - Commodity Channel Index" },
+    plain: {
+      fr: "Mesure l'ecart du prix typique par rapport a sa moyenne. Il detecte les exces au-dessus ou en dessous du regime recent.",
+      en: "Measures the typical price deviation from its average. It detects excess above or below the recent regime.",
+    },
+    aliases: ["commodity channel index"],
+    appLinks: [signalsLink, strategyLink],
+  },
+  {
+    id: "mfi",
+    categoryId: "indicators",
+    title: { fr: "MFI - Money Flow Index", en: "MFI - Money Flow Index" },
+    plain: {
+      fr: "RSI enrichi par le volume. Il cherche les zones de surachat/survente avec la pression de flux.",
+      en: "RSI enriched with volume. It looks for overbought/oversold zones using flow pressure.",
+    },
+    aliases: ["money flow index"],
+    appLinks: [signalsLink, strategyLink],
+  },
+  {
+    id: "uo",
+    categoryId: "indicators",
+    title: { fr: "Ultimate Oscillator", en: "Ultimate Oscillator" },
+    plain: {
+      fr: "Oscillateur qui combine plusieurs horizons. Il evite de juger le titre sur une seule fenetre trop courte.",
+      en: "Oscillator combining several horizons. It avoids judging a stock from only one short window.",
+    },
+    aliases: ["ultimate oscillator"],
+    appLinks: [signalsLink, strategyLink],
+  },
+  {
+    id: "obv",
+    categoryId: "indicators",
+    title: { fr: "OBV - On-Balance Volume", en: "OBV - On-Balance Volume" },
+    plain: {
+      fr: "Cumule le volume en fonction des jours de hausse ou de baisse. Il cherche si le volume accompagne le mouvement.",
+      en: "Cumulated volume based on up or down days. It checks whether volume supports the move.",
+    },
+    aliases: ["on balance volume"],
+    appLinks: [signalsLink, strategyLink],
+  },
+  {
+    id: "cmf",
+    categoryId: "indicators",
+    title: { fr: "CMF - Chaikin Money Flow", en: "CMF - Chaikin Money Flow" },
+    plain: {
+      fr: "Mesure si les clotures se font plutot pres des hauts ou des bas, ponderees par le volume.",
+      en: "Measures whether closes happen nearer highs or lows, weighted by volume.",
+    },
+    aliases: ["chaikin money flow"],
+    appLinks: [signalsLink, strategyLink],
+  },
+  {
+    id: "ad-line",
+    categoryId: "indicators",
+    title: { fr: "A/D Line - Accumulation/Distribution", en: "A/D Line - Accumulation/Distribution" },
+    plain: {
+      fr: "Ligne qui cumule l'accumulation ou la distribution estimee par prix et volume. Elle aide a voir si les flux confirment le prix.",
+      en: "Line that cumulates estimated accumulation or distribution from price and volume. It helps see whether flows confirm price.",
+    },
+    aliases: ["ad", "a/d", "accumulation distribution"],
+    appLinks: [signalsLink, strategyLink],
+  },
+  {
+    id: "vwap",
+    categoryId: "indicators",
+    title: { fr: "VWAP", en: "VWAP" },
+    plain: {
+      fr: "Prix moyen pondere par le volume. Dans l'app, il sert a voir si le prix est cher ou bon marche par rapport aux volumes recents.",
+      en: "Volume-weighted average price. In the app, it helps see whether price is expensive or cheap relative to recent volume.",
+    },
+    aliases: ["volume weighted average price"],
+    appLinks: [signalsLink, strategyLink],
+  },
+  {
+    id: "force-index",
+    categoryId: "indicators",
+    title: { fr: "Force Index", en: "Force Index" },
+    plain: {
+      fr: "Combine variation de prix et volume. Il cherche si un mouvement a une vraie force derriere lui.",
+      en: "Combines price change and volume. It checks whether a move has real force behind it.",
+    },
+    aliases: ["fi"],
+    appLinks: [signalsLink, strategyLink],
+  },
+  {
+    id: "edge",
+    categoryId: "edge",
+    title: { fr: "Edge", en: "Edge" },
+    plain: {
+      fr: "Avantage statistique mesure sur l'historique hors echantillon. Un signal a de l'edge quand les observations passees montrent un rendement attendu positif et robuste.",
+      en: "Statistical advantage measured on out-of-sample history. A signal has edge when past observations show positive and robust expected return.",
+    },
+    details: [
+      {
+        fr: "Dans le Tableau de Bord, Edge ne veut pas dire garantie. Cela veut dire: les tests disponibles sont assez bons pour classer l'idee comme exploitable ou a surveiller.",
+        en: "In the Dashboard, Edge does not mean guarantee. It means available tests are good enough to classify the idea as usable or watch-worthy.",
+      },
+    ],
+    aliases: ["proven edge", "best edge", "edge ratio"],
+    appLinks: [dashboardLink, analyticsLink],
+  },
+  {
+    id: "best-signal",
+    categoryId: "edge",
+    title: { fr: "Meilleure methode auto", en: "Best automatic method" },
+    plain: {
+      fr: "La methode que l'app choisit comme meilleure candidate pour ce titre et cet horizon, selon l'edge net, la taille d'echantillon et les gates.",
+      en: "The method the app selects as the best candidate for this stock and horizon, based on net edge, sample size, and gates.",
+    },
+    aliases: ["best_signal", "methode auto"],
+    appLinks: [dashboardLink],
+  },
+  {
+    id: "edge-selection",
+    categoryId: "edge",
+    title: { fr: "Selection de l'edge", en: "Edge selection" },
+    plain: {
+      fr: "La logique qui choisit quel edge mettre en avant. L'app compare les methodes candidates, retire celles qui manquent d'observations ou echouent les gates, puis privilegie le meilleur rendement attendu net robuste.",
+      en: "The logic that chooses which edge to highlight. The app compares candidate methods, removes those with too few observations or failed gates, then favors the best robust net expected return.",
+    },
+    details: [
+      {
+        fr: "Un edge peut etre ecarte meme avec un bon rendement moyen si l'echantillon est trop petit, si le test Monte Carlo ressemble au hasard, ou si la borne Wilson rend le hit rate trop incertain.",
+        en: "An edge can be rejected even with a good average return if the sample is too small, if Monte Carlo looks like luck, or if the Wilson bound makes hit rate too uncertain.",
+      },
+      {
+        fr: "La meilleure methode auto n'est donc pas seulement le plus grand chiffre: c'est le meilleur compromis entre rendement attendu, robustesse, couverture et sens de l'action.",
+        en: "The best automatic method is therefore not just the largest number: it is the best tradeoff between expected return, robustness, coverage, and action side.",
+      },
+    ],
+    formula: "Choix edge = max(E[R] net robuste) parmi les methodes qui passent les gates",
+    aliases: ["edge choice", "edge ranking", "best edge selection"],
+    appLinks: [dashboardLink, analyticsLink],
+  },
+  {
+    id: "expected-return",
+    categoryId: "edge",
+    title: { fr: "Expected return - E[R]", en: "Expected return - E[R]" },
+    plain: {
+      fr: "Rendement moyen attendu d'une action ou d'un signal sur l'horizon choisi. Il repond a: si on reprend ce type de signal dans des conditions similaires, combien peut-on attendre en moyenne?",
+      en: "Average expected return of an action or signal over the selected horizon. It answers: if we repeat this kind of signal in similar conditions, what can we expect on average?",
+    },
+    details: [
+      {
+        fr: "L'app distingue Stock E[R] et Action E[R]. Stock E[R] lit le rendement futur du titre. Action E[R] remet ce rendement dans le sens de la decision: long, short ou no trade.",
+        en: "The app separates Stock E[R] and Action E[R]. Stock E[R] reads the stock's future return. Action E[R] converts that return into the decision side: long, short, or no trade.",
+      },
+      {
+        fr: "En mode net, l'expected return retire les couts estimes. C'est ce chiffre net qui doit guider le ranking, car un signal profitable brut peut devenir inutile apres couts.",
+        en: "In net mode, expected return subtracts estimated costs. This net value should drive ranking because a profitable gross signal can become useless after costs.",
+      },
+    ],
+    formula: "E[R] net = P(gain) x gain moyen - P(perte) x perte moyenne - couts",
+    example: {
+      fr: "Si le signal gagne 55% du temps avec +2.0% moyen, perd 45% du temps avec -1.2% moyen, et coute 0.2%, E[R] net = 0.55x2.0 - 0.45x1.2 - 0.2 = +0.36%.",
+      en: "If the signal wins 55% of the time with +2.0% average win, loses 45% with -1.2% average loss, and costs 0.2%, net E[R] = 0.55x2.0 - 0.45x1.2 - 0.2 = +0.36%.",
+    },
+    aliases: ["E[R]", "ER", "expected value", "net expected return", "action er", "stock er"],
+    appLinks: [dashboardLink, analyticsLink],
+  },
+  {
+    id: "action-er",
+    categoryId: "edge",
+    title: { fr: "Action E[R]", en: "Action E[R]" },
+    plain: {
+      fr: "Rendement attendu de l'action recommandee: long, short ou no trade. En mode net, les couts sont deja retires.",
+      en: "Expected return of the recommended action: long, short, or no trade. In net mode, costs are already deducted.",
+    },
+    details: [
+      {
+        fr: "Pour un signal long, Action E[R] suit le rendement du titre. Pour un signal short, il inverse le signe: une baisse du titre devient positive pour l'action short.",
+        en: "For a long signal, Action E[R] follows the stock return. For a short signal, it flips the sign: a stock drop becomes positive for the short action.",
+      },
+    ],
+    formula: "Action E[R] = moyenne des rendements futurs dans le sens de l'action, apres couts si mode net",
+    aliases: ["expected return", "action_expected_return_net", "best er"],
+    appLinks: [dashboardLink, analyticsLink],
+  },
+  {
+    id: "stock-er",
+    categoryId: "edge",
+    title: { fr: "Stock E[R]", en: "Stock E[R]" },
+    plain: {
+      fr: "Rendement moyen futur du titre lui-meme, avant inversion long/short. Il repond a la question: le titre a-t-il monte ou baisse apres ce type de signal?",
+      en: "Average future return of the stock itself, before long/short direction adjustment. It asks: did the stock rise or fall after this signal type?",
+    },
+    details: [
+      {
+        fr: "Stock E[R] est utile pour comprendre le comportement du titre. Action E[R] est plus utile pour prendre une decision de portefeuille.",
+        en: "Stock E[R] is useful for understanding the stock behavior. Action E[R] is more useful for making a portfolio decision.",
+      },
+    ],
+    aliases: ["stock_expected_return"],
+    appLinks: [dashboardLink, analyticsLink],
+  },
+  {
+    id: "proven-edge",
+    categoryId: "edge",
+    title: { fr: "Edge prouve", en: "Proven edge" },
+    plain: {
+      fr: "Statut positif quand l'echantillon est suffisant et que les tests de robustesse acceptent le signal.",
+      en: "Positive status when sample size is sufficient and robustness tests accept the signal.",
+    },
+    details: [
+      {
+        fr: "Si le badge dit A surveiller, cela peut rester interessant, mais l'evidence statistique n'est pas encore assez forte.",
+        en: "If the badge says Watch, it may still be interesting, but statistical evidence is not strong enough yet.",
+      },
+    ],
+    aliases: ["proven_edge_net", "Prouve", "A surveiller"],
+    appLinks: [dashboardLink],
+  },
+  {
+    id: "edge-gates",
+    categoryId: "edge",
+    title: { fr: "Gates d'edge", en: "Edge gates" },
+    plain: {
+      fr: "Les controles que le signal doit passer avant d'etre marque comme edge prouve: taille d'echantillon, Monte Carlo, label shuffle et borne Wilson.",
+      en: "The checks a signal must pass before being marked as proven edge: sample size, Monte Carlo, label shuffle, and Wilson lower bound.",
+    },
+    aliases: ["gates", "mc gate", "wilson"],
+    appLinks: [dashboardLink, analyticsLink],
+  },
+  {
+    id: "mc-test",
+    categoryId: "edge",
+    title: { fr: "Test de chance MC", en: "MC luck test" },
+    plain: {
+      fr: "Test Monte Carlo qui estime si le resultat peut venir du hasard. Une p-value basse soutient l'idee que le signal contient de l'information.",
+      en: "Monte Carlo test estimating whether the result may come from luck. A low p-value supports the idea that the signal contains information.",
+    },
+    aliases: ["mc_luck_pvalue", "monte carlo gate"],
+    appLinks: [dashboardLink, signalsLink],
+  },
+  {
+    id: "label-shuffle",
+    categoryId: "edge",
+    title: { fr: "Label shuffle", en: "Label shuffle" },
+    plain: {
+      fr: "Test qui melange les labels de signal. Si le signal original reste meilleur que les versions melangees, il est moins probable que le resultat soit accidentel.",
+      en: "Test that shuffles signal labels. If the original signal remains better than shuffled versions, the result is less likely to be accidental.",
+    },
+    aliases: ["shuffle", "label_shuffle_pvalue"],
+    appLinks: [dashboardLink, signalsLink],
+  },
+  {
+    id: "wilson-lower-bound",
+    categoryId: "edge",
+    title: { fr: "Borne basse Wilson", en: "Wilson lower bound" },
+    plain: {
+      fr: "Borne prudente du hit rate. Elle evite de trop faire confiance a un taux de reussite eleve calcule sur trop peu d'observations.",
+      en: "Conservative lower bound for hit rate. It prevents overtrusting a high win rate computed on too few observations.",
+    },
+    aliases: ["wilson", "hit_ci_lower"],
+    appLinks: [dashboardLink, analyticsLink],
+  },
+  {
+    id: "profit-factor",
+    categoryId: "edge",
+    title: { fr: "Profit factor", en: "Profit factor" },
+    plain: {
+      fr: "Rapport entre gains bruts et pertes brutes. Au-dessus de 1, les gains depassent les pertes; en dessous de 1, les pertes dominent.",
+      en: "Ratio between gross gains and gross losses. Above 1, gains exceed losses; below 1, losses dominate.",
+    },
+    formula: "Profit factor = gains bruts / pertes brutes absolues",
+    aliases: ["PF", "profit_factor_net", "profit_factor_gross"],
+    appLinks: [dashboardLink, signalsLink],
+  },
+  {
+    id: "expectancy",
+    categoryId: "edge",
+    title: { fr: "Expectance", en: "Expectancy" },
+    plain: {
+      fr: "Gain moyen attendu par trade en combinant probabilite de gain, gain moyen, probabilite de perte et perte moyenne.",
+      en: "Average expected gain per trade combining win probability, average win, loss probability, and average loss.",
+    },
+    formula: "Expectance = P(gain) x gain moyen - P(perte) x perte moyenne",
+    aliases: ["expectancy", "EV", "expected value"],
+    appLinks: [dashboardLink, signalsLink],
+  },
+  {
+    id: "side-policy",
+    categoryId: "edge",
+    title: { fr: "Side policy", en: "Side policy" },
+    plain: {
+      fr: "Regle qui dit si le systeme peut seulement acheter en long, ou aussi profiter des signaux baissiers en long/short.",
+      en: "Rule defining whether the system can only buy long, or can also use bearish signals in long/short mode.",
+    },
+    aliases: ["long_only", "long_short", "sens"],
+    appLinks: [dashboardLink, backtestLink],
+  },
+  {
+    id: "ticket",
+    categoryId: "edge",
+    title: { fr: "Ticket portefeuille", en: "Portfolio ticket" },
+    plain: {
+      fr: "Proposition de quantites cibles a partir du capital, du cash buffer, des limites par titre/secteur et de l'edge.",
+      en: "Proposed target quantities based on capital, cash buffer, per-stock/sector limits, and edge.",
+    },
+    aliases: ["portfolio ticket", "target_qty", "delta_qty"],
+    appLinks: [dashboardLink],
+  },
+  {
+    id: "daily-blotter",
+    categoryId: "edge",
+    title: { fr: "Daily blotter", en: "Daily blotter" },
+    plain: {
+      fr: "Liste operationnelle des actions a faire: acheter, reduire, sortir, attendre ou revoir. C'est la traduction pratique du ticket.",
+      en: "Operational list of actions to take: buy, reduce, exit, wait, or review. It is the practical translation of the ticket.",
+    },
+    aliases: ["blotter", "BUY", "REDUCE", "WATCH", "REVIEW"],
+    appLinks: [dashboardLink],
+  },
+  {
+    id: "kelly-fraction",
+    categoryId: "edge",
+    title: { fr: "Fraction Kelly", en: "Kelly fraction" },
+    plain: {
+      fr: "Regle de dimensionnement qui ajuste la taille selon l'avantage estime. L'app l'utilise de facon fractionnee pour rester prudente.",
+      en: "Sizing rule that adjusts size based on estimated advantage. The app uses it fractionally to stay conservative.",
+    },
+    aliases: ["kelly", "kelly_pct"],
+    appLinks: [dashboardLink, strategyLink],
+  },
+  {
+    id: "entry-zone",
+    categoryId: "edge",
+    title: { fr: "Zone d'entree", en: "Entry zone" },
+    plain: {
+      fr: "Fourchette de prix ou l'entree est consideree acceptable. Si le prix est hors zone, l'app peut recommander d'attendre.",
+      en: "Price range where entry is considered acceptable. If price is outside the zone, the app may recommend waiting.",
+    },
+    aliases: ["entry_zone", "entry_reference_price", "wait_for_pullback"],
+    appLinks: [dashboardLink],
+  },
+  {
+    id: "stop-loss",
+    categoryId: "edge",
+    title: { fr: "Stop loss", en: "Stop loss" },
+    plain: {
+      fr: "Niveau de sortie defensive si le scenario devient invalide. Il limite la perte au lieu d'attendre que le signal se degrade.",
+      en: "Defensive exit level if the scenario becomes invalid. It limits loss instead of waiting for the signal to deteriorate.",
+    },
+    aliases: ["SL", "stop"],
+    appLinks: [dashboardLink, strategyLink, backtestLink],
+  },
+  {
+    id: "take-profit",
+    categoryId: "edge",
+    title: { fr: "Take profit", en: "Take profit" },
+    plain: {
+      fr: "Niveau ou une partie ou toute la position peut etre vendue pour securiser le gain.",
+      en: "Level where part or all of a position may be sold to lock in gains.",
+    },
+    aliases: ["TP", "target", "target_1"],
+    appLinks: [dashboardLink, strategyLink, backtestLink],
+  },
+  {
+    id: "ic",
+    categoryId: "analytics",
+    title: { fr: "IC - Information Coefficient", en: "IC - Information Coefficient" },
+    plain: {
+      fr: "Correlation entre le rang du signal aujourd'hui et le rang du rendement futur. Si l'IC est positif, les meilleurs signaux ont eu tendance a etre suivis de meilleurs rendements.",
+      en: "Correlation between today's signal rank and future return rank. If IC is positive, better signals tended to be followed by better returns.",
+    },
+    formula: "IC = correlation de Spearman(signal_t, rendement futur_t+h)",
+    aliases: ["information coefficient", "spearman_ic", "ic_h1", "mean_ic"],
+    appLinks: [analyticsLink],
+  },
+  {
+    id: "t-stat",
+    categoryId: "analytics",
+    title: { fr: "t-stat", en: "t-stat" },
+    plain: {
+      fr: "Mesure si un IC ou un resultat est assez loin de zero pour etre difficile a expliquer par le hasard.",
+      en: "Measures whether an IC or result is far enough from zero to be hard to explain by chance.",
+    },
+    aliases: ["t_stat", "ic_t_stat"],
+    appLinks: [analyticsLink],
+  },
+  {
+    id: "fdr",
+    categoryId: "analytics",
+    title: { fr: "FDR pass", en: "FDR pass" },
+    plain: {
+      fr: "Controle statistique utilise quand on teste beaucoup de signaux. Il reduit le risque de croire a un faux positif trouve par hasard.",
+      en: "Statistical control used when many signals are tested. It reduces the risk of believing a false positive found by chance.",
+    },
+    aliases: ["false discovery rate", "fdr_pass"],
+    appLinks: [analyticsLink],
+  },
+  {
+    id: "hit-rate",
+    categoryId: "analytics",
+    title: { fr: "Hit rate", en: "Hit rate" },
+    plain: {
+      fr: "Pourcentage de cas ou le signal a donne la bonne direction. 50% ressemble a pile ou face; au-dessus de 50%, le signal commence a montrer une utilite.",
+      en: "Percentage of cases where the signal got direction right. 50% looks like a coin flip; above 50%, the signal starts to show usefulness.",
+    },
+    formula: "Hit rate = trades corrects / trades testes",
+    aliases: ["hit%", "win rate direction", "hit_ci_lower"],
+    appLinks: [dashboardLink, analyticsLink],
+  },
+  {
+    id: "bucket",
+    categoryId: "analytics",
+    title: { fr: "Bucket de signal", en: "Signal bucket" },
+    plain: {
+      fr: "Classe discrete du signal: strong_buy, buy, hold, sell ou strong_sell. Les matrices Analytics comparent les rendements futurs par bucket.",
+      en: "Discrete signal class: strong_buy, buy, hold, sell, or strong_sell. Analytics matrices compare future returns by bucket.",
+    },
+    aliases: ["strong_buy", "buy", "hold", "sell", "strong_sell"],
+    appLinks: [dashboardLink, analyticsLink],
+  },
+  {
+    id: "forward-return",
+    categoryId: "analytics",
+    title: { fr: "Forward return", en: "Forward return" },
+    plain: {
+      fr: "Rendement realise apres la date du signal. Exemple: forward 21j = rendement entre aujourd'hui et environ 21 seances plus tard.",
+      en: "Return realized after the signal date. Example: 21d forward return = return from today to about 21 sessions later.",
+    },
+    aliases: ["fwd_h", "future return", "rendement futur"],
+    appLinks: [analyticsLink],
+  },
+  {
+    id: "methodes-retour-oos",
+    categoryId: "analytics",
+    title: { fr: "Methodes de retour OOS", en: "OOS return methods" },
+    plain: {
+      fr: "Facons de mesurer le rendement futur hors echantillon: close-to-close, close-to-open, open-to-open et open-to-close.",
+      en: "Ways to measure future out-of-sample return: close-to-close, close-to-open, open-to-open, and open-to-close.",
+    },
+    aliases: ["return_calc_method", "OOS method", "C-C", "C-O", "O-O", "O-C"],
+    appLinks: [analyticsLink],
+  },
+  {
+    id: "close-to-close",
+    categoryId: "analytics",
+    title: { fr: "C-C - Close to Close", en: "C-C - Close to Close" },
+    plain: {
+      fr: "Rendement entre une cloture et une cloture future. Lecture standard quand on raisonne en prix de cloture.",
+      en: "Return from one close to a future close. Standard read when reasoning with closing prices.",
+    },
+    aliases: ["close_to_close"],
+    appLinks: [analyticsLink],
+  },
+  {
+    id: "close-to-open",
+    categoryId: "analytics",
+    title: { fr: "C-O - Close to Open", en: "C-O - Close to Open" },
+    plain: {
+      fr: "Rendement entre la cloture et l'ouverture suivante ou future. Utile pour lire l'effet overnight.",
+      en: "Return from close to next or future open. Useful for reading overnight effect.",
+    },
+    aliases: ["close_to_open"],
+    appLinks: [analyticsLink],
+  },
+  {
+    id: "open-to-open",
+    categoryId: "analytics",
+    title: { fr: "O-O - Open to Open", en: "O-O - Open to Open" },
+    plain: {
+      fr: "Rendement entre deux ouvertures. C'est souvent coherent avec une execution a l'ouverture.",
+      en: "Return between two opens. Often consistent with execution at the open.",
+    },
+    aliases: ["open_to_open", "O/O"],
+    appLinks: [dashboardLink, analyticsLink],
+  },
+  {
+    id: "open-to-close",
+    categoryId: "analytics",
+    title: { fr: "O-C - Open to Close", en: "O-C - Open to Close" },
+    plain: {
+      fr: "Rendement entre ouverture et cloture. Il lit plutot une logique intraday ou une exposition limitee a la seance.",
+      en: "Return from open to close. It reads a more intraday-like exposure limited to the session.",
+    },
+    aliases: ["open_to_close"],
+    appLinks: [analyticsLink],
+  },
+  {
+    id: "method-evaluation",
+    categoryId: "analytics",
+    title: { fr: "Evaluation des methodes", en: "Method evaluation" },
+    plain: {
+      fr: "Table qui decide si une methode doit etre gardee, surveillee ou ecartee selon couverture, IC median, Sharpe, hit rate, nombre d'observations et score de preuve.",
+      en: "Table deciding whether a method should be kept, watched, or discarded based on coverage, median IC, Sharpe, hit rate, observations, and evidence score.",
+    },
+    aliases: ["verdict", "keep", "watch", "discard", "evidence_score"],
+    appLinks: [analyticsLink],
+  },
+  {
+    id: "macro-factor",
+    categoryId: "analytics",
+    title: { fr: "Facteur macro", en: "Macro factor" },
+    plain: {
+      fr: "Serie externe comme VIX, Brent, DXY, S&P 500 ou taux US10Y. Elle sert a tester si le contexte macro aide ou degrade un signal.",
+      en: "External series such as VIX, Brent, DXY, S&P 500, or US10Y yield. It tests whether macro context helps or hurts a signal.",
+    },
+    aliases: ["macro", "factor", "VIX", "Brent", "DXY"],
+    appLinks: [analyticsLink],
+  },
+  {
+    id: "factor-relevance",
+    categoryId: "analytics",
+    title: { fr: "Pertinence factorielle", en: "Factor relevance" },
+    plain: {
+      fr: "Score qui indique si un facteur macro a une relation utile avec une action ou un signal sur l'horizon choisi.",
+      en: "Score indicating whether a macro factor has a useful relationship with a stock or signal for the selected horizon.",
+    },
+    aliases: ["relevance_score", "factor relevance"],
+    appLinks: [analyticsLink],
+  },
+  {
+    id: "cagr",
+    categoryId: "backtest",
+    title: { fr: "CAGR", en: "CAGR" },
+    plain: {
+      fr: "Rendement annualise. Il transforme la performance totale en rythme annuel comparable entre strategies.",
+      en: "Annualized return. It converts total performance into a yearly pace comparable across strategies.",
+    },
+    formula: "CAGR = (valeur finale / valeur initiale)^(1 / annees) - 1",
+    aliases: ["compound annual growth rate"],
+    appLinks: [backtestLink],
+  },
+  {
+    id: "total-return",
+    categoryId: "backtest",
+    title: { fr: "Total return", en: "Total return" },
+    plain: {
+      fr: "Performance cumulee sur toute la periode. Il dit combien le capital a gagne ou perdu au total.",
+      en: "Cumulative performance over the full period. It says how much capital gained or lost in total.",
+    },
+    formula: "Total return = valeur finale / valeur initiale - 1",
+    aliases: ["return", "retour total"],
+    appLinks: [backtestLink],
+  },
+  {
+    id: "pnl",
+    categoryId: "backtest",
+    title: { fr: "PnL", en: "PnL" },
+    plain: {
+      fr: "Profit and Loss: gain ou perte en monnaie. Contrairement au pourcentage, il depend du capital engage.",
+      en: "Profit and Loss: monetary gain or loss. Unlike a percentage, it depends on deployed capital.",
+    },
+    aliases: ["profit and loss", "net pnl"],
+    appLinks: [backtestLink],
+  },
+  {
+    id: "sharpe",
+    categoryId: "backtest",
+    title: { fr: "Sharpe ratio", en: "Sharpe ratio" },
+    plain: {
+      fr: "Rendement ajuste du risque. Plus il est eleve, plus la strategie a produit de rendement par unite de volatilite.",
+      en: "Risk-adjusted return. The higher it is, the more return the strategy produced per unit of volatility.",
+    },
+    formula: "Sharpe = rendement excedentaire moyen / volatilite des rendements",
+    aliases: ["sharpe ratio", "oos_sharpe"],
+    appLinks: [backtestLink, analyticsLink],
+  },
+  {
+    id: "max-drawdown",
+    categoryId: "backtest",
+    title: { fr: "Max drawdown", en: "Max drawdown" },
+    plain: {
+      fr: "Pire baisse entre un sommet et un creux de la courbe d'equite. C'est une mesure tres concrete de douleur de portefeuille.",
+      en: "Worst drop from a peak to a trough in the equity curve. It is a very concrete measure of portfolio pain.",
+    },
+    aliases: ["MDD", "max dd", "drawdown"],
+    appLinks: [backtestLink],
+  },
+  {
+    id: "win-rate",
+    categoryId: "backtest",
+    title: { fr: "Win rate", en: "Win rate" },
+    plain: {
+      fr: "Pourcentage de trades gagnants. Il doit etre lu avec le gain moyen et la perte moyenne; seul, il peut etre trompeur.",
+      en: "Percentage of winning trades. It must be read with average win and average loss; alone, it can be misleading.",
+    },
+    aliases: ["win%", "win_pct"],
+    appLinks: [backtestLink],
+  },
+  {
+    id: "trades",
+    categoryId: "backtest",
+    title: { fr: "Nombre de trades", en: "Number of trades" },
+    plain: {
+      fr: "Nombre d'operations realisees. Beaucoup de trades augmente les couts et exige une preuve plus solide.",
+      en: "Number of executed trades. Many trades increase costs and require stronger evidence.",
+    },
+    aliases: ["n_trades", "number_of_trades", "fills"],
+    appLinks: [backtestLink],
+  },
+  {
+    id: "monte-carlo",
+    categoryId: "backtest",
+    title: { fr: "Monte Carlo", en: "Monte Carlo" },
+    plain: {
+      fr: "Simulation de nombreux chemins alternatifs pour voir si la performance depend trop d'un ordre chanceux des trades ou des rendements.",
+      en: "Simulation of many alternative paths to see whether performance depends too much on lucky ordering of trades or returns.",
+    },
+    aliases: ["MC", "fan chart"],
+    appLinks: [signalsLink, backtestLink],
+  },
+  {
+    id: "block-bootstrap",
+    categoryId: "backtest",
+    title: { fr: "Block bootstrap", en: "Block bootstrap" },
+    plain: {
+      fr: "Monte Carlo qui reechantillonne des blocs de temps. Il garde une partie de la structure temporelle du marche.",
+      en: "Monte Carlo that resamples time blocks. It keeps part of market time structure.",
+    },
+    aliases: ["block_bootstrap"],
+    appLinks: [signalsLink],
+  },
+  {
+    id: "trade-bootstrap",
+    categoryId: "backtest",
+    title: { fr: "Trade bootstrap", en: "Trade bootstrap" },
+    plain: {
+      fr: "Monte Carlo qui reechantillonne les trades. Il teste si la distribution des trades reste acceptable dans d'autres ordres possibles.",
+      en: "Monte Carlo that resamples trades. It tests whether the trade distribution remains acceptable in other possible orders.",
+    },
+    aliases: ["trade_bootstrap"],
+    appLinks: [signalsLink],
+  },
+  {
+    id: "equity-curve",
+    categoryId: "backtest",
+    title: { fr: "Courbe d'equite", en: "Equity curve" },
+    plain: {
+      fr: "Evolution du capital au fil du temps. Elle montre si la strategie gagne de facon reguliere ou par quelques periodes isolees.",
+      en: "Capital evolution through time. It shows whether the strategy wins regularly or through a few isolated periods.",
+    },
+    aliases: ["equity", "cumreturn_vs_benchmark"],
+    appLinks: [backtestLink],
+  },
+  {
+    id: "trade-ledger",
+    categoryId: "backtest",
+    title: { fr: "Trade ledger", en: "Trade ledger" },
+    plain: {
+      fr: "Journal detaille des trades: date, sens, prix, quantite, regle declenchee, PnL realise et latent.",
+      en: "Detailed trade journal: date, side, price, quantity, triggered rule, realized PnL, and latent PnL.",
+    },
+    aliases: ["ledger", "fills", "CMP"],
+    appLinks: [signalsLink, backtestLink],
+  },
+  {
+    id: "wfo-window",
+    categoryId: "backtest",
+    title: { fr: "Fenetre WFO", en: "WFO window" },
+    plain: {
+      fr: "Bloc compose d'une periode d'apprentissage et d'une periode OOS. Les parametres sont choisis dans la premiere puis controles dans la seconde.",
+      en: "Block made of a training period and an OOS period. Parameters are chosen in the first and checked in the second.",
+    },
+    aliases: ["window", "fold", "walk forward"],
+    appLinks: [backtestLink, signalsLink],
+  },
+  {
+    id: "held-out-test",
+    categoryId: "backtest",
+    title: { fr: "Held-out test", en: "Held-out test" },
+    plain: {
+      fr: "Test final sur une periode gardee a part. Elle sert a eviter de juger la strategie sur les memes donnees que l'optimisation.",
+      en: "Final test on a period kept aside. It avoids judging the strategy on the same data used for optimization.",
+    },
+    aliases: ["test_period", "OOS final"],
+    appLinks: [backtestLink],
+  },
+  {
+    id: "wfe",
+    categoryId: "backtest",
+    title: { fr: "WFE - Walk-Forward Efficiency", en: "WFE - Walk-Forward Efficiency" },
+    plain: {
+      fr: "Compare la performance OOS a la performance in-sample. Une WFE faible signale que l'optimisation ne se transfere pas bien.",
+      en: "Compares OOS performance with in-sample performance. A low WFE signals optimization does not transfer well.",
+    },
+    aliases: ["walk-forward efficiency"],
+    appLinks: [backtestLink],
+  },
+  {
+    id: "robustness-ratio",
+    categoryId: "backtest",
+    title: { fr: "Robustness ratio", en: "Robustness ratio" },
+    plain: {
+      fr: "Mesure de stabilite d'une configuration entre fenetres. Plus elle est haute, moins la performance semble dependre d'un cas unique.",
+      en: "Stability measure for a configuration across windows. Higher means performance depends less on one isolated case.",
+    },
+    aliases: ["robustness"],
+    appLinks: [backtestLink],
+  },
+  {
+    id: "adv20",
+    categoryId: "data",
+    title: { fr: "ADV20", en: "ADV20" },
+    plain: {
+      fr: "Average Daily Value sur 20 jours: moyenne de la valeur echangee, calculee comme prix de cloture x nombre de titres echanges. Elle mesure la liquidite recente en MAD.",
+      en: "Average Daily Value over 20 days: average traded value, computed as close price x number of shares traded. It measures recent liquidity in MAD.",
+    },
+    aliases: ["average daily value", "average daily volume", "liquidite", "volume moyen", "valeur echangee"],
+    appLinks: [dashboardLink, dataLink, strategyLink],
+  },
+  {
+    id: "liquidity-filter",
+    categoryId: "data",
+    title: { fr: "Filtre liquidite", en: "Liquidity filter" },
+    plain: {
+      fr: "Filtre qui retire les titres trop peu traites. Dans l'app, le seuil courant le plus visible est ADV20 >= 1 000 000 MAD.",
+      en: "Filter that removes thinly traded stocks. In the app, the most visible current threshold is ADV20 >= 1,000,000 MAD.",
+    },
+    aliases: ["ADV20 >= 1000000 MAD", "ADV >= 1000", "liquid_masi"],
+    appLinks: [dashboardLink, analyticsLink],
+  },
+  {
+    id: "market-catalog",
+    categoryId: "data",
+    title: { fr: "Catalogue marche", en: "Market catalog" },
+    plain: {
+      fr: "Liste des instruments connus par l'app, avec type d'actif, region, nom affiche et disponibilite des donnees.",
+      en: "List of instruments known by the app, with asset type, region, display name, and data availability.",
+    },
+    aliases: ["catalog", "instruments"],
+    appLinks: [dataLink],
+  },
+  {
+    id: "canonical-data",
+    categoryId: "data",
+    title: { fr: "Donnees canoniques", en: "Canonical data" },
+    plain: {
+      fr: "Serie de prix officielle que l'app utilise pour les calculs. Si un instrument n'a pas de donnees canoniques, les scores ne sont pas fiables ou indisponibles.",
+      en: "Official price series used by the app for calculations. If an instrument has no canonical data, scores are unreliable or unavailable.",
+    },
+    aliases: ["has_canonical_data", "canonical"],
+    appLinks: [dataLink],
+  },
+  {
+    id: "ohlcv",
+    categoryId: "data",
+    title: { fr: "OHLCV", en: "OHLCV" },
+    plain: {
+      fr: "Open, High, Low, Close, Volume: ouverture, plus haut, plus bas, cloture et volume d'une seance.",
+      en: "Open, High, Low, Close, Volume: opening, high, low, closing price, and volume for a session.",
+    },
+    aliases: ["open", "high", "low", "close", "volume"],
+    appLinks: [dataLink, signalsLink],
+  },
+  {
+    id: "last-price",
+    categoryId: "data",
+    title: { fr: "Dernier prix", en: "Last price" },
+    plain: {
+      fr: "Dernier prix disponible pour l'instrument. Il sert a afficher le niveau courant et a situer les signaux techniques.",
+      en: "Latest available price for the instrument. It displays the current level and positions technical signals.",
+    },
+    aliases: ["last_price", "close_used", "prix"],
+    appLinks: [dashboardLink, dataLink],
+  },
+  {
+    id: "var1j",
+    categoryId: "data",
+    title: { fr: "Variation 1j", en: "1-day change" },
+    plain: {
+      fr: "Variation du prix sur la derniere seance disponible. Elle donne le mouvement tres court terme, pas une preuve de signal.",
+      en: "Price change over the latest available session. It gives very short-term movement, not signal proof.",
+    },
+    aliases: ["var1j_pct", "1d change"],
+    appLinks: [dashboardLink],
+  },
+  {
+    id: "masi",
+    categoryId: "data",
+    title: { fr: "MASI", en: "MASI" },
+    plain: {
+      fr: "Indice principal de la Bourse de Casablanca. Dans l'app, MASI designe souvent l'univers marocain prioritaire.",
+      en: "Main index of the Casablanca Stock Exchange. In the app, MASI often means the priority Moroccan universe.",
+    },
+    aliases: ["Moroccan All Shares Index", "Maroc"],
+    appLinks: [dashboardLink, dataLink],
+  },
+  {
+    id: "asset-type",
+    categoryId: "data",
+    title: { fr: "Type d'actif", en: "Asset type" },
+    plain: {
+      fr: "Classe d'instrument: action, matiere premiere, obligation, devise ou indice. Elle sert aux filtres et a l'organisation du catalogue.",
+      en: "Instrument class: equity, commodity, bond, currency, or index. It is used for filters and catalog organization.",
+    },
+    aliases: ["asset_type", "equity", "commodity", "bond"],
+    appLinks: [dataLink],
+  },
+  {
+    id: "market-region",
+    categoryId: "data",
+    title: { fr: "Region marche", en: "Market region" },
+    plain: {
+      fr: "Zone geographique ou groupe de marche: MASI, US, Europe, Asie, etc. Elle sert a filtrer l'univers complet.",
+      en: "Geographic zone or market group: MASI, US, Europe, Asia, and so on. It filters the full universe.",
+    },
+    aliases: ["market_region", "region"],
+    appLinks: [dataLink, dashboardLink],
+  },
+]

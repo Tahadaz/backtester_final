@@ -1,6 +1,5 @@
 "use client"
 
-import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { SignalsPageView } from "@/components/strategy/signals-view-layout"
 
@@ -9,64 +8,109 @@ type SignalsVersionToggleProps = {
   onChange: (value: SignalsPageView) => void
 }
 
-const OPTIONS: Array<{ value: SignalsPageView; label: string; description: string }> = [
-  {
-    value: "expanded",
-    label: "Expanded",
-    description: "Version 20 familles",
-  },
-  {
-    value: "legacy",
-    label: "Legacy",
-    description: "Version pre-expansion",
-  },
-  {
-    value: "factor_x_ta",
-    label: "Factor × TA",
-    description: "Econometric selection",
-  },
-]
+type SignalUniverse = "expanded" | "legacy"
+type SignalSource = "ta" | "factor_x_ta"
+type SignalComplexity = "simple" | "combo"
+
+type SignalModeAxes = {
+  universe: SignalUniverse
+  source: SignalSource
+  complexity: SignalComplexity
+}
+
+function parseView(value: SignalsPageView): SignalModeAxes {
+  return {
+    universe: value === "legacy" || value.startsWith("legacy_") ? "legacy" : "expanded",
+    source: value === "factor_x_ta" || value.includes("factor_x_ta") ? "factor_x_ta" : "ta",
+    complexity: value.endsWith("_combo") ? "combo" : "simple",
+  }
+}
+
+function buildView({ universe, source, complexity }: SignalModeAxes): SignalsPageView {
+  return `${universe}_${source}_${complexity}` as SignalsPageView
+}
+
+function Segment<TValue extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  value: TValue
+  options: Array<{ value: TValue; label: string; title?: string }>
+  onChange: (value: TValue) => void
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
+        {label}
+      </span>
+      <div className="inline-flex rounded-md border border-line bg-card p-0.5">
+        {options.map((option) => {
+          const active = option.value === value
+          return (
+            <button
+              key={option.value}
+              type="button"
+              title={option.title}
+              aria-pressed={active}
+              onClick={() => onChange(option.value)}
+              className={cn(
+                "h-[26px] rounded-[5px] px-2.5 text-[11px] font-medium text-muted-foreground transition-colors",
+                active && "bg-bg3 font-semibold text-foreground",
+              )}
+            >
+              {option.label}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
 
 export function SignalsVersionToggle({
   value,
   onChange,
 }: SignalsVersionToggleProps) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-          Signal Page Version
-        </p>
-        <p className="text-sm text-muted-foreground">
-          Bascule entre la vue legacy, expanded et Factor × TA.
-        </p>
-      </div>
+  const axes = parseView(value)
+  const updateAxis = <TKey extends keyof SignalModeAxes>(
+    key: TKey,
+    nextValue: SignalModeAxes[TKey],
+  ) => {
+    onChange(buildView({ ...axes, [key]: nextValue }))
+  }
 
-      <div className="inline-flex rounded-lg border bg-muted/40 p-1">
-        {OPTIONS.map((option) => {
-          const active = option.value === value
-          return (
-            <Button
-              key={option.value}
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => onChange(option.value)}
-              className={cn(
-                "h-auto rounded-md px-3 py-2 text-left transition-colors",
-                active
-                  ? "bg-background text-foreground shadow-sm hover:bg-background"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <span className="flex flex-col items-start">
-                <span className="text-sm font-semibold">{option.label}</span>
-                <span className="text-[11px] font-normal">{option.description}</span>
-              </span>
-            </Button>
-          )
-        })}
-      </div>
+  return (
+    <div className="flex max-w-full flex-wrap items-center gap-1.5">
+      <Segment
+        label="Universe"
+        value={axes.universe}
+        onChange={(nextValue) => updateAxis("universe", nextValue)}
+        options={[
+          { value: "expanded", label: "Expanded", title: "Expanded indicator universe" },
+          { value: "legacy", label: "Legacy", title: "Legacy indicator universe" },
+        ]}
+      />
+      <Segment
+        label="Source"
+        value={axes.source}
+        onChange={(nextValue) => updateAxis("source", nextValue)}
+        options={[
+          { value: "ta", label: "Pure TA", title: "Technical indicators only" },
+          { value: "factor_x_ta", label: "Factor x TA", title: "Factor-conditioned technical indicators" },
+        ]}
+      />
+      <Segment
+        label="Mode"
+        value={axes.complexity}
+        onChange={(nextValue) => updateAxis("complexity", nextValue)}
+        options={[
+          { value: "simple", label: "Simple", title: "Single-family representatives" },
+          { value: "combo", label: "Combo", title: "Strict AND combo representatives" },
+        ]}
+      />
     </div>
   )
 }

@@ -1,66 +1,92 @@
-# backtester_final
+# Moroccan Market Signal Backtester
 
-## How to run UI
+End-of-studies engineering project for a Moroccan investment-bank context. The application ingests market data, computes technical/factor signals, runs backtests and walk-forward analysis, and exposes the results through a FastAPI backend, RQ workers, and a Next.js frontend.
 
-1. Start infra + API + worker:
+## Repository Map
+
+| Path | Purpose |
+| --- | --- |
+| `frontend/` | Active Next.js application, auth pages, dashboard, signals, strategy, and API proxy. |
+| `services/api/` | FastAPI service, routers, schemas, SQLAlchemy models, and Alembic migrations. |
+| `services/worker/` | RQ worker entrypoint and long-running jobs for data refresh, signals, backtests, and analytics. |
+| `core/quant_core/` | Shared quant, signal-engine, WFO, research, and strategy logic. |
+| `infra/` | Docker Compose stacks, Caddy config, backup scripts, and VM deployment support. |
+| `docs/` | Architecture, methodology, deployment, and operational documentation. |
+| `latex/`, `report-pfe-mis3/`, `docs/presentations/` | Academic report and presentation deliverables. These are not required by the runtime. |
+
+The active frontend is `frontend/`. Older duplicate frontend trees were removed to avoid ambiguity.
+
+## Local Runtime
+
+Start the full local stack from the repository root:
 
 ```bash
 docker compose -f infra/docker-compose.yml up --build
 ```
 
-2. In another shell (repo root), run Streamlit:
+Main local endpoints:
+
+| Service | URL |
+| --- | --- |
+| Frontend (Docker Compose) | `http://localhost:3001` |
+| Frontend (local `next dev`) | `http://localhost:3000` |
+| API health | `http://localhost:8000/health` |
+| MinIO console | `http://localhost:9001` |
+| Postgres forwarded port | `localhost:5555` |
+
+The frontend should call backend routes through its `/api/...` proxy. Docker Compose sets `UPSTREAM_API_BASE=http://quant_api:8000` for the frontend container.
+
+## Static Public Samples
+
+`frontend/public/data/` intentionally contains tiny synthetic JSON fixtures. They preserve the public static-dashboard/signals file contract without committing real market snapshots.
+
+To regenerate full public snapshots from a populated database:
 
 ```bash
-set API_URL=http://127.0.0.1:8000
-streamlit run services/ui_streamlit/app.py
+python frontend/scripts/export-scores.py
 ```
 
-PowerShell equivalent:
+Do not commit full exports, Excel market dumps, parquet files, database backups, or private generated artifacts.
 
-```powershell
-$env:API_URL = "http://127.0.0.1:8000"
-streamlit run services/ui_streamlit/app.py
-```
+## Checks
 
-Optional API security:
-
-```powershell
-$env:API_KEY = "set-a-strong-secret"
-```
-
-If `API_KEY` is set for `quant_api`, all `/runs`, `/datasets`, and `/results` requests require `X-API-Key`.
-
-Optional long-job timeout for heavy optimization:
-
-```powershell
-$env:RUN_JOB_TIMEOUT_SECONDS = "21600"
-```
-
-Use this when running one-click multi-stock optimization (worker queue timeout).
-
-3. Open the Streamlit URL shown in terminal (default `http://localhost:8501`).
-
-## Quick sanity check
-
-Run a synthetic end-to-end smoke test (create run -> start -> poll -> fetch metrics/artifacts):
+Python core tests:
 
 ```bash
-python services/ui_streamlit/smoke_test.py --api-url http://127.0.0.1:8000 --symbol IAM
+python -m pytest core/tests -q --tb=short
 ```
 
-If API key auth is enabled:
+Frontend install and type check:
 
 ```bash
-python services/ui_streamlit/smoke_test.py --api-url http://127.0.0.1:8000 --symbol IAM --api-key <your-key>
+cd frontend
+npm ci --legacy-peer-deps
+npx tsc --noEmit
 ```
 
-Expected outcome: final status is `succeeded`, with non-empty metrics and at least one artifact when plots are enabled.
+Frontend app build:
 
-## Core workflow
+```bash
+cd frontend
+npm run build
+```
 
-- `Backtesting` page: run one strategy on selected symbol set, with period controls.
-- `Optimization` page: optimize selected strategies, optional manual candidate domains, optional one-click `batch_per_symbol` mode for all selected stocks, and persistent indicator caching.
-- `Results` page: stock leaderboard, plots, trade ledgers, majority/weighted votes, and interactive custom weighted vote.
-- `Defaults Discovery` page (`/defaults-discovery`): walk-forward SMA defaults discovery with 9 bucketed defaults and export/apply flow.
+Static public build:
 
-See methodology and schema in [`docs/DEFAULTS_DISCOVERY.md`](docs/DEFAULTS_DISCOVERY.md).
+```bash
+cd frontend
+npm run build:pages
+npm run prune:pages
+```
+
+Compose validation:
+
+```bash
+docker compose -f infra/docker-compose.yml config
+```
+
+## Deployment Notes
+
+Production deployment is documented in `docs/DEPLOY_RUNBOOK.md`. The VM stack uses `infra/docker-compose.gcp.yml`, GHCR images, Caddy, Postgres, Redis, MinIO, FastAPI, workers, and the Next.js frontend.
+
+Operational auth and restore notes live under `docs/ops/`.

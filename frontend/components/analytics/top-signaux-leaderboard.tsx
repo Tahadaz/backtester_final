@@ -1,9 +1,11 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import { usePredictiveAbilityLeaderboard } from "@/hooks/use-api"
 import type { PredictiveLeaderboardRow } from "@/lib/api"
 import { Skeleton } from "@/components/ui/skeleton"
+import { signalEvidenceUrl } from "@/lib/signal-evidence-url"
 import { ArrowUpDown, ArrowDown, ArrowUp } from "lucide-react"
 
 type EngineHorizon = "short" | "medium" | "long"
@@ -30,7 +32,51 @@ const RETURN_METHODS = [
 const SOURCE_LABEL: Record<string, string> = {
   engine_legacy: "Engine (legacy)",
   engine_expanded: "Engine (expanded)",
+  factor_x_ta: "Engine (E FX)",
   wfo: "WFO",
+}
+
+const MODE_LABEL: Record<string, string> = {
+  legacy_ta_simple: "L TA",
+  expanded_ta_simple: "E TA",
+  legacy_factor_x_ta_simple: "L FX",
+  expanded_factor_x_ta_simple: "E FX",
+  legacy_ta_combo: "L TA Combo",
+  expanded_ta_combo: "E TA Combo",
+  legacy_factor_x_ta_combo: "L FX Combo",
+  expanded_factor_x_ta_combo: "E FX Combo",
+}
+
+function sourceLabel(source: string): string {
+  if (SOURCE_LABEL[source]) return SOURCE_LABEL[source]
+  const [axis, mode] = source.split(":", 2)
+  if (!mode) return source
+  const axisLabel = axis === "wfo" ? "WFO" : "Engine"
+  return `${axisLabel} (${MODE_LABEL[mode] ?? mode})`
+}
+
+function evidenceSourceForLeaderboard(source: string): "signal_engine" | "wfo" {
+  return source.startsWith("wfo") ? "wfo" : "signal_engine"
+}
+
+function evidenceViewForLeaderboard(source: string): string {
+  const [_axis, mode] = source.split(":", 2)
+  if (mode) return mode
+  if (source === "engine_legacy") return "legacy_ta_simple"
+  if (source === "factor_x_ta") return "expanded_factor_x_ta_simple"
+  if (source.includes("legacy")) return "legacy_ta_simple"
+  return "expanded_ta_simple"
+}
+
+function evidenceHrefForLeaderboard(row: PredictiveLeaderboardRow, horizon: EngineHorizon): string {
+  const evidenceVariant = evidenceViewForLeaderboard(row.source)
+  return signalEvidenceUrl({
+    symbol: row.symbol,
+    horizon,
+    view: evidenceVariant,
+    source: evidenceSourceForLeaderboard(row.source),
+    evidenceVariant,
+  })
 }
 
 function icColor(ic: number | null | undefined): string {
@@ -53,7 +99,8 @@ function fmtIC(v: number | null | undefined): string {
   return (v >= 0 ? "+" : "") + v.toFixed(3)
 }
 
-export function TopSignauxLeaderboard({ onSelectSymbol, advBySymbol, liquidityFilter, advThreshold = 1000, lookback_days }: Props) {
+export function TopSignauxLeaderboard({ onSelectSymbol, advBySymbol, liquidityFilter, advThreshold = 1_000_000, lookback_days }: Props) {
+  const router = useRouter()
   const [engineHorizon, setEngineHorizon] = useState<EngineHorizon>("short")
   const [returnCalcMethod, setReturnCalcMethod] = useState<string>("open_to_open")
   const [sortKey, setSortKey] = useState<string>("mean_ic")
@@ -124,14 +171,14 @@ export function TopSignauxLeaderboard({ onSelectSymbol, advBySymbol, liquidityFi
         <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
           Engine horizon
         </span>
-        <div className="inline-flex rounded-md border bg-background p-0.5">
+        <div className="inline-flex rounded-md border border-line bg-bg2 p-0.5">
           {HORIZONS.map((h) => (
             <button
               key={h}
               onClick={() => setEngineHorizon(h)}
               className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
                 engineHorizon === h
-                  ? "bg-blue-600 text-white"
+                  ? "bg-card text-foreground shadow-xs"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -143,7 +190,7 @@ export function TopSignauxLeaderboard({ onSelectSymbol, advBySymbol, liquidityFi
         <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
           Rendement
         </span>
-        <div className="inline-flex rounded-md border bg-background p-0.5">
+        <div className="inline-flex rounded-md border border-line bg-bg2 p-0.5">
           {RETURN_METHODS.map((rm) => (
             <button
               key={rm.value}
@@ -181,9 +228,9 @@ export function TopSignauxLeaderboard({ onSelectSymbol, advBySymbol, liquidityFi
           Aucune donnée — déclenchez « Recompute predictive history ».
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-md border">
-          <table className="w-full text-xs">
-            <thead className="bg-muted/40 text-muted-foreground">
+        <div className="overflow-x-auto rounded-md border border-line">
+          <table className="claude-table">
+            <thead>
               <tr>
                 <Th onClick={() => toggleSort("symbol")}>
                   <span className="flex items-center gap-1">Symbole {sortIcon("symbol")}</span>
@@ -219,14 +266,21 @@ export function TopSignauxLeaderboard({ onSelectSymbol, advBySymbol, liquidityFi
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, idx) => (
-                <Row
-                  key={`${row.symbol}-${row.source}-${idx}`}
-                  row={row}
-                  fwdHorizons={fwdHorizons}
-                  onClick={() => onSelectSymbol(row.symbol, row.source, engineHorizon)}
-                />
-              ))}
+              {rows.map((row, idx) => {
+                const evidenceHref = evidenceHrefForLeaderboard(row, engineHorizon)
+                return (
+                  <Row
+                    key={`${row.symbol}-${row.source}-${idx}`}
+                    row={row}
+                    fwdHorizons={fwdHorizons}
+                    evidenceHref={evidenceHref}
+                    onClick={() => {
+                      onSelectSymbol(row.symbol, row.source, engineHorizon)
+                      router.push(evidenceHref)
+                    }}
+                  />
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -247,7 +301,7 @@ function Th({
   return (
     <th
       onClick={onClick}
-      className={`px-3 py-2 text-left font-medium uppercase tracking-wide cursor-pointer select-none hover:bg-muted/60 ${className}`}
+      className={`cursor-pointer select-none hover:bg-muted/60 ${className}`}
     >
       {children}
     </th>
@@ -281,20 +335,33 @@ function hrColor(v: number | null | undefined): string {
 function Row({
   row,
   fwdHorizons,
+  evidenceHref,
   onClick,
 }: {
   row: PredictiveLeaderboardRow
   fwdHorizons: number[]
+  evidenceHref: string
   onClick: () => void
 }) {
   return (
     <tr
       onClick={onClick}
-      className="border-t cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-colors"
+      role="link"
+      tabIndex={0}
+      title={`Voir la preuve OOS ${row.symbol}: ${evidenceHref}`}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault()
+          onClick()
+        }
+      }}
+      className="group cursor-pointer transition-colors hover:bg-muted/40"
     >
-      <td className="px-3 py-1.5 font-mono font-semibold">{row.symbol}</td>
-      <td className="px-3 py-1.5 text-muted-foreground">
-        {SOURCE_LABEL[row.source] ?? row.source}
+      <td className="font-mono font-semibold">
+        <span className="underline-offset-2 group-hover:underline">{row.symbol}</span>
+      </td>
+      <td className="text-muted-foreground">
+        {sourceLabel(row.source)}
       </td>
       {fwdHorizons.map((h) => {
         const ic = row.ic_by_fwd_h[h]
@@ -302,7 +369,7 @@ function Row({
         return (
           <td
             key={h}
-            className={`px-3 py-1.5 text-right font-mono tabular-nums ${icColor(ic)}`}
+            className={`r font-mono tabular-nums ${icColor(ic)}`}
             style={{ backgroundColor: icBg(ic) }}
             title={
               ic !== null && ic !== undefined
@@ -315,17 +382,17 @@ function Row({
         )
       })}
       <td
-        className={`px-3 py-1.5 text-right font-mono tabular-nums font-semibold ${icColor(row.mean_ic)}`}
+        className={`r font-mono tabular-nums font-semibold ${icColor(row.mean_ic)}`}
       >
         {fmtIC(row.mean_ic)}
       </td>
-      <td className={`px-3 py-1.5 text-right font-mono tabular-nums font-semibold ${sharpeColor(row.mean_sharpe)}`}>
+      <td className={`r font-mono tabular-nums font-semibold ${sharpeColor(row.mean_sharpe)}`}>
         {fmtSharpe(row.mean_sharpe)}
       </td>
-      <td className={`px-3 py-1.5 text-right font-mono tabular-nums ${hrColor(row.mean_hit_rate)}`}>
+      <td className={`r font-mono tabular-nums ${hrColor(row.mean_hit_rate)}`}>
         {fmtHR(row.mean_hit_rate)}
       </td>
-      <td className="px-3 py-1.5 text-right text-muted-foreground tabular-nums">{row.n}</td>
+      <td className="r text-muted-foreground tabular-nums">{row.n}</td>
     </tr>
   )
 }

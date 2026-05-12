@@ -128,6 +128,17 @@ export function ReviewTab({
           </div>
         ) : null}
 
+        {(review?.blocking_issues ?? []).length > 0 ? (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Global blocking issues</p>
+            {(review?.blocking_issues ?? []).map((issue) => (
+              <div key={issue} className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {issue}
+              </div>
+            ))}
+          </div>
+        ) : null}
+
         {(review?.global_warnings ?? []).length > 0 ? (
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Global warnings</p>

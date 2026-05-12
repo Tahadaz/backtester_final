@@ -36,6 +36,23 @@ const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
   live_only_fallback: { label: "Signal live", cls: "text-orange-800 border-orange-300 bg-orange-50" },
 }
 
+const FACTOR_TICKER_LABELS: Record<string, string> = {
+  "^VIX": "VIX",
+  "^GSPC": "SP500",
+  "^NDX": "NDX",
+  "^N225": "N225",
+  "^FCHI": "CAC",
+  "^FTSE": "FTSE",
+  "BZ=F": "BRENT",
+  "GC=F": "GOLD",
+  "SI=F": "SILVER",
+  "DX-Y.NYB": "DXY",
+  "EURUSD=X": "EURUSD",
+  "AED=X": "AED",
+  "^TNX": "US10Y",
+  "BTC-USD": "BTC",
+}
+
 function variantLabel(v: VariantSummary): string {
   return signalVariantLabel(v)
 }
@@ -60,6 +77,33 @@ function formatHoldPeriodDays(n: number): string {
 
 function formatPercent(n: number): string {
   return `${(n * 100).toFixed(2)}%`
+}
+
+function factorConditionLabel(condition: Record<string, unknown> | null | undefined): string | null {
+  if (!condition) return null
+  const ticker = typeof condition.factor_ticker === "string" ? condition.factor_ticker : ""
+  const label = FACTOR_TICKER_LABELS[ticker] ?? ticker
+  const direction = condition.direction === "below" ? "<" : ">"
+  const form = typeof condition.form === "string" ? condition.form : ""
+  const lookback = condition.lookback
+  const threshold = typeof condition.threshold === "number" ? condition.threshold : Number(condition.threshold ?? 0)
+  if (!label || !form) return null
+  if (form === "zscore") return `${label} z${lookback} ${direction} ${threshold}`
+  if (form === "momentum") return `${label} mom${lookback} ${direction} ${(threshold * 100).toFixed(1)}%`
+  if (form === "change") return `${label} change(${lookback}) ${direction} ${threshold}`
+  if (form === "level") return `${label} level ${direction} ${threshold}`
+  if (form === "direction") return `${label} dir ${direction} 0`
+  return `${label} ${form}(${lookback}) ${direction} ${threshold}`
+}
+
+function FactorConditionBadge({ condition }: { condition?: Record<string, unknown> | null }) {
+  const label = factorConditionLabel(condition)
+  if (!label) return null
+  return (
+    <Badge variant="outline" className="text-[10px] border-sky-200 bg-sky-50 text-sky-800">
+      {label}
+    </Badge>
+  )
 }
 
 function formatBacktestMetricLabel(metric: string): string {
@@ -117,7 +161,7 @@ export default function VariantDetailPage() {
 
   const variantId = decodeURIComponent(params.id as string)
   const symbol = searchParams.get("symbol")
-  const horizon = searchParams.get("horizon") ?? "medium"
+  const horizon = searchParams.get("horizon") ?? "monthly"
   const variant = searchParams.get("variant") ?? "expanded"
   const srMode = pathname.includes("/signals/sr-variant/")
 
@@ -194,7 +238,7 @@ export default function VariantDetailPage() {
             <div className="flex items-center gap-2">
               <h1 className="text-base font-bold">{srMode ? "Couple S/R" : symbol}</h1>
               <Badge variant="outline" className="text-xs font-medium px-2 py-0.5">
-                {horizon === "short" ? "Court terme" : horizon === "medium" ? "Moyen terme" : "Long terme"}
+                {horizon === "weekly" ? "Court terme" : horizon === "monthly" ? "Moyen terme" : "Long terme"}
               </Badge>
             </div>
             <p className="text-sm font-medium text-muted-foreground mt-0.5">{data.description}</p>
@@ -211,6 +255,7 @@ export default function VariantDetailPage() {
               {!srMode && symbol && (
                 <ICStatsChip symbol={symbol} horizon={horizon} archetype={data.archetype} />
               )}
+              {!srMode && <FactorConditionBadge condition={data.factor_condition} />}
             </div>
           </div>
         </div>
@@ -524,6 +569,9 @@ function VariantRow({
         <td className="px-2.5 py-2.5" title={v.variant_id}>
           <div className="font-mono font-bold text-sm">{variantLabel(v)}</div>
           <div className="text-[10px] text-muted-foreground capitalize">{v.archetype.replace(/_/g, " ")}</div>
+          <div className="mt-1">
+            <FactorConditionBadge condition={v.factor_condition} />
+          </div>
         </td>
         {!srMode && (
           <td className="px-2.5 py-2.5 text-center">

@@ -31,7 +31,7 @@ interface RecomputeControlsProps {
   variant?: string
 }
 
-export function RecomputeControls({ scope, symbol, horizon = "short", variant = "legacy" }: RecomputeControlsProps) {
+export function RecomputeControls({ scope, symbol, horizon = "weekly", variant = "legacy" }: RecomputeControlsProps) {
   const { toast } = useToast()
   const [wfoLoading, setWfoLoading] = useState(false)
   const [engineLoading, setEngineLoading] = useState(false)

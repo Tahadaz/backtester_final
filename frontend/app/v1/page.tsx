@@ -1,15 +1,31 @@
 "use client"
 
 import Link from "next/link"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import useSWR from "swr"
-import { AlertCircle, BookOpen, Download, Filter, LayoutDashboard, RefreshCw, Zap } from "lucide-react"
+import { AlertCircle, BookOpen, Download, ExternalLink, Eye, EyeOff, Filter, LayoutDashboard, RefreshCw, Save, Search, X, Zap } from "lucide-react"
 import { useDashboardData } from "@/hooks/use-dashboard"
+import { useDashboardIndices } from "@/hooks/use-dashboard-indices"
 import { useMarketCatalog } from "@/hooks/use-api"
-import { fetchEdge, type EdgeMetrics } from "@/lib/api"
-import type { DashboardScoreSource, DashboardStock, DashboardView, Horizon } from "@/lib/dashboard-types"
+import {
+  createDashboardIndex,
+  deleteDashboardIndex,
+  fetchDashboardDailyBlotter,
+  fetchDashboardPortfolioPositions,
+  fetchEdge,
+  saveDashboardPortfolioPositions,
+  updateDashboardIndex,
+  type DashboardDailyBlotterResponse,
+  type DashboardManualPosition,
+  type DashboardPortfolioTicketResponse,
+  type EdgeMetrics,
+} from "@/lib/api"
+import type { DashboardDisplayMode, DashboardScoreSource, DashboardStock, DashboardView, Horizon } from "@/lib/dashboard-types"
 import { resolveHorizonPreset } from "@/lib/horizon"
+import { IndexTab } from "@/components/dashboard-v1/index-tab"
+import { SectorTable } from "@/components/dashboard-v1/sector-table"
 import { StockTable } from "@/components/dashboard-v1/stock-table"
+import { displayVariantLabel } from "@/components/dashboard-v1/best-signal-cells"
 import { SetupStep } from "@/components/dashboard/setup-step"
 import { KpiTile } from "@/components/dashboard/kpi-tile"
 import { EdgePanel } from "@/components/dashboard/edge-panel"
@@ -19,17 +35,19 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
+import { Textarea } from "@/components/ui/textarea"
 import { formatPercent } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 type ViewMode = "masi" | "complet"
 type AssetTab = "all" | "equity" | "commodity" | "bond"
 type RegionTab = "all" | "masi" | "us" | "european" | "asian"
+type FamilyColumn = "tendance" | "momentum" | "oscillation" | "volume"
 
 const isPublicDashboardOnly = process.env.NEXT_PUBLIC_DASHBOARD_PUBLIC_ONLY === "true"
 const edgeEnabled = process.env.NEXT_PUBLIC_EDGE_ENABLED !== "false"
 const EDGE_COST_BPS = 33
-const ADV_THRESHOLD = 1000
+const ADV_THRESHOLD = 1_000_000
 
 const DASHBOARD_HORIZONS = [
   { value: "weekly" as const, label: "Court" },
@@ -43,26 +61,30 @@ const STOCK_VIEW_OPTIONS = [
   { value: "index" as const, label: "Indices" },
 ]
 
-const SOURCE_OPTIONS = [
-  { value: "signal_engine" as const, label: "Signal Engine" },
-  { value: "wfo" as const, label: "WFO" },
-  { value: "both" as const, label: "Both" },
+const DASHBOARD_MODE_OPTIONS = [
+  { value: "trade_opportunities" as const, label: "Trade opportunities" },
+  { value: "technical_directions" as const, label: "Technical directions" },
 ]
 
-const CATEGORY_OPTIONS = [
-  { value: "all" as const, label: "Toutes" },
-  { value: "liquid" as const, label: "Très liq." },
-  { value: "mid" as const, label: "Mid" },
-]
+function evidenceProofHref(raw: string): string {
+  try {
+    const url = new URL(raw, "http://local")
+    url.searchParams.set("tab", "evidence")
+    return `${url.pathname}${url.search}${url.hash}`
+  } catch {
+    const joiner = raw.includes("?") ? "&" : "?"
+    return raw.includes("tab=evidence") ? raw : `${raw}${joiner}tab=evidence`
+  }
+}
 
-const SR_OPTIONS = [
-  { value: "off" as const, label: "Off" },
-  { value: "on" as const, label: "Auto" },
-  { value: "manual" as const, label: "Manuel" },
+const FAMILY_COLUMN_OPTIONS: { value: FamilyColumn; label: string }[] = [
+  { value: "tendance", label: "Trend." },
+  { value: "momentum", label: "Mom." },
+  { value: "oscillation", label: "Osc." },
+  { value: "volume", label: "Vol." },
 ]
 
 type EdgeMode = "gross" | "net"
-type AssetCategory = "all" | "liquid" | "mid"
 
 function median(values: number[]) {
   if (!values.length) return null
@@ -77,21 +99,144 @@ function formatInteger(value: number | null) {
   return Math.round(value).toLocaleString("fr-FR")
 }
 
-function scoreLabelForCounts(stock: DashboardStock, scoreSource: DashboardScoreSource, signalView: "legacy" | "expanded" | "factor_x_ta") {
-  if (scoreSource === "wfo") {
-    return stock.scores.wfo?.aggregate_signal_label ?? null
+function formatMoney(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return "--"
+  return `${Math.round(value).toLocaleString("fr-FR")} MAD`
+}
+
+function formatDecimal(value: number | null | undefined, digits = 2) {
+  if (value == null || !Number.isFinite(value)) return "--"
+  return value.toLocaleString("fr-FR", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  if (!Number.isFinite(value)) return min
+  return Math.min(max, Math.max(min, value))
+}
+
+function bestActionableSignal(stock: DashboardStock) {
+  const signal = stock.best_signal ?? null
+  if (!signal) return null
+  if (signal.direction === "none" || signal.bucket === "hold") return null
+  if ((signal.bucket === "buy" || signal.bucket === "strong_buy") && signal.direction !== "long") return null
+  if ((signal.bucket === "sell" || signal.bucket === "strong_sell") && signal.direction !== "short") return null
+  if (!["buy", "strong_buy", "sell", "strong_sell"].includes(String(signal.bucket))) return null
+  if (signal.action_expected_return_net == null || signal.hit_rate == null) return null
+  return signal
+}
+
+function hasProvenEdgeForMode(
+  stock: DashboardStock,
+  edge: EdgeMetrics | null | undefined,
+  mode: EdgeMode,
+) {
+  const best = bestActionableSignal(stock)
+  if (best && Number(best.proof_n ?? best.n ?? 0) >= 30) {
+    const bestProven = mode === "net" ? Boolean(best.proven_edge_net) : Boolean(best.proven_edge_gross)
+    if (bestProven) return true
   }
-  if (scoreSource === "both") {
-    return stock.scores.wfo?.aggregate_signal_label ?? stock.scores.signal_engine.aggregate_signal_label
-  }
-  return signalView === "expanded"
-    ? stock.scores.signal_engine.expanded_aggregate_signal_label ?? stock.scores.signal_engine.aggregate_signal_label
-    : stock.scores.signal_engine.aggregate_signal_label
+  if (!edge?.gates.n) return false
+  return mode === "net" ? edge.proven_edge_net : edge.proven_edge_gross
+}
+
+function TopActionableSignals({
+  stocks,
+  onOpenEdge,
+}: {
+  stocks: DashboardStock[]
+  onOpenEdge: (stock: DashboardStock) => void
+}) {
+  const rows = useMemo(
+    () =>
+      stocks
+        .map((stock) => ({ stock, signal: bestActionableSignal(stock) }))
+        .filter((row): row is { stock: DashboardStock; signal: NonNullable<ReturnType<typeof bestActionableSignal>> } => Boolean(row.signal))
+        .sort((left, right) => {
+          const proven = Number(Boolean(right.signal.proven_edge_net)) - Number(Boolean(left.signal.proven_edge_net))
+          if (proven !== 0) return proven
+          const rightScore = right.signal.score ?? Number.NEGATIVE_INFINITY
+          const leftScore = left.signal.score ?? Number.NEGATIVE_INFINITY
+          if (rightScore !== leftScore) return rightScore - leftScore
+          const rightEr = right.signal.action_expected_return_net ?? Number.NEGATIVE_INFINITY
+          const leftEr = left.signal.action_expected_return_net ?? Number.NEGATIVE_INFINITY
+          if (rightEr !== leftEr) return rightEr - leftEr
+          return left.stock.symbol.localeCompare(right.stock.symbol)
+        })
+        .slice(0, 6),
+    [stocks],
+  )
+
+  return (
+    <div className="dashboard-panel overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-bg2 px-4 py-3">
+        <div>
+          <h2 className="dashboard-section-title">Top signaux actionnables</h2>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            Classement par edge prouvé, score puis retour attendu net.
+          </p>
+        </div>
+        <div className="dashboard-meta">{rows.length} setups prêts à justifier</div>
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+          Aucun signal actionnable dans les filtres actuels. Élargissez l'univers ou retirez le filtre Edge.
+        </div>
+      ) : (
+        <div className="grid divide-y divide-border">
+          {rows.map(({ stock, signal }) => (
+            <button
+              key={`${stock.symbol}-${signal.source}-${signal.variant}`}
+              type="button"
+              onClick={() => onOpenEdge(stock)}
+              className="grid gap-3 px-4 py-3 text-left transition hover:bg-bg2 md:grid-cols-[0.8fr_1.4fr_0.8fr_0.8fr_0.8fr]"
+            >
+              <div>
+                <div className="dashboard-mono text-[13px] font-semibold">{stock.symbol}</div>
+                <div className="truncate text-[11px] text-muted-foreground">{stock.display_name ?? stock.sector ?? "-"}</div>
+              </div>
+              <div>
+                <div className="text-[12px] font-semibold">{signal.label}</div>
+                <div className="dashboard-mono mt-0.5 text-[10px] text-muted-foreground">
+                  {signal.source === "wfo" ? "WFO" : "Signal Engine"} · {displayVariantLabel(signal.variant)}
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Action</div>
+                <div className={cn("mt-0.5 text-[12px] font-semibold", signal.direction === "long" ? "dashboard-text-positive" : "dashboard-text-negative")}>
+                  {signal.direction === "long" ? "Long" : signal.direction === "short" ? "Short" : "No trade"}
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">retour attendu</div>
+                <div className="dashboard-mono mt-0.5 text-[12px] font-semibold">{formatPercent(signal.action_expected_return_net)}</div>
+              </div>
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Preuve</div>
+                <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px]">
+                  <span className={cn("rounded px-2 py-0.5 font-semibold", signal.proven_edge_net ? "dashboard-chip-positive" : "dashboard-action-warning")}>
+                    {signal.proven_edge_net ? "Prouvé" : "Watch"}
+                  </span>
+                  <span className="dashboard-mono text-muted-foreground">
+                    %succés {formatPercent(signal.hit_rate)} · {signal.fwd_horizon_bars ?? "--"}j
+                  </span>
+                  <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function downloadStocksCsv(stocks: DashboardStock[]) {
   const lines = [
-    ["symbol", "display_name", "sector", "asset_type", "market_region", "adv"].join(","),
+    ["symbol", "display_name", "sector", "asset_type", "market_region", "adv20_mad"].join(","),
     ...stocks.map((stock) =>
       [
         stock.symbol,
@@ -118,27 +263,204 @@ function downloadStocksCsv(stocks: DashboardStock[]) {
   URL.revokeObjectURL(url)
 }
 
+function csvCell(value: unknown) {
+  const raw = value == null ? "" : String(value)
+  const escaped = raw.replaceAll("\"", "\"\"")
+  return /[",\n\r]/.test(raw) ? `"${escaped}"` : escaped
+}
+
+function formatPositionsText(positions: DashboardManualPosition[]) {
+  return positions
+    .map((position) =>
+      [
+        position.symbol,
+        position.quantity,
+        position.average_price_mad ?? "",
+        position.side ?? "long",
+        position.opened_at ?? "",
+      ].join(","),
+    )
+    .join("\n")
+}
+
+function parsePositionsText(text: string): { positions: DashboardManualPosition[]; error: string | null } {
+  const positions: DashboardManualPosition[] = []
+  for (const [idx, rawLine] of text.split(/\r?\n/).entries()) {
+    const line = rawLine.trim()
+    if (!line) continue
+    const [symbolRaw, qtyRaw, avgRaw, sideRaw, openedAtRaw] = line.split(",").map((part) => part.trim())
+    const symbol = (symbolRaw ?? "").toUpperCase()
+    const quantity = Number(qtyRaw)
+    const average = avgRaw ? Number(avgRaw) : null
+    const side = sideRaw === "short" ? "short" : "long"
+    if (!symbol || !Number.isFinite(quantity) || quantity <= 0) {
+      return { positions: [], error: `Position line ${idx + 1} is invalid.` }
+    }
+    if (average != null && (!Number.isFinite(average) || average <= 0)) {
+      return { positions: [], error: `Average price line ${idx + 1} is invalid.` }
+    }
+    positions.push({
+      symbol,
+      side,
+      quantity,
+      average_price_mad: average,
+      opened_at: openedAtRaw || null,
+    })
+  }
+  return { positions, error: null }
+}
+
+function downloadBlotterCsv(blotter: DashboardDailyBlotterResponse | null) {
+  if (!blotter) return
+  const header = [
+    "symbol",
+    "action",
+    "current_qty",
+    "planned_qty",
+    "planned_notional_mad",
+    "planned_weight_pct",
+    "target_qty",
+    "delta_qty",
+    "delta_notional_mad",
+    "entry",
+    "stop",
+    "target",
+    "hold_days",
+    "action_er_net",
+    "status",
+    "reasons",
+  ]
+  const lines = [
+    header.join(","),
+    ...blotter.rows.map((row) =>
+      [
+        row.symbol,
+        row.blotter_action,
+        row.current_quantity,
+        row.shares,
+        row.size_mad,
+        row.final_weight_pct,
+        row.target_quantity,
+        row.delta_quantity,
+        row.delta_notional_mad,
+        row.entry_reference_price,
+        row.stop_loss,
+        row.target_1,
+        row.holding_period_bars,
+        row.action_expected_return_net,
+        row.status,
+        row.no_trade_reasons.join(";"),
+      ].map(csvCell).join(","),
+    ),
+  ]
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = "daily-blotter.csv"
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
 export default function DashboardV1Page() {
   const [viewMode, setViewMode] = useState<ViewMode>("masi")
   const [assetTab, setAssetTab] = useState<AssetTab>("all")
   const [regionTab, setRegionTab] = useState<RegionTab>("all")
   const [horizon, setHorizon] = useState<Horizon>("monthly")
-  const [view] = useState<DashboardView>("stocks")
+  const [view, setView] = useState<DashboardView>("stocks")
   const [showFilters, setShowFilters] = useState(true)
   const [liquidityFilter, setLiquidityFilter] = useState(false)
-  const [signalView] = useState<"legacy" | "expanded" | "factor_x_ta">("expanded")
-  const [scoreSource, setScoreSource] = useState<DashboardScoreSource>("signal_engine")
-  const [showTechnicalLevels, setShowTechnicalLevels] = useState(false)
-  const [hideDetails, setHideDetails] = useState(false)
+  const [dashboardMode, setDashboardMode] = useState<DashboardDisplayMode>("trade_opportunities")
+  const signalView: "expanded" = "expanded"
+  const scoreSource: DashboardScoreSource = "signal_engine"
+  const [visibleFamilies, setVisibleFamilies] = useState<Record<FamilyColumn, boolean>>({
+    tendance: true,
+    momentum: true,
+    oscillation: true,
+    volume: true,
+  })
   const [edgeOnly, setEdgeOnly] = useState(false)
   const [edgeMode, setEdgeMode] = useState<EdgeMode>("net")
   const [search, setSearch] = useState("")
   const [sectorFilter, setSectorFilter] = useState<string>("all")
-  const [categoryFilter, setCategoryFilter] = useState<AssetCategory>("all")
+  const [basketOnly, setBasketOnly] = useState(false)
+  const [selectedBasketSymbols, setSelectedBasketSymbols] = useState<string[]>([])
   const [selectedStock, setSelectedStock] = useState<DashboardStock | null>(null)
+  const [ticketCapital, setTicketCapital] = useState(1_000_000)
+  const [ticketCashBufferPct, setTicketCashBufferPct] = useState(10)
+  const [ticketMaxPositionPct, setTicketMaxPositionPct] = useState(20)
+  const [ticketMaxSectorPct, setTicketMaxSectorPct] = useState(40)
+  const [ticketKellyPct, setTicketKellyPct] = useState(25)
+  const [ticketSidePolicy, setTicketSidePolicy] = useState<"long_only" | "long_short">("long_only")
+  const [ticketRequireProvenEdge, setTicketRequireProvenEdge] = useState(false)
+  const [positionText, setPositionText] = useState("")
+  const [positionsDirty, setPositionsDirty] = useState(false)
+  const [positionsSaving, setPositionsSaving] = useState(false)
+  const [positionsSaveError, setPositionsSaveError] = useState<string | null>(null)
+  const [dashboardIndexActionError, setDashboardIndexActionError] = useState<string | null>(null)
 
   const { data, error, isLoading, mutate } = useDashboardData(horizon)
+  const {
+    data: dashboardIndices,
+    error: dashboardIndicesError,
+    mutate: mutateDashboardIndices,
+  } = useDashboardIndices(viewMode === "masi" && view === "index", horizon)
   const { data: catalogData } = useMarketCatalog()
+  const {
+    data: savedPositions = [],
+    mutate: mutatePortfolioPositions,
+  } = useSWR<DashboardManualPosition[]>("dashboard-portfolio-positions", fetchDashboardPortfolioPositions, {
+    revalidateOnFocus: false,
+  })
+
+  useEffect(() => {
+    if (!positionsDirty) {
+      setPositionText(formatPositionsText(savedPositions))
+    }
+  }, [positionsDirty, savedPositions])
+
+  const parsedPositions = useMemo(() => parsePositionsText(positionText), [positionText])
+  const activeManualPositions = parsedPositions.error ? savedPositions : parsedPositions.positions
+
+  const saveManualPositions = async () => {
+    if (parsedPositions.error) {
+      setPositionsSaveError(parsedPositions.error)
+      return
+    }
+    setPositionsSaving(true)
+    setPositionsSaveError(null)
+    try {
+      const saved = await saveDashboardPortfolioPositions(parsedPositions.positions)
+      await mutatePortfolioPositions(saved, false)
+      setPositionsDirty(false)
+      setPositionText(formatPositionsText(saved))
+    } catch (err) {
+      setPositionsSaveError(err instanceof Error ? err.message : "Position save failed")
+    } finally {
+      setPositionsSaving(false)
+    }
+  }
+
+  const runDashboardIndexAction = async (action: () => Promise<unknown>) => {
+    setDashboardIndexActionError(null)
+    try {
+      await action()
+      await mutateDashboardIndices()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Dashboard index action failed"
+      setDashboardIndexActionError(message)
+      throw err
+    }
+  }
+
+  const createCustomDashboardIndex = (payload: { name: string; symbols: string[] }) =>
+    runDashboardIndexAction(() => createDashboardIndex(payload))
+
+  const updateCustomDashboardIndex = (id: string, payload: { name: string; symbols: string[] }) =>
+    runDashboardIndexAction(() => updateDashboardIndex(id, payload))
+
+  const deleteCustomDashboardIndex = (id: string) =>
+    runDashboardIndexAction(() => deleteDashboardIndex(id))
 
   const taxonomyMap = useMemo(() => {
     const out: Record<string, { asset_type: string; market_region: string | null }> = {}
@@ -167,6 +489,7 @@ export default function DashboardV1Page() {
   )
 
   const edgeSource = scoreSource === "signal_engine" ? "signal_engine" : "wfo"
+  const ticketSource = dashboardMode === "trade_opportunities" ? "auto" : edgeSource
   const edgeHorizon = resolveHorizonPreset(horizon).value
   const horizonDays = horizon === "weekly" ? 5 : horizon === "monthly" ? 21 : 63
 
@@ -174,14 +497,12 @@ export default function DashboardV1Page() {
     const query = search.trim().toLowerCase()
     return masiStocks
       .filter((stock) => !liquidityFilter || (stock.adv ?? ADV_THRESHOLD) >= ADV_THRESHOLD)
-      .filter((stock) => categoryFilter !== "liquid" || (stock.adv ?? 0) >= ADV_THRESHOLD)
-      .filter((stock) => categoryFilter !== "mid" || (stock.adv ?? 0) < ADV_THRESHOLD)
       .filter((stock) => sectorFilter === "all" || stock.sector === sectorFilter)
       .filter((stock) => {
         if (!query) return true
         return stock.symbol.toLowerCase().includes(query) || (stock.display_name ?? "").toLowerCase().includes(query)
       })
-  }, [masiStocks, liquidityFilter, categoryFilter, sectorFilter, search])
+  }, [masiStocks, liquidityFilter, sectorFilter, search])
 
   const { data: edgeEntries = [] } = useSWR<[string, EdgeMetrics | null][]>(
     edgeEnabled && view === "stocks" && stocksBeforeEdge.length
@@ -189,10 +510,15 @@ export default function DashboardV1Page() {
       : null,
     async () =>
       Promise.all(
-        stocksBeforeEdge.map(async (stock) => [
-          stock.symbol,
-          await fetchEdge(stock.symbol, edgeHorizon, edgeSource, EDGE_COST_BPS).catch(() => null),
-        ] as [string, EdgeMetrics | null]),
+        stocksBeforeEdge.map(async (stock) => {
+          const embeddedEdge = stock.edge?.[edgeSource]
+          return [
+            stock.symbol,
+            embeddedEdge !== undefined
+              ? embeddedEdge
+              : await fetchEdge(stock.symbol, edgeHorizon, edgeSource, EDGE_COST_BPS).catch(() => null),
+          ] as [string, EdgeMetrics | null]
+        }),
       ),
     { revalidateOnFocus: false },
   )
@@ -200,14 +526,98 @@ export default function DashboardV1Page() {
   const edgeMap = useMemo(() => Object.fromEntries(edgeEntries), [edgeEntries]) as Record<string, EdgeMetrics | null | undefined>
 
   const filteredStocks = useMemo(() => {
-    if (!edgeEnabled || !edgeOnly) {
-      return stocksBeforeEdge
+    const modeFiltered = dashboardMode === "trade_opportunities"
+      ? stocksBeforeEdge.filter((stock) => bestActionableSignal(stock) !== null)
+      : stocksBeforeEdge
+    if (dashboardMode === "technical_directions" || !edgeEnabled || !edgeOnly) {
+      return modeFiltered
     }
-    return stocksBeforeEdge.filter((stock) => {
+    return modeFiltered.filter((stock) => {
       const edge = edgeMap[stock.symbol]
-      return edgeMode === "net" ? edge?.proven_edge_net : edge?.proven_edge_gross
+      return hasProvenEdgeForMode(stock, edge, edgeMode)
     })
-  }, [stocksBeforeEdge, edgeEnabled, edgeOnly, edgeMap, edgeMode])
+  }, [dashboardMode, stocksBeforeEdge, edgeEnabled, edgeOnly, edgeMap, edgeMode])
+
+  const selectedBasketSet = useMemo(() => new Set(selectedBasketSymbols), [selectedBasketSymbols])
+
+  useEffect(() => {
+    if (basketOnly && selectedBasketSymbols.length === 0) {
+      setBasketOnly(false)
+    }
+  }, [basketOnly, selectedBasketSymbols.length])
+
+  const toggleBasketSymbol = (symbol: string) => {
+    setSelectedBasketSymbols((prev) => {
+      return prev.includes(symbol)
+        ? prev.filter((item) => item !== symbol)
+        : [...prev, symbol]
+    })
+  }
+
+  const clearBasket = () => {
+    setSelectedBasketSymbols([])
+    setBasketOnly(false)
+  }
+
+  const toggleFamilyColumn = (family: FamilyColumn) => {
+    setVisibleFamilies((prev) => {
+      return { ...prev, [family]: !prev[family] }
+    })
+  }
+
+  const setAllFamilyColumns = (visible: boolean) => {
+    setVisibleFamilies({
+      tendance: visible,
+      momentum: visible,
+      oscillation: visible,
+      volume: visible,
+    })
+  }
+
+  const toggleAllFamilyColumns = () => {
+    setVisibleFamilies((prev) => {
+      const nextVisible = !Object.values(prev).every(Boolean)
+      return {
+        tendance: nextVisible,
+        momentum: nextVisible,
+        oscillation: nextVisible,
+        volume: nextVisible,
+      }
+    })
+  }
+
+  const visibleMasiStocks = useMemo(
+    () =>
+      basketOnly
+        ? filteredStocks.filter((stock) => selectedBasketSet.has(stock.symbol))
+        : filteredStocks,
+    [basketOnly, filteredStocks, selectedBasketSet],
+  )
+
+  const visibleSectorCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const stock of visibleMasiStocks) {
+      const sector = stock.sector ?? "Autre"
+      counts.set(sector, (counts.get(sector) ?? 0) + 1)
+    }
+    return counts
+  }, [visibleMasiStocks])
+
+  const visibleSectors = useMemo(
+    () =>
+      (data?.sectors ?? [])
+        .filter((sector) => visibleSectorCounts.has(sector.sector))
+        .map((sector) => ({
+          ...sector,
+          stock_count: visibleSectorCounts.get(sector.sector) ?? sector.stock_count,
+        })),
+    [data?.sectors, visibleSectorCounts],
+  )
+
+  const customIndexDefinitions = dashboardIndices ?? data?.custom_index_definitions ?? []
+  const dashboardIndexErrorMessage =
+    dashboardIndexActionError ??
+    (dashboardIndicesError instanceof Error ? dashboardIndicesError.message : null)
 
   const sectorOptions = useMemo(() => {
     const set = new Set(filteredStocks.map((stock) => stock.sector).filter((sector): sector is string => Boolean(sector)))
@@ -218,27 +628,130 @@ export default function DashboardV1Page() {
     return allStocks
       .filter((stock) => assetTab === "all" || (stock.asset_type ?? "equity") === assetTab)
       .filter((stock) => regionTab === "all" || (stock.market_region ?? "masi") === regionTab)
-  }, [allStocks, assetTab, regionTab])
+      .filter((stock) => dashboardMode !== "trade_opportunities" || bestActionableSignal(stock) !== null)
+  }, [allStocks, assetTab, dashboardMode, regionTab])
 
-  const bullishCount = filteredStocks.filter((stock) => (scoreLabelForCounts(stock, scoreSource, signalView) ?? "").includes("Achat")).length
-  const bearishCount = filteredStocks.filter((stock) => (scoreLabelForCounts(stock, scoreSource, signalView) ?? "").includes("Vente")).length
+  const completeBullishCount = completStocks.filter((stock) =>
+    dashboardMode === "technical_directions"
+      ? stock.best_technical_signal?.direction === "long"
+      : bestActionableSignal(stock)?.direction === "long",
+  ).length
+  const completeBearishCount = completStocks.filter((stock) =>
+    dashboardMode === "technical_directions"
+      ? stock.best_technical_signal?.direction === "short"
+      : bestActionableSignal(stock)?.direction === "short",
+  ).length
+  const completeTechnicalScoreValues = useMemo(
+    () =>
+      completStocks
+        .map((stock) => stock.best_technical_signal?.abs_score_pct ?? null)
+        .filter((value): value is number => typeof value === "number" && Number.isFinite(value)),
+    [completStocks],
+  )
+  const medianCompleteTechnicalScore = median(completeTechnicalScoreValues)
+
+  const bullishCount = visibleMasiStocks.filter((stock) =>
+    dashboardMode === "technical_directions"
+      ? stock.best_technical_signal?.direction === "long"
+      : bestActionableSignal(stock)?.direction === "long",
+  ).length
+  const bearishCount = visibleMasiStocks.filter((stock) =>
+    dashboardMode === "technical_directions"
+      ? stock.best_technical_signal?.direction === "short"
+      : bestActionableSignal(stock)?.direction === "short",
+  ).length
 
   const erValues = useMemo(() => {
-    return edgeEntries
-      .map(([, e]) => {
-        const v = e ? (edgeMode === "net" ? e.expected_return_net : e.expected_return_gross) : null
+    return visibleMasiStocks
+      .map((stock) => {
+        const v = bestActionableSignal(stock)?.action_expected_return_net ?? null
         return typeof v === "number" && Number.isFinite(v) ? v : null
       })
       .filter((v): v is number => v !== null)
-  }, [edgeEntries, edgeMode])
+  }, [visibleMasiStocks])
 
   const medianEr = median(erValues)
+  const technicalScoreValues = useMemo(
+    () =>
+      visibleMasiStocks
+        .map((stock) => stock.best_technical_signal?.abs_score_pct ?? null)
+        .filter((value): value is number => typeof value === "number" && Number.isFinite(value)),
+    [visibleMasiStocks],
+  )
+  const medianTechnicalScore = median(technicalScoreValues)
+  const optimizedHoldValues = useMemo(
+    () =>
+      visibleMasiStocks
+        .map((stock) => bestActionableSignal(stock)?.fwd_horizon_bars ?? null)
+        .filter((value): value is number => typeof value === "number" && Number.isFinite(value)),
+    [visibleMasiStocks],
+  )
+  const medianOptimizedHold = median(optimizedHoldValues)
+
+  const selectedManualPositions = useMemo(
+    () => activeManualPositions.filter((position) => selectedBasketSet.has(position.symbol)),
+    [activeManualPositions, selectedBasketSet],
+  )
+
+  const blotterSymbols = selectedBasketSymbols
+
+  const positionsFingerprint = useMemo(
+    () =>
+      selectedManualPositions
+        .map((position) => `${position.symbol}:${position.side}:${position.quantity}:${position.average_price_mad ?? ""}:${position.opened_at ?? ""}`)
+        .join("|"),
+    [selectedManualPositions],
+  )
+
+  const ticketKey = selectedBasketSymbols.length
+    ? [
+        "dashboard-daily-blotter",
+        blotterSymbols.join(","),
+        positionsFingerprint,
+        edgeHorizon,
+        ticketSource,
+        ticketSidePolicy,
+        ticketCapital,
+        ticketCashBufferPct,
+        ticketMaxPositionPct,
+        ticketMaxSectorPct,
+        ticketKellyPct,
+        ticketRequireProvenEdge,
+      ]
+    : null
+
+  const {
+    data: basketBlotter,
+    error: basketTicketError,
+    isLoading: basketTicketLoading,
+    mutate: refreshBasketTicket,
+  } = useSWR<DashboardDailyBlotterResponse | null>(
+    ticketKey,
+    () =>
+      fetchDashboardDailyBlotter({
+        symbols: blotterSymbols,
+        positions: selectedManualPositions,
+        horizon: edgeHorizon,
+        source: ticketSource,
+        side_policy: ticketSidePolicy,
+        total_capital_mad: ticketCapital,
+        cash_buffer_pct: ticketCashBufferPct,
+        max_position_pct: ticketMaxPositionPct,
+        max_sector_pct: ticketMaxSectorPct,
+        kelly_fraction: ticketKellyPct / 100,
+        require_proven_edge: ticketRequireProvenEdge,
+      }),
+    { revalidateOnFocus: false },
+  )
+
+  const basketTicket = basketBlotter?.ticket ?? null
 
   const provenEdgeCount = useMemo(() => {
-    return Object.values(edgeMap).filter((e) =>
-      e ? (edgeMode === "net" ? e.proven_edge_net : e.proven_edge_gross) : false,
-    ).length
-  }, [edgeMap, edgeMode])
+    return stocksBeforeEdge.filter((stock) => hasProvenEdgeForMode(stock, edgeMap[stock.symbol], edgeMode)).length
+  }, [stocksBeforeEdge, edgeMap, edgeMode])
+
+  const visibleFamilyCount = Object.values(visibleFamilies).filter(Boolean).length
+  const familyColumnsHidden = visibleFamilyCount === 0
 
   return (
     <div className="dashboard-claude space-y-4 px-0.5">
@@ -278,39 +791,74 @@ export default function DashboardV1Page() {
               MASI Actions
             </button>
           </div>
-          <Button variant="outline" size="sm" className="h-8 rounded-xl px-4 text-[13px]" onClick={() => setShowFilters((value) => !value)}>
+          <Button variant="outline" size="sm" className="h-8 rounded-md px-4 text-[13px]" onClick={() => setShowFilters((value) => !value)}>
             <Filter className="h-3.5 w-3.5" />
             Filtres
           </Button>
-          <Button variant="outline" size="sm" className="h-8 rounded-xl px-4 text-[13px]" onClick={() => downloadStocksCsv(viewMode === "masi" ? filteredStocks : completStocks)}>
+          {dashboardMode === "technical_directions" ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-md px-4 text-[13px]"
+              onClick={toggleAllFamilyColumns}
+              aria-pressed={!familyColumnsHidden}
+              title={familyColumnsHidden ? "Afficher les colonnes Trend, Momentum, Oscillation et Volume" : "Masquer les colonnes Trend, Momentum, Oscillation et Volume"}
+            >
+              {familyColumnsHidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+              {familyColumnsHidden ? "Afficher familles" : "Masquer familles"}
+            </Button>
+          ) : null}
+          <Button variant="outline" size="sm" className="h-8 rounded-md px-4 text-[13px]" onClick={() => downloadStocksCsv(viewMode === "masi" ? visibleMasiStocks : completStocks)}>
             <Download className="h-3.5 w-3.5" />
             Exporter
           </Button>
-          <Button variant="default" size="sm" className="h-8 rounded-xl px-4 text-[13px]" onClick={() => void mutate()}>
+          <Button variant="default" size="sm" className="h-8 rounded-md px-4 text-[13px]" onClick={() => void mutate()}>
             <RefreshCw className="h-3.5 w-3.5" />
             Recalculer
           </Button>
         </div>
       </div>
 
+      {data && dashboardMode === "trade_opportunities" ? (
+        <TopActionableSignals
+          stocks={viewMode === "masi" ? visibleMasiStocks : completStocks}
+          onOpenEdge={setSelectedStock}
+        />
+      ) : null}
+
       {viewMode === "masi" ? (
         <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-          <KpiTile label="Univers actif" value={filteredStocks.length.toLocaleString("fr-FR")} sub="titres après filtres" />
-          <KpiTile label="Signaux haussiers" value={bullishCount.toLocaleString("fr-FR")} tone="positive" sub="score > +15" />
-          <KpiTile label="Signaux baissiers" value={bearishCount.toLocaleString("fr-FR")} tone="negative" sub="score < -15" />
           <KpiTile
-            label="E[R] médian"
-            value={medianEr != null ? formatPercent(medianEr) : "--"}
-            tone={medianEr != null && medianEr > 0 ? "positive" : medianEr != null && medianEr < 0 ? "negative" : undefined}
-            sub={erValues.length > 0 ? `${erValues.length} titres · données Edge` : "en attente données Edge"}
+            label="Univers actif"
+            value={visibleMasiStocks.length.toLocaleString("fr-FR")}
+            sub={basketOnly ? "titres du panier" : "titres après filtres"}
+          />
+          <KpiTile label={dashboardMode === "technical_directions" ? "Directions haussieres" : "Opportunites long"} value={bullishCount.toLocaleString("fr-FR")} tone="positive" sub={dashboardMode === "technical_directions" ? "best technique > +15" : "edge eligible"} />
+          <KpiTile label={dashboardMode === "technical_directions" ? "Directions baissieres" : "Opportunites short"} value={bearishCount.toLocaleString("fr-FR")} tone="negative" sub={dashboardMode === "technical_directions" ? "best technique < -15" : "edge eligible"} />
+          <KpiTile
+            label={dashboardMode === "technical_directions" ? "Score technique median" : "Action E[R] opt. median"}
+            value={dashboardMode === "technical_directions" ? (medianTechnicalScore != null ? formatDecimal(medianTechnicalScore, 1) : "--") : (medianEr != null ? formatPercent(medianEr) : "--")}
+            tone={dashboardMode === "technical_directions" ? undefined : medianEr != null && medianEr > 0 ? "positive" : medianEr != null && medianEr < 0 ? "negative" : undefined}
+            sub={
+              dashboardMode === "technical_directions"
+                ? `${technicalScoreValues.length} directions techniques`
+                : erValues.length > 0
+                ? `${erValues.length} titres · O/O · hold ${medianOptimizedHold != null ? `${Math.round(medianOptimizedHold)}j` : "opt."}`
+                : "en attente données Edge"
+            }
           />
         </div>
       ) : (
         <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-          <KpiTile label="Univers total" value={allStocks.length.toLocaleString("fr-FR")} sub="tous marchés confondus" />
-          <KpiTile label="Signaux haussiers" value={allStocks.filter((s) => (scoreLabelForCounts(s, scoreSource, signalView) ?? "").includes("Achat")).length.toLocaleString("fr-FR")} tone="positive" sub="score > +15" />
-          <KpiTile label="Signaux baissiers" value={allStocks.filter((s) => (scoreLabelForCounts(s, scoreSource, signalView) ?? "").includes("Vente")).length.toLocaleString("fr-FR")} tone="negative" sub="score < -15" />
-          <KpiTile label="Edge prouvé" value={provenEdgeCount.toLocaleString("fr-FR")} tone="positive" sub={`sur ${Object.keys(edgeMap).length} instruments`} />
+          <KpiTile label="Univers total" value={completStocks.length.toLocaleString("fr-FR")} sub={dashboardMode === "technical_directions" ? "directions techniques" : "opportunites tradables"} />
+          <KpiTile label={dashboardMode === "technical_directions" ? "Directions haussieres" : "Opportunites long"} value={completeBullishCount.toLocaleString("fr-FR")} tone="positive" sub={dashboardMode === "technical_directions" ? "best technique > +15" : "edge eligible"} />
+          <KpiTile label={dashboardMode === "technical_directions" ? "Directions baissieres" : "Opportunites short"} value={completeBearishCount.toLocaleString("fr-FR")} tone="negative" sub={dashboardMode === "technical_directions" ? "best technique < -15" : "edge eligible"} />
+          <KpiTile
+            label={dashboardMode === "technical_directions" ? "Score technique median" : "Edge prouve"}
+            value={dashboardMode === "technical_directions" ? (medianCompleteTechnicalScore != null ? formatDecimal(medianCompleteTechnicalScore, 1) : "--") : provenEdgeCount.toLocaleString("fr-FR")}
+            tone={dashboardMode === "technical_directions" ? undefined : "positive"}
+            sub={dashboardMode === "technical_directions" ? `${completeTechnicalScoreValues.length} directions techniques` : `sur ${Object.keys(edgeMap).length} instruments`}
+          />
         </div>
       )}
 
@@ -318,15 +866,13 @@ export default function DashboardV1Page() {
         <div className="space-y-3">
           <div className="flex items-end justify-between gap-3">
             <h2 className="text-[14px] font-semibold">Configurez l'analyse</h2>
-            <p className="text-[12px] text-muted-foreground">5 paramètres · valeurs par défaut MASI</p>
+            <p className="text-[12px] text-muted-foreground">3 paramètres · valeurs par défaut MASI</p>
           </div>
 
-          <div className="grid gap-2 xl:grid-cols-5">
+          <div className="grid gap-2 xl:grid-cols-3">
             <SetupStep index={1} title="Horizon de temps" value={horizon} onChange={setHorizon} options={DASHBOARD_HORIZONS} hint="5 j · 21 j · 63 j" />
-            <SetupStep index={2} title="Univers d'analyse" value={view} onChange={() => undefined} options={STOCK_VIEW_OPTIONS} hint={`${masiStocks.length} titres MASI`} />
-            <SetupStep index={3} title="Source des scores" value={scoreSource} onChange={setScoreSource} options={SOURCE_OPTIONS} hint="Composite des 4 familles" />
-            <SetupStep index={4} title="Catégorie d'actif" value={categoryFilter} onChange={setCategoryFilter} options={CATEGORY_OPTIONS} hint="Filtre catégorie" />
-            <SetupStep index={5} title="Supports / résistances" value={showTechnicalLevels ? "on" : "off"} onChange={(next) => setShowTechnicalLevels(next !== "off")} options={SR_OPTIONS} hint="Recalc. à la demande" />
+            <SetupStep index={2} title="Univers d'analyse" value={view} onChange={setView} options={STOCK_VIEW_OPTIONS} hint={`${masiStocks.length} titres MASI`} />
+            <SetupStep index={3} title="Mode dashboard" value={dashboardMode} onChange={setDashboardMode} options={DASHBOARD_MODE_OPTIONS} hint="Edge tradable ou lecture technique" />
           </div>
 
           <div className="dashboard-panel flex flex-col gap-3 px-3 py-3 xl:flex-row xl:items-center xl:justify-between">
@@ -334,21 +880,18 @@ export default function DashboardV1Page() {
               {liquidityFilter ? (
                 <span className="dashboard-chip dashboard-chip-amber">
                   <span className="dashboard-chip-dot bg-[var(--warning)]" />
-                  Liquidité ≥ {ADV_THRESHOLD} (actif)
+                  Liquidité ≥ {ADV_THRESHOLD.toLocaleString("fr-FR")} MAD (actif)
                 </span>
               ) : null}
-              <span className="dashboard-chip">
-                <span className="dashboard-chip-dot" />
-                Catégorie · {categoryFilter === "all" ? "Toutes" : categoryFilter === "liquid" ? "Très liq." : "Mid"}
-              </span>
               <span className={cn("dashboard-chip", sectorFilter !== "all" && "dashboard-chip-active")}>
                 <span className="dashboard-chip-dot" />
                 Secteur · {sectorFilter === "all" ? "Tous" : sectorFilter}
               </span>
-              <div className="flex h-8 min-w-[220px] flex-1 items-center gap-2 rounded-xl border border-input bg-background px-2.5">
+              <div className="flex h-8 min-w-[220px] flex-1 items-center gap-2 rounded-md border border-input bg-background px-2.5">
+                <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                 <Input
                   className="h-auto border-0 bg-transparent px-0 text-[12px] shadow-none focus-visible:ring-0"
-                  placeholder="Rechercher un ticker..."
+                  placeholder="Rechercher ticker ou nom..."
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                 />
@@ -360,7 +903,7 @@ export default function DashboardV1Page() {
                 ))}
               </select>
               <Button variant="ghost" size="sm" className="ml-auto h-7 rounded-md px-2 text-[12px] text-muted-foreground" asChild>
-                <Link href="/glossary">
+                <Link href="/glossary#dashboard">
                   <BookOpen className="h-3.5 w-3.5" />
                   Glossaire
                 </Link>
@@ -372,11 +915,41 @@ export default function DashboardV1Page() {
                 <Switch checked={liquidityFilter} onCheckedChange={setLiquidityFilter} />
                 <span>Liquidité</span>
               </div>
-              <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
-                <Switch checked={hideDetails} onCheckedChange={setHideDetails} />
-                <span>Masquer les détails</span>
+              {dashboardMode === "technical_directions" ? (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">Colonnes</span>
+                <label className="dashboard-chip h-7 cursor-pointer bg-background">
+                  <Switch
+                    checked={!familyColumnsHidden}
+                    onCheckedChange={setAllFamilyColumns}
+                    aria-label="Afficher ou masquer les colonnes familles"
+                  />
+                  Familles TA
+                  <span className="dashboard-mono text-[10px] text-muted-foreground">{visibleFamilyCount}/4</span>
+                </label>
+                {FAMILY_COLUMN_OPTIONS.map((option) => {
+                  const active = visibleFamilies[option.value]
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => toggleFamilyColumn(option.value)}
+                      aria-pressed={active}
+                      className={cn("dashboard-chip h-7", active && "dashboard-chip-active")}
+                    >
+                      <span
+                        className={cn(
+                          "h-3.5 w-3.5 rounded-[3px] border",
+                          active ? "border-primary bg-primary" : "border-border bg-card",
+                        )}
+                      />
+                      {option.label}
+                    </button>
+                  )
+                })}
               </div>
-              {edgeEnabled ? (
+              ) : null}
+              {dashboardMode === "trade_opportunities" && edgeEnabled ? (
                 <>
                   <div className="inline-flex rounded-md border border-border bg-muted/40 p-0.5">
                     <button
@@ -408,6 +981,43 @@ export default function DashboardV1Page() {
               ) : null}
             </div>
           </div>
+
+          {dashboardMode === "trade_opportunities" && viewMode === "masi" && selectedBasketSymbols.length > 0 ? (
+            <BasketCockpit
+              selectedSymbols={selectedBasketSymbols}
+              basketOnly={basketOnly}
+              onBasketOnlyChange={setBasketOnly}
+              onClear={clearBasket}
+              onRemoveSymbol={toggleBasketSymbol}
+              ticket={basketTicket ?? null}
+              blotter={basketBlotter ?? null}
+              ticketLoading={basketTicketLoading}
+              ticketError={basketTicketError instanceof Error ? basketTicketError.message : positionsSaveError}
+              capital={ticketCapital}
+              cashBufferPct={ticketCashBufferPct}
+              maxPositionPct={ticketMaxPositionPct}
+              maxSectorPct={ticketMaxSectorPct}
+              kellyPct={ticketKellyPct}
+              sidePolicy={ticketSidePolicy}
+              requireProvenEdge={ticketRequireProvenEdge}
+              onCapitalChange={setTicketCapital}
+              onCashBufferPctChange={setTicketCashBufferPct}
+              onMaxPositionPctChange={setTicketMaxPositionPct}
+              onMaxSectorPctChange={setTicketMaxSectorPct}
+              onKellyPctChange={setTicketKellyPct}
+              onSidePolicyChange={setTicketSidePolicy}
+              onRequireProvenEdgeChange={setTicketRequireProvenEdge}
+              onRefreshTicket={() => void refreshBasketTicket()}
+              positionText={positionText}
+              positionError={parsedPositions.error}
+              positionsSaving={positionsSaving}
+              onPositionTextChange={(value) => {
+                setPositionsDirty(true)
+                setPositionText(value)
+              }}
+              onSavePositions={() => void saveManualPositions()}
+            />
+          ) : null}
         </div>
       ) : null}
 
@@ -416,20 +1026,56 @@ export default function DashboardV1Page() {
 
       {data ? (
         viewMode === "masi" ? (
-          <StockTable
-            stocks={filteredStocks}
-            horizon={horizon}
-            horizonDays={horizonDays}
-            signalView={signalView}
-            scoreSource={scoreSource}
-            hideDetails={hideDetails}
-            showTechnicalLevels={showTechnicalLevels}
-            edgeEnabled={edgeEnabled}
-            edgeMode={edgeMode}
-            edgeSource={edgeSource}
-            edgeMap={edgeMap}
-            onOpenEdge={setSelectedStock}
-          />
+          view === "sectors" ? (
+            <SectorTable
+              sectors={visibleSectors}
+              stocks={visibleMasiStocks}
+              horizon={horizon}
+              horizonDays={horizonDays}
+              signalView={signalView}
+              scoreSource={scoreSource}
+              displayMode={dashboardMode}
+              edgeEnabled={edgeEnabled}
+              showTechnicalLevels={false}
+              visibleFamilies={visibleFamilies}
+            />
+          ) : view === "index" ? (
+            <IndexTab
+              baseIndex={data.index}
+              stocks={visibleMasiStocks}
+              customDefinitions={customIndexDefinitions}
+              readOnly={isPublicDashboardOnly}
+              actionError={dashboardIndexErrorMessage}
+              scoreSource={scoreSource}
+              signalView={signalView}
+              displayMode={dashboardMode}
+              horizon={horizon}
+              horizonDays={horizonDays}
+              edgeEnabled={edgeEnabled}
+              visibleFamilies={visibleFamilies}
+              onCreate={isPublicDashboardOnly ? undefined : createCustomDashboardIndex}
+              onUpdate={isPublicDashboardOnly ? undefined : updateCustomDashboardIndex}
+              onDelete={isPublicDashboardOnly ? undefined : deleteCustomDashboardIndex}
+            />
+          ) : (
+            <StockTable
+              stocks={visibleMasiStocks}
+              horizon={horizon}
+              horizonDays={horizonDays}
+              signalView={signalView}
+              scoreSource={scoreSource}
+              displayMode={dashboardMode}
+              hideDetails={false}
+              visibleFamilies={visibleFamilies}
+              edgeEnabled={edgeEnabled}
+              edgeMode={edgeMode}
+              edgeSource={edgeSource}
+              edgeMap={edgeMap}
+              selectedSymbols={dashboardMode === "trade_opportunities" ? selectedBasketSet : undefined}
+              onToggleSelected={dashboardMode === "trade_opportunities" ? toggleBasketSymbol : undefined}
+              onOpenEdge={setSelectedStock}
+            />
+          )
         ) : (
           <CompletView
             stocks={completStocks}
@@ -441,10 +1087,12 @@ export default function DashboardV1Page() {
             horizonDays={horizonDays}
             signalView={signalView}
             scoreSource={scoreSource}
+            displayMode={dashboardMode}
             edgeEnabled={edgeEnabled}
             edgeMode={edgeMode}
             edgeSource={edgeSource}
             edgeMap={edgeMap}
+            visibleFamilies={visibleFamilies}
             onOpenEdge={setSelectedStock}
           />
         )
@@ -465,7 +1113,7 @@ export default function DashboardV1Page() {
       ) : null}
 
       <p className="text-[11px] text-muted-foreground">
-        Source. Signal Engine v3.2 · scores composés sur 4 familles (Trend / Momentum / Oscillation / Volume), pondération HRP. Liquidité = ADV20 (volume moyen 20 j).
+        Trade Opportunities sélectionne automatiquement le meilleur edge exploitable. Technical Directions affiche le meilleur signal technique disponible par titre, avec détail Trend / Momentum / Oscillation / Volume. Liquidité = ADV20 (valeur moyenne échangée 20 j).
       </p>
 
       {edgeEnabled ? (
@@ -476,15 +1124,526 @@ export default function DashboardV1Page() {
           }}
           symbol={selectedStock?.symbol ?? null}
           horizon={edgeHorizon}
-          initialSource={edgeSource}
+          initialSource={selectedStock?.best_signal?.source ?? edgeSource}
+          initialVariant={selectedStock?.best_signal?.variant ?? null}
           mode={edgeMode}
           onModeChange={setEdgeMode}
           costBps={EDGE_COST_BPS}
-          initialEdge={selectedStock ? edgeMap[selectedStock.symbol] ?? null : null}
+          initialEdge={null}
         />
       ) : null}
     </div>
   )
+}
+
+function BasketCockpit({
+  selectedSymbols,
+  basketOnly,
+  onBasketOnlyChange,
+  onClear,
+  onRemoveSymbol,
+  ticket,
+  blotter,
+  ticketLoading,
+  ticketError,
+  capital,
+  cashBufferPct,
+  maxPositionPct,
+  maxSectorPct,
+  kellyPct,
+  sidePolicy,
+  requireProvenEdge,
+  onCapitalChange,
+  onCashBufferPctChange,
+  onMaxPositionPctChange,
+  onMaxSectorPctChange,
+  onKellyPctChange,
+  onSidePolicyChange,
+  onRequireProvenEdgeChange,
+  onRefreshTicket,
+  positionText,
+  positionError,
+  positionsSaving,
+  onPositionTextChange,
+  onSavePositions,
+}: {
+  selectedSymbols: string[]
+  basketOnly: boolean
+  onBasketOnlyChange: (checked: boolean) => void
+  onClear: () => void
+  onRemoveSymbol: (symbol: string) => void
+  ticket: DashboardPortfolioTicketResponse | null
+  blotter: DashboardDailyBlotterResponse | null
+  ticketLoading: boolean
+  ticketError: string | null
+  capital: number
+  cashBufferPct: number
+  maxPositionPct: number
+  maxSectorPct: number
+  kellyPct: number
+  sidePolicy: "long_only" | "long_short"
+  requireProvenEdge: boolean
+  onCapitalChange: (value: number) => void
+  onCashBufferPctChange: (value: number) => void
+  onMaxPositionPctChange: (value: number) => void
+  onMaxSectorPctChange: (value: number) => void
+  onKellyPctChange: (value: number) => void
+  onSidePolicyChange: (value: "long_only" | "long_short") => void
+  onRequireProvenEdgeChange: (checked: boolean) => void
+  onRefreshTicket: () => void
+  positionText: string
+  positionError: string | null
+  positionsSaving: boolean
+  onPositionTextChange: (value: string) => void
+  onSavePositions: () => void
+}) {
+  const summary = ticket?.summary ?? null
+  const plannedRows = ticket?.rows.filter((row) => row.shares > 0) ?? []
+  const blotterSummary = blotter?.summary ?? null
+  const hasBlotterScope = selectedSymbols.length > 0 || positionText.trim().length > 0
+  const selectedCountLabel = `${selectedSymbols.length} titre${selectedSymbols.length > 1 ? "s" : ""}`
+  const actionRows = blotter?.rows ?? []
+
+  return (
+    <div className="dashboard-panel">
+      <div className="flex flex-col gap-3 border-b border-border bg-bg2 px-4 py-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <h3 className="dashboard-section-title">Portefeuille & blotter</h3>
+            <span className="dashboard-meta">{selectedCountLabel}</span>
+            {blotterSummary ? (
+              <span className="dashboard-chip dashboard-chip-active">
+                <span className="dashboard-chip-dot" />
+                {blotterSummary.actionable_count} actions
+              </span>
+            ) : null}
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {selectedSymbols.length > 0 ? (
+              selectedSymbols.map((symbol) => (
+                <button
+                  key={symbol}
+                  type="button"
+                  onClick={() => onRemoveSymbol(symbol)}
+                  className="dashboard-chip h-7 bg-card font-semibold"
+                >
+                  <span className="dashboard-mono">{symbol}</span>
+                  <X className="h-3 w-3 text-muted-foreground" />
+                </button>
+              ))
+            ) : (
+              <span className="dashboard-meta">Aucun titre</span>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
+            <Switch
+              checked={basketOnly}
+              onCheckedChange={onBasketOnlyChange}
+              disabled={!hasBlotterScope}
+            />
+            Afficher panier
+          </label>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 rounded-md px-3 text-[12px]"
+            onClick={onRefreshTicket}
+            disabled={!hasBlotterScope || ticketLoading}
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", ticketLoading && "animate-spin")} />
+            Ticket
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 rounded-md px-3 text-[12px]"
+            onClick={onClear}
+            disabled={selectedSymbols.length === 0}
+          >
+            Vider
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 rounded-md px-3 text-[12px]"
+            onClick={() => downloadBlotterCsv(blotter)}
+            disabled={!blotter?.rows.length}
+          >
+            <Download className="h-3.5 w-3.5" />
+            CSV blotter
+          </Button>
+        </div>
+      </div>
+
+      <div className="space-y-3 p-3">
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-end">
+        <label className="dashboard-field space-y-1.5 p-3">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+            Positions actuelles
+          </span>
+          <Textarea
+            value={positionText}
+            onChange={(event) => onPositionTextChange(event.currentTarget.value)}
+            placeholder="IAM,100,450,long,2026-05-01"
+            className="min-h-[66px] resize-y rounded-md border-border bg-card text-[12px]"
+          />
+          <span className="text-[11px] text-muted-foreground">
+            Optionnel. Une ligne par position détenue: ticker, quantité, prix moyen, long/short, date.
+          </span>
+        </label>
+        <div className="dashboard-field flex h-full flex-col justify-between gap-3 p-3">
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Scope blotter</div>
+            <div className="mt-1 text-[12px] text-foreground">
+              {selectedSymbols.length > 0 ? selectedCountLabel : "Aucun titre sélectionné"}
+            </div>
+            <div className="mt-1 text-[11px] text-muted-foreground">
+              {positionText.trim().length > 0 ? "Positions détenues prises en compte pour les titres sélectionnés" : "Sélectionnez des titres; les positions détenues sont optionnelles"}
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 w-full rounded-md px-3 text-[12px]"
+            onClick={onSavePositions}
+            disabled={positionsSaving || Boolean(positionError)}
+          >
+            <Save className={cn("h-3.5 w-3.5", positionsSaving && "animate-pulse")} />
+            Sauver positions
+          </Button>
+        </div>
+      </div>
+      {positionError ? <div className="text-[11px] text-destructive">{positionError}</div> : null}
+
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-6">
+        <TicketNumberInput
+          label="Capital"
+          value={capital}
+          min={1}
+          max={1_000_000_000}
+          step={10_000}
+          onChange={onCapitalChange}
+        />
+        <TicketNumberInput
+          label="Cash %"
+          value={cashBufferPct}
+          min={0}
+          max={95}
+          step={1}
+          onChange={onCashBufferPctChange}
+        />
+        <TicketNumberInput
+          label="Max titre %"
+          value={maxPositionPct}
+          min={1}
+          max={100}
+          step={1}
+          onChange={onMaxPositionPctChange}
+        />
+        <TicketNumberInput
+          label="Max secteur %"
+          value={maxSectorPct}
+          min={1}
+          max={100}
+          step={1}
+          onChange={onMaxSectorPctChange}
+        />
+        <TicketNumberInput
+          label="Kelly %"
+          value={kellyPct}
+          min={0}
+          max={100}
+          step={5}
+          onChange={onKellyPctChange}
+        />
+        <div className="dashboard-field px-2.5 py-2">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Mode</div>
+          <div className="mt-2 inline-flex w-full rounded-md border border-border bg-muted/40 p-0.5">
+            <button
+              type="button"
+              onClick={() => onSidePolicyChange("long_only")}
+              className={cn(
+                "h-7 flex-1 rounded-[5px] px-2 text-[11px] font-medium",
+                sidePolicy === "long_only" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground",
+              )}
+            >
+              Long
+            </button>
+            <button
+              type="button"
+              onClick={() => onSidePolicyChange("long_short")}
+              className={cn(
+                "h-7 flex-1 rounded-[5px] px-2 text-[11px] font-medium",
+                sidePolicy === "long_short" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground",
+              )}
+            >
+              L/S
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
+          <Checkbox
+            checked={requireProvenEdge}
+            onCheckedChange={(checked) => onRequireProvenEdgeChange(checked === true)}
+          />
+          Bloquer les edges non prouvés
+        </label>
+        {ticketError ? (
+          <span className="text-[11px] text-destructive">{ticketError}</span>
+        ) : null}
+      </div>
+
+      <div className="grid gap-2 md:grid-cols-3">
+        <TicketMethodNote label="Allocation" value="HRP sur le panier sélectionné, puis plafonds titre, secteur, liquidité et Kelly." />
+        <TicketMethodNote label="Entrée" value="Ordre au prochain open uniquement si le prix reste dans la zone support/résistance ± ATR(14)." />
+        <TicketMethodNote label="Sortie" value="Stop volatilité/structurel, objectif sur niveau opposé, et révision par durée de détention." />
+      </div>
+
+      {summary ? (
+        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-6">
+          <TicketMetric label="Déployable" value={formatMoney(summary.deployable_capital_mad)} />
+          <TicketMetric label="Plan alloc." value={`${summary.allocated_count ?? plannedRows.length}/${summary.selected_count}`} sub={formatMoney(summary.allocated_capital_mad)} />
+          <TicketMetric label="Delta ordre" value={formatMoney(blotterSummary?.total_delta_notional_mad ?? 0)} />
+          <TicketMetric label="Positions" value={formatInteger(blotterSummary?.position_count ?? 0)} />
+          <TicketMetric
+            label="Action E[R]"
+            value={formatMoney(summary.expected_action_return_mad)}
+            sub={formatPercent(summary.expected_action_return_pct)}
+          />
+          <TicketMetric label="Blotter" value={`${blotterSummary?.actionable_count ?? summary.tradable_count}/${summary.selected_count}`} sub={summary.entry_timing} />
+        </div>
+      ) : ticketLoading ? (
+        <div className="dashboard-field px-3 py-3 text-[12px] text-muted-foreground">
+          Calcul du ticket et des actions blotter...
+        </div>
+      ) : (
+        <div className="rounded-md border border-dashed border-border bg-bg2 px-3 py-4 text-[12px] text-muted-foreground">
+          Sélectionnez des titres dans la table ou ajoutez des positions manuelles pour générer le ticket.
+        </div>
+      )}
+
+      {actionRows.length ? (
+        <div className="overflow-x-auto rounded-md border border-border">
+          <table className="dashboard-table min-w-[1200px] w-full text-[11px]">
+            <thead className="bg-bg2 text-muted-foreground">
+              <tr className="border-b border-border">
+                <th className="px-2 py-2 text-left font-semibold uppercase tracking-[0.08em]">Ticker</th>
+                <th className="px-2 py-2 text-left font-semibold uppercase tracking-[0.08em]">Action</th>
+                <th className="px-2 py-2 text-right font-semibold uppercase tracking-[0.08em]">Position</th>
+                <th className="px-2 py-2 text-right font-semibold uppercase tracking-[0.08em]">Plan</th>
+                <th className="px-2 py-2 text-right font-semibold uppercase tracking-[0.08em]">Cible ordre</th>
+                <th className="px-2 py-2 text-right font-semibold uppercase tracking-[0.08em]">Delta</th>
+                <th className="px-2 py-2 text-right font-semibold uppercase tracking-[0.08em]">Notional</th>
+                <th className="px-2 py-2 text-right font-semibold uppercase tracking-[0.08em]">Hold</th>
+                <th className="px-2 py-2 text-right font-semibold uppercase tracking-[0.08em]">Entrée</th>
+                <th className="px-2 py-2 text-right font-semibold uppercase tracking-[0.08em]">Stop</th>
+                <th className="px-2 py-2 text-right font-semibold uppercase tracking-[0.08em]">Objectif prix</th>
+                <th className="px-2 py-2 text-right font-semibold uppercase tracking-[0.08em]">Edge</th>
+                <th className="px-2 py-2 text-left font-semibold uppercase tracking-[0.08em]">Raisons</th>
+                <th className="px-2 py-2 text-left font-semibold uppercase tracking-[0.08em]">Proof</th>
+              </tr>
+            </thead>
+            <tbody>
+              {actionRows.map((row) => {
+                const proofHref = evidenceProofHref(row.proof_url)
+                return (
+                <tr
+                  key={row.symbol}
+                  role="link"
+                  tabIndex={0}
+                  title={`Voir la preuve OOS ${row.symbol}`}
+                  onClick={() => {
+                    window.location.href = proofHref
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault()
+                      window.location.href = proofHref
+                    }
+                  }}
+                  className="group cursor-pointer border-b border-border/70 bg-background last:border-0 hover:bg-bg2"
+                >
+                  <td className="dashboard-mono px-2 py-2 font-semibold underline-offset-2 group-hover:underline">{row.symbol}</td>
+                  <td className="px-2 py-2">
+                    <span
+                      className={cn(
+                        "inline-flex rounded px-2 py-0.5 font-semibold",
+                        blotterActionTone(row.blotter_action),
+                      )}
+                    >
+                      {blotterActionLabel(row.blotter_action)}
+                    </span>
+                  </td>
+                  <td className="dashboard-mono px-2 py-2 text-right">{formatDecimal(row.current_quantity, 0)}</td>
+                  <td className="dashboard-mono px-2 py-2 text-right">
+                    <div>{formatInteger(row.shares)}</div>
+                    <div className="text-[10px] text-muted-foreground">
+                      {formatMoney(row.size_mad)} · {formatDecimal(row.final_weight_pct, 2)}%
+                    </div>
+                  </td>
+                  <td className="dashboard-mono px-2 py-2 text-right">{formatInteger(row.target_quantity)}</td>
+                  <td className="dashboard-mono px-2 py-2 text-right">{formatInteger(row.delta_quantity)}</td>
+                  <td className="dashboard-mono px-2 py-2 text-right">{formatMoney(row.delta_notional_mad)}</td>
+                  <td className="dashboard-mono px-2 py-2 text-right">
+                    {row.holding_period_bars != null ? `${row.holding_period_bars}j` : "--"}
+                    <div className="text-[10px] text-muted-foreground">
+                      {row.return_calc_method === "open_to_open" ? "O/O" : row.return_calc_method ?? "--"}
+                    </div>
+                  </td>
+                  <td className="dashboard-mono px-2 py-2 text-right" title={row.execution_explain ?? undefined}>
+                    <div>{formatDecimal(row.entry_reference_price, 2)}</div>
+                    <div className="text-[10px] text-muted-foreground">
+                      {formatDecimal(row.entry_zone_low, 2)} / {formatDecimal(row.entry_zone_high, 2)}
+                    </div>
+                  </td>
+                  <td className="dashboard-mono px-2 py-2 text-right">{formatDecimal(row.stop_loss, 2)}</td>
+                  <td className="dashboard-mono px-2 py-2 text-right">{formatDecimal(row.target_1, 2)}</td>
+                  <td className="dashboard-mono px-2 py-2 text-right">
+                    {formatPercent(row.action_expected_return_net)}
+                    <div className="text-[10px] text-muted-foreground">{ticketStatusLabel(row.status)}</div>
+                  </td>
+                  <td className="px-2 py-2">
+                    <div
+                      className="max-w-[260px] truncate text-[10px] text-muted-foreground"
+                      title={(row.no_trade_reasons.length ? row.no_trade_reasons : [row.allocation_reason ?? row.execution_notes]).map(ticketReasonLabel).join(", ")}
+                    >
+                      {(row.no_trade_reasons.length ? row.no_trade_reasons : [row.allocation_reason ?? row.execution_notes]).map(ticketReasonLabel).join(", ")}
+                    </div>
+                  </td>
+                  <td className="px-2 py-2">
+                    <Button variant="ghost" size="sm" className="h-7 rounded-md px-2 text-[11px]" asChild>
+                      <Link href={proofHref} onClick={(event) => event.stopPropagation()}>
+                        Voir
+                        <ExternalLink className="h-3 w-3" />
+                      </Link>
+                    </Button>
+                  </td>
+                </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="rounded-md border border-dashed border-border bg-bg2 px-3 py-4 text-[12px] text-muted-foreground">
+          Aucun ordre blotter pour ce scope.
+        </div>
+      )}
+      </div>
+    </div>
+  )
+}
+
+function TicketNumberInput({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+}: {
+  label: string
+  value: number
+  min: number
+  max: number
+  step: number
+  onChange: (value: number) => void
+}) {
+  return (
+    <label className="dashboard-field px-2.5 py-2">
+      <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{label}</span>
+      <Input
+        type="number"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(event) => onChange(clampNumber(event.currentTarget.valueAsNumber, min, max))}
+        className="mt-1 h-7 border-0 bg-transparent px-0 text-[12px] font-semibold shadow-none focus-visible:ring-0"
+      />
+    </label>
+  )
+}
+
+function TicketMetric({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="dashboard-field px-3 py-2">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{label}</div>
+      <div className="mt-1 dashboard-mono text-[13px] font-semibold">{value}</div>
+      {sub ? <div className="mt-0.5 dashboard-mono text-[10px] text-muted-foreground">{sub}</div> : null}
+    </div>
+  )
+}
+
+function TicketMethodNote({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="dashboard-field px-3 py-2">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{label}</div>
+      <div className="mt-1 text-[11px] leading-snug text-muted-foreground">{value}</div>
+    </div>
+  )
+}
+
+function blotterActionLabel(action: string) {
+  if (action === "BUY") return "Buy"
+  if (action === "SELL_SHORT") return "Short"
+  if (action === "HOLD") return "Hold"
+  if (action === "REDUCE") return "Reduce"
+  if (action === "COVER") return "Cover"
+  if (action === "EXIT") return "Exit"
+  if (action === "WATCH") return "Watch"
+  if (action === "REVIEW") return "Review"
+  return "Avoid"
+}
+
+function blotterActionTone(action: string) {
+  if (action === "BUY") return "dashboard-action-buy"
+  if (action === "SELL_SHORT") return "dashboard-action-sell"
+  if (["EXIT", "COVER", "REDUCE"].includes(action)) return "dashboard-action-warning"
+  return "dashboard-action-muted"
+}
+
+function ticketStatusLabel(status: string) {
+  if (status === "entry_zone") return "Entry zone"
+  if (status === "watching") return "En attente"
+  if (status === "wait_for_breakout") return "Wait breakout"
+  if (status === "wait_for_pullback") return "Wait pullback"
+  if (status === "no_setup") return "No setup"
+  return status.replaceAll("_", " ")
+}
+
+function ticketReasonLabel(reason: string) {
+  const labels: Record<string, string> = {
+    adv_unavailable: "ADV indisponible",
+    direction_geometry_mismatch: "géométrie prix incohérente",
+    edge_not_proven: "edge non prouvé",
+    edge_unavailable: "edge indisponible",
+    entry_price_unavailable: "prix d'entrée indisponible",
+    execution_entry_zone: "en zone d'entrée",
+    execution_no_setup: "pas de setup",
+    execution_unfavorable_rr: "R:R insuffisant",
+    execution_watching: "hors zone d'entrée",
+    no_directional_signal: "pas de signal directionnel",
+    no_executable_signal: "pas de signal exécutable",
+    not_in_entry_zone: "hors zone d'entrée",
+    position_without_current_edge: "position sans edge courant",
+    score_edge_direction_mismatch: "score et edge divergents",
+    short_blocked_by_long_only: "short bloqué en long-only",
+    strict_edge_gate: "edge prouvé requis",
+    waiting_for_entry_zone: "allocation planifiée, entrée à attendre",
+    zero_target_size: "taille cible zéro",
+  }
+  return labels[reason] ?? reason.replaceAll("_", " ")
 }
 
 const ASSET_TABS: { value: AssetTab; label: string }[] = [
@@ -512,10 +1671,12 @@ function CompletView({
   horizonDays,
   signalView,
   scoreSource,
+  displayMode,
   edgeEnabled,
   edgeMode,
   edgeSource,
   edgeMap,
+  visibleFamilies,
   onOpenEdge,
 }: {
   stocks: DashboardStock[]
@@ -527,10 +1688,12 @@ function CompletView({
   horizonDays: number
   signalView: "legacy" | "expanded" | "factor_x_ta"
   scoreSource: DashboardScoreSource
+  displayMode: DashboardDisplayMode
   edgeEnabled: boolean
   edgeMode: "gross" | "net"
   edgeSource: "signal_engine" | "wfo"
   edgeMap: Record<string, import("@/lib/api").EdgeMetrics | null | undefined>
+  visibleFamilies: Partial<Record<FamilyColumn, boolean>>
   onOpenEdge: (stock: DashboardStock) => void
 }) {
   return (
@@ -542,9 +1705,9 @@ function CompletView({
             type="button"
             onClick={() => setAssetTab(tab.value)}
             className={cn(
-              "inline-flex h-8 items-center gap-1.5 rounded-xl border px-3 text-[12px] font-medium transition",
+              "inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-[12px] font-medium transition",
               assetTab === tab.value
-                ? "border-primary/25 bg-primary/10 font-semibold text-primary"
+                ? "border-primary/25 bg-[var(--dashboard-primary-bg)] font-semibold text-primary"
                 : "border-border bg-card text-muted-foreground hover:text-foreground",
             )}
           >
@@ -558,7 +1721,7 @@ function CompletView({
               type="button"
               onClick={() => setRegionTab(tab.value)}
               className={cn(
-                "inline-flex h-8 items-center rounded-xl border px-3 text-[12px] transition",
+                "inline-flex h-8 items-center rounded-md border px-3 text-[12px] transition",
                 regionTab === tab.value
                   ? "border-border bg-background font-semibold text-foreground shadow-sm"
                   : "border-transparent text-muted-foreground hover:text-foreground",
@@ -576,10 +1739,12 @@ function CompletView({
         horizonDays={horizonDays}
         signalView={signalView}
         scoreSource={scoreSource}
+        displayMode={displayMode}
         edgeEnabled={edgeEnabled}
         edgeMode={edgeMode}
         edgeSource={edgeSource}
         edgeMap={edgeMap}
+        visibleFamilies={visibleFamilies}
         onOpenEdge={onOpenEdge}
       />
     </div>

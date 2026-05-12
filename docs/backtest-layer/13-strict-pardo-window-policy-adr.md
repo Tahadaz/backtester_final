@@ -360,7 +360,7 @@ Rationale:
 
 ### E. Frontend Compatibility (No New UI Requirement)
 Target file:
-- `quant-backtesting-frontend/lib/api.ts`
+- `frontend/lib/api.ts`
 
 Changes:
 1. Extend WFO create payload typing with new optional fields:
@@ -370,7 +370,7 @@ Changes:
    - `strict_fallback_floor`
 2. No required UI changes in this phase; backend defaults apply.
 3. Apply edit at inline WFO config type declaration in `createStrategyBacktestRun(...)` payload typing (not a separate named interface).
-   - current inline block location is around `quant-backtesting-frontend/lib/api.ts:2642` (line numbers may shift)
+   - current inline block location is around `frontend/lib/api.ts` (line numbers may shift)
 
 Rationale:
 - type-level compatibility for strict-mode requests

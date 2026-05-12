@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils"
 type WfoMethodologyTabProps = {
   symbol: string
   horizon: string
-  variant: "legacy" | "expanded" | "factor_x_ta"
+  variant: string
 }
 
 const CATEGORY_LABELS: Record<string, string> = {

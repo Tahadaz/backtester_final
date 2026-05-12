@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import types
 import sys
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
+from services.api.app.db import get_db
 from services.api.app.models import WfoSignalSummary
 from services.api.app.routers import wfo_signals as wfo_signals_router
 
@@ -45,6 +48,17 @@ class _FakeDB:
         return None
 
 
+def _app(db) -> FastAPI:
+    app = FastAPI()
+    app.include_router(wfo_signals_router.router)
+
+    def override_get_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+    return app
+
+
 def test_get_wfo_config_defaults_to_single_representative():
     payload = wfo_signals_router.get_wfo_config()
     assert payload["scoring"]["max_representatives"] == 1
@@ -77,7 +91,7 @@ def test_trigger_wfo_computation_passes_max_reps_override(monkeypatch):
 
     body = wfo_signals_router.WfoTriggerRequest(
         symbol="AAA",
-        horizon="short",
+        horizon="weekly",
         variant="expanded",
         max_reps=3,
     )
@@ -87,7 +101,7 @@ def test_trigger_wfo_computation_passes_max_reps_override(monkeypatch):
     assert len(response.triggered) == 4
     assert captured["args"][0] == "services.worker.tasks.wfo_signal_batch.enqueue_wfo_for_symbol_horizon"
     assert captured["args"][1] == "AAA"
-    assert captured["args"][2] == "short"
+    assert captured["args"][2] == "weekly"
     assert captured["args"][3]["max_reps"] == 3
     assert captured["args"][4] == "expanded"
 
@@ -100,7 +114,7 @@ def test_get_wfo_detail_honors_variant_selection():
     legacy_row = WfoSignalSummary(
         symbol="AAA",
         category="tendance",
-        horizon="short",
+        horizon="weekly",
         variant="legacy",
         status="succeeded",
         score_pct=12.0,
@@ -109,7 +123,7 @@ def test_get_wfo_detail_honors_variant_selection():
     expanded_row = WfoSignalSummary(
         symbol="AAA",
         category="tendance",
-        horizon="short",
+        horizon="weekly",
         variant="expanded",
         status="succeeded",
         score_pct=48.0,
@@ -119,14 +133,14 @@ def test_get_wfo_detail_honors_variant_selection():
 
     legacy = wfo_signals_router.get_wfo_detail(
         symbol="AAA",
-        horizon="short",
+        horizon="weekly",
         category="tendance",
         variant="legacy",
         db=fake_db,
     )
     expanded = wfo_signals_router.get_wfo_detail(
         symbol="AAA",
-        horizon="short",
+        horizon="weekly",
         category="tendance",
         variant="expanded",
         db=fake_db,
@@ -136,3 +150,9 @@ def test_get_wfo_detail_honors_variant_selection():
     assert legacy.score_pct == 12.0
     assert expanded.signal_label == "Expanded"
     assert expanded.score_pct == 48.0
+
+
+def test_wfo_summary_rejects_legacy_horizon_query():
+    client = TestClient(_app(_FakeDB({WfoSignalSummary: []})))
+    response = client.get("/strategy/wfo/summary?symbol=AAA&horizon=short&variant=expanded")
+    assert response.status_code == 422

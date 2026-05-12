@@ -113,7 +113,7 @@ function asBoolean(value: unknown, fallback = false): boolean {
 }
 
 function persistedFamilyToSignal(
-  family: IndicatorFamilyKey,
+  family: string,
   symbol: string,
   horizon: string,
   raw: unknown,
@@ -158,6 +158,15 @@ function persistedFamilyToSignal(
 
   const parsed = FamilyCombinedSignalSchema.safeParse(candidate)
   return parsed.success ? parsed.data : null
+}
+
+function comboFamilyKey(variant: string | undefined, category: CategoryId): string | null {
+  const value = variant ?? ""
+  if (!value.endsWith("_combo")) return null
+  if (value.startsWith("legacy_factor_x_ta")) return `legacy_fx_combo_${category}`
+  if (value.startsWith("expanded_factor_x_ta")) return `expanded_fx_combo_${category}`
+  if (value.startsWith("legacy_ta")) return `legacy_ta_combo_${category}`
+  return `expanded_ta_combo_${category}`
 }
 
 function labelBadgeClass(label: string): string {
@@ -388,7 +397,7 @@ export function TechnicalAnalysisPanel({
   symbol: string
   horizon: string
   cooldownBars?: number
-  variant?: "legacy" | "expanded" | "factor_x_ta"
+  variant?: string
 }) {
   const regime = useRegimeConsensus(symbol, horizon, cooldownBars, variant)
   const { data: wfoData, isLoading: wfoLoading, error: wfoError, refresh: wfoRefresh } = useWfoSummary(symbol, horizon, variant ?? "expanded")
@@ -404,13 +413,13 @@ export function TechnicalAnalysisPanel({
   const [methodologyOpen, setMethodologyOpen] = useState(false)
   const [persistedFallbackNotice, setPersistedFallbackNotice] = useState<string | null>(null)
   const requestTokenRef = useRef(0)
-  const isFactorXTa = variant === "factor_x_ta"
+  const isFactorXTa = (variant ?? "").includes("factor_x_ta")
   const { data: factorSelectionActive } = useFactorSelectionActive(isFactorXTa ? symbol : null, horizon)
 
   useEffect(() => {
     setLevel(0)
     setSelectedFamily(null)
-  }, [symbol, horizon])
+  }, [symbol, horizon, variant])
 
   useEffect(() => {
     const token = ++requestTokenRef.current
@@ -437,19 +446,38 @@ export function TechnicalAnalysisPanel({
         const familiesPayload = asRecord(result.families) ?? {}
         const next = createFamilyState()
 
-        INDICATOR_FAMILY_ORDER.forEach((family) => {
-          const persisted = persistedFamilyToSignal(
-            family,
-            symbol,
-            horizon,
-            familiesPayload[family],
-          )
-          next[family] = {
-            data: persisted,
-            isLoading: false,
-            error: null,
-          }
-        })
+        if ((variant ?? "").endsWith("_combo")) {
+          CATEGORY_META.forEach((category) => {
+            const displayFamily = category.families[0]?.key
+            const persistedKey = comboFamilyKey(variant, category.id)
+            if (!displayFamily || !persistedKey) return
+            const persisted = persistedFamilyToSignal(
+              persistedKey,
+              symbol,
+              horizon,
+              familiesPayload[persistedKey],
+            )
+            next[displayFamily] = {
+              data: persisted,
+              isLoading: false,
+              error: null,
+            }
+          })
+        } else {
+          INDICATOR_FAMILY_ORDER.forEach((family) => {
+            const persisted = persistedFamilyToSignal(
+              family,
+              symbol,
+              horizon,
+              familiesPayload[family],
+            )
+            next[family] = {
+              data: persisted,
+              isLoading: false,
+              error: null,
+            }
+          })
+        }
 
         const isStale = result.resolution_mode === "stale_cache" || result.is_stale
         const notice: string | null = isStale
@@ -769,6 +797,10 @@ export function TechnicalAnalysisPanel({
                           const data = family.state.data
                           const available = isFamilyAvailable(data)
                           const clickable = family.enabled && Boolean(data)
+                          const shortLabel =
+                            (variant ?? "").endsWith("_combo") && data?.family?.includes("_combo_")
+                              ? "Combo"
+                              : family.meta.shortLabel
                           return (
                             <div
                               key={family.meta.key}
@@ -787,7 +819,7 @@ export function TechnicalAnalysisPanel({
                             >
                               <div className="flex items-center gap-2 min-w-0">
                                 <span className="text-xs font-medium w-16">
-                                  {family.meta.shortLabel}
+                                  {shortLabel}
                                 </span>
                                 {data ? (
                                   <Badge

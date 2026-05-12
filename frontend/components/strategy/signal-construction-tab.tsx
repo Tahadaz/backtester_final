@@ -8,10 +8,12 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { HorizonSelector } from "@/components/strategy/horizon-selector"
+import { INDICATOR_FAMILY_ORDER, INDICATOR_META_BY_KEY } from "@/components/strategy/indicator-config"
 import { SignalZoneChart } from "@/components/strategy/signal-zone-chart"
 import { WfoParamInput } from "@/components/strategy/wfo-param-input"
 import type { ActiveScoreChip, ConstructedSignalChart } from "@/lib/api"
 import {
+  FAMILY_SCORE_KEYS,
   defaultIndicatorRowConfig,
   nextScoreKey,
   signalConstructionDefaultSearchSpaces,
@@ -21,20 +23,6 @@ import {
   type IndicatorRowConfigV2,
   type StockStrategyConfigV2,
 } from "@/lib/strategy-v2"
-
-const FAMILY_META: Record<FamilyId, { label: string; summary: string }> = {
-  sma: { label: "Trend", summary: "SMA-based directional structure." },
-  rsi: { label: "Oscillation", summary: "RSI-based stretch and reversal context." },
-  macd: { label: "Momentum", summary: "MACD histogram confirmation." },
-  obv: { label: "Volume", summary: "OBV deviation confirmation." },
-}
-
-const FAMILY_SCORE_KEYS: Record<FamilyId, string> = {
-  sma: "trend_score",
-  rsi: "oscillation_score",
-  macd: "momentum_score",
-  obv: "volume_score",
-}
 
 interface SignalConstructionTabProps {
   horizon: HorizonKey
@@ -88,6 +76,7 @@ function IndicatorRowEditor({
   onChange: (next: IndicatorRowConfigV2) => void
   onRemove: () => void
 }) {
+  const meta = INDICATOR_META_BY_KEY[familyId]
   return (
     <div className="space-y-3 rounded-xl border bg-muted/10 p-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -116,25 +105,30 @@ function IndicatorRowEditor({
       </div>
 
       <div className="grid gap-3 lg:grid-cols-2">
-        {Object.entries(row.params).map(([paramName, param]) => (
-          <WfoParamInput
-            key={`${row.id}-${paramName}`}
-            label={paramName}
-            horizon={horizon}
-            param={param}
-            step={paramName.includes("period") || paramName.includes("window") || paramName.includes("slow") || paramName.includes("fast") ? 1 : 0.1}
-            defaultSpaces={signalConstructionDefaultSearchSpaces(familyId, paramName, param.value)}
-            onChange={(nextParam) =>
-              onChange({
-                ...row,
-                params: {
-                  ...row.params,
-                  [paramName]: nextParam,
-                },
-              })
-            }
-          />
-        ))}
+        {Object.entries(row.params).map(([paramName, param]) => {
+          const paramMeta = meta.params.find((item) =>
+            item.key === paramName || (familyId === "sma" && item.key === "period" && paramName === "window")
+          )
+          return (
+            <WfoParamInput
+              key={`${row.id}-${paramName}`}
+              label={paramMeta?.label ?? paramName}
+              horizon={horizon}
+              param={param}
+              step={paramMeta?.step ?? (Number.isInteger(param.value) ? 1 : 0.1)}
+              defaultSpaces={signalConstructionDefaultSearchSpaces(familyId, paramName, param.value)}
+              onChange={(nextParam) =>
+                onChange({
+                  ...row,
+                  params: {
+                    ...row.params,
+                    [paramName]: nextParam,
+                  },
+                })
+              }
+            />
+          )
+        })}
       </div>
     </div>
   )
@@ -155,6 +149,7 @@ export function SignalConstructionTab({
   onChange,
 }: SignalConstructionTabProps) {
   const families = stockConfig.signal_construction.families
+  const familyIds = INDICATOR_FAMILY_ORDER.filter((familyId) => Boolean(families[familyId]))
   const chartSources = zoneChart?.sources ?? []
 
   function updateFamily(familyId: FamilyId, patch: Partial<FamilyConfigV2>) {
@@ -256,9 +251,9 @@ export function SignalConstructionTab({
         />
 
         <div className="grid gap-4">
-          {(Object.keys(families) as FamilyId[]).map((familyId) => {
+          {familyIds.map((familyId) => {
             const family = families[familyId]
-            const meta = FAMILY_META[familyId]
+            const meta = INDICATOR_META_BY_KEY[familyId]
             const enabledRows = family.rows.filter((row) => row.enabled)
             const activeScoreKeys = family.source_mode === "family_ensemble"
               ? [FAMILY_SCORE_KEYS[familyId]]
@@ -299,14 +294,15 @@ export function SignalConstructionTab({
                     />
                     <div>
                       <div className="flex items-center gap-2">
-                        <p className="text-sm font-semibold">{meta.label}</p>
+                        <p className="text-sm font-semibold">{meta.shortLabel}</p>
                         <Badge variant={family.enabled ? "default" : "outline"}>
                           {family.enabled ? "Active" : "Off"}
                         </Badge>
+                        <Badge variant="outline">{meta.category}</Badge>
                         <Badge variant="outline">{sourceModeLabel}</Badge>
                         {familyWfoActive ? <Badge variant="outline">WFO preview</Badge> : null}
                       </div>
-                      <p className="mt-1 text-xs text-muted-foreground">{meta.summary}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{meta.description}</p>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         <span className="text-[11px] text-muted-foreground">Rule score keys:</span>
                         {activeScoreKeys.length > 0 ? activeScoreKeys.map((scoreKey) => (

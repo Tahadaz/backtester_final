@@ -8,8 +8,21 @@ function normalizeDashboardHorizon(horizon: DashboardHorizonAlias) {
   return resolveHorizonPreset(horizon).value
 }
 
-// Per-horizon ETag cache so If-None-Match can short-circuit refetches.
+// Per-horizon caches so If-None-Match can short-circuit refetches without
+// surfacing HTTP 304 as a UI error.
 const _etags: Record<string, string> = {}
+const _payloads: Record<string, DashboardData> = {}
+
+function normalizePayload(payload: DashboardData): DashboardData {
+  return {
+    ...payload,
+    custom_index_definitions: payload.custom_index_definitions ?? [],
+  }
+}
+
+async function requestDashboardData(normalized: string, headers?: HeadersInit): Promise<Response> {
+  return fetch(`/api/dashboard/data/${normalized}`, { headers })
+}
 
 async function fetchDashboardData(horizon: DashboardHorizonAlias): Promise<DashboardData> {
   const normalized = normalizeDashboardHorizon(horizon)
@@ -19,13 +32,15 @@ async function fetchDashboardData(horizon: DashboardHorizonAlias): Promise<Dashb
     headers["If-None-Match"] = etag
   }
 
-  const res = await fetch(`/api/dashboard/data/${normalized}`, { headers })
+  let res = await requestDashboardData(normalized, headers)
 
   if (res.status === 304) {
-    // Server confirmed the cached data is still fresh; useSWR will keep the
-    // previous value because we throw here (useSWR ignores throws on 304 when
-    // data already exists — so we return a sentinel instead).
-    throw new Error("304 Not Modified")
+    const cached = _payloads[normalized]
+    if (cached) return cached
+
+    // A 304 without an in-memory payload can happen after hot reload or remount.
+    delete _etags[normalized]
+    res = await requestDashboardData(normalized)
   }
 
   if (!res.ok) {
@@ -37,11 +52,9 @@ async function fetchDashboardData(horizon: DashboardHorizonAlias): Promise<Dashb
     _etags[normalized] = newEtag
   }
 
-  const payload = (await res.json()) as DashboardData
-  return {
-    ...payload,
-    custom_index_definitions: payload.custom_index_definitions ?? [],
-  }
+  const payload = normalizePayload((await res.json()) as DashboardData)
+  _payloads[normalized] = payload
+  return payload
 }
 
 export function useDashboardData(horizon: DashboardHorizonAlias) {
@@ -51,8 +64,6 @@ export function useDashboardData(horizon: DashboardHorizonAlias) {
     () => fetchDashboardData(horizon),
     {
       revalidateOnFocus: false,
-      // On 304 the fetcher throws; keep previous data so UI doesn't flash.
-      onError: () => {},
-    }
+    },
   )
 }

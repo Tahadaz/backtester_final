@@ -17,6 +17,7 @@ This folder contains the complete architecture, system design, and step-by-step 
 | 09 | [holidays-and-scheduling.md](./09-holidays-and-scheduling.md) | Casablanca exchange holiday calendar, APScheduler daily refresh, MASI ticker registry |
 | 10 | [config-and-infra.md](./10-config-and-infra.md) | Environment variables, Docker Compose, queue config |
 | 11 | [daily-update-and-data-page.md](./11-daily-update-and-data-page.md) | Data page as control center, freshness model, dual staleness, monitoring |
+| 12 | [ui-goals-and-design.md](./12-ui-goals-and-design.md) | Data page product/UI contract, design reference, current ownership, states, and known gaps |
 
 ## The Data Page Is the Control Center
 

@@ -158,6 +158,7 @@ def test_compute_signal_backtest_uses_requested_config_and_updates_job(monkeypat
             "cost_bps": 12.0,
             "slippage_bps": 7.0,
             "side_policy": "long_short",
+            "cooldown_bars": 4,
             "method": "trade_bootstrap",
             "n_paths": 123,
             "seed": 9,
@@ -171,16 +172,19 @@ def test_compute_signal_backtest_uses_requested_config_and_updates_job(monkeypat
     assert all(call["cost_bps"] == 12.0 for call in bt_calls)
     assert all(call["slippage_bps"] == 7.0 for call in bt_calls)
     assert all(call["side_policy"] == "long_short" for call in bt_calls)
+    assert all(call["cooldown_bars"] == 4 for call in bt_calls)
     assert mc_calls
     assert all(call["method"] == "block_bootstrap" for call in mc_calls)
     assert all(call["n_paths"] == 123 for call in mc_calls)
     assert input_hash_calls
+    assert all(call["cooldown_bars"] == 4 for call in input_hash_calls)
     assert all(call["logic_version"] == backtest_mod.BACKTEST_INPUT_LOGIC_VERSION for call in input_hash_calls)
     saved_rows = fake_db.rows_by_model[SignalBacktestRun]
     assert saved_rows
     assert all(row.cost_bps == 12.0 for row in saved_rows)
     assert all(row.slippage_bps == 7.0 for row in saved_rows)
     assert all(row.side_policy == "long_short" for row in saved_rows)
+    assert all(row.cooldown_bars == 4 for row in saved_rows)
     assert all(row.n_paths == 123 for row in saved_rows)
     assert all(row.mc_method == "block_bootstrap" for row in saved_rows)
     assert pending_job.status == "succeeded"
@@ -291,3 +295,56 @@ def test_compute_signal_backtest_persists_failed_scope_when_series_build_fails(m
     assert failed_rows[0].status == "failed"
     assert "broken reps" in (failed_rows[0].error_message or "")
     assert pending_job.failed_units >= 1
+
+
+def test_diagnostic_representatives_preserve_combo_components():
+    reps = [
+        {
+            "family": "expanded_ta_combo_momentum",
+            "archetype": "strict_and_pair",
+            "variant_id": "combo-1",
+            "description": "TRIX AND CMF",
+            "params": {
+                "operator": "strict_and",
+                "primary_category": "momentum",
+                "conditioning": "factor_x_ta",
+                "component_families": ["trix@fx", "cmf@fx"],
+                "components": [
+                    {
+                        "family": "trix@fx",
+                        "archetype": "trix_zero",
+                        "variant_id": "trix-1",
+                        "description": "TRIX-31",
+                        "params": {"period": 31, "ignored": "x"},
+                        "factor_condition": {
+                            "condition_id": "vix-z",
+                            "factor_ticker": "^VIX",
+                            "form": "zscore",
+                            "lookback": 63,
+                            "threshold": 1.5,
+                            "direction": "above",
+                        },
+                    },
+                    {
+                        "family": "cmf@fx",
+                        "archetype": "cmf_flow",
+                        "variant_id": "cmf-1",
+                        "description": "CMF-34",
+                        "params": {"period": 34},
+                    },
+                ],
+            },
+        }
+    ]
+
+    out = backtest_mod._diagnostic_representatives(reps)
+
+    params = out[0]["params"]
+    assert params["operator"] == "strict_and"
+    assert params["primary_category"] == "momentum"
+    assert params["component_families"] == ["trix@fx", "cmf@fx"]
+    assert params["components"][0]["family"] == "trix@fx"
+    assert params["components"][0]["params"] == {"period": 31.0}
+    assert params["components"][0]["factor_condition"]["factor_ticker"] == "^VIX"
+    assert params["components"][1]["family"] == "cmf@fx"
+    assert params["components"][1]["params"] == {"period": 34.0}

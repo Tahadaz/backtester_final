@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from datetime import date
 
 import numpy as np
 import pandas as pd
@@ -24,6 +25,7 @@ from services.api.app.strategy_v2 import (
     build_strategy_review,
     migrate_strategy_config_v2,
 )
+from services.api.app.schemas.strategy import SignalCandidateRequest
 
 
 @compiles(JSONB, "sqlite")
@@ -107,6 +109,175 @@ def test_migrate_schema_v3_recovers_basket_from_stock_keys_when_missing() -> Non
 
     assert migrated["portfolio"]["universe"]["basket"] == ["IAM", "BCP"]
     assert set(migrated["stocks"].keys()) == {"IAM", "BCP"}
+
+
+def test_migrate_schema_v3_preserves_edge_signal_selection() -> None:
+    candidate = {
+        "candidate_id": "iam:signal_engine:expanded_ta_simple:buy:long:21",
+        "symbol": "iam",
+        "source": "signal_engine",
+        "variant": "expanded_ta_simple",
+        "label": "Signal Engine - Expanded TA Simple",
+        "triage": "proven",
+        "bucket": "buy",
+        "direction": "long",
+        "action_expected_return_net": 0.021,
+        "hit_rate": 0.58,
+        "proof_n": 42,
+        "fwd_horizon_bars": 21,
+        "gates": {"n": True, "wilson": True},
+        "proven_edge_net": True,
+    }
+    migrated = migrate_strategy_config_v2(
+        {
+            "schema_version": 3,
+            "app_domain": "four_pages",
+            "portfolio": {
+                "total_capital_mad": 250_000,
+                "universe": {
+                    "basket": ["IAM"],
+                    "selection_mode": "edge_candidates",
+                    "selected_signal_candidates": [candidate],
+                },
+                "allocation": {"method": "hrp", "hrp_lookback_bars": 60, "manual_overrides_by_symbol": {}},
+            },
+            "stocks": {
+                "IAM": {
+                    "strategy_type": "trend_following",
+                    "signal_construction": {
+                        "source_mode": "dashboard_edge_signal",
+                        "selected_signal_candidate": candidate,
+                        "families": {},
+                    },
+                    "entry_rules": [
+                        {
+                            "id": "entry_1",
+                            "label": "Trade selected edge signal",
+                            "conditions": [{"variable": "consensus_score", "operator": ">=", "threshold": {"mode": "manual", "value": 0}}],
+                            "sizing": {"mode": "manual", "manual_pct": 25},
+                        }
+                    ],
+                    "exit_rules": [],
+                },
+            },
+        },
+        horizon="medium",
+    )
+
+    universe = migrated["portfolio"]["universe"]
+    stock_signal = migrated["stocks"]["IAM"]["signal_construction"]
+    assert universe["selection_mode"] == "edge_candidates"
+    assert universe["selected_signal_candidates"][0]["symbol"] == "IAM"
+    assert universe["selected_signal_candidates"][0]["proof_n"] == 42
+    assert stock_signal["source_mode"] == "dashboard_edge_signal"
+    assert stock_signal["selected_signal_candidate"]["candidate_id"] == candidate["candidate_id"]
+
+
+def test_signal_candidate_rows_keep_eligible_candidates_first(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        strategy_router,
+        "_build_universe_stock_dicts",
+        lambda _db, _timeframe: (
+            [
+                {"symbol": "AAA", "display_name": "AAA", "sector": "Bank", "row_count": 320, "data_as_of": "2026-05-08", "adv20": 50.0},
+                {"symbol": "BBB", "display_name": "BBB", "sector": "Bank", "row_count": 320, "data_as_of": "2026-05-08", "adv20": 500.0},
+            ],
+            ["AAA", "BBB"],
+        ),
+    )
+
+    def fake_payloads(_db, *, symbol: str, horizon: str, cost_bps: float) -> list[dict[str, object]]:
+        base = {
+            "source": "signal_engine",
+            "variant": "expanded_ta_simple",
+            "label": "Signal Engine - Expanded TA Simple",
+            "triage": "watch",
+            "bucket": "buy",
+            "direction": "long",
+            "hit_rate": 0.55,
+            "n": 40,
+            "proof_n": 40,
+            "fwd_horizon_bars": 21,
+            "gates": {"n": True},
+            "proven_edge_net": False,
+        }
+        if symbol == "AAA":
+            return [{**base, "_rank": (1, 0.05, 0.05), "score": 0.05, "action_expected_return_net": 0.05}]
+        return [
+            {**base, "_rank": (1, 0.01, 0.01), "score": 0.01, "action_expected_return_net": 0.01},
+            {**base, "variant": "expanded_ta_combo", "_rank": (1, 0.02, 0.02), "score": 0.02, "action_expected_return_net": 0.02},
+        ]
+
+    monkeypatch.setattr(strategy_router, "_edge_payloads_for_signal_candidate", fake_payloads)
+
+    rows = strategy_router._build_signal_candidate_rows(
+        None,  # type: ignore[arg-type]
+        SignalCandidateRequest(horizon="short", mode="best", min_adv20=100.0, sort_by="expected_return", sort_dir="desc"),
+    )
+
+    assert [row["symbol"] for row in rows] == ["BBB", "AAA"]
+    assert rows[0]["eligible"] is True
+    assert rows[0]["variant"] == "expanded_ta_combo"
+    assert rows[1]["eligible"] is False
+    assert rows[1]["exclusion_reason"] == "Below ADV20 liquidity gate."
+
+
+def test_universe_uses_market_data_store_when_stock_master_is_empty(
+    client_and_session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, SessionLocal = client_and_session
+    db = SessionLocal()
+    try:
+        bind = db.get_bind()
+        models.Dataset.__table__.create(bind, checkfirst=True)
+        models.StockMaster.__table__.create(bind, checkfirst=True)
+        models.MarketDataStore.__table__.create(bind, checkfirst=True)
+        db.add(
+            models.MarketDataStore(
+                symbol="AAA",
+                timeframe="1D",
+                object_key="market/AAA.parquet",
+                row_count=320,
+                data_as_of=date(2026, 5, 8),
+                asset_class="equity",
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    monkeypatch.setattr(
+        strategy_router,
+        "_compute_batch_scores",
+        lambda _db, symbols, *_args: {
+            symbol: {
+                "aggregate_score_pct": 42.0,
+                "aggregate_signal_label": "Achat",
+                "per_family": {},
+            }
+            for symbol in symbols
+        },
+    )
+    monkeypatch.setattr(
+        strategy_router,
+        "load_ohlcv_for_symbol",
+        lambda *_args: pd.DataFrame({
+            "Open": [10.0] * 30,
+            "High": [11.0] * 30,
+            "Low": [9.0] * 30,
+            "Close": [10.5] * 30,
+            "Volume": [1_000.0] * 30,
+        }),
+    )
+
+    response = client.post("/strategy/plan/universe", json={"horizon": "short"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [row["symbol"] for row in payload] == ["AAA"]
+    assert payload[0]["row_count"] == 320
+    assert payload[0]["eligible"] is True
 
 
 def test_strategy_review_counts_leaf_wfo_params_and_allows_fixed_rule_wfo_sizing() -> None:

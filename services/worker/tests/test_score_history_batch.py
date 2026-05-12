@@ -8,6 +8,13 @@ import pandas as pd
 from services.worker.tasks import score_history_batch as score_mod
 
 
+def test_score_history_sources_cover_full_signal_mode_matrix():
+    assert len(score_mod.ENGINE_VARIANTS) == 8
+    assert score_mod._score_source("engine", "expanded_factor_x_ta_combo") == "engine:expanded_factor_x_ta_combo"
+    assert score_mod._score_source("wfo", "legacy_ta_combo") == "wfo:legacy_ta_combo"
+    assert score_mod._compat_sources("engine", "expanded_factor_x_ta_simple") == ("factor_x_ta",)
+
+
 def test_fold_scoped_wfo_series_overrides_each_oos_fold_with_own_winner(monkeypatch):
     idx = pd.date_range("2026-01-01", periods=8, freq="D")
     base = pd.Series(np.zeros(len(idx)), index=idx, name="tendance")

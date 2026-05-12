@@ -4,7 +4,7 @@
 
 ## What is pre-registered
 
-`docs/research/phase2_pre_registration.yaml` contains, frozen before the first Phase 2 backtest run:
+`services/worker/research/phase2_pre_registration.yaml` contains, frozen before the first Phase 2 backtest run:
 
 - The exact universe of stocks and auto-expand rule.
 - The exact list of factor conditions (condition_id, form, parameters, direction, channel_gate).

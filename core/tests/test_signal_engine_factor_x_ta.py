@@ -56,7 +56,7 @@ def _sma_variant() -> VariantDef:
         family="sma",
         archetype="price_vs_sma",
         params={"window": 20},
-        description="SMA-20 (short)",
+        description="SMA-20 (weekly)",
     )
 
 
@@ -96,7 +96,7 @@ class TestFactorXTaArchitecturalBet:
         windows = evaluate_variant_oos(
             close,
             c_variant,
-            "short",
+            "weekly",
             cost_bps=10.0,
             precomputed_signal=composed,
         )
@@ -117,7 +117,7 @@ class TestFactorXTaArchitecturalBet:
         cond_mask = evaluate_condition(condition, factor)
         composed = compose_and_signal(ta_sig, cond_mask)
 
-        windows = evaluate_variant_oos(close, c_variant, "short", precomputed_signal=composed)
+        windows = evaluate_variant_oos(close, c_variant, "weekly", precomputed_signal=composed)
         summary = score_variant_robustness(c_variant, windows)
 
         assert summary.variant.variant_id == c_variant.variant_id
@@ -138,7 +138,7 @@ class TestFactorXTaArchitecturalBet:
         cond_mask = evaluate_condition(condition, factor)
         composed = compose_and_signal(ta_sig, cond_mask)
 
-        windows = evaluate_variant_oos(close, c_variant, "short", precomputed_signal=composed)
+        windows = evaluate_variant_oos(close, c_variant, "weekly", precomputed_signal=composed)
         summary = score_variant_robustness(c_variant, windows)
 
         survivors = filter_survivors([summary])
@@ -181,7 +181,7 @@ class TestFactorXTaArchitecturalBet:
         cond_mask = evaluate_condition(condition, factor)
         composed = compose_and_signal(ta_sig, cond_mask)
 
-        windows = evaluate_variant_oos(close, c_variant, "short", precomputed_signal=composed)
+        windows = evaluate_variant_oos(close, c_variant, "weekly", precomputed_signal=composed)
         summary = score_variant_robustness(c_variant, windows)
 
         # Key assertion: the factor_condition is still accessible through the summary
@@ -200,7 +200,7 @@ class TestGenerateFactorConditionedCandidates:
             generate_candidates,
             generate_factor_conditioned_candidates,
         )
-        ta_candidates = generate_candidates("sma", "short")
+        ta_candidates = generate_candidates("sma", "weekly")
         conditions = [_vix_condition()]
         result = generate_factor_conditioned_candidates(ta_candidates, conditions)
         assert len(result) == len(ta_candidates)
@@ -213,7 +213,7 @@ class TestGenerateFactorConditionedCandidates:
             generate_candidates,
             generate_factor_conditioned_candidates,
         )
-        ta_candidates = generate_candidates("sma", "short")
+        ta_candidates = generate_candidates("sma", "weekly")
         brent_cond = FactorConditionMeta(
             condition_id="brent_test",
             factor_ticker="BZ=F",
@@ -234,7 +234,7 @@ class TestGenerateFactorConditionedCandidates:
             generate_candidates,
             generate_factor_conditioned_candidates,
         )
-        ta_candidates = generate_candidates("sma", "short")[:5]  # small subset
+        ta_candidates = generate_candidates("sma", "weekly")[:5]  # small subset
         brent_cond = FactorConditionMeta(
             condition_id="brent_test",
             factor_ticker="BZ=F",
@@ -247,4 +247,19 @@ class TestGenerateFactorConditionedCandidates:
         result = generate_factor_conditioned_candidates(
             ta_candidates, [brent_cond], channel_tags=channel_tags, stock_sector="mining"
         )
+        assert len(result) == 5
+
+    def test_channel_gate_empty_list_means_unrestricted(self):
+        from core.quant_core.signal_engine.candidates import (
+            generate_candidates,
+            generate_factor_conditioned_candidates,
+        )
+        ta_candidates = generate_candidates("sma", "weekly")[:5]
+        vix_cond = _vix_condition()
+        channel_tags = {"^VIX": []}
+
+        result = generate_factor_conditioned_candidates(
+            ta_candidates, [vix_cond], channel_tags=channel_tags, stock_sector="banks"
+        )
+
         assert len(result) == 5

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback, useEffect, useMemo } from "react"
+import useSWR from "swr"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -9,14 +10,16 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   fetchIndicatorSeries,
+  fetchEdge,
   fetchSignalBacktestResults,
   triggerSignalBacktest,
+  type EdgeMetrics,
   type SignalBacktestResult,
   type SignalBacktestResponse,
 } from "@/lib/api"
 import { formatPercent, formatNumber } from "@/lib/format"
 import { MetricsKpiGrid } from "@/components/signals/metrics-kpi-grid"
-import { TradeLedgerTable } from "@/components/signals/trade-ledger-table"
+import { AccountingTradeLedgerTable } from "@/components/signals/trade-ledger-table"
 import { PriceSignalsChart, type IndicatorOverlaySeries } from "@/components/signals/price-signals-chart"
 import { GlobalFanChart, buildFanTraces, buildFanLayout } from "@/components/signals/fan-chart"
 import { ShuffledTradesPanel } from "@/components/signals/shuffled-trades-panel"
@@ -34,7 +37,11 @@ const CAT_LABELS: Record<string, string> = {
   volume: "Volume",
 }
 const DEFAULT_START = "2026-01-01"
+const EDGE_COST_BPS = 33
+const PRICE_AXIS_FAMILIES = new Set(["sma", "ema", "ema_cross", "ichimoku", "psar", "vwap"])
 type TabKey = "global" | "tendance" | "momentum" | "oscillation" | "volume" | "comparaison"
+type EdgeHorizon = "weekly" | "monthly" | "quarterly"
+type EdgeSource = "signal_engine" | "wfo"
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10)
@@ -43,6 +50,37 @@ function todayIso() {
 function fmt(v: number | null | undefined, isPct = false) {
   if (v == null) return "—"
   return isPct ? formatPercent(v) : formatNumber(v, 2)
+}
+
+function toEdgeHorizon(horizon: string): EdgeHorizon {
+  if (horizon === "short" || horizon === "weekly") return "weekly"
+  if (horizon === "long" || horizon === "quarterly") return "quarterly"
+  return "monthly"
+}
+
+function edgeSourceFromResult(row: SignalBacktestResult): EdgeSource {
+  return row.source === "wfo" ? "wfo" : "signal_engine"
+}
+
+function edgeSourceLabel(source: EdgeSource) {
+  return source === "wfo" ? "WFO" : "Signal Engine"
+}
+
+function edgeActionLabel(edge: EdgeMetrics) {
+  if (edge.direction === "long") return "Long"
+  if (edge.direction === "short") return "Short"
+  return "No trade"
+}
+
+function edgeActionExpectedReturn(edge: EdgeMetrics) {
+  return edge.action_expected_return_net ?? edge.expected_return_net ?? null
+}
+
+function edgeActionExpectedReturnCi(edge: EdgeMetrics) {
+  return {
+    lower: edge.action_expected_return_net_ci_lower ?? edge.expected_return_net_ci_lower ?? null,
+    upper: edge.action_expected_return_net_ci_upper ?? edge.expected_return_net_ci_upper ?? null,
+  }
 }
 
 type RepresentativeIndicator = {
@@ -143,16 +181,99 @@ function FlatSignalBanner({ onSwitchLongShort }: { onSwitchLongShort: () => void
 // Helper: ResultBlock — one full result section for a single scope+source row
 // ---------------------------------------------------------------------------
 
+function EdgeProofStrip({
+  row,
+  symbol,
+  horizon,
+}: {
+  row: SignalBacktestResult
+  symbol: string
+  horizon: string
+}) {
+  const source = edgeSourceFromResult(row)
+  const normalizedHorizon = toEdgeHorizon(horizon)
+  const { data: edge, isLoading } = useSWR(
+    ["backtest-proof-edge", symbol, normalizedHorizon, source],
+    () => fetchEdge(symbol, normalizedHorizon, source, EDGE_COST_BPS).catch(() => null),
+    { revalidateOnFocus: false },
+  )
+
+  if (isLoading && edge === undefined) {
+    return <Skeleton className="h-20 w-full rounded" />
+  }
+
+  if (!edge) {
+    return (
+      <div className="rounded border border-dashed bg-muted/20 p-3 text-xs text-muted-foreground">
+        Action E[R] / Stock E[R] unavailable from Edge cache for {edgeSourceLabel(source)}.
+      </div>
+    )
+  }
+
+  const actionCi = edgeActionExpectedReturnCi(edge)
+  const proven = edge.proven_edge_net
+  const mcPvalue = edge.mc_luck_pvalue_net
+  const shufflePvalue = edge.label_shuffle_pvalue_net
+
+  return (
+    <div className="rounded border bg-muted/20 p-3">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline" className="text-xs">{edgeSourceLabel(source)}</Badge>
+          <Badge variant="outline" className="text-xs">Side: {edgeActionLabel(edge)}</Badge>
+          <Badge variant="outline" className="text-xs">Hold: {edge.fwd_horizon_bars ?? "--"}d O/O</Badge>
+          <Badge variant="outline" className="text-xs">Policy: {edge.side_policy}</Badge>
+        </div>
+        <Badge variant={proven ? "default" : "outline"} className="text-xs">
+          {proven ? "Proven edge" : edge.n < 30 ? "Insufficient n" : "Watch"}
+        </Badge>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-4">
+        <div className="rounded border bg-background p-2">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Action E[R] net</div>
+          <div className="font-mono text-sm font-semibold">{formatPercent(edgeActionExpectedReturn(edge))}</div>
+          <div className="font-mono text-[10px] text-muted-foreground">
+            {formatPercent(actionCi.lower)} to {formatPercent(actionCi.upper)}
+          </div>
+        </div>
+        <div className="rounded border bg-background p-2">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Stock E[R]</div>
+          <div className="font-mono text-sm font-semibold">{formatPercent(edge.stock_expected_return)}</div>
+          <div className="font-mono text-[10px] text-muted-foreground">
+            {formatPercent(edge.stock_expected_return_ci_lower)} to {formatPercent(edge.stock_expected_return_ci_upper)}
+          </div>
+        </div>
+        <div className="rounded border bg-background p-2">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">MC gate</div>
+          <div className="font-mono text-sm font-semibold">{edge.gates.mc_net ? "OK" : "KO"}</div>
+          <div className="font-mono text-[10px] text-muted-foreground">p={mcPvalue?.toFixed(3) ?? "--"}</div>
+        </div>
+        <div className="rounded border bg-background p-2">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Bootstrap gates</div>
+          <div className="font-mono text-sm font-semibold">
+            {edge.gates.label_shuffle_net && edge.gates.wilson && edge.gates.n ? "OK" : "Partial"}
+          </div>
+          <div className="font-mono text-[10px] text-muted-foreground">
+            shuffle p={shufflePvalue?.toFixed(3) ?? "--"} | n={edge.n}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ResultBlock({
   row,
   symbol,
+  horizon,
   onSwitchLongShort,
 }: {
   row: SignalBacktestResult
   symbol: string
+  horizon: string
   onSwitchLongShort: () => void
 }) {
-  const trades = (row as Record<string, unknown>).trades as Record<string, unknown>[] | null | undefined
+  const ledger = row.trade_ledger
   const closeSeries = (row as Record<string, unknown>).close_series as number[] | null | undefined
   const positionSeries = (row as Record<string, unknown>).position_series as number[] | null | undefined
   const shuffleStats = (row as Record<string, unknown>).shuffle_stats as Record<string, unknown> | null | undefined
@@ -182,17 +303,36 @@ function ResultBlock({
           timeframe: "1D",
         })
         const byDate = new Map<string, number | null>()
+        const overlayByDate = new Map<string, number | null>()
+        const macdByDate = new Map<string, number | null>()
+        const plotPayload = asRecord(series.plot_payload)
+        const macdLine = Array.isArray(plotPayload?.macd_line) ? plotPayload.macd_line : null
         series.dates.forEach((d, idx) => {
           const v = series.indicator_values[idx]
+          const overlayValue = series.indicator_overlay?.[idx]
+          const macdValue = macdLine?.[idx]
           byDate.set(d, typeof v === "number" && Number.isFinite(v) ? v : null)
+          overlayByDate.set(d, typeof overlayValue === "number" && Number.isFinite(overlayValue) ? overlayValue : null)
+          macdByDate.set(d, typeof macdValue === "number" && Number.isFinite(macdValue) ? macdValue : null)
         })
         const aligned = (row.dates ?? []).map((d) => byDate.get(d) ?? null)
+        const alignedOverlay = series.indicator_overlay
+          ? (row.dates ?? []).map((d) => overlayByDate.get(d) ?? null)
+          : undefined
+        const alignedMacd = macdLine
+          ? (row.dates ?? []).map((d) => macdByDate.get(d) ?? null)
+          : undefined
         setSeriesByRepId((prev) => ({
           ...prev,
           [rep.id]: {
             id: rep.id,
             label: rep.description,
             values: aligned,
+            overlayValues: alignedOverlay,
+            macdLineValues: alignedMacd,
+            axis: PRICE_AXIS_FAMILIES.has(rep.family) ? "price" : "indicator",
+            family: rep.family,
+            params: rep.params,
           },
         }))
         setErrorByRepId((prev) => {
@@ -247,6 +387,8 @@ function ResultBlock({
         <FlatSignalBanner onSwitchLongShort={onSwitchLongShort} />
       )}
 
+      <EdgeProofStrip row={row} symbol={symbol} horizon={horizon} />
+
       {representatives.length > 0 && (
         <div>
           <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
@@ -295,14 +437,16 @@ function ResultBlock({
           position={positionSeries}
           dates={row.dates}
           indicatorSeries={activeIndicatorSeries}
+          height={520}
+          maxHeight={560}
         />
       </div>
 
       <div>
         <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-          Registre des trades
+          Ledger CMP
         </h4>
-        <TradeLedgerTable trades={trades as Record<string, unknown>[] | null} />
+        <AccountingTradeLedgerTable trades={ledger} />
       </div>
 
       <div>
@@ -329,10 +473,12 @@ function ResultBlock({
 function ScopeTab({
   rows,
   symbol,
+  horizon,
   onSwitchLongShort,
 }: {
   rows: SignalBacktestResult[]
   symbol: string
+  horizon: string
   onSwitchLongShort: () => void
 }) {
   if (rows.length === 0) {
@@ -349,6 +495,7 @@ function ScopeTab({
           key={`${row.source}-${row.scope}-${row.scope_key}-${row.window_start ?? idx}`}
           row={row}
           symbol={symbol}
+          horizon={horizon}
           onSwitchLongShort={onSwitchLongShort}
         />
       ))}
@@ -365,10 +512,12 @@ type SortKey = "total_return" | "cagr" | "sharpe" | "max_drawdown" | "win_rate" 
 function ComparaisonTab({
   results,
   symbol,
+  horizon,
   onSwitchLongShort,
 }: {
   results: SignalBacktestResult[]
   symbol: string
+  horizon: string
   onSwitchLongShort: () => void
 }) {
   const [sortBy, setSortBy] = useState<SortKey>("sharpe")
@@ -490,7 +639,12 @@ function ComparaisonTab({
                 isOpen ? (
                   <tr key={`${rowKey}-expand`}>
                     <td colSpan={9} className="p-4 bg-muted/10">
-                      <ResultBlock row={r} symbol={symbol} onSwitchLongShort={onSwitchLongShort} />
+                      <ResultBlock
+                        row={r}
+                        symbol={symbol}
+                        horizon={horizon}
+                        onSwitchLongShort={onSwitchLongShort}
+                      />
                     </td>
                   </tr>
                 ) : null,
@@ -510,16 +664,17 @@ function ComparaisonTab({
 interface BacktestMCPanelProps {
   symbol: string
   horizon: string
-  variant?: "legacy" | "expanded" | "factor_x_ta"
+  variant?: string
+  cooldownBars?: number
 }
 
-export function BacktestMCPanel({ symbol, horizon, variant }: BacktestMCPanelProps) {
+export function BacktestMCPanel({ symbol, horizon, variant, cooldownBars = 0 }: BacktestMCPanelProps) {
   const [source, setSource] = useState<"engine" | "wfo" | "both">("both")
   const [mcMethod, setMcMethod] = useState<"block_bootstrap" | "trade_bootstrap">("block_bootstrap")
   const [nPaths, setNPaths] = useState(2000)
   const [startDate, setStartDate] = useState(DEFAULT_START)
   const [endDate, setEndDate] = useState(todayIso())
-  const [sidePolicy, setSidePolicy] = useState<"long_only" | "long_short">("long_only")
+  const [sidePolicy, setSidePolicy] = useState<"long_only" | "long_short">("long_short")
 
   const [loading, setLoading] = useState(false)
   const [triggering, setTriggering] = useState(false)
@@ -527,11 +682,19 @@ export function BacktestMCPanel({ symbol, horizon, variant }: BacktestMCPanelPro
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<TabKey>("global")
 
+  useEffect(() => {
+    setData(null)
+    setError(null)
+  }, [symbol, horizon, variant, cooldownBars])
+
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetchSignalBacktestResults(symbol, horizon, { variant: variant ?? "expanded" })
+      const res = await fetchSignalBacktestResults(symbol, horizon, {
+        variant: variant ?? "expanded",
+        cooldownBars,
+      })
       setData(res)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -541,7 +704,7 @@ export function BacktestMCPanel({ symbol, horizon, variant }: BacktestMCPanelPro
     } finally {
       setLoading(false)
     }
-  }, [symbol, horizon])
+  }, [symbol, horizon, variant, cooldownBars])
 
   const trigger = useCallback(async () => {
     setTriggering(true)
@@ -549,6 +712,7 @@ export function BacktestMCPanel({ symbol, horizon, variant }: BacktestMCPanelPro
     try {
       await triggerSignalBacktest({
         symbol, horizon, variant: variant ?? "expanded",
+        cooldown_bars: cooldownBars,
         window_start: startDate,
         window_end: endDate,
         mc_config: { method: mcMethod, n_paths: nPaths, side_policy: sidePolicy },
@@ -559,7 +723,7 @@ export function BacktestMCPanel({ symbol, horizon, variant }: BacktestMCPanelPro
     } finally {
       setTriggering(false)
     }
-  }, [symbol, horizon, startDate, endDate, mcMethod, nPaths, sidePolicy, load])
+  }, [symbol, horizon, variant, cooldownBars, startDate, endDate, mcMethod, nPaths, sidePolicy, load])
 
   const switchLongShort = useCallback(() => {
     setSidePolicy("long_short")
@@ -671,6 +835,9 @@ export function BacktestMCPanel({ symbol, horizon, variant }: BacktestMCPanelPro
             </div>
 
             {firstComputed && <StaleBadge isStale={isStale} computedAt={firstComputed} />}
+            <Badge variant="outline" className="h-7 text-xs">
+              Cooldown {Math.max(0, Math.floor(cooldownBars))} bars
+            </Badge>
           </div>
 
           {error && (
@@ -710,16 +877,16 @@ export function BacktestMCPanel({ symbol, horizon, variant }: BacktestMCPanelPro
           {/* Tab content */}
           <div className="pt-2">
             {activeTab === "global" && (
-              <ScopeTab rows={globalRows} symbol={symbol} onSwitchLongShort={switchLongShort} />
+              <ScopeTab rows={globalRows} symbol={symbol} horizon={horizon} onSwitchLongShort={switchLongShort} />
             )}
             {(["tendance", "momentum", "oscillation", "volume"] as const).map(
               (cat) =>
                 activeTab === cat && (
-                  <ScopeTab key={cat} rows={catRows(cat)} symbol={symbol} onSwitchLongShort={switchLongShort} />
+                  <ScopeTab key={cat} rows={catRows(cat)} symbol={symbol} horizon={horizon} onSwitchLongShort={switchLongShort} />
                 ),
             )}
             {activeTab === "comparaison" && (
-              <ComparaisonTab results={results} symbol={symbol} onSwitchLongShort={switchLongShort} />
+              <ComparaisonTab results={results} symbol={symbol} horizon={horizon} onSwitchLongShort={switchLongShort} />
             )}
           </div>
         </>

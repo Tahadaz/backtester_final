@@ -10,7 +10,7 @@ from typing import Any, Literal
 
 import numpy as np
 
-from core.quant_core.horizons import DEFAULT_COST_BPS_PER_SIDE
+from core.quant_core.horizons import DEFAULT_COST_BPS_PER_SIDE, canonical_horizon
 from .candidates import generate_candidates, variant_min_history
 from .current_signal import build_current_signal, compute_current_signals
 from .domain import (
@@ -521,6 +521,7 @@ def run_family_ensemble_full(
     cooldown_bars: int = 0,
 ) -> EnsemblePipelineDetail:
     """Full A→G pipeline for any indicator family, returning all intermediate data."""
+    horizon = canonical_horizon(horizon, allow_legacy=True)
     if horizon not in VALID_HORIZONS:
         raise ValueError(f"Unknown horizon {horizon!r}")
 

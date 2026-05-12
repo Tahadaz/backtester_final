@@ -72,6 +72,17 @@ FAMILY_SIGNAL_TYPE: dict[str, str] = {
     "fi": "volume",
 }
 
+for _combo_prefix in (
+    "legacy_ta_combo",
+    "expanded_ta_combo",
+    "legacy_fx_combo",
+    "expanded_fx_combo",
+):
+    FAMILY_SIGNAL_TYPE[f"{_combo_prefix}_tendance"] = "trend"
+    FAMILY_SIGNAL_TYPE[f"{_combo_prefix}_momentum"] = "momentum"
+    FAMILY_SIGNAL_TYPE[f"{_combo_prefix}_oscillation"] = "oscillator"
+    FAMILY_SIGNAL_TYPE[f"{_combo_prefix}_volume"] = "volume"
+
 CATEGORY_FAMILIES: dict[str, list[str]] = {
     "tendance": ["sma", "ema", "ema_cross", "ichimoku", "psar"],
     "momentum": ["macd", "roc", "trix", "adx", "tsi"],
@@ -89,6 +100,36 @@ LEGACY_CATEGORY_FAMILIES: dict[str, list[str]] = {
 VARIANT_FAMILIES: dict[str, dict[str, list[str]]] = {
     "legacy": LEGACY_CATEGORY_FAMILIES,
     "expanded": CATEGORY_FAMILIES,
+    "factor_x_ta": {
+        category: [f"{family}@fx" for family in families]
+        for category, families in CATEGORY_FAMILIES.items()
+    },
+    "legacy_ta_simple": LEGACY_CATEGORY_FAMILIES,
+    "expanded_ta_simple": CATEGORY_FAMILIES,
+    "legacy_factor_x_ta_simple": {
+        category: [f"{family}@fx" for family in families]
+        for category, families in LEGACY_CATEGORY_FAMILIES.items()
+    },
+    "expanded_factor_x_ta_simple": {
+        category: [f"{family}@fx" for family in families]
+        for category, families in CATEGORY_FAMILIES.items()
+    },
+    "legacy_ta_combo": {
+        category: [f"legacy_ta_combo_{category}"]
+        for category in CATEGORY_FAMILIES
+    },
+    "expanded_ta_combo": {
+        category: [f"expanded_ta_combo_{category}"]
+        for category in CATEGORY_FAMILIES
+    },
+    "legacy_factor_x_ta_combo": {
+        category: [f"legacy_fx_combo_{category}"]
+        for category in CATEGORY_FAMILIES
+    },
+    "expanded_factor_x_ta_combo": {
+        category: [f"expanded_fx_combo_{category}"]
+        for category in CATEGORY_FAMILIES
+    },
 }
 
 ALL_FAMILIES: tuple[str, ...] = tuple(

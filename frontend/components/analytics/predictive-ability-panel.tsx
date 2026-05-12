@@ -17,6 +17,40 @@ const SOURCES = [
   { value: "wfo", label: "WFO" },
 ] as const
 
+const SOURCE_KINDS = [
+  { value: "engine", label: "Engine" },
+  { value: "wfo", label: "WFO" },
+] as const
+
+const SIGNAL_MODES = [
+  { value: "legacy_ta_simple", label: "L TA" },
+  { value: "expanded_ta_simple", label: "E TA" },
+  { value: "legacy_factor_x_ta_simple", label: "L FX" },
+  { value: "expanded_factor_x_ta_simple", label: "E FX" },
+  { value: "legacy_ta_combo", label: "L TA Combo" },
+  { value: "expanded_ta_combo", label: "E TA Combo" },
+  { value: "legacy_factor_x_ta_combo", label: "L FX Combo" },
+  { value: "expanded_factor_x_ta_combo", label: "E FX Combo" },
+] as const
+
+type SourceKind = (typeof SOURCE_KINDS)[number]["value"]
+type SignalMode = (typeof SIGNAL_MODES)[number]["value"]
+
+function parseInitialSource(value?: string): { sourceKind: SourceKind; mode: SignalMode } {
+  if (!value) return { sourceKind: "engine", mode: "expanded_ta_simple" }
+  const token = value.toLowerCase()
+  if (token.includes(":")) {
+    const [axis, rawMode] = token.split(":", 2)
+    const mode = SIGNAL_MODES.some((m) => m.value === rawMode) ? (rawMode as SignalMode) : "expanded_ta_simple"
+    return { sourceKind: axis === "wfo" ? "wfo" : "engine", mode }
+  }
+  if (token === "engine_legacy" || token === "legacy") return { sourceKind: "engine", mode: "legacy_ta_simple" }
+  if (token === "factor_x_ta") return { sourceKind: "engine", mode: "expanded_factor_x_ta_simple" }
+  if (token === "wfo") return { sourceKind: "wfo", mode: "expanded_ta_simple" }
+  const mode = SIGNAL_MODES.some((m) => m.value === token) ? (token as SignalMode) : "expanded_ta_simple"
+  return { sourceKind: "engine", mode }
+}
+
 const HORIZONS = [
   { value: "short", label: "Court (1-5j)" },
   { value: "medium", label: "Moyen (6-21j)" },
@@ -55,16 +89,17 @@ const RETURN_METHODS = [
 
 interface Props {
   symbol: string
-  initialSource?: "engine_legacy" | "engine_expanded" | "wfo" | "factor_x_ta"
+  initialSource?: string
   initialHorizon?: "short" | "medium" | "long"
   lookback_days?: number
 }
 
 export function PredictiveAbilityPanel({ symbol, initialSource, initialHorizon, lookback_days }: Props) {
   const { toast } = useToast()
-  const [source, setSource] = useState<"engine_legacy" | "engine_expanded" | "wfo" | "factor_x_ta">(
-    initialSource ?? "engine_expanded",
-  )
+  const initial = parseInitialSource(initialSource)
+  const [sourceKind, setSourceKind] = useState<SourceKind>(initial.sourceKind)
+  const [mode, setMode] = useState<SignalMode>(initial.mode)
+  const source = `${sourceKind}:${mode}`
   const [horizon, setHorizon] = useState<"short" | "medium" | "long">(
     initialHorizon ?? "short",
   )
@@ -117,15 +152,32 @@ export function PredictiveAbilityPanel({ symbol, initialSource, initialHorizon, 
         <div className="flex flex-col gap-1">
           <Label className="text-[10px] uppercase text-muted-foreground">Source</Label>
           <div className="flex rounded-md border bg-background">
-            {SOURCES.map((s) => (
+            {SOURCE_KINDS.map((s) => (
               <button
                 key={s.value}
-                onClick={() => setSource(s.value)}
+                onClick={() => setSourceKind(s.value)}
                 className={`px-3 py-1 text-xs ${
-                  source === s.value ? "bg-primary text-primary-foreground" : "hover:bg-muted"
+                  sourceKind === s.value ? "bg-primary text-primary-foreground" : "hover:bg-muted"
                 }`}
               >
                 {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <Label className="text-[10px] uppercase text-muted-foreground">Mode</Label>
+          <div className="flex max-w-[520px] flex-wrap rounded-md border bg-background">
+            {SIGNAL_MODES.map((m) => (
+              <button
+                key={m.value}
+                onClick={() => setMode(m.value)}
+                className={`px-2 py-1 text-xs ${
+                  mode === m.value ? "bg-primary text-primary-foreground" : "hover:bg-muted"
+                }`}
+              >
+                {m.label}
               </button>
             ))}
           </div>

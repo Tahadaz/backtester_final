@@ -35,6 +35,7 @@ from core.quant_core.signal_engine.domain import (
     VariantDef,
     signal_type_label,
 )
+from core.quant_core.signal_engine.modes import resolve_signal_mode, signal_mode_read_names, signal_mode_storage_name
 from core.quant_core.signal_engine.wfo_signal import WfoCategoryResult, run_wfo_category_signal
 from core.quant_core.signal_engine.variant_detail import compute_variant_signal_array
 from core.quant_core.signal_engine.wfo_global import compute_global_wfo_signal
@@ -90,6 +91,13 @@ def enqueue_wfo_for_symbol_horizon(
     variant: str = "expanded",
 ) -> None:
     """RQ entry point: creates its own DB session and delegates."""
+    mode = resolve_signal_mode(variant)
+    variant = mode.name
+    if mode.is_factor_x_ta:
+        from services.worker.tasks.wfo_factor_x_ta_batch import compute_wfo_factor_x_ta_for_symbol
+
+        compute_wfo_factor_x_ta_for_symbol(symbol, horizon, variant=variant)
+        return
     db: Session = SessionLocal()
     try:
         run_wfo_for_symbol_horizon(db, symbol, horizon, overrides=overrides or {}, variant=variant)
@@ -127,11 +135,13 @@ def enqueue_wfo_full_for_symbol_horizon(
     variant: str = "expanded",
     overrides: dict | None = None,
     triggered_by: str = "manual",
+    depends_on: str | None = None,
 ) -> str:
     """Enqueue a full WFO compute for one tuple on the wfo_signals queue."""
     from rq import Queue
     from services.worker.config import settings
 
+    variant = signal_mode_storage_name(variant)
     redis = connect_redis_with_fallback(settings.REDIS_URL, decode_responses=False, logger=logger)
     q = Queue("wfo_signals", connection=redis)
     job = q.enqueue(
@@ -140,17 +150,32 @@ def enqueue_wfo_full_for_symbol_horizon(
         horizon,
         overrides if overrides else None,
         variant,
-        job_timeout=1800,
+        job_timeout=7200,
         meta={"triggered_by": triggered_by},
+        depends_on=depends_on,
     )
     return str(job.id)
 
 
-def _window_date(index: Any, position: int, *, end_exclusive: bool = False) -> str | None:
+def _result_index_offset(result: Any) -> int:
+    diagnostics = getattr(result, "window_diagnostics", {}) or {}
+    try:
+        return max(0, int(diagnostics.get("horizon_cap_start_offset") or 0))
+    except Exception:
+        return 0
+
+
+def _window_date(
+    index: Any,
+    position: int,
+    *,
+    end_exclusive: bool = False,
+    position_offset: int = 0,
+) -> str | None:
     if index is None:
         return None
     try:
-        loc = int(position) - 1 if end_exclusive else int(position)
+        loc = int(position_offset) + int(position) - (1 if end_exclusive else 0)
         if loc < 0 or loc >= len(index):
             return None
         value = index[loc]
@@ -166,6 +191,7 @@ def _build_folds_json(result, pool: list | None = None, index: Any = None) -> li
     er = result.engine_result
     if er is None or not er.windows:
         return None
+    index_offset = _result_index_offset(result)
     folds = []
     for w in er.windows:
         winner_id = ""
@@ -179,6 +205,10 @@ def _build_folds_json(result, pool: list | None = None, index: Any = None) -> li
         train_end_idx = int(w.window.train_end)
         oos_start_idx = int(w.window.oos_start)
         oos_end_idx = int(w.window.oos_end)
+        train_start_abs_idx = index_offset + train_start_idx
+        train_end_abs_idx = index_offset + train_end_idx
+        oos_start_abs_idx = index_offset + oos_start_idx
+        oos_end_abs_idx = index_offset + oos_end_idx
         folds.append({
             "index": w.window.index,
             "train_start": train_start_idx,
@@ -189,10 +219,14 @@ def _build_folds_json(result, pool: list | None = None, index: Any = None) -> li
             "train_end_idx": train_end_idx,
             "oos_start_idx": oos_start_idx,
             "oos_end_idx": oos_end_idx,
-            "train_start_date": _window_date(index, train_start_idx),
-            "train_end_date": _window_date(index, train_end_idx, end_exclusive=True),
-            "oos_start_date": _window_date(index, oos_start_idx),
-            "oos_end_date": _window_date(index, oos_end_idx, end_exclusive=True),
+            "train_start_abs_idx": train_start_abs_idx,
+            "train_end_abs_idx": train_end_abs_idx,
+            "oos_start_abs_idx": oos_start_abs_idx,
+            "oos_end_abs_idx": oos_end_abs_idx,
+            "train_start_date": _window_date(index, train_start_idx, position_offset=index_offset),
+            "train_end_date": _window_date(index, train_end_idx, end_exclusive=True, position_offset=index_offset),
+            "oos_start_date": _window_date(index, oos_start_idx, position_offset=index_offset),
+            "oos_end_date": _window_date(index, oos_end_idx, end_exclusive=True, position_offset=index_offset),
             "is_return": round(w.is_return, 6),
             "oos_return": round(w.oos_return, 6),
             "oos_sharpe": round(getattr(w, 'oos_sharpe', 0.0), 4),
@@ -315,6 +349,7 @@ def _build_fragility_json(
     er = result.engine_result
     if er is None or not er.windows or not pool:
         return None
+    index_offset = _result_index_offset(result)
     horizon_bars = int(HORIZON_SPECS[result.horizon].reference_forward_days)
     details: list[dict[str, Any]] = []
     for w in er.windows:
@@ -322,6 +357,8 @@ def _build_fragility_json(
         if winner is None:
             details.append({"fold_id": w.window.index, "class": "unavailable", "reason": "winner_missing"})
             continue
+        oos_start_abs_idx = index_offset + int(w.window.oos_start)
+        oos_end_abs_idx = index_offset + int(w.window.oos_end)
         metrics: list[float] = []
         metric_winner: float | None = None
         for neighbor in _local_neighbors(pool, winner):
@@ -331,8 +368,8 @@ def _build_fragility_json(
                 volume=volume,
                 high=high,
                 low=low,
-                start=int(w.window.oos_start),
-                end=int(w.window.oos_end),
+                start=oos_start_abs_idx,
+                end=oos_end_abs_idx,
                 horizon_bars=horizon_bars,
             )
             if metric is None:
@@ -354,8 +391,15 @@ def _build_fragility_json(
                 "ci_lower": round(float(ci_lo), 6) if np.isfinite(ci_lo) else None,
                 "ci_upper": round(float(ci_hi), 6) if np.isfinite(ci_hi) else None,
                 "class": klass,
-                "oos_start_date": _window_date(index, int(w.window.oos_start)),
-                "oos_end_date": _window_date(index, int(w.window.oos_end), end_exclusive=True),
+                "oos_start_abs_idx": oos_start_abs_idx,
+                "oos_end_abs_idx": oos_end_abs_idx,
+                "oos_start_date": _window_date(index, int(w.window.oos_start), position_offset=index_offset),
+                "oos_end_date": _window_date(
+                    index,
+                    int(w.window.oos_end),
+                    end_exclusive=True,
+                    position_offset=index_offset,
+                ),
             }
         )
     return {
@@ -363,6 +407,44 @@ def _build_fragility_json(
         "fold_count": len([d for d in details if d.get("class") in {"stable", "mixed", "severe"}]),
         "details": details,
     }
+
+
+def _iso_date_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    try:
+        if hasattr(value, "isoformat"):
+            return str(value.isoformat())[:10]
+        return str(value)[:10]
+    except Exception:
+        return None
+
+
+def _fold_coverage_metadata(
+    *,
+    folds_json: list[dict] | None,
+    index: Any,
+    data_as_of: Any,
+) -> dict[str, Any]:
+    metadata: dict[str, Any] = {}
+    data_as_of_text = _iso_date_text(data_as_of)
+    if data_as_of_text:
+        metadata["data_as_of"] = data_as_of_text
+    if not folds_json:
+        return metadata
+
+    last_fold = folds_json[-1]
+    last_oos_end_abs_idx = last_fold.get("oos_end_abs_idx")
+    if isinstance(last_oos_end_abs_idx, int):
+        metadata["last_oos_end_abs_idx"] = last_oos_end_abs_idx
+        if index is not None:
+            metadata["unused_tail_bars"] = max(0, len(index) - last_oos_end_abs_idx)
+
+    if last_fold.get("oos_end_date") is not None:
+        metadata["last_oos_end_date"] = last_fold.get("oos_end_date")
+    if last_fold.get("oos_start_date") is not None:
+        metadata["last_oos_start_date"] = last_fold.get("oos_start_date")
+    return metadata
 
 
 def _build_config_json(
@@ -373,6 +455,9 @@ def _build_config_json(
     overrides: dict,
     result=None,
     families: list[str] | None = None,
+    folds_json: list[dict] | None = None,
+    index: Any = None,
+    data_as_of: Any = None,
 ) -> dict:
     """Build the config context dict for storage."""
     from core.quant_core.signal_engine.domain import HORIZON_PARAMS, CATEGORY_FAMILIES
@@ -398,6 +483,7 @@ def _build_config_json(
     payload.update(diagnostics)
     if config_used:
         payload.update(config_used)
+    payload.update(_fold_coverage_metadata(folds_json=folds_json, index=index, data_as_of=data_as_of))
     return payload
 
 
@@ -417,6 +503,7 @@ def run_wfo_for_symbol_horizon(
     4. Upsert results into DB
     """
     overrides = overrides or {}
+    variant = signal_mode_storage_name(variant)
     families_map = VARIANT_FAMILIES.get(variant, VARIANT_FAMILIES["expanded"])
     logger.info("WFO signal: %s / %s / %s (overrides=%s)", symbol, horizon, variant, overrides)
 
@@ -517,6 +604,9 @@ def run_wfo_for_symbol_horizon(
                 overrides,
                 result=result,
                 families=cat_families,
+                folds_json=folds_json,
+                index=ohlcv.index,
+                data_as_of=data_as_of,
             )
 
             _upsert_summary(
@@ -566,6 +656,14 @@ def refresh_wfo_for_symbol_horizon(
     variant: str = "expanded",
 ) -> dict[str, Any]:
     """Refresh WFO current signals from persisted representatives only."""
+    mode = resolve_signal_mode(variant)
+    variant = mode.name
+    if mode.is_factor_x_ta:
+        from services.worker.tasks.wfo_factor_x_ta_batch import compute_wfo_factor_x_ta_for_symbol
+
+        result = compute_wfo_factor_x_ta_for_symbol(symbol, horizon, variant=variant)
+        result["mode"] = "factor_x_ta_dedicated"
+        return result
     db: Session = SessionLocal()
     started = time.monotonic()
     refreshed = 0
@@ -608,11 +706,13 @@ def refresh_wfo_for_symbol_horizon(
         low = _col("low")
         data_as_of = ohlcv.index[-1].date() if len(ohlcv) > 0 else None
 
-        rows = (
-            db.query(WfoSignalSummary)
-            .filter_by(symbol=symbol, horizon=horizon, variant=variant)
-            .all()
-        )
+        rows = []
+        for read_variant in signal_mode_read_names(variant):
+            rows.extend(
+                db.query(WfoSignalSummary)
+                .filter_by(symbol=symbol, horizon=horizon, variant=read_variant)
+                .all()
+            )
         if not rows:
             logger.info(
                 "WFO refresh: no persisted categories for %s/%s/%s, falling back to full compute",

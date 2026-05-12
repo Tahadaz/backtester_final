@@ -16,6 +16,7 @@
 | 04 | [04-leaderboard-top-signaux.md](04-leaderboard-top-signaux.md) | **Top signaux** subtab: full methodology — Spearman IC, Newey-West t-stat, leaderboard ranking |
 | 05 | [05-category-combinations-and-monotonicity.md](05-category-combinations-and-monotonicity.md) | Category-combinations panel: monotonicity score Δ, subset enumeration, interpretation |
 | 06 | [06-methodology-and-sources.md](06-methodology-and-sources.md) | Academic citations, URLs, recommended reading |
+| 07 | [07-ui-goals-and-design.md](07-ui-goals-and-design.md) | Analytics page product/UI contract, design reference, current ownership, states, and tab responsibilities |
 
 ---
 

@@ -2,30 +2,52 @@
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from core.quant_core.horizons import canonical_horizon
+from core.quant_core.signal_engine.modes import accepted_signal_mode_pattern
+
+SIGNAL_MODE_PATTERN = accepted_signal_mode_pattern()
+BASE_SIGNAL_FAMILIES = (
+    "sma|ema|ema_cross|ichimoku|psar|macd|roc|trix|adx|tsi|rsi|stochastic|cci|mfi|uo|obv|cmf|ad|vwap|fi"
+)
+COMBO_SIGNAL_FAMILIES = (
+    "legacy_ta_combo_tendance|legacy_ta_combo_momentum|legacy_ta_combo_oscillation|legacy_ta_combo_volume|"
+    "expanded_ta_combo_tendance|expanded_ta_combo_momentum|expanded_ta_combo_oscillation|expanded_ta_combo_volume|"
+    "legacy_fx_combo_tendance|legacy_fx_combo_momentum|legacy_fx_combo_oscillation|legacy_fx_combo_volume|"
+    "expanded_fx_combo_tendance|expanded_fx_combo_momentum|expanded_fx_combo_oscillation|expanded_fx_combo_volume"
+)
+SIGNAL_FAMILY_PATTERN = f"^({BASE_SIGNAL_FAMILIES}|{COMBO_SIGNAL_FAMILIES})$"
 
 
-class SmaEnsembleRequest(BaseModel):
+class StrategySignalRequestBase(BaseModel):
+    @field_validator("horizon", mode="before", check_fields=False)
+    @classmethod
+    def _canonicalize_horizon(cls, value: Any) -> str:
+        return canonical_horizon(str(value), allow_legacy=True)
+
+
+class SmaEnsembleRequest(StrategySignalRequestBase):
     symbol: str = Field(..., min_length=1)
-    horizon: str = Field(default="medium", pattern=r"^(short|medium|long)$")
+    horizon: str = Field(default="monthly", pattern=r"^(weekly|monthly|quarterly)$")
     timeframe: str = Field(default="1D", min_length=1)
     cost_bps: float = Field(default=10.0, ge=0, le=100)
     cooldown_bars: int = Field(default=0, ge=0)
 
 
-class FamilyEnsembleRequest(BaseModel):
-    family: str = Field(..., pattern=r"^(sma|ema|ema_cross|ichimoku|psar|macd|roc|trix|adx|tsi|rsi|stochastic|cci|mfi|uo|obv|cmf|ad|vwap|fi)$")
+class FamilyEnsembleRequest(StrategySignalRequestBase):
+    family: str = Field(..., pattern=SIGNAL_FAMILY_PATTERN)
     symbol: str = Field(..., min_length=1)
-    horizon: str = Field(default="medium", pattern=r"^(short|medium|long)$")
+    horizon: str = Field(default="monthly", pattern=r"^(weekly|monthly|quarterly)$")
     timeframe: str = Field(default="1D", min_length=1)
-    variant: str = Field(default="expanded", pattern=r"^(legacy|expanded|factor_x_ta)$")
+    variant: str = Field(default="expanded", pattern=SIGNAL_MODE_PATTERN)
     cost_bps: float = Field(default=10.0, ge=0, le=100)
     cooldown_bars: int = Field(default=0, ge=0)
 
 
-class SupportResistanceRequest(BaseModel):
+class SupportResistanceRequest(StrategySignalRequestBase):
     symbol: str = Field(..., min_length=1)
-    horizon: str = Field(default="medium", pattern=r"^(short|medium|long)$")
+    horizon: str = Field(default="monthly", pattern=r"^(weekly|monthly|quarterly)$")
     timeframe: str = Field(default="1D", min_length=1)
     cost_bps: float = Field(default=10.0, ge=0, le=100)
     cooldown_bars: int = Field(default=0, ge=0)
@@ -42,57 +64,59 @@ class SupportResistanceVariantRequest(SupportResistanceRequest):
     variant_id: str = Field(..., min_length=1)
 
 
-class VariantDetailRequest(BaseModel):
+class VariantDetailRequest(StrategySignalRequestBase):
     symbol: str = Field(..., min_length=1)
-    horizon: str = Field(default="medium", pattern=r"^(short|medium|long)$")
+    horizon: str = Field(default="monthly", pattern=r"^(weekly|monthly|quarterly)$")
     timeframe: str = Field(default="1D", min_length=1)
-    variant: str = Field(default="expanded", pattern=r"^(legacy|expanded|factor_x_ta)$")
+    variant: str = Field(default="expanded", pattern=SIGNAL_MODE_PATTERN)
     variant_id: str = Field(..., min_length=1)
     cost_bps: float = Field(default=10.0, ge=0, le=100)
     cooldown_bars: int = Field(default=0, ge=0)
 
 
-class VariantBacktestRequest(BaseModel):
+class VariantBacktestRequest(StrategySignalRequestBase):
     symbol: str = Field(..., min_length=1)
     variant_id: str = Field(..., min_length=1)
-    horizon: str = Field(default="medium", pattern=r"^(short|medium|long)$")
+    horizon: str = Field(default="monthly", pattern=r"^(weekly|monthly|quarterly)$")
     timeframe: str = Field(default="1D", min_length=1)
-    variant: str = Field(default="expanded", pattern=r"^(legacy|expanded|factor_x_ta)$")
+    variant: str = Field(default="expanded", pattern=SIGNAL_MODE_PATTERN)
     cost_bps: float = Field(default=10.0, ge=0, le=100)
     cooldown_bars: int = Field(default=0, ge=0)
+    trade_cooldown_bars: int = Field(default=0, ge=0, le=252)
+    mc_config: dict[str, Any] | None = None
 
 
-class BatchScoresRequest(BaseModel):
+class BatchScoresRequest(StrategySignalRequestBase):
     symbols: list[str] = Field(..., min_length=1)
-    horizon: str = Field(default="medium", pattern=r"^(short|medium|long)$")
+    horizon: str = Field(default="monthly", pattern=r"^(weekly|monthly|quarterly)$")
     timeframe: str = Field(default="1D", min_length=1)
-    variant: str = Field(default="expanded", pattern=r"^(legacy|expanded|factor_x_ta)$")
+    variant: str = Field(default="expanded", pattern=SIGNAL_MODE_PATTERN)
     cost_bps: float = Field(default=10.0, ge=0, le=100)
     cooldown_bars: int = Field(default=0, ge=0)
 
 
-class PersistedSignalEngineSummariesRequest(BaseModel):
+class PersistedSignalEngineSummariesRequest(StrategySignalRequestBase):
     symbols: list[str] = Field(..., min_length=1)
-    horizon: str = Field(default="medium", pattern=r"^(short|medium|long)$")
-    variant: str = Field(default="expanded", pattern=r"^(legacy|expanded|factor_x_ta)$")
+    horizon: str = Field(default="monthly", pattern=r"^(weekly|monthly|quarterly)$")
+    variant: str = Field(default="expanded", pattern=SIGNAL_MODE_PATTERN)
     timeframe: str = Field(default="1D", min_length=1)
 
 
-class RegimeConsensusRequest(BaseModel):
+class RegimeConsensusRequest(StrategySignalRequestBase):
     symbol: str = Field(..., min_length=1)
-    horizon: str = Field(default="medium", pattern=r"^(short|medium|long)$")
+    horizon: str = Field(default="monthly", pattern=r"^(weekly|monthly|quarterly)$")
     timeframe: str = Field(default="1D", min_length=1)
-    variant: str = Field(default="expanded", pattern=r"^(legacy|expanded|factor_x_ta)$")
+    variant: str = Field(default="expanded", pattern=SIGNAL_MODE_PATTERN)
     cost_bps: float = Field(default=10.0, ge=0, le=100)
     cooldown_bars: int = Field(default=0, ge=0)
 
 
-class SignalZoneChartRequest(BaseModel):
+class SignalZoneChartRequest(StrategySignalRequestBase):
     symbol: str = Field(..., min_length=1)
-    horizon: str = Field(default="medium", pattern=r"^(short|medium|long)$")
+    horizon: str = Field(default="monthly", pattern=r"^(weekly|monthly|quarterly)$")
     timeframe: str = Field(default="1D", min_length=1)
     enabled_families: list[str] = Field(default=["sma", "rsi", "macd", "obv"])
-    variant: str = Field(default="expanded", pattern=r"^(legacy|expanded|factor_x_ta)$")
+    variant: str = Field(default="expanded", pattern=SIGNAL_MODE_PATTERN)
     cost_bps: float = Field(default=10.0, ge=0, le=100)
     cooldown_bars: int = Field(default=0, ge=0)
     family_history_mode: str = Field(default="static_current_reps", pattern=r"^(static_current_reps|dynamic_point_in_time)$")

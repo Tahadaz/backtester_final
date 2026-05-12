@@ -8,7 +8,9 @@ import uuid
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
+from core.quant_core.horizons import canonical_horizon
 from core.quant_core.signal_engine.domain import ALL_FAMILIES, VARIANT_FAMILIES
+from core.quant_core.signal_engine.modes import resolve_signal_mode, signal_mode_storage_name
 from services.api.app.models import SignalEngineBatchJob
 from services.api.app.services.weekly_recompute_policy import iter_signal_engine_weekly_stale_tuples
 from services.api.app.services.signal_engine_persistence import (
@@ -25,6 +27,15 @@ from services.worker.redis_utils import connect_redis_with_fallback
 logger = logging.getLogger(__name__)
 
 HORIZONS = ("weekly", "monthly", "quarterly")
+
+
+def _require_canonical_signal_horizon(horizon: str) -> str:
+    try:
+        return canonical_horizon(horizon, allow_legacy=False)
+    except ValueError as exc:
+        raise ValueError(
+            f"Signal Engine requires canonical horizon weekly/monthly/quarterly; got {horizon!r}"
+        ) from exc
 
 
 def _active_symbols(db: Session) -> list[str]:
@@ -56,6 +67,7 @@ def _resolve_batch_id_from_rq_meta() -> str | None:
 
 
 def _families_for_variant(variant: str) -> list[str]:
+    variant = signal_mode_storage_name(variant)
     fams = [
         family
         for cat_families in VARIANT_FAMILIES.get(variant, VARIANT_FAMILIES["expanded"]).values()
@@ -96,6 +108,7 @@ def enqueue_signal_engine_for_symbol(
 ) -> str:
     """Enqueue a full signal-engine compute for one tuple and persist a pending row."""
     from rq import Queue
+    horizon = _require_canonical_signal_horizon(horizon)
 
     redis = connect_redis_with_fallback(settings.REDIS_URL, decode_responses=False, logger=logger)
     q = Queue(settings.SIGNAL_ENGINE_QUEUE_NAME, connection=redis)
@@ -107,7 +120,7 @@ def enqueue_signal_engine_for_symbol(
         symbol,
         horizon,
         variant,
-        job_timeout=1800,
+        job_timeout=7200,
         meta=meta,
     )
 
@@ -141,6 +154,7 @@ def enqueue_signal_engine_refresh_for_symbol(
 ) -> str:
     """Enqueue representative-only refresh for one tuple and persist a pending row."""
     from rq import Queue
+    horizon = _require_canonical_signal_horizon(horizon)
 
     redis = connect_redis_with_fallback(settings.REDIS_URL, decode_responses=False, logger=logger)
     q = Queue(settings.SIGNAL_ENGINE_QUEUE_NAME, connection=redis)
@@ -152,7 +166,7 @@ def enqueue_signal_engine_refresh_for_symbol(
         symbol,
         horizon,
         variant,
-        job_timeout=1800,
+        job_timeout=7200,
         meta=meta,
     )
 
@@ -183,11 +197,29 @@ def compute_signal_engine_for_symbol(
     variant: str = "expanded",
 ) -> dict:
     """RQ task wrapper around full persisted rebuild."""
-    if str(variant or "").strip().lower() == "factor_x_ta":
+    try:
+        horizon = _require_canonical_signal_horizon(horizon)
+    except ValueError as exc:
+        logger.error("Signal engine rejected non-canonical horizon for %s/%s/%s: %s", symbol, horizon, variant, exc)
+        return {
+            "symbol": symbol,
+            "horizon": horizon,
+            "variant": variant,
+            "status": "failed",
+            "completed": 0,
+            "failed": 1,
+            "elapsed": 0.0,
+            "mode": "full_rebuild",
+            "error": str(exc),
+        }
+
+    mode = resolve_signal_mode(variant)
+    variant = mode.name
+    if mode.is_factor_x_ta:
         from services.worker.tasks.factor_x_ta_batch import compute_factor_x_ta_for_symbol
 
-        result = compute_factor_x_ta_for_symbol(symbol, horizon)
-        result["variant"] = "factor_x_ta"
+        result = compute_factor_x_ta_for_symbol(symbol, horizon, variant=variant)
+        result["variant"] = variant
         result["mode"] = "factor_x_ta_dedicated"
         return result
 
@@ -273,11 +305,13 @@ def refresh_signal_engine_for_symbol(
     variant: str = "expanded",
 ) -> dict:
     """RQ task wrapper around representative-only refresh (with full fallback)."""
-    if str(variant or "").strip().lower() == "factor_x_ta":
+    mode = resolve_signal_mode(variant)
+    variant = mode.name
+    if mode.is_factor_x_ta:
         from services.worker.tasks.factor_x_ta_batch import compute_factor_x_ta_for_symbol
 
-        result = compute_factor_x_ta_for_symbol(symbol, horizon)
-        result["variant"] = "factor_x_ta"
+        result = compute_factor_x_ta_for_symbol(symbol, horizon, variant=variant)
+        result["variant"] = variant
         result["mode"] = "factor_x_ta_dedicated"
         return result
 

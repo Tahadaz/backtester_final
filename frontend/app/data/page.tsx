@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useMarketCatalog, useTrackedStocks, useMasiTickers, useMacroCatalog } from "@/hooks/use-api"
 import {
   ApiError,
@@ -42,18 +42,34 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { FileSpreadsheet, Globe, RefreshCw, Eye, CheckCircle2, Plus, Search, Download, Pencil } from "lucide-react"
+import { cn } from "@/lib/utils"
+import {
+  CheckCircle2,
+  Coins,
+  Download,
+  Eye,
+  FileSpreadsheet,
+  Globe,
+  Landmark,
+  Package,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Search,
+  TrendingUp,
+  type LucideIcon,
+} from "lucide-react"
 import { toast } from "sonner"
 
 type CategoryTab = "equity" | "commodity" | "forex" | "bond" | "crypto"
 type SubcategoryTab = "all" | "masi" | "us" | "european" | "asian"
 
-const CATEGORY_TABS: { key: CategoryTab; label: string }[] = [
-  { key: "equity", label: "Actions" },
-  { key: "commodity", label: "Matières premières" },
-  { key: "forex", label: "Devises" },
-  { key: "bond", label: "Obligations" },
-  { key: "crypto", label: "Crypto" },
+const CATEGORY_TABS: { key: CategoryTab; label: string; icon: LucideIcon }[] = [
+  { key: "equity", label: "Actions", icon: TrendingUp },
+  { key: "commodity", label: "Matieres premieres", icon: Package },
+  { key: "forex", label: "Devises", icon: Globe },
+  { key: "bond", label: "Obligations", icon: Landmark },
+  { key: "crypto", label: "Crypto", icon: Coins },
 ]
 
 const SUBCATEGORY_TABS: { key: SubcategoryTab; label: string }[] = [
@@ -62,6 +78,29 @@ const SUBCATEGORY_TABS: { key: SubcategoryTab; label: string }[] = [
   { key: "us", label: "US" },
   { key: "european", label: "Europe" },
   { key: "asian", label: "Asie" },
+]
+
+const MASI20_SYMBOLS = [
+  "ADH",
+  "ADI",
+  "AKT",
+  "ATW",
+  "BCP",
+  "BOA",
+  "CDM",
+  "CFG",
+  "CMA",
+  "CMG",
+  "CSR",
+  "IAM",
+  "JET",
+  "LBV",
+  "LHM",
+  "MSA",
+  "RDS",
+  "SID",
+  "TGC",
+  "TQM",
 ]
 
 const isPublicDashboardOnly = process.env.NEXT_PUBLIC_DASHBOARD_PUBLIC_ONLY === "true"
@@ -83,6 +122,72 @@ function isHiddenOnDataPage(symbol?: string | null, displayName?: string | null)
   )
 }
 
+function formatCount(value: number | null | undefined) {
+  return value == null ? "-" : value.toLocaleString("fr-FR")
+}
+
+function dateOnly(value: string | null | undefined) {
+  return value ? value.slice(0, 10) : null
+}
+
+function getCategoryLabel(tab: CategoryTab | string | null | undefined) {
+  switch (tab) {
+    case "equity":
+      return "Actions"
+    case "commodity":
+      return "Matieres premieres"
+    case "forex":
+      return "Devises"
+    case "bond":
+      return "Obligations"
+    case "crypto":
+      return "Crypto"
+    default:
+      return tab || "Autre"
+  }
+}
+
+function getSubcategoryLabel(tab: SubcategoryTab | string | null | undefined) {
+  switch (tab) {
+    case "all":
+      return "Tous"
+    case "masi":
+      return "MASI"
+    case "us":
+      return "US"
+    case "european":
+      return "Europe"
+    case "asian":
+      return "Asie"
+    default:
+      return tab || "Tous"
+  }
+}
+
+function getSourceLabel(row: MarketCatalogRow) {
+  if (row.source_provider === "bmce_excel") return "Excel"
+  if (row.source_provider === "yahoo" || row.track_source === "yahoo") return "Yahoo"
+  if (row.source_provider === "bourse_direct" || row.track_source === "bourse_direct") return "Bourse"
+  if (row.source_provider) return row.source_provider
+  return "-"
+}
+
+function rowMatchesQuery(row: MarketCatalogRow, query: string) {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  return [
+    row.symbol,
+    row.isin,
+    row.display_name,
+    row.sector,
+    row.notes,
+    row.asset_type,
+    row.market_region,
+    row.source_provider,
+    row.track_source,
+  ].some((value) => (value ?? "").toLowerCase().includes(q))
+}
+
 function PrivateDataPage() {
   const { data: catalog, error: catalogError, isLoading, mutate: mutateCatalog } = useMarketCatalog()
   const { mutate: mutateTracked } = useTrackedStocks()
@@ -96,10 +201,12 @@ function PrivateDataPage() {
   const [uploadOpen, setUploadOpen] = useState(false)
   const [addStockOpen, setAddStockOpen] = useState(false)
   const [addFactorOpen, setAddFactorOpen] = useState(false)
+  const [downloadOpen, setDownloadOpen] = useState(false)
   const [activeRefreshId, setActiveRefreshId] = useState<string | null>(null)
   const [refreshingAll, setRefreshingAll] = useState(false)
   const [refreshingSymbol, setRefreshingSymbol] = useState<string | null>(null)
   const [isDownloading, setIsDownloading] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
 
   const visibleCatalog = useMemo(
     () =>
@@ -133,12 +240,16 @@ function PrivateDataPage() {
     return counts
   }, [visibleCatalog])
 
-  // Rows for active category + subcategory
-  const filteredRows = useMemo(() => {
+  const activeRows = useMemo(() => {
     const byType = visibleCatalog.filter((r) => (r.asset_type ?? "equity") === categoryTab)
     if (subcategoryTab === "all") return byType
     return byType.filter((r) => r.market_region === subcategoryTab)
   }, [visibleCatalog, categoryTab, subcategoryTab])
+
+  const filteredRows = useMemo(
+    () => activeRows.filter((row) => rowMatchesQuery(row, searchQuery)),
+    [activeRows, searchQuery],
+  )
 
   const subcategoryCounts = useMemo(() => {
     if (categoryTab !== "equity") return {}
@@ -166,12 +277,18 @@ function PrivateDataPage() {
     return isYahooRow(row) && (macroFactorSet.has(row.symbol) || row.asset_type !== "equity")
   }
 
-  async function handleDownloadExcel() {
+  async function handleDownloadExcel(symbols?: string[], preset?: string) {
     setIsDownloading(true)
     try {
       const params = new URLSearchParams()
-      params.set("asset_type", categoryTab)
-      if (subcategoryTab !== "all") params.set("market_region", subcategoryTab)
+      const selectedSymbols = (symbols ?? []).map((symbol) => symbol.trim().toUpperCase()).filter(Boolean)
+      if (selectedSymbols.length > 0) {
+        for (const symbol of selectedSymbols) params.append("symbols", symbol)
+        if (preset) params.set("preset", preset)
+      } else {
+        params.set("asset_type", categoryTab)
+        if (subcategoryTab !== "all") params.set("market_region", subcategoryTab)
+      }
       const qs = params.toString()
       const res = await fetch(`/api/market-data/download-excel${qs ? `?${qs}` : ""}`)
       if (!res.ok) throw new Error("Download failed")
@@ -179,10 +296,14 @@ function PrivateDataPage() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
-      const parts = [categoryTab, subcategoryTab !== "all" ? subcategoryTab : ""]
+      const parts =
+        selectedSymbols.length > 0
+          ? [preset === "masi20" ? "masi20" : "selected"]
+          : [categoryTab, subcategoryTab !== "all" ? subcategoryTab : ""]
       a.download = `${parts.filter(Boolean).join("-")}-data.xlsx`
       a.click()
       URL.revokeObjectURL(url)
+      setDownloadOpen(false)
     } catch {
       toast.error("Echec du telechargement Excel")
     } finally {
@@ -270,104 +391,101 @@ function PrivateDataPage() {
     }
   }
 
-  const isIndicesTab = false
-  const countWithData = filteredRows.filter((r) => r.has_canonical_data).length
-
-  function getCategoryLabel(tab: CategoryTab) {
-    switch (tab) {
-      case "equity": return "Actions"
-      case "commodity": return "Matières premières"
-      case "forex": return "Devises"
-      case "bond": return "Obligations"
-      case "crypto": return "Crypto"
-      default: return tab
-    }
-  }
+  const countWithData = activeRows.filter((r) => r.has_canonical_data).length
+  const filteredCountWithData = filteredRows.filter((r) => r.has_canonical_data).length
+  const totalBars = activeRows.reduce((sum, row) => sum + (row.row_count ?? 0), 0)
+  const staleCount = activeRows.filter((row) => row.is_stale).length
+  const neverIngestedCount = activeRows.filter((row) => !row.has_canonical_data).length
+  const freshCount = activeRows.length - staleCount - neverIngestedCount
+  const firstBarDate =
+    activeRows
+      .map((row) => dateOnly(row.start_ts))
+      .filter((value): value is string => Boolean(value))
+      .sort()[0] ?? null
+  const latestDataDate =
+    activeRows
+      .map((row) => dateOnly(row.data_as_of ?? row.end_ts))
+      .filter((value): value is string => Boolean(value))
+      .sort()
+      .at(-1) ?? null
+  const activeScopeLabel =
+    categoryTab === "equity" && subcategoryTab !== "all"
+      ? `${getCategoryLabel(categoryTab)} / ${getSubcategoryLabel(subcategoryTab)}`
+      : getCategoryLabel(categoryTab)
+  const defaultDownloadSymbols = useMemo(
+    () => filteredRows.map((row) => row.symbol),
+    [filteredRows],
+  )
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="claude-page space-y-4">
+      <div className="claude-page-h flex-col items-start sm:flex-row sm:items-end">
         <div>
           <h1 className="text-xl font-bold tracking-tight">Donnees de marche</h1>
           <p className="text-sm text-muted-foreground">
             Univers canonique pour les imports Excel et les mises a jour Bourse.
           </p>
         </div>
-        {!isIndicesTab && (
-          <div className="flex items-center gap-2">
-            {categoryTab === "equity" && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5"
-                onClick={() => setAddStockOpen(true)}
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Ajouter un titre
-              </Button>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5 border-purple-600 text-purple-700 hover:bg-purple-50 hover:text-purple-800"
-              onClick={() => setAddFactorOpen(true)}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Ajouter un facteur
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5 border-green-600 text-green-700 hover:bg-green-50 hover:text-green-800"
-              onClick={() => setUploadOpen(true)}
-            >
-              <FileSpreadsheet className="h-3.5 w-3.5" />
-              Importer Excel
-            </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {categoryTab === "equity" && (
             <Button
               variant="outline"
               size="sm"
               className="gap-1.5"
-              onClick={handleDownloadExcel}
-              disabled={isDownloading}
+              onClick={() => setAddStockOpen(true)}
             >
-              <Download className={`h-3.5 w-3.5 ${isDownloading ? "animate-pulse" : ""}`} />
-              {isDownloading ? "Telechargement..." : `Telecharger (${getCategoryLabel(categoryTab)}${subcategoryTab !== "all" ? ` / ${subcategoryTab.toUpperCase()}` : ""})`}
+              <Plus className="h-3.5 w-3.5" />
+              Ajouter un titre
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5 border-blue-600 text-blue-700 hover:bg-blue-50 hover:text-blue-800"
-              onClick={handleRefreshAll}
-              disabled={refreshingAll}
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${refreshingAll ? "animate-spin" : ""}`} />
-              Mettre à jour
-            </Button>
-          </div>
-        )}
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 border-purple-600 text-purple-700 hover:bg-purple-50 hover:text-purple-800"
+            onClick={() => setAddFactorOpen(true)}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Ajouter un facteur
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 border-green-600 text-green-700 hover:bg-green-50 hover:text-green-800"
+            onClick={() => setUploadOpen(true)}
+          >
+            <FileSpreadsheet className="h-3.5 w-3.5" />
+            Importer Excel
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => setDownloadOpen(true)}
+            disabled={isDownloading}
+          >
+            <Download className={`h-3.5 w-3.5 ${isDownloading ? "animate-pulse" : ""}`} />
+            {isDownloading ? "Telechargement..." : "Telecharger"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 border-blue-600 text-blue-700 hover:bg-blue-50 hover:text-blue-800"
+            onClick={handleRefreshAll}
+            disabled={refreshingAll}
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshingAll ? "animate-spin" : ""}`} />
+            Mettre a jour
+          </Button>
+        </div>
       </div>
 
       {activeRefreshId && <RefreshStatusBar refreshRunId={activeRefreshId} />}
 
-      <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1">
-          <FileSpreadsheet className="h-3 w-3 text-green-600" />
-          Importer un fichier Excel
-        </span>
-        <span className="text-border">&middot;</span>
-        <span className="flex items-center gap-1">
-          <RefreshCw className="h-3 w-3 text-blue-600" />
-          Mettre a jour via Bourse de Casablanca
-        </span>
-        <span className="text-border">&middot;</span>
-        <span>Cliquer sur une ligne ouvre le graphique et le calendrier.</span>
-      </div>
-
       {/* Level 1 — Category tabs */}
-      <div className="flex gap-1 border-b">
+      <div className="inline-flex w-fit max-w-full flex-wrap gap-1 rounded-md border border-line bg-bg2 p-1">
         {CATEGORY_TABS.map((t) => {
           const count = categoryCounts[t.key] ?? 0
+          const Icon = t.icon
           return (
             <button
               key={t.key}
@@ -375,13 +493,14 @@ function PrivateDataPage() {
                 setCategoryTab(t.key)
                 setSubcategoryTab("all")
               }}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                categoryTab === t.key
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
+              className={cn(
+                "inline-flex h-8 items-center gap-1.5 rounded-[6px] px-3 text-sm font-medium text-fg2 transition-colors hover:text-fg1",
+                categoryTab === t.key && "bg-card text-fg1 shadow-xs",
+              )}
             >
-              {t.label}{count > 0 ? ` (${count})` : ""}
+              <Icon className="h-3.5 w-3.5" />
+              <span>{t.label}</span>
+              {count > 0 && <span className="font-mono text-[11px] text-fg3">{count}</span>}
             </button>
           )
         })}
@@ -389,20 +508,20 @@ function PrivateDataPage() {
 
       {/* Level 2 — Subcategory tabs (equity only) */}
       {categoryTab === "equity" && (
-        <div className="flex gap-1 border-b border-dashed">
+        <div className="flex gap-0.5 border-b border-dashed border-line">
           {SUBCATEGORY_TABS.map((t) => {
             const count = subcategoryCounts[t.key] ?? 0
             return (
               <button
                 key={t.key}
                 onClick={() => setSubcategoryTab(t.key)}
-                className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors ${
-                  subcategoryTab === t.key
-                    ? "border-primary text-primary"
-                    : "border-transparent text-muted-foreground hover:text-foreground"
-                }`}
+                className={cn(
+                  "-mb-px border-b-2 border-transparent px-3 py-2 text-xs font-medium text-fg2 transition-colors hover:text-fg1",
+                  subcategoryTab === t.key && "border-primary text-fg1",
+                )}
               >
-                {t.label}{t.key !== "all" ? ` (${count})` : ""}
+                {t.label}
+                {t.key !== "all" && <span className="ml-1 font-mono text-[10px] text-fg3">{count}</span>}
               </button>
             )
           })}
@@ -412,8 +531,70 @@ function PrivateDataPage() {
       {/* Indices data page content — kept for reference, tab no longer shown */}
       {/* IndicesTabContent removed: indices now surface in Actions/MASI subtab */}
 
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="claude-stat primary">
+          <div className="lbl">Symbols</div>
+          <div className="val">{formatCount(activeRows.length)}</div>
+          <div className="sub">{activeScopeLabel}</div>
+        </div>
+        <div className="claude-stat">
+          <div className="lbl">Daily bars</div>
+          <div className="val">{formatCount(totalBars)}</div>
+          <div className="sub">{firstBarDate ? `depuis ${firstBarDate}` : "aucun historique"}</div>
+        </div>
+        <div className="claude-stat">
+          <div className="lbl">Avec donnees</div>
+          <div className="val">
+            {activeRows.length > 0 ? `${Math.round((countWithData / activeRows.length) * 100)}%` : "-"}
+          </div>
+          <div className="sub">
+            {formatCount(countWithData)} / {formatCount(activeRows.length)} instruments
+          </div>
+        </div>
+        <div className="claude-stat">
+          <div className="lbl">Dernier bar</div>
+          <div className="val">{latestDataDate ?? "-"}</div>
+          <div className="sub">
+            {staleCount > 0 || neverIngestedCount > 0
+              ? `${formatCount(staleCount)} stale / ${formatCount(neverIngestedCount)} sans data`
+              : "catalogue a jour"}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex h-8 min-w-[240px] max-w-sm flex-1 items-center gap-2 rounded-md border border-line bg-card px-2.5 text-sm text-fg2">
+          <Search className="h-3.5 w-3.5 text-fg3" />
+          <input
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Rechercher un ticker, ISIN, nom, secteur..."
+            className="min-w-0 flex-1 bg-transparent text-sm text-fg1 outline-none placeholder:text-fg3"
+          />
+        </label>
+        <span className="claude-chip">
+          <span className="dot" />
+          Categorie - {getCategoryLabel(categoryTab)}
+        </span>
+        {categoryTab === "equity" && (
+          <span className="claude-chip">
+            <span className="dot" />
+            Region - {getSubcategoryLabel(subcategoryTab)}
+          </span>
+        )}
+        <span className="claude-chip active">
+          <span className="dot" />
+          Actif uniquement
+        </span>
+        <span className="ml-auto font-mono text-[11px] text-fg3">
+          <span className="mr-1 inline-block h-2 w-2 rounded-full bg-success align-middle" />
+          {formatCount(freshCount)} / {formatCount(activeRows.length)} sync
+          {latestDataDate ? ` - ${latestDataDate}` : ""}
+        </span>
+      </div>
+
       {filteredRows.length >= 0 && (
-        <Card>
+        <Card className="claude-card">
           <CardHeader className="px-5 pb-3 pt-4">
             <CardTitle className="flex items-center gap-2 text-sm font-semibold">
               {getCategoryLabel(categoryTab)}
@@ -424,14 +605,14 @@ function PrivateDataPage() {
               )}
               {!isLoading && (
                 <span className="font-normal text-muted-foreground">
-                  ({countWithData} avec donnees
-                  {filteredRows.length > countWithData ? `, ${filteredRows.length - countWithData} sans` : ""}
+                  ({filteredCountWithData} avec donnees
+                  {filteredRows.length > filteredCountWithData ? `, ${filteredRows.length - filteredCountWithData} sans` : ""}
                   )
                 </span>
               )}
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-0 pb-2">
+          <CardContent className="!p-0">
             {isLoading ? (
               <div className="space-y-2 p-5">
                 {[...Array(6)].map((_, i) => (
@@ -463,24 +644,26 @@ function PrivateDataPage() {
               </div>
             ) : (
               <TooltipProvider delayDuration={300}>
-                <Table>
+                <Table className="claude-table">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-20">Ticker</TableHead>
+                      <TableHead className="hidden lg:table-cell">ISIN</TableHead>
                       <TableHead>Nom</TableHead>
                       <TableHead>Secteur</TableHead>
-                      <TableHead>Début</TableHead>
-                      <TableHead>Fin</TableHead>
-                      <TableHead className="hidden md:table-cell text-right">Barres</TableHead>
+                      <TableHead className="hidden text-right lg:table-cell">Premier bar</TableHead>
+                      <TableHead className="text-right">Dernier bar</TableHead>
+                      <TableHead className="hidden text-right md:table-cell">Barres</TableHead>
                       <TableHead className="hidden md:table-cell">Source</TableHead>
-                      <TableHead>Fraîcheur</TableHead>
+                      <TableHead>Statut</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredRows.map((row) => {
-                      const startDate = row.start_ts?.slice(0, 10) ?? null
-                      const endDate = row.end_ts?.slice(0, 10) ?? null
+                      const startDate = dateOnly(row.start_ts)
+                      const endDate = dateOnly(row.end_ts)
+                      const sourceLabel = getSourceLabel(row)
                       const isRefreshing = refreshingSymbol === row.symbol
                       const isWaitingForYahooCatalog = isYahooRow(row) && macroCatalog === undefined
                       const rowRefreshLabel = isYahooRow(row)
@@ -496,6 +679,10 @@ function PrivateDataPage() {
                         >
                           <TableCell className="font-mono font-semibold">{row.symbol}</TableCell>
 
+                          <TableCell className="hidden font-mono text-[11px] text-fg3 lg:table-cell">
+                            {row.isin ?? "-"}
+                          </TableCell>
+
                           <TableCell className="text-sm text-muted-foreground">
                             {row.display_name ?? "—"}
                           </TableCell>
@@ -504,40 +691,32 @@ function PrivateDataPage() {
                             {row.sector ?? "—"}
                           </TableCell>
 
-                          <TableCell className="text-xs text-muted-foreground">
+                          <TableCell className="hidden text-right text-xs text-muted-foreground lg:table-cell">
                             {startDate ?? "—"}
                           </TableCell>
 
-                          <TableCell className="text-xs text-muted-foreground">
+                          <TableCell className="text-right text-xs text-muted-foreground">
                             {endDate ?? "—"}
                           </TableCell>
 
                           <TableCell className="hidden text-right text-xs text-muted-foreground md:table-cell">
-                            {row.row_count?.toLocaleString() ?? "—"}
+                            {formatCount(row.row_count)}
                           </TableCell>
 
                           <TableCell className="hidden md:table-cell">
-                            {row.source_provider ? (
+                            {sourceLabel !== "-" ? (
                               <Badge variant="outline" className="gap-0.5 text-[10px]">
-                                {row.source_provider === "bmce_excel" ? (
-                                  <>
-                                    <FileSpreadsheet className="h-2.5 w-2.5 text-green-600" />
-                                    Excel
-                                  </>
-                                ) : row.source_provider === "yahoo" ? (
-                                  <>
-                                    <Globe className="h-2.5 w-2.5 text-purple-600" />
-                                    Yahoo
-                                  </>
+                                {sourceLabel === "Excel" ? (
+                                  <FileSpreadsheet className="h-2.5 w-2.5 text-green-600" />
+                                ) : sourceLabel === "Yahoo" ? (
+                                  <Globe className="h-2.5 w-2.5 text-purple-600" />
                                 ) : (
-                                  <>
-                                    <RefreshCw className="h-2.5 w-2.5 text-blue-600" />
-                                    {row.source_provider === "bourse_direct" ? "Bourse" : row.source_provider}
-                                  </>
+                                  <RefreshCw className="h-2.5 w-2.5 text-blue-600" />
                                 )}
+                                {sourceLabel}
                               </Badge>
                             ) : (
-                              <span className="text-xs text-muted-foreground">{"—"}</span>
+                              <span className="text-xs text-muted-foreground">-</span>
                             )}
                           </TableCell>
 
@@ -556,16 +735,15 @@ function PrivateDataPage() {
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <Button
-                                    variant="outline"
+                                    variant="ghost"
                                     size="sm"
-                                    className="h-7 gap-1 px-2 text-[11px]"
+                                    className="h-7 w-7 p-0 text-fg2 hover:bg-bg3 hover:text-fg1"
                                     onClick={(event) => {
                                       event.stopPropagation()
                                       setSelectedSymbol(row.symbol)
                                     }}
                                   >
                                     <Eye className="h-3.5 w-3.5" />
-                                    <span>Graphique</span>
                                   </Button>
                                 </TooltipTrigger>
                                 <TooltipContent>Graphique &amp; calendrier</TooltipContent>
@@ -660,6 +838,15 @@ function PrivateDataPage() {
             }}
           />
 
+          <DownloadSelectionDialog
+            open={downloadOpen}
+            onClose={() => setDownloadOpen(false)}
+            rows={activeRows}
+            isDownloading={isDownloading}
+            defaultSymbols={defaultDownloadSymbols}
+            onDownload={handleDownloadExcel}
+          />
+
           <AddFactorDialog
             open={addFactorOpen}
             onClose={() => setAddFactorOpen(false)}
@@ -702,6 +889,149 @@ export default function DataPage() {
 }
 
 /* ── Add Stock Dialog (MASI autocomplete) ─────────────────────────────────── */
+
+function DownloadSelectionDialog({
+  open,
+  onClose,
+  rows,
+  defaultSymbols,
+  isDownloading,
+  onDownload,
+}: {
+  open: boolean
+  onClose: () => void
+  rows: MarketCatalogRow[]
+  defaultSymbols: string[]
+  isDownloading: boolean
+  onDownload: (symbols: string[], preset?: string) => void
+}) {
+  const [selectedSymbols, setSelectedSymbols] = useState<string[]>([])
+  const downloadableRows = useMemo(
+    () => rows.filter((row) => row.has_canonical_data),
+    [rows],
+  )
+  const downloadableSet = useMemo(
+    () => new Set(downloadableRows.map((row) => row.symbol)),
+    [downloadableRows],
+  )
+  const selectedSet = useMemo(() => new Set(selectedSymbols), [selectedSymbols])
+  const masi20Available = useMemo(
+    () => MASI20_SYMBOLS.filter((symbol) => downloadableSet.has(symbol)),
+    [downloadableSet],
+  )
+
+  useEffect(() => {
+    if (!open) return
+    const initial = defaultSymbols.filter((symbol) => downloadableSet.has(symbol))
+    setSelectedSymbols(initial.length > 0 ? initial : downloadableRows.map((row) => row.symbol))
+  }, [defaultSymbols, downloadableRows, downloadableSet, open])
+
+  function toggleSymbol(symbol: string) {
+    setSelectedSymbols((current) =>
+      current.includes(symbol)
+        ? current.filter((item) => item !== symbol)
+        : [...current, symbol],
+    )
+  }
+
+  function selectAll() {
+    setSelectedSymbols(downloadableRows.map((row) => row.symbol))
+  }
+
+  function selectMasi20() {
+    setSelectedSymbols(masi20Available)
+  }
+
+  const isMasi20Selection =
+    selectedSymbols.length > 0 &&
+    selectedSymbols.length === masi20Available.length &&
+    selectedSymbols.every((symbol) => masi20Available.includes(symbol))
+
+  return (
+    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Telecharger les donnees</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={selectAll}>
+              Tout selectionner
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={selectMasi20}
+              disabled={masi20Available.length === 0}
+            >
+              Selection MASI 20
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedSymbols([])}>
+              Effacer
+            </Button>
+            <span className="ml-auto font-mono text-xs text-muted-foreground">
+              {selectedSymbols.length} / {downloadableRows.length}
+            </span>
+          </div>
+
+          <div className="max-h-80 overflow-y-auto rounded-md border border-line">
+            {downloadableRows.length === 0 ? (
+              <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                Aucun instrument telechargeable dans ce filtre.
+              </div>
+            ) : (
+              downloadableRows.map((row) => {
+                const checked = selectedSet.has(row.symbol)
+                return (
+                  <button
+                    key={row.symbol}
+                    type="button"
+                    onClick={() => toggleSymbol(row.symbol)}
+                    className={cn(
+                      "flex w-full items-center gap-3 border-b border-line px-3 py-2 text-left text-sm last:border-b-0 hover:bg-bg3",
+                      checked && "bg-primary/5",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "grid h-4 w-4 flex-none place-items-center rounded border border-line text-[10px]",
+                        checked && "border-primary bg-primary text-primary-foreground",
+                      )}
+                    >
+                      {checked ? "x" : ""}
+                    </span>
+                    <span className="w-14 flex-none font-mono font-semibold">{row.symbol}</span>
+                    <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                      {row.display_name ?? row.sector ?? "-"}
+                    </span>
+                    <span className="hidden font-mono text-xs text-fg3 sm:inline">
+                      {dateOnly(row.end_ts) ?? "-"}
+                    </span>
+                  </button>
+                )
+              })
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Annuler
+            </Button>
+            <Button
+              type="button"
+              onClick={() => onDownload(selectedSymbols, isMasi20Selection ? "masi20" : undefined)}
+              disabled={isDownloading || selectedSymbols.length === 0}
+            >
+              <Download className={`h-4 w-4 ${isDownloading ? "animate-pulse" : ""}`} />
+              {isDownloading ? "Telechargement..." : "Telecharger Excel"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
 
 function AddStockDialog({
   open,

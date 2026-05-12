@@ -4,8 +4,18 @@ from __future__ import annotations
 
 from typing import Callable
 
+from core.quant_core.horizons import canonical_horizon
+
 from ._hashing import compute_variant_id
-from .domain import HORIZON_PARAM_CAP, VALID_HORIZONS, VariantDef, cap_param_grid
+from .domain import (
+    CATEGORY_FAMILIES,
+    HORIZON_PARAM_CAP,
+    LEGACY_CATEGORY_FAMILIES,
+    VALID_HORIZONS,
+    VariantDef,
+    cap_param_grid,
+)
+from .ta_combo import COMBO_ARCHETYPE, make_combo_variant, primary_category_for_families, variant_from_component
 
 _CANDIDATE_GENERATORS: dict[str, Callable[[str], list[VariantDef]]] = {}
 
@@ -22,6 +32,7 @@ def register_family(family: str):
 
 def generate_candidates(family: str, horizon: str) -> list[VariantDef]:
     """Return the admissible candidate universe for *family* x *horizon*."""
+    horizon = canonical_horizon(horizon, allow_legacy=True)
     if horizon not in VALID_HORIZONS:
         raise ValueError(f"Unknown horizon {horizon!r}; expected one of {sorted(VALID_HORIZONS)}")
     gen = _CANDIDATE_GENERATORS.get(family)
@@ -35,6 +46,15 @@ def variant_min_history(variant: VariantDef) -> int:
     p = variant.params
     arch = variant.archetype
 
+    if arch == COMBO_ARCHETYPE and isinstance(p.get("components"), list):
+        components = [
+            variant_from_component(payload)
+            for payload in p.get("components", [])
+            if isinstance(payload, dict)
+        ]
+        if components:
+            return max(variant_min_history(component) for component in components)
+        return 1
     if arch == "price_vs_sma":
         return int(p["window"])
     if arch == "sma_cross":
@@ -562,6 +582,98 @@ def generate_fi_candidates(horizon: str) -> list[VariantDef]:
 # Phase 2 — factor-conditioned candidate generation
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# TA combo candidate generation
+# ---------------------------------------------------------------------------
+
+_COMBO_SEEDS_PER_FAMILY = 5
+_PURE_COMBO_FAMILY_PREFIXES: dict[str, dict[str, list[str]]] = {
+    "legacy_ta_combo": LEGACY_CATEGORY_FAMILIES,
+    "expanded_ta_combo": CATEGORY_FAMILIES,
+}
+
+
+def _select_evenly_spaced(items: list[VariantDef], limit: int = _COMBO_SEEDS_PER_FAMILY) -> list[VariantDef]:
+    if len(items) <= limit:
+        return list(items)
+    if limit <= 1:
+        return [items[0]]
+    indices: list[int] = []
+    for idx in range(limit):
+        raw = round(idx * (len(items) - 1) / (limit - 1))
+        if raw not in indices:
+            indices.append(raw)
+    return [items[idx] for idx in indices]
+
+
+def _combo_meta_for_family(family: str) -> tuple[str, str, dict[str, list[str]]] | None:
+    for prefix, category_map in _PURE_COMBO_FAMILY_PREFIXES.items():
+        marker = f"{prefix}_"
+        if family.startswith(marker):
+            category = family[len(marker):]
+            if category in CATEGORY_FAMILIES:
+                return prefix, category, category_map
+    return None
+
+
+def _generate_ta_combo_candidates_for_family(family: str, horizon: str) -> list[VariantDef]:
+    meta = _combo_meta_for_family(family)
+    if meta is None:
+        raise ValueError(f"Unknown TA combo family {family!r}")
+    _prefix, target_category, category_map = meta
+    family_to_category = {
+        base_family: category
+        for category, families in category_map.items()
+        for base_family in families
+    }
+    ordered_families = [
+        base_family
+        for category in ("tendance", "momentum", "oscillation", "volume")
+        for base_family in category_map.get(category, [])
+    ]
+    seeds_by_family = {
+        base_family: _select_evenly_spaced(generate_candidates(base_family, horizon))
+        for base_family in ordered_families
+    }
+
+    out: list[VariantDef] = []
+    for left_idx, left_family in enumerate(ordered_families):
+        for right_family in ordered_families[left_idx + 1:]:
+            primary_category = primary_category_for_families([left_family, right_family], family_to_category)
+            if primary_category != target_category:
+                continue
+            for left_variant, right_variant in zip(
+                seeds_by_family[left_family],
+                seeds_by_family[right_family],
+                strict=False,
+            ):
+                out.append(
+                    make_combo_variant(
+                        family=family,
+                        components=[left_variant, right_variant],
+                        primary_category=primary_category,
+                        horizon=horizon,
+                        conditioning="ta",
+                    )
+                )
+    return out
+
+
+for _combo_family in (
+    "legacy_ta_combo_tendance",
+    "legacy_ta_combo_momentum",
+    "legacy_ta_combo_oscillation",
+    "legacy_ta_combo_volume",
+    "expanded_ta_combo_tendance",
+    "expanded_ta_combo_momentum",
+    "expanded_ta_combo_oscillation",
+    "expanded_ta_combo_volume",
+):
+    _CANDIDATE_GENERATORS[_combo_family] = (
+        lambda horizon, _family=_combo_family: _generate_ta_combo_candidates_for_family(_family, horizon)
+    )
+
+
 def generate_factor_conditioned_candidates(
     ta_candidates: list[VariantDef],
     conditions: list,  # list[FactorConditionMeta]
@@ -624,6 +736,7 @@ def _filter_conditions_by_channel(
     out = []
     for cond in conditions:
         allowed_sectors = channel_tags.get(cond.factor_ticker)
-        if allowed_sectors is None or sector in [s.lower() for s in allowed_sectors]:
+        allowed = [str(s).lower() for s in allowed_sectors or []]
+        if allowed_sectors is None or not allowed or "all" in allowed or sector in allowed:
             out.append(cond)
     return out

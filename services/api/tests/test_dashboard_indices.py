@@ -120,3 +120,41 @@ def test_dashboard_indices_reject_empty_symbols(client_and_session) -> None:
     )
     assert created.status_code == 422
 
+
+def test_dashboard_indices_can_include_portfolio_edge(client_and_session, monkeypatch) -> None:
+    client, _SessionLocal = client_and_session
+    created = client.post(
+        "/dashboard/indices",
+        json={"name": "Indice Test", "symbols": ["AAA", "BBB"]},
+    )
+    assert created.status_code == 201
+
+    calls = []
+
+    def fake_edge(_db, horizon, symbols, **_kwargs):
+        calls.append((horizon, symbols))
+        return {
+            "label": "Portfolio auto",
+            "triage": "watch",
+            "active_count": 2,
+            "total_count": 2,
+            "long_count": 1,
+            "short_count": 1,
+            "n": 42,
+            "action_expected_return_net": 0.012,
+            "hit_rate": 0.57,
+        }
+
+    monkeypatch.setattr(
+        dashboard_indices_router,
+        "build_dashboard_portfolio_edge_for_symbols",
+        fake_edge,
+    )
+
+    listed = client.get("/dashboard/indices?include_edge=true&horizon=medium")
+    assert listed.status_code == 200
+    rows = listed.json()
+    assert rows[0]["portfolio_edge"]["n"] == 42
+    assert rows[0]["portfolio_edge"]["active_count"] == 2
+    assert calls == [("monthly", ["AAA", "BBB"])]
+

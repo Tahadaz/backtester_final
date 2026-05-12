@@ -15,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
+import { signalEvidenceUrl } from "@/lib/signal-evidence-url"
 import { ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react"
 
 interface StockTableProps {
@@ -163,7 +164,7 @@ export function StockTable({ stocks, horizon }: StockTableProps) {
                 <TableRow key={stock.symbol} className="border-none hover:bg-slate-50 dark:hover:bg-slate-800">
                   <TableCell className="max-w-xs py-4">
                     <Link
-                      href={`/signals?symbol=${encodeURIComponent(stock.symbol)}&horizon=${horizon}`}
+                      href={signalEvidenceUrl({ symbol: stock.symbol, horizon })}
                       className="block hover:text-blue-600 dark:hover:text-blue-400"
                     >
                       <p className="font-semibold text-slate-900 dark:text-white">{stock.symbol}</p>

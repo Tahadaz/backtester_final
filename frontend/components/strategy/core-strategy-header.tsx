@@ -49,13 +49,13 @@ export function CoreStrategyHeader({
   const statusInfo = STATUS_LABELS[status] ?? STATUS_LABELS.draft
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
+    <div className="claude-page-h">
+      <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">
           {editing ? (
             <input
               autoFocus
-              className="min-w-[200px] border-b border-primary bg-transparent text-lg font-bold tracking-tight outline-none"
+              className="min-w-[200px] border-b border-primary bg-transparent text-[22px] font-bold tracking-[-0.02em] outline-none"
               value={name}
               onChange={(e) => onNameChange(e.target.value)}
               onBlur={() => setEditing(false)}
@@ -63,7 +63,7 @@ export function CoreStrategyHeader({
             />
           ) : (
             <h1
-              className="cursor-pointer truncate text-lg font-bold tracking-tight transition-colors hover:text-primary"
+              className="cursor-pointer truncate text-[22px] font-bold tracking-[-0.02em] transition-colors hover:text-primary"
               onClick={() => setEditing(true)}
               title="Click to rename"
             >
@@ -74,8 +74,53 @@ export function CoreStrategyHeader({
             {statusInfo.label}
           </Badge>
         </div>
+        <div className="sub">
+          Builder - <b>{focusedStock ?? "No focused stock"}</b> - {basket.length} stock{basket.length === 1 ? "" : "s"} selected
+        </div>
 
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <ToggleGroup
+            type="single"
+            value={sidePolicy}
+            onValueChange={(v) => v && onSidePolicyChange(v)}
+            className="rounded-md border border-line bg-bg2 p-0.5"
+          >
+            <ToggleGroupItem
+              value="long_only"
+              size="sm"
+              className="h-7 rounded-[5px] px-3 text-xs data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=on]:shadow-xs"
+            >
+              Long Only
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="long_short"
+              size="sm"
+              className="h-7 rounded-[5px] px-3 text-xs data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=on]:shadow-xs"
+            >
+              Long / Short
+            </ToggleGroupItem>
+          </ToggleGroup>
+          {basket.length > 0 ? (
+            <div className="flex items-center gap-1.5">
+              <span className="claude-field-label">Stock</span>
+              <select
+                value={focusedStock ?? ""}
+                onChange={(e) => onFocusedStockChange(e.target.value)}
+                className="h-8 rounded-md border border-line bg-card px-2 font-mono text-xs"
+              >
+                {!focusedStock ? <option value="">Select...</option> : null}
+                {basket.map((symbol) => (
+                  <option key={symbol} value={symbol}>
+                    {symbol}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
           <Button size="sm" variant="default" onClick={onSave} disabled={isSaving} className="h-7 gap-1 text-xs">
             <Save className="h-3 w-3" />
             Save
@@ -95,48 +140,6 @@ export function CoreStrategyHeader({
           <Button size="sm" variant="ghost" onClick={onArchive} className="h-7 gap-1 text-xs text-muted-foreground">
             <Archive className="h-3 w-3" />
           </Button>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-4">
-        <ToggleGroup
-          type="single"
-          value={sidePolicy}
-          onValueChange={(v) => v && onSidePolicyChange(v)}
-          className="rounded-lg border p-0.5"
-        >
-          <ToggleGroupItem
-            value="long_only"
-            size="sm"
-            className="px-3 text-xs data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
-          >
-            Long Only
-          </ToggleGroupItem>
-          <ToggleGroupItem
-            value="long_short"
-            size="sm"
-            className="px-3 text-xs data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
-          >
-            Long / Short
-          </ToggleGroupItem>
-        </ToggleGroup>
-        {basket.length > 0 ? (
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-muted-foreground">Stock:</span>
-            <select
-              value={focusedStock ?? ""}
-              onChange={(e) => onFocusedStockChange(e.target.value)}
-              className="rounded border border-border bg-background px-2 py-1 font-mono text-xs"
-            >
-              {!focusedStock ? <option value="">Select...</option> : null}
-              {basket.map((symbol) => (
-                <option key={symbol} value={symbol}>
-                  {symbol}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
       </div>
     </div>
   )

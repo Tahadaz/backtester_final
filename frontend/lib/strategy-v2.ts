@@ -1,14 +1,55 @@
 "use client"
 
+import {
+  INDICATOR_FAMILY_ORDER,
+  INDICATOR_META_BY_KEY,
+  type IndicatorFamilyKey,
+} from "@/components/strategy/indicator-config"
+
 export type SortBy = "adv20" | "signal_score"
 export type SortDir = "asc" | "desc"
 export type StrategyType = "trend_following" | "mean_reversion"
-export type FamilyId = "sma" | "rsi" | "macd" | "obv"
+export type StrategyStarterPreset = StrategyType
+export type FamilyId = IndicatorFamilyKey
 export type HorizonKey = "short" | "medium" | "long"
 export type ConfigOption = "A" | "B" | "C" | "D" | "E"
 export type RuleOperator = ">" | ">=" | "<" | "<="
 export type ScoreVariable = string
 export type SignalSourceMode = "family_ensemble" | "indicator_rows"
+export type StrategySignalSourceMode = "manual" | "dashboard_edge_signal"
+export type UniverseSelectionMode = "manual" | "edge_candidates"
+
+export type SignalCandidateRef = {
+  candidate_id: string
+  symbol: string
+  source: string
+  variant: string
+  label?: string | null
+  triage?: string | null
+  bucket?: string | null
+  direction?: string | null
+  signal_label?: string | null
+  score?: number | null
+  action_expected_return_net?: number | null
+  action_expected_return_net_ci_lower?: number | null
+  action_expected_return_net_ci_upper?: number | null
+  hit_rate?: number | null
+  hit_ci_lower?: number | null
+  hit_ci_upper?: number | null
+  n?: number | null
+  proof_n?: number | null
+  proof_window_start?: string | null
+  proof_window_end?: string | null
+  fwd_horizon_bars?: number | null
+  return_calc_method?: string | null
+  entry_price_kind?: string | null
+  entry_lag_bars?: number | null
+  exit_price_kind?: string | null
+  exit_lag_bars?: number | null
+  exit_timing_label?: string | null
+  gates?: Record<string, boolean>
+  proven_edge_net?: boolean | null
+}
 
 export type WFOParamSearchSpace<T = number> = {
   scan_min: T
@@ -96,6 +137,8 @@ export type RiskConfigV2 = {
 export type StockStrategyConfigV2 = {
   strategy_type: StrategyType
   signal_construction: {
+    source_mode?: StrategySignalSourceMode
+    selected_signal_candidate?: SignalCandidateRef | null
     families: Record<FamilyId, FamilyConfigV2>
   }
   entry_rules: EntryRuleV2[]
@@ -116,6 +159,8 @@ export type StrategyConfigV2 = {
       min_adv20: number
       sort_by: SortBy
       sort_dir: SortDir
+      selection_mode: UniverseSelectionMode
+      selected_signal_candidates: SignalCandidateRef[]
     }
     allocation: {
       method: "hrp"
@@ -127,26 +172,37 @@ export type StrategyConfigV2 = {
   snapshot: Record<string, unknown> | null
 }
 
-const FAMILY_SCORE_KEYS: Record<FamilyId, string> = {
+const LEGACY_FAMILY_SCORE_KEYS: Partial<Record<FamilyId, string>> = {
   sma: "trend_score",
   macd: "momentum_score",
   rsi: "oscillation_score",
   obv: "volume_score",
 }
 
-const FAMILY_SCORE_LABELS: Record<FamilyId, string> = {
+const LEGACY_FAMILY_SCORE_LABELS: Partial<Record<FamilyId, string>> = {
   sma: "Trend Score",
   macd: "Momentum Score",
   rsi: "Oscillation Score",
   obv: "Volume Score",
 }
 
+export const FAMILY_SCORE_KEYS: Record<FamilyId, string> = Object.fromEntries(
+  INDICATOR_FAMILY_ORDER.map((familyId) => [familyId, LEGACY_FAMILY_SCORE_KEYS[familyId] ?? `${familyId}_score`]),
+) as Record<FamilyId, string>
+
+export const FAMILY_SCORE_LABELS: Record<FamilyId, string> = Object.fromEntries(
+  INDICATOR_FAMILY_ORDER.map((familyId) => {
+    const label = LEGACY_FAMILY_SCORE_LABELS[familyId] ?? `${INDICATOR_META_BY_KEY[familyId].shortLabel} Score`
+    return [familyId, label]
+  }),
+) as Record<FamilyId, string>
+
 export const HORIZON_KEYS: HorizonKey[] = ["short", "medium", "long"]
 
-const SIGNAL_CONSTRUCTION_WFO_DEFAULTS: Record<
+const SIGNAL_CONSTRUCTION_WFO_DEFAULTS: Partial<Record<
   FamilyId,
   Partial<Record<string, Record<HorizonKey, WFOParamSearchSpace<number>>>>
-> = {
+>> = {
   sma: {
     window: {
       short: { scan_min: 5, scan_max: 20, scan_step: 1 },
@@ -261,6 +317,85 @@ function toStringArray(value: unknown): string[] {
   return value.map((item) => String(item).trim()).filter(Boolean)
 }
 
+function optionalString(value: unknown): string | null {
+  const text = String(value ?? "").trim()
+  return text.length > 0 ? text : null
+}
+
+function optionalNumber(value: unknown): number | null {
+  if (value == null) return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function optionalInteger(value: unknown): number | null {
+  const parsed = optionalNumber(value)
+  return parsed == null ? null : Math.trunc(parsed)
+}
+
+export function normalizeSignalCandidateRef(raw: unknown): SignalCandidateRef | null {
+  if (!isRecord(raw)) return null
+  const symbol = optionalString(raw.symbol)?.toUpperCase()
+  const source = optionalString(raw.source)
+  const variant = optionalString(raw.variant)
+  if (!symbol || !source || !variant) return null
+  const candidateId = optionalString(raw.candidate_id) ?? [
+    symbol,
+    source,
+    variant,
+    optionalString(raw.bucket) ?? "",
+    optionalString(raw.direction) ?? "",
+    optionalInteger(raw.fwd_horizon_bars) ?? "",
+  ].join(":").toLowerCase()
+  const gates = isRecord(raw.gates)
+    ? Object.fromEntries(Object.entries(raw.gates).map(([key, value]) => [key, Boolean(value)]))
+    : {}
+  return {
+    candidate_id: candidateId,
+    symbol,
+    source,
+    variant,
+    label: optionalString(raw.label),
+    triage: optionalString(raw.triage) ?? "watch",
+    bucket: optionalString(raw.bucket),
+    direction: optionalString(raw.direction),
+    signal_label: optionalString(raw.signal_label),
+    score: optionalNumber(raw.score),
+    action_expected_return_net: optionalNumber(raw.action_expected_return_net),
+    action_expected_return_net_ci_lower: optionalNumber(raw.action_expected_return_net_ci_lower),
+    action_expected_return_net_ci_upper: optionalNumber(raw.action_expected_return_net_ci_upper),
+    hit_rate: optionalNumber(raw.hit_rate),
+    hit_ci_lower: optionalNumber(raw.hit_ci_lower),
+    hit_ci_upper: optionalNumber(raw.hit_ci_upper),
+    n: optionalInteger(raw.n),
+    proof_n: optionalInteger(raw.proof_n),
+    proof_window_start: optionalString(raw.proof_window_start),
+    proof_window_end: optionalString(raw.proof_window_end),
+    fwd_horizon_bars: optionalInteger(raw.fwd_horizon_bars),
+    return_calc_method: optionalString(raw.return_calc_method),
+    entry_price_kind: optionalString(raw.entry_price_kind),
+    entry_lag_bars: optionalInteger(raw.entry_lag_bars),
+    exit_price_kind: optionalString(raw.exit_price_kind),
+    exit_lag_bars: optionalInteger(raw.exit_lag_bars),
+    exit_timing_label: optionalString(raw.exit_timing_label),
+    gates,
+    proven_edge_net: raw.proven_edge_net == null ? null : Boolean(raw.proven_edge_net),
+  }
+}
+
+function normalizeSignalCandidateRefs(raw: unknown): SignalCandidateRef[] {
+  if (!Array.isArray(raw)) return []
+  const seen = new Set<string>()
+  const out: SignalCandidateRef[] = []
+  for (const item of raw) {
+    const ref = normalizeSignalCandidateRef(item)
+    if (!ref || seen.has(ref.candidate_id)) continue
+    seen.add(ref.candidate_id)
+    out.push(ref)
+  }
+  return out
+}
+
 export function defaultHoldingBars(horizon: string): number {
   if (horizon === "short") return 10
   if (horizon === "long") return 60
@@ -300,9 +435,22 @@ export function signalConstructionDefaultSearchSpaces(
   value: number,
 ): Partial<Record<HorizonKey, WFOParamSearchSpace<number>>> | undefined {
   const defaults = SIGNAL_CONSTRUCTION_WFO_DEFAULTS[familyId]?.[paramName]
-  if (!defaults) return undefined
+  const genericParam = INDICATOR_META_BY_KEY[familyId]?.params.find((param) =>
+    param.key === paramName || (familyId === "sma" && param.key === "period" && paramName === "window")
+  )
+  if (!defaults && !genericParam) return undefined
+  const spaces = defaults ?? Object.fromEntries(
+    HORIZON_KEYS.map((horizon) => [
+      horizon,
+      {
+        scan_min: genericParam!.min,
+        scan_max: genericParam!.max,
+        scan_step: genericParam!.step,
+      },
+    ]),
+  ) as Record<HorizonKey, WFOParamSearchSpace<number>>
   return Object.fromEntries(
-    HORIZON_KEYS.map((horizon) => [horizon, widenSearchSpaceToIncludeValue(defaults[horizon], value)]),
+    HORIZON_KEYS.map((horizon) => [horizon, widenSearchSpaceToIncludeValue(spaces[horizon], value)]),
   ) as Partial<Record<HorizonKey, WFOParamSearchSpace<number>>>
 }
 
@@ -487,6 +635,66 @@ export function defaultExitRule(index = 0): ExitRuleV2 {
   }
 }
 
+export function starterEntryRule(preset: StrategyStarterPreset, index = 0): EntryRuleV2 {
+  if (preset === "mean_reversion") {
+    return {
+      ...defaultEntryRule(index),
+      label: index === 0 ? "Enter oversold rebound" : `Entry ${index + 1}`,
+      conditions: [
+        {
+          id: "condition_1",
+          variable: "oscillation_score",
+          operator: "<=",
+          threshold: manualParam(35),
+        },
+      ],
+    }
+  }
+
+  return {
+    ...defaultEntryRule(index),
+    label: index === 0 ? "Enter confirmed strength" : `Entry ${index + 1}`,
+    conditions: [
+      {
+        id: "condition_1",
+        variable: "consensus_score",
+        operator: ">=",
+        threshold: manualParam(20),
+      },
+    ],
+  }
+}
+
+export function starterExitRule(preset: StrategyStarterPreset, index = 0): ExitRuleV2 {
+  if (preset === "mean_reversion") {
+    return {
+      ...defaultExitRule(index),
+      label: index === 0 ? "Exit normalized stretch" : `Exit ${index + 1}`,
+      conditions: [
+        {
+          id: "condition_1",
+          variable: "oscillation_score",
+          operator: ">=",
+          threshold: manualParam(55),
+        },
+      ],
+    }
+  }
+
+  return {
+    ...defaultExitRule(index),
+    label: index === 0 ? "Exit lost confirmation" : `Exit ${index + 1}`,
+    conditions: [
+      {
+        id: "condition_1",
+        variable: "consensus_score",
+        operator: "<=",
+        threshold: manualParam(0),
+      },
+    ],
+  }
+}
+
 export function defaultIndicatorRowConfig(
   familyId: FamilyId,
   index = 0,
@@ -494,14 +702,12 @@ export function defaultIndicatorRowConfig(
 ): IndicatorRowConfigV2 {
   const computedScoreKey = scoreKey ?? (index === 0 ? FAMILY_SCORE_KEYS[familyId] : `${FAMILY_SCORE_KEYS[familyId]}_${index + 1}`)
   const computedLabel = index === 0 ? FAMILY_SCORE_LABELS[familyId] : `${FAMILY_SCORE_LABELS[familyId]} ${index + 1}`
-  const params: Record<string, WFOParam<number>> =
-    familyId === "sma"
-      ? { window: manualParam(21) }
-      : familyId === "rsi"
-        ? { period: manualParam(21) }
-        : familyId === "macd"
-          ? { fast: manualParam(12), slow: manualParam(26), signal: manualParam(9) }
-          : { ema_period: manualParam(21) }
+  const defaultParams = familyId === "sma"
+    ? { window: INDICATOR_META_BY_KEY.sma.defaults.period ?? 21 }
+    : INDICATOR_META_BY_KEY[familyId].defaults
+  const params: Record<string, WFOParam<number>> = Object.fromEntries(
+    Object.entries(defaultParams).map(([paramName, value]) => [paramName, manualParam(value)]),
+  )
   return {
     id: `${familyId}_row_${index + 1}`,
     enabled: true,
@@ -524,30 +730,127 @@ export function nextScoreKey(
 }
 
 export function defaultFamilyConfigs(): Record<FamilyId, FamilyConfigV2> {
+  return Object.fromEntries(
+    INDICATOR_FAMILY_ORDER.map((familyId) => [
+      familyId,
+      {
+        enabled: familyId === "sma",
+        source_mode: "indicator_rows",
+        rows: [defaultIndicatorRowConfig(familyId, 0, FAMILY_SCORE_KEYS[familyId])],
+      },
+    ]),
+  ) as Record<FamilyId, FamilyConfigV2>
+}
+
+function defaultRiskConfig(horizon: string): RiskConfigV2 {
   return {
-    sma: { enabled: true, source_mode: "indicator_rows", rows: [defaultIndicatorRowConfig("sma", 0, FAMILY_SCORE_KEYS.sma)] },
-    rsi: { enabled: true, source_mode: "indicator_rows", rows: [defaultIndicatorRowConfig("rsi", 0, FAMILY_SCORE_KEYS.rsi)] },
-    macd: { enabled: true, source_mode: "indicator_rows", rows: [defaultIndicatorRowConfig("macd", 0, FAMILY_SCORE_KEYS.macd)] },
-    obv: { enabled: true, source_mode: "indicator_rows", rows: [defaultIndicatorRowConfig("obv", 0, FAMILY_SCORE_KEYS.obv)] },
+    stop_loss: { mode: "atr_based", manual_pct: 0.02, atr_multiplier: manualParam(1.5) },
+    take_profit: { mode: "rr_target", manual_pct: 0.03, rr_ratio: manualParam(1.5) },
+    cooldown_bars: manualParam(0),
+    time_stop: { enabled: true, bars: manualParam(defaultHoldingBars(horizon)) },
+    trailing_stop_enabled: false,
+    max_position_pct: 20,
+    max_sector_pct: 40,
+  }
+}
+
+export function buildStarterStockStrategyConfig(
+  horizon: string,
+  preset: StrategyStarterPreset = "trend_following",
+): StockStrategyConfigV2 {
+  const families = defaultFamilyConfigs()
+  for (const familyId of INDICATOR_FAMILY_ORDER) {
+    families[familyId].enabled = false
+  }
+  if (preset === "mean_reversion") {
+    families.rsi.enabled = true
+  } else {
+    families.sma.enabled = true
+  }
+
+  return {
+    strategy_type: preset,
+    signal_construction: { source_mode: "manual", selected_signal_candidate: null, families },
+    entry_rules: [starterEntryRule(preset, 0)],
+    exit_rules: [starterExitRule(preset, 0)],
+    risk: defaultRiskConfig(horizon),
+  }
+}
+
+export function buildEdgeCandidateStockStrategyConfig(
+  horizon: string,
+  candidate: SignalCandidateRef,
+  previous?: StockStrategyConfigV2,
+): StockStrategyConfigV2 {
+  const isShort = String(candidate.direction ?? "").toLowerCase() === "short"
+  const base = previous ? cloneStockStrategyConfig(previous, horizon) : buildStarterStockStrategyConfig(horizon, "trend_following")
+  const holdingBars = candidate.fwd_horizon_bars ?? defaultHoldingBars(horizon)
+  return {
+    ...base,
+    strategy_type: "trend_following",
+    signal_construction: {
+      ...base.signal_construction,
+      source_mode: "dashboard_edge_signal",
+      selected_signal_candidate: candidate,
+    },
+    entry_rules: [
+      {
+        ...defaultEntryRule(0),
+        label: "Trade selected edge signal",
+        conditions: [
+          {
+            id: "condition_1",
+            variable: "consensus_score",
+            operator: isShort ? "<=" : ">=",
+            threshold: manualParam(0),
+          },
+        ],
+        sizing: {
+          mode: "manual",
+          manual_pct: base.entry_rules[0]?.sizing.manual_pct ?? 25,
+          size_pct: null,
+          kelly_modifier: null,
+        },
+      },
+    ],
+    exit_rules: [
+      {
+        ...defaultExitRule(0),
+        label: "Exit when edge confirmation fades",
+        conditions: [
+          {
+            id: "condition_1",
+            variable: "consensus_score",
+            operator: isShort ? ">=" : "<=",
+            threshold: manualParam(0),
+          },
+        ],
+      },
+    ],
+    risk: {
+      ...base.risk,
+      time_stop: {
+        enabled: true,
+        bars: manualParam(holdingBars),
+      },
+    },
   }
 }
 
 export function defaultStockStrategyConfig(horizon: string): StockStrategyConfigV2 {
-  return {
-    strategy_type: "trend_following",
-    signal_construction: { families: defaultFamilyConfigs() },
-    entry_rules: [],
-    exit_rules: [],
-    risk: {
-      stop_loss: { mode: "atr_based", manual_pct: 0.02, atr_multiplier: manualParam(1.5) },
-      take_profit: { mode: "rr_target", manual_pct: 0.03, rr_ratio: manualParam(1.5) },
-      cooldown_bars: manualParam(0),
-      time_stop: { enabled: true, bars: manualParam(defaultHoldingBars(horizon)) },
-      trailing_stop_enabled: false,
-      max_position_pct: 20,
-      max_sector_pct: 40,
-    },
-  }
+  return buildStarterStockStrategyConfig(horizon, "trend_following")
+}
+
+export function applyStarterPresetToStock(
+  stock: StockStrategyConfigV2 | undefined,
+  preset: StrategyStarterPreset,
+  horizon: string,
+): StockStrategyConfigV2 {
+  const current = cloneStockStrategyConfig(stock, horizon)
+  const next = buildStarterStockStrategyConfig(horizon, preset)
+  next.risk.max_position_pct = current.risk.max_position_pct
+  next.risk.max_sector_pct = current.risk.max_sector_pct
+  return next
 }
 
 export function defaultStrategyConfigV2(horizon: string): StrategyConfigV2 {
@@ -564,6 +867,8 @@ export function defaultStrategyConfigV2(horizon: string): StrategyConfigV2 {
         min_adv20: 0,
         sort_by: "adv20",
         sort_dir: "desc",
+        selection_mode: "manual",
+        selected_signal_candidates: [],
       },
       allocation: {
         method: "hrp",
@@ -584,6 +889,10 @@ function normalizeStockStrategyConfig(
   const record = isRecord(raw) ? raw : {}
   const signalConstruction = isRecord(record.signal_construction) ? record.signal_construction : {}
   const familiesRaw = isRecord(signalConstruction.families) ? signalConstruction.families : {}
+  const sourceMode: StrategySignalSourceMode = signalConstruction.source_mode === "dashboard_edge_signal"
+    ? "dashboard_edge_signal"
+    : "manual"
+  const selectedSignalCandidate = normalizeSignalCandidateRef(signalConstruction.selected_signal_candidate)
   const entryRulesRaw = Array.isArray(record.entry_rules) ? record.entry_rules : []
   const exitRulesRaw = Array.isArray(record.exit_rules) ? record.exit_rules : []
   const riskRaw = isRecord(record.risk) ? record.risk : {}
@@ -594,6 +903,8 @@ function normalizeStockStrategyConfig(
   return {
     strategy_type: record.strategy_type === "mean_reversion" ? "mean_reversion" : base.strategy_type,
     signal_construction: {
+      source_mode: sourceMode,
+      selected_signal_candidate: sourceMode === "dashboard_edge_signal" ? selectedSignalCandidate : null,
       families: Object.fromEntries(
         (Object.keys(base.signal_construction.families) as FamilyId[]).map((familyId) => {
           const familyRaw = isRecord(familiesRaw[familyId]) ? familiesRaw[familyId] : {}
@@ -770,6 +1081,7 @@ export function migrateStrategyConfigV2(raw: unknown, horizon: string): Strategy
     const basket = toStringArray(universe.basket).map((symbol) => symbol.toUpperCase())
     next.legacy_snapshot = isRecord(raw.legacy_snapshot) ? raw.legacy_snapshot : null
     next.snapshot = isRecord(raw.snapshot) ? raw.snapshot : null
+    const selectedSignalCandidates = normalizeSignalCandidateRefs(universe.selected_signal_candidates)
     next.portfolio = {
       total_capital_mad: toNumber(portfolio.total_capital_mad, next.portfolio.total_capital_mad),
       universe: {
@@ -779,6 +1091,8 @@ export function migrateStrategyConfigV2(raw: unknown, horizon: string): Strategy
         min_adv20: toNumber(universe.min_adv20, 0),
         sort_by: universe.sort_by === "signal_score" ? "signal_score" : "adv20",
         sort_dir: universe.sort_dir === "asc" ? "asc" : "desc",
+        selection_mode: universe.selection_mode === "edge_candidates" || selectedSignalCandidates.length > 0 ? "edge_candidates" : "manual",
+        selected_signal_candidates: selectedSignalCandidates,
       },
       allocation: {
         method: "hrp",
@@ -824,6 +1138,8 @@ export function migrateStrategyConfigV2(raw: unknown, horizon: string): Strategy
     min_adv20: toNumber(universe.min_adv20, 0),
     sort_by: universe.sort_by === "signal_score" ? "signal_score" : "adv20",
     sort_dir: universe.sort_dir === "asc" ? "asc" : "desc",
+    selection_mode: "manual",
+    selected_signal_candidates: [],
   }
   next.portfolio.allocation = {
     method: "hrp",
@@ -844,10 +1160,10 @@ export function migrateStrategyConfigV2(raw: unknown, horizon: string): Strategy
   const enabledFamilies = new Set(
     [...toStringArray(signal.enabled_families), ...toStringArray(logic.enabled_families)]
       .map((value) => value.toLowerCase())
-      .filter((value): value is FamilyId => ["sma", "rsi", "macd", "obv"].includes(value)),
+      .filter((value): value is FamilyId => INDICATOR_FAMILY_ORDER.includes(value as FamilyId)),
   )
   if (enabledFamilies.size === 0) {
-    for (const family of ["sma", "rsi", "macd", "obv"] as FamilyId[]) enabledFamilies.add(family)
+    enabledFamilies.add("sma")
   }
 
   for (const symbol of next.portfolio.universe.basket) {

@@ -24,6 +24,7 @@
 | 12 | [methodology-and-sources.md](./12-methodology-and-sources.md) | Pardo citations, Bailey & López de Prado (DSR, PBO), Kelly/Thorp references, honest limitations |
 | 13 | [strict-pardo-window-policy-adr.md](./13-strict-pardo-window-policy-adr.md) | ADR: strict fold-driven window sizing, DF constraints, fallback policy |
 | 14 | [wfo-signal-layer.md](./14-wfo-signal-layer.md) | WFO-optimized signals for the signal page: per-family ensemble optimization, global consensus, S/R modulation |
+| 15 | [ui-goals-and-design.md](./15-ui-goals-and-design.md) | Backtest page product/UI contract, design reference, current ownership, states, and result sections |
 
 ---
 

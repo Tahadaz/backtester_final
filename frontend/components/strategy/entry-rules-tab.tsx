@@ -34,6 +34,7 @@ interface EntryRulesTabProps {
   rules: EntryRuleV2[]
   scoreOptions: Array<{ value: string; label: string; missing?: boolean }>
   preview?: RulePreview
+  errorMessage?: string | null
   onChange: (next: EntryRuleV2[]) => void
 }
 
@@ -95,7 +96,7 @@ function EntryConditionEditor({
   )
 }
 
-export function EntryRulesTab({ horizon, rules, scoreOptions, preview, onChange }: EntryRulesTabProps) {
+export function EntryRulesTab({ horizon, rules, scoreOptions, preview, errorMessage, onChange }: EntryRulesTabProps) {
   return (
     <Card>
       <CardHeader>
@@ -132,6 +133,12 @@ export function EntryRulesTab({ horizon, rules, scoreOptions, preview, onChange 
                 ))}
               </div>
             ) : null}
+          </div>
+        ) : null}
+
+        {errorMessage ? (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            Preview unavailable: {errorMessage}
           </div>
         ) : null}
 

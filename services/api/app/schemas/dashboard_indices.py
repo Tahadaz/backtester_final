@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -19,4 +21,5 @@ class DashboardCustomIndexOut(BaseModel):
     symbols: list[str] = Field(default_factory=list)
     created_at: str
     updated_at: str
+    portfolio_edge: dict[str, Any] | None = None
 

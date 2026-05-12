@@ -13,7 +13,7 @@ from typing import Any
 
 import numpy as np
 
-from core.quant_core.horizons import DEFAULT_COST_BPS_PER_SIDE
+from core.quant_core.horizons import DEFAULT_COST_BPS_PER_SIDE, canonical_horizon
 from core.quant_core.signal_engine.candidates import generate_candidates
 from core.quant_core.signal_engine.current_signal import build_current_signal
 from core.quant_core.signal_engine.domain import (
@@ -44,6 +44,10 @@ HORIZON_TRAIN_BANDS: dict[str, tuple[int, int]] = {
     "monthly": (378, 630),
     "quarterly": (672, 1008),
 }
+
+
+def _canonical_signal_horizon(horizon: str) -> str:
+    return canonical_horizon(horizon, allow_legacy=True)
 
 
 # ---------------------------------------------------------------------------
@@ -124,6 +128,7 @@ def build_category_candidate_grid(
     list[VariantDef]
         Typically 100-200 variants depending on category and horizon.
     """
+    horizon = _canonical_signal_horizon(horizon)
     if category not in CATEGORY_FAMILIES:
         raise ValueError(f"Unknown category {category!r}")
     if horizon not in VALID_HORIZONS:
@@ -371,6 +376,7 @@ def _apply_horizon_cap(
     high: np.ndarray | None = None,
     low: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray | None, np.ndarray | None, np.ndarray | None, int, int]:
+    horizon = _canonical_signal_horizon(horizon)
     hp = HORIZON_PARAMS[horizon]
     cap_bars = max(int(hp.get("max_years", 0) * 252), hp["train"] + hp["test"])
     if len(close) <= cap_bars:
@@ -396,6 +402,7 @@ def _strict_window_candidates(
     strict_fallback_floor: int = DEFAULT_STRICT_FALLBACK_FLOOR,
     top_k_folds: int = DEFAULT_TOP_K_FOLDS,
 ) -> tuple[list[WalkForwardConfig], dict[str, Any]]:
+    horizon = _canonical_signal_horizon(horizon)
     band_min, band_max = HORIZON_TRAIN_BANDS[horizon]
     hp = HORIZON_PARAMS[horizon]
     anchor = {
@@ -738,6 +745,7 @@ def run_wfo_category_signal(
 ) -> WfoCategoryResult:
     """Run Signal-page WFO for one category with auto or manual window selection."""
     t0 = time.monotonic()
+    horizon = _canonical_signal_horizon(horizon)
 
     pool = build_category_candidate_grid(category, horizon, families=families)
     if not pool:
@@ -798,7 +806,7 @@ def run_wfo_category_signal(
             diagnostics=diagnostics,
         )
 
-    working_close, working_volume, working_high, working_low, capped_bars, _ = _apply_horizon_cap(
+    working_close, working_volume, working_high, working_low, capped_bars, cap_start_offset = _apply_horizon_cap(
         horizon=horizon,
         close=close,
         volume=volume,
@@ -817,6 +825,7 @@ def run_wfo_category_signal(
 
     if not candidates:
         base_diagnostics["horizon_cap_bars_used"] = capped_bars
+        base_diagnostics["horizon_cap_start_offset"] = cap_start_offset
         return _fail_result(
             category=category,
             horizon=horizon,
@@ -831,6 +840,7 @@ def run_wfo_category_signal(
     candidate_metrics: list[dict[str, Any]] = []
     anchor_train = hp["train"]
     base_diagnostics["horizon_cap_bars_used"] = capped_bars
+    base_diagnostics["horizon_cap_start_offset"] = cap_start_offset
 
     for candidate_config in candidates:
         config_dict = _config_to_dict(candidate_config)

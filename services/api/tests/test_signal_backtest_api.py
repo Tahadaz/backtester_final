@@ -5,16 +5,21 @@ import sys
 import types
 import uuid
 
+import pandas as pd
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from services.api.app.db import get_db
 from services.api.app.models import (
     MarketDataStore,
+    SignalBacktestRun,
     SignalEngineBatchJob,
     SignalEngineFamilyResult,
     SignalEngineGlobalResult,
+    SignalScoreHistory,
     StockMaster,
+    WfoGlobalSignal,
+    WfoSignalSummary,
 )
 from services.api.app.routers import strategy_signals
 from services.api.app.services import signal_engine_persistence as signal_engine_persistence_mod
@@ -31,6 +36,9 @@ class _FakeQuery:
             if all(getattr(row, key, None) == value for key, value in kwargs.items())
         ]
         return _FakeQuery(rows)
+
+    def filter(self, *_args, **_kwargs):
+        return self
 
     def order_by(self, *_args, **_kwargs):
         return self
@@ -67,7 +75,7 @@ def _app(db) -> FastAPI:
 def test_engine_result_returns_persisted_support_resistance_payload():
     global_row = SignalEngineGlobalResult(
         symbol="AAA",
-        horizon="short",
+        horizon="weekly",
         variant="legacy",
         status="succeeded",
         aggregate_score_pct=10.0,
@@ -85,7 +93,7 @@ def test_engine_result_returns_persisted_support_resistance_payload():
             symbol="AAA",
             family="sma",
             category="tendance",
-            horizon="short",
+            horizon="weekly",
             variant="legacy",
             status="succeeded",
             family_score_pct=20.0,
@@ -102,7 +110,7 @@ def test_engine_result_returns_persisted_support_resistance_payload():
             symbol="AAA",
             family="macd",
             category="momentum",
-            horizon="short",
+            horizon="weekly",
             variant="legacy",
             status="succeeded",
             family_score_pct=10.0,
@@ -119,7 +127,7 @@ def test_engine_result_returns_persisted_support_resistance_payload():
             symbol="AAA",
             family="rsi",
             category="oscillation",
-            horizon="short",
+            horizon="weekly",
             variant="legacy",
             status="succeeded",
             family_score_pct=5.0,
@@ -136,7 +144,7 @@ def test_engine_result_returns_persisted_support_resistance_payload():
             symbol="AAA",
             family="obv",
             category="volume",
-            horizon="short",
+            horizon="weekly",
             variant="legacy",
             status="succeeded",
             family_score_pct=15.0,
@@ -163,7 +171,7 @@ def test_engine_result_returns_persisted_support_resistance_payload():
         )
     )
 
-    response = client.get("/strategy/engine/result?symbol=AAA&horizon=short&variant=legacy")
+    response = client.get("/strategy/engine/result?symbol=AAA&horizon=weekly&variant=legacy")
 
     assert response.status_code == 200
     payload = response.json()
@@ -175,7 +183,7 @@ def test_engine_result_returns_persisted_support_resistance_payload():
 def test_engine_result_returns_stale_cache_without_refresh_or_rebuild(monkeypatch):
     global_row = SignalEngineGlobalResult(
         symbol="AAA",
-        horizon="short",
+        horizon="weekly",
         variant="legacy",
         status="succeeded",
         aggregate_score_pct=10.0,
@@ -193,7 +201,7 @@ def test_engine_result_returns_stale_cache_without_refresh_or_rebuild(monkeypatc
             symbol="AAA",
             family="sma",
             category="tendance",
-            horizon="short",
+            horizon="weekly",
             variant="legacy",
             status="succeeded",
             family_score_pct=20.0,
@@ -210,7 +218,7 @@ def test_engine_result_returns_stale_cache_without_refresh_or_rebuild(monkeypatc
             symbol="AAA",
             family="macd",
             category="momentum",
-            horizon="short",
+            horizon="weekly",
             variant="legacy",
             status="succeeded",
             family_score_pct=10.0,
@@ -227,7 +235,7 @@ def test_engine_result_returns_stale_cache_without_refresh_or_rebuild(monkeypatc
             symbol="AAA",
             family="rsi",
             category="oscillation",
-            horizon="short",
+            horizon="weekly",
             variant="legacy",
             status="succeeded",
             family_score_pct=5.0,
@@ -244,7 +252,7 @@ def test_engine_result_returns_stale_cache_without_refresh_or_rebuild(monkeypatc
             symbol="AAA",
             family="obv",
             category="volume",
-            horizon="short",
+            horizon="weekly",
             variant="legacy",
             status="succeeded",
             family_score_pct=15.0,
@@ -282,7 +290,7 @@ def test_engine_result_returns_stale_cache_without_refresh_or_rebuild(monkeypatc
         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("stale GET should not rebuild")),
     )
 
-    response = client.get("/strategy/engine/result?symbol=AAA&horizon=short&variant=legacy")
+    response = client.get("/strategy/engine/result?symbol=AAA&horizon=weekly&variant=legacy")
 
     assert response.status_code == 200
     payload = response.json()
@@ -296,7 +304,7 @@ def test_persisted_signal_engine_summaries_follow_variant_specific_persisted_sco
     rows = [
         SignalEngineGlobalResult(
             symbol="AAA",
-            horizon="short",
+            horizon="weekly",
             variant="expanded",
             status="succeeded",
             aggregate_score_pct=10.0,
@@ -307,7 +315,7 @@ def test_persisted_signal_engine_summaries_follow_variant_specific_persisted_sco
         ),
         SignalEngineGlobalResult(
             symbol="AAA",
-            horizon="short",
+            horizon="weekly",
             variant="legacy",
             status="succeeded",
             aggregate_score_pct=10.0,
@@ -322,11 +330,11 @@ def test_persisted_signal_engine_summaries_follow_variant_specific_persisted_sco
 
     expanded = client.post(
         "/strategy/engine/persisted-summaries",
-        json={"symbols": ["AAA", "BBB"], "horizon": "short", "variant": "expanded"},
+        json={"symbols": ["AAA", "BBB"], "horizon": "weekly", "variant": "expanded"},
     )
     legacy = client.post(
         "/strategy/engine/persisted-summaries",
-        json={"symbols": ["AAA"], "horizon": "short", "variant": "legacy"},
+        json={"symbols": ["AAA"], "horizon": "weekly", "variant": "legacy"},
     )
 
     assert expanded.status_code == 200
@@ -345,11 +353,517 @@ def test_persisted_signal_engine_summaries_follow_variant_specific_persisted_sco
     assert legacy_payload[0]["aggregate_score_pct"] == 10.0
 
 
+def test_signal_evidence_endpoint_respects_requested_source_and_keeps_requested_variant(monkeypatch):
+    captured: dict[str, object] = {}
+    edge_payload = {
+        "symbol": "AAA",
+        "horizon": "weekly",
+        "source": "signal_engine",
+        "variant": "expanded_factor_x_ta_combo",
+        "bucket": "buy",
+        "direction": "long",
+        "n": 35,
+        "window_start": "2026-01-01",
+        "window_end": "2026-04-21",
+        "proof_n": 35,
+        "proof_method": "same_oos_sample",
+        "action_expected_return_net": 0.014,
+        "hit_rate": 0.64,
+        "cost_bps_per_side": 33.0,
+    }
+
+    def fake_select_edge(_db, **kwargs):
+        captured.update(kwargs)
+        return edge_payload, "signal_engine", "expanded_factor_x_ta_combo", "Signal Engine - Expanded Factor x TA Combo"
+
+    monkeypatch.setattr(strategy_signals, "_select_signal_evidence_edge", fake_select_edge)
+    monkeypatch.setattr(strategy_signals, "_current_evidence_signal", lambda *_args, **_kwargs: {"score_pct": 72.0})
+    monkeypatch.setattr(strategy_signals, "_signal_evidence_contributors", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(strategy_signals, "_signal_evidence_oos_periods", lambda *_args, **_kwargs: ([], 0, None))
+
+    client = TestClient(_app(_FakeDB({})))
+    response = client.get(
+        "/strategy/signal/evidence?symbol=AAA&horizon=weekly&source=signal_engine&variant=expanded_factor_x_ta_combo"
+    )
+
+    assert response.status_code == 200
+    assert captured["source"] == "signal_engine"
+    assert captured["variant"] == "expanded_factor_x_ta_combo"
+    payload = response.json()
+    assert payload["source"] == "signal_engine"
+    assert payload["variant"] == "expanded_factor_x_ta_combo"
+    assert payload["edge"]["variant"] == "expanded_factor_x_ta_combo"
+
+
+def test_signal_evidence_endpoint_uses_wfo_stitched_oos_when_wfo_requested(monkeypatch):
+    edge_payload = {
+        "symbol": "AAA",
+        "horizon": "weekly",
+        "source": "wfo",
+        "variant": "expanded_ta_simple",
+        "bucket": "sell",
+        "direction": "short",
+        "n": 44,
+        "window_start": "2026-01-01",
+        "window_end": "2026-04-21",
+        "proof_n": 44,
+        "proof_method": "same_oos_sample",
+        "fwd_horizon_bars": 1,
+        "return_calc_method": "open_to_exit_ladder",
+        "exit_price_kind": "close",
+        "exit_timing_label": "close T+1",
+        "selection_n": 30,
+        "selection_action_expected_return_net": 0.012,
+        "selection_hit_rate": 0.61,
+        "cost_bps_per_side": 0.0,
+    }
+
+    def fake_select_edge(_db, **kwargs):
+        assert kwargs["symbol"] == "AAA"
+        assert kwargs["horizon"] == "weekly"
+        assert kwargs["source"] == "wfo"
+        return edge_payload, "wfo", "expanded_ta_simple", "WFO / Expanded"
+
+    monkeypatch.setattr(strategy_signals, "_select_signal_evidence_edge", fake_select_edge)
+
+    prices = pd.DataFrame(
+        {
+            "Open": [100.0, 100.0, 99.0, 98.0, 97.0, 96.0],
+            "High": [101.0, 101.0, 100.0, 99.0, 98.0, 97.0],
+            "Low": [99.0, 99.0, 97.0, 96.0, 95.0, 94.0],
+            "Close": [100.0, 100.0, 98.0, 97.0, 96.0, 95.0],
+            "Volume": [1000.0] * 6,
+        },
+        index=pd.DatetimeIndex([
+            "2026-01-01",
+            "2026-01-02",
+            "2026-01-05",
+            "2026-01-06",
+            "2026-01-07",
+            "2026-01-08",
+        ]),
+    )
+    from services.api.app.routers import analytics as analytics_mod
+
+    monkeypatch.setattr(analytics_mod, "_load_pricing_data", lambda _db, _symbol: prices)
+
+    global_row = WfoGlobalSignal(
+        symbol="AAA",
+        horizon="weekly",
+        variant="expanded_ta_simple",
+        status="succeeded",
+        global_score_pct=-25.0,
+        raw_score_pct=-25.0,
+        signal_label="Vente",
+        recommendation="vente",
+        best_category="tendance",
+        best_category_score=-25.0,
+        computed_at=dt.datetime(2026, 4, 21, tzinfo=dt.timezone.utc),
+        data_as_of=dt.date(2026, 4, 21),
+    )
+    summary_row = WfoSignalSummary(
+        symbol="AAA",
+        category="tendance",
+        horizon="weekly",
+        variant="expanded_ta_simple",
+        status="succeeded",
+        score_pct=-25.0,
+        signal_label="Vente",
+        computed_at=dt.datetime(2026, 4, 21, tzinfo=dt.timezone.utc),
+        data_as_of=dt.date(2026, 4, 21),
+        representatives_json=[
+            {
+                "variant_id": "sma_20",
+                "family": "sma",
+                "archetype": "price_vs_sma",
+                "description": "Price below SMA 20",
+                "params": {"window": 20},
+                "normalized_weight": 0.7,
+                "signal_label": "Vente",
+                "indicator_value": 101.5,
+            },
+            {
+                "variant_id": "sma_50",
+                "family": "sma",
+                "archetype": "price_vs_sma",
+                "description": "Price below SMA 50",
+                "params": {"window": 50},
+                "normalized_weight": 0.8,
+                "signal_label": "Vente",
+                "indicator_value": 103.5,
+            },
+        ],
+        folds_json=[
+            {
+                "index": 0,
+                "oos_start": 1,
+                "oos_end": 3,
+                "winner_variant_id": "sma_20",
+                "winner_description": "Price below SMA 20",
+                "winner_params": {"window": 20},
+            },
+            {
+                "index": 1,
+                "oos_start": 3,
+                "oos_end": 5,
+                "winner_variant_id": "sma_50",
+                "winner_description": "Price below SMA 50",
+                "winner_params": {"window": 50},
+            },
+        ],
+    )
+    score_rows = [
+        SignalScoreHistory(
+            date=dt.date(2026, 1, 2),
+            symbol="AAA",
+            source="wfo:expanded_ta_simple",
+            category="tendance",
+            horizon="weekly",
+            score_pct=-25.0,
+            is_oos=True,
+        ),
+        SignalScoreHistory(
+            date=dt.date(2026, 1, 5),
+            symbol="AAA",
+            source="wfo:expanded_ta_simple",
+            category="tendance",
+            horizon="weekly",
+            score_pct=-60.0,
+            is_oos=True,
+        ),
+        SignalScoreHistory(
+            date=dt.date(2026, 1, 6),
+            symbol="AAA",
+            source="wfo:expanded_ta_simple",
+            category="tendance",
+            horizon="weekly",
+            score_pct=-25.0,
+            is_oos=True,
+        ),
+        SignalScoreHistory(
+            date=dt.date(2026, 1, 7),
+            symbol="AAA",
+            source="wfo:expanded_ta_simple",
+            category="tendance",
+            horizon="weekly",
+            score_pct=25.0,
+            is_oos=True,
+        ),
+    ]
+    market_row = MarketDataStore(symbol="AAA", timeframe="1D", data_as_of=dt.date(2026, 1, 8))
+    client = TestClient(
+        _app(
+            _FakeDB(
+                {
+                    WfoGlobalSignal: [global_row],
+                    WfoSignalSummary: [summary_row],
+                    SignalScoreHistory: score_rows,
+                    MarketDataStore: [market_row],
+                }
+            )
+        )
+    )
+
+    response = client.get("/strategy/signal/evidence?symbol=AAA&horizon=weekly&source=wfo")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["symbol"] == "AAA"
+    assert payload["source"] == "wfo"
+    assert payload["current_signal"]["score_pct"] == -25.0
+    assert payload["current_signal"]["bucket"] == "sell"
+    assert payload["edge"]["proof_method"] == "all_wfo_oos_folds_exact_bucket"
+    assert payload["edge"]["n"] == 2
+    assert payload["contributor_count"] == 2
+    assert payload["evidence_trade_count"] == 2
+    assert [period["sample_n"] for period in payload["oos_periods"]] == [1, 1]
+    assert payload["oos_periods"][0]["contributors"][0]["variant_id"] == "sma_20"
+    assert payload["oos_periods"][1]["contributors"][0]["variant_id"] == "sma_50"
+    assert [trade["signal_date"] for period in payload["oos_periods"] for trade in period["trades"]] == [
+        "2026-01-02",
+        "2026-01-06",
+    ]
+    stitched = payload["stitched_oos_backtest"]
+    assert stitched["source"] == "wfo"
+    assert stitched["match_mode"] == "exact_bucket"
+    assert stitched["dates"] == ["2026-01-02", "2026-01-05", "2026-01-06", "2026-01-07"]
+    assert stitched["open_series"] == [100.0, 99.0, 98.0, 97.0]
+    assert stitched["high_series"] == [101.0, 100.0, 99.0, 98.0]
+    assert stitched["low_series"] == [99.0, 97.0, 96.0, 95.0]
+    assert stitched["close_series"] == [100.0, 98.0, 97.0, 96.0]
+    assert stitched["metrics"]["n_trades"] == 2
+    assert stitched["metrics"]["hit_rate"] == 1.0
+    assert [row["marker_label"] for row in stitched["trade_ledger"]] == ["Short 1", "Cover 1", "Short 2", "Cover 2"]
+    assert [row["position"] for row in stitched["trade_ledger"]] == [-1.0, 0.0, -1.0, 0.0]
+    assert [row["transaction_index"] for row in stitched["trade_ledger"]] == [1, 2, 3, 4]
+    assert stitched["trade_ledger"][0]["prix_execution"] == 99.0
+    assert stitched["trade_ledger"][0]["close_du_jour"] == 98.0
+
+    cooldown_response = client.get("/strategy/signal/evidence?symbol=AAA&horizon=weekly&source=wfo&cooldown_bars=3")
+
+    assert cooldown_response.status_code == 200
+    cooldown_payload = cooldown_response.json()
+    assert cooldown_payload["edge"]["n"] == 1
+    assert cooldown_payload["evidence_trade_count"] == 1
+    assert [period["sample_n"] for period in cooldown_payload["oos_periods"]] == [1, 0]
+    assert [trade["signal_date"] for period in cooldown_payload["oos_periods"] for trade in period["trades"]] == [
+        "2026-01-02",
+    ]
+    cooldown_stitched = cooldown_payload["stitched_oos_backtest"]
+    assert cooldown_stitched["cooldown_bars"] == 3
+    assert cooldown_stitched["metrics"]["n_trades"] == 1
+    assert cooldown_stitched["metrics"]["cooldown_bars"] == 3
+    assert cooldown_stitched["metrics"]["cooldown_filtered_trades"] == 1
+    assert [row["marker_label"] for row in cooldown_stitched["trade_ledger"]] == ["Short 1", "Cover 1"]
+
+
+def test_evidence_trade_ledger_sorts_by_transaction_date_and_stacks_positions():
+    trades = [
+        {
+            "trade_id": "later",
+            "signal_date": "2026-01-03",
+            "entry_date": "2026-01-03",
+            "exit_date": "2026-01-24",
+            "direction": "long",
+            "bucket": "strong_buy",
+            "score_pct": 80.0,
+            "entry_price": 102.0,
+            "exit_price": 108.0,
+            "action_return_net": 0.0588,
+        },
+        {
+            "trade_id": "first",
+            "signal_date": "2026-01-02",
+            "entry_date": "2026-01-02",
+            "exit_date": "2026-01-23",
+            "direction": "long",
+            "bucket": "strong_buy",
+            "score_pct": 75.0,
+            "entry_price": 100.0,
+            "exit_price": 105.0,
+            "action_return_net": 0.05,
+        },
+    ]
+
+    ledger = strategy_signals._evidence_trade_ledger(trades, cost_bps=0.0)
+
+    assert [row["date"] for row in ledger] == ["2026-01-02", "2026-01-03", "2026-01-23", "2026-01-24"]
+    assert [row["marker_label"] for row in ledger] == ["Buy 1", "Buy 2", "Sell 1", "Sell 2"]
+    assert [row["position"] for row in ledger] == [1.0, 2.0, 1.0, 0.0]
+    assert [row["cmp"] for row in ledger] == [100.0, 101.0, 101.0, 101.0]
+    assert [row["pnl_realise"] for row in ledger] == [0.0, 0.0, 4.0, 7.0]
+    assert [row["pnl_realise_cumule"] for row in ledger] == [0.0, 0.0, 4.0, 11.0]
+    assert [row["global_score_pct"] for row in ledger] == [75.0, 80.0, 75.0, 80.0]
+    assert [row["transaction_index"] for row in ledger] == [1, 2, 3, 4]
+
+
+def test_evidence_trade_ledger_sorts_same_day_events_by_execution_timing():
+    trades = [
+        {
+            "trade_id": "first",
+            "signal_date": "2026-01-01",
+            "entry_date": "2026-01-02",
+            "entry_price_kind": "open",
+            "exit_date": "2026-01-02",
+            "exit_price_kind": "close",
+            "direction": "long",
+            "score_pct": 70.0,
+            "entry_price": 100.0,
+            "exit_price": 101.0,
+            "action_return_net": 0.01,
+        },
+        {
+            "trade_id": "second",
+            "signal_date": "2026-01-02",
+            "entry_date": "2026-01-02",
+            "entry_price_kind": "open",
+            "exit_date": "2026-01-02",
+            "exit_price_kind": "close",
+            "direction": "long",
+            "score_pct": 72.0,
+            "entry_price": 102.0,
+            "exit_price": 103.0,
+            "action_return_net": 0.0098,
+        },
+    ]
+
+    ledger = strategy_signals._evidence_trade_ledger(trades, cost_bps=0.0)
+
+    assert [row["marker_label"] for row in ledger] == ["Buy 1", "Buy 2", "Sell 1", "Sell 2"]
+    assert [row["position"] for row in ledger] == [1.0, 2.0, 1.0, 0.0]
+    assert [row["cmp"] for row in ledger] == [100.0, 101.0, 101.0, 101.0]
+    assert [row["transaction_index"] for row in ledger] == [1, 2, 3, 4]
+
+
+def test_evidence_trade_ledger_includes_costs_in_weighted_cmp():
+    trades = [
+        {
+            "trade_id": "first",
+            "entry_date": "2026-01-02",
+            "exit_date": "2026-01-23",
+            "direction": "long",
+            "entry_price": 100.0,
+            "exit_price": 105.0,
+        },
+        {
+            "trade_id": "second",
+            "entry_date": "2026-01-03",
+            "exit_date": "2026-01-24",
+            "direction": "long",
+            "entry_price": 102.0,
+            "exit_price": 108.0,
+        },
+    ]
+
+    ledger = strategy_signals._evidence_trade_ledger(trades, cost_bps=100.0)
+
+    assert [row["cmp"] for row in ledger] == [101.0, 102.01, 102.01, 102.01]
+    assert [row["pnl_realise"] for row in ledger] == [0.0, 0.0, 1.94, 4.91]
+    assert ledger[-1]["pnl_realise_cumule"] == 6.85
+
+
+def test_evidence_trade_ledger_uses_weighted_cmp_for_stacked_shorts():
+    trades = [
+        {
+            "trade_id": "first",
+            "entry_date": "2026-01-02",
+            "exit_date": "2026-01-23",
+            "direction": "short",
+            "entry_price": 100.0,
+            "exit_price": 95.0,
+        },
+        {
+            "trade_id": "second",
+            "entry_date": "2026-01-03",
+            "exit_date": "2026-01-24",
+            "direction": "short",
+            "entry_price": 98.0,
+            "exit_price": 94.0,
+        },
+    ]
+
+    ledger = strategy_signals._evidence_trade_ledger(trades, cost_bps=0.0)
+
+    assert [row["marker_label"] for row in ledger] == ["Short 1", "Short 2", "Cover 1", "Cover 2"]
+    assert [row["position"] for row in ledger] == [-1.0, -2.0, -1.0, 0.0]
+    assert [row["cmp"] for row in ledger] == [100.0, 99.0, 99.0, 99.0]
+    assert [row["pnl_realise"] for row in ledger] == [0.0, 0.0, 4.0, 5.0]
+
+
+def test_evidence_trade_ledger_uses_daily_close_for_mark_to_market():
+    trades = [
+        {
+            "trade_id": "first",
+            "entry_date": "2026-01-02",
+            "entry_price_kind": "open",
+            "entry_price": 100.0,
+            "entry_close_price": 101.0,
+            "exit_date": "2026-01-06",
+            "exit_price_kind": "open",
+            "exit_price": 103.0,
+            "exit_close_price": 104.0,
+            "direction": "long",
+        }
+    ]
+
+    ledger = strategy_signals._evidence_trade_ledger(trades, cost_bps=0.0)
+
+    assert ledger[0]["prix_execution"] == 100.0
+    assert ledger[0]["close_du_jour"] == 101.0
+    assert ledger[0]["pnl_latent"] == 1.0
+    assert ledger[1]["prix_execution"] == 103.0
+    assert ledger[1]["close_du_jour"] == 104.0
+    assert ledger[1]["pnl_realise"] == 3.0
+
+
+def test_evidence_stitched_backtest_returns_pnl_over_opened_notional_not_compounded_returns():
+    trades = [
+        {
+            "trade_id": "first",
+            "entry_date": "2026-01-01",
+            "exit_date": "2026-01-03",
+            "direction": "long",
+            "entry_price": 100.0,
+            "exit_price": 200.0,
+            "action_return_net": 1.0,
+            "action_return_gross": 1.0,
+        },
+        {
+            "trade_id": "second",
+            "entry_date": "2026-01-02",
+            "exit_date": "2026-01-03",
+            "direction": "long",
+            "entry_price": 100.0,
+            "exit_price": 200.0,
+            "action_return_net": 1.0,
+            "action_return_gross": 1.0,
+        },
+    ]
+
+    stitched = strategy_signals._evidence_stitched_backtest(
+        dates=["2026-01-01", "2026-01-02", "2026-01-03"],
+        close=[100.0, 100.0, 200.0],
+        trades=trades,
+        bucket="buy",
+        direction="long",
+        score_mode="test",
+        cost_bps=0.0,
+    )
+
+    assert stitched["metrics"]["total_return"] == 1.0
+    assert stitched["equity"] == [1.0, 1.0, 2.0]
+
+
+def test_evidence_stitched_backtest_treats_none_direction_as_no_action():
+    trades = [
+        {
+            "trade_id": "neutral-one",
+            "entry_date": "2026-01-01",
+            "exit_date": "2026-01-03",
+            "direction": "none",
+            "entry_price": 100.0,
+            "exit_price": 104.0,
+            "stock_return": 0.04,
+            "action_return_net": None,
+            "action_return_gross": None,
+        },
+        {
+            "trade_id": "neutral-two",
+            "entry_date": "2026-01-02",
+            "exit_date": "2026-01-03",
+            "direction": "none",
+            "entry_price": 100.0,
+            "exit_price": 102.0,
+            "stock_return": 0.02,
+            "action_return_net": None,
+            "action_return_gross": None,
+        },
+    ]
+
+    stitched = strategy_signals._evidence_stitched_backtest(
+        dates=["2026-01-01", "2026-01-02", "2026-01-03"],
+        close=[100.0, 101.0, 102.0],
+        trades=trades,
+        bucket="hold",
+        direction="none",
+        score_mode="test",
+        cost_bps=0.0,
+    )
+
+    assert stitched["trade_ledger"] == []
+    assert stitched["position_series"] == [0.0, 0.0, 0.0]
+    assert stitched["metrics"]["n_trades"] == 0
+    assert stitched["metrics"]["expected_return_net"] is None
+    assert stitched["metrics"]["hit_rate"] is None
+    assert stitched["metrics"]["sharpe"] is None
+    assert abs(stitched["metrics"]["stock_expected_return"] - 0.03) < 1e-12
+
+
 def test_batch_status_endpoints_filter_by_job_type():
     engine_job = SignalEngineBatchJob(
         id=uuid.uuid4(),
         symbol="AAA",
-        horizon="short",
+        horizon="weekly",
         variant="expanded",
         job_type="signal_engine",
         status="succeeded",
@@ -358,7 +872,7 @@ def test_batch_status_endpoints_filter_by_job_type():
     backtest_job = SignalEngineBatchJob(
         id=uuid.uuid4(),
         symbol="AAA",
-        horizon="short",
+        horizon="weekly",
         variant="expanded",
         job_type="signal_backtest",
         status="running",
@@ -366,8 +880,8 @@ def test_batch_status_endpoints_filter_by_job_type():
     )
     client = TestClient(_app(_FakeDB({SignalEngineBatchJob: [engine_job, backtest_job]})))
 
-    engine_response = client.get("/strategy/engine/batch-status?symbol=AAA&horizon=short&variant=expanded")
-    backtest_response = client.get("/strategy/backtest-mc/batch-status?symbol=AAA&horizon=short&variant=expanded")
+    engine_response = client.get("/strategy/engine/batch-status?symbol=AAA&horizon=weekly&variant=expanded")
+    backtest_response = client.get("/strategy/backtest-mc/batch-status?symbol=AAA&horizon=weekly&variant=expanded")
 
     assert engine_response.status_code == 200
     assert backtest_response.status_code == 200
@@ -375,8 +889,229 @@ def test_batch_status_endpoints_filter_by_job_type():
     assert [job["job_type"] for job in backtest_response.json()["jobs"]] == ["signal_backtest"]
 
 
+def test_signal_backtest_results_include_accounting_trade_ledger():
+    row = SignalBacktestRun(
+        symbol="AAA",
+        horizon="weekly",
+        variant="expanded_ta_simple",
+        source="engine",
+        scope="global",
+        scope_key="global",
+        status="succeeded",
+        window_start=dt.date(2026, 1, 1),
+        window_end=dt.date(2026, 1, 6),
+        n_bars=3,
+        n_trades=1,
+        dates_json=["2026-01-01", "2026-01-02", "2026-01-05", "2026-01-06"],
+        equity_json=[1.0, 1.0, 1.1, 1.1],
+        close_series_json=[100.0, 101.0, 110.0, 109.0],
+        position_series_json=[0.0, 1.0, 1.0, 0.0],
+        trades_json=[
+            {
+                "open_date": "2026-01-02",
+                "close_date": "2026-01-06",
+                "open_price": 101.0,
+                "close_price": 109.0,
+                "pnl_return": 0.07,
+            }
+        ],
+        total_return=0.1,
+        cagr=0.1,
+        sharpe=1.2,
+        max_drawdown=-0.01,
+        win_rate=1.0,
+        cost_bps=0.0,
+        slippage_bps=0.0,
+        side_policy="long_short",
+        cooldown_bars=0,
+        mc_method="block_bootstrap",
+        n_paths=10,
+        computed_at=dt.datetime(2026, 1, 6, tzinfo=dt.timezone.utc),
+        data_as_of=dt.date(2026, 1, 6),
+    )
+    market_row = MarketDataStore(symbol="AAA", timeframe="1D", data_as_of=dt.date(2026, 1, 6))
+    score_rows = [
+        SignalScoreHistory(
+            date=dt.date(2026, 1, 2),
+            symbol="AAA",
+            source="engine:expanded_ta_simple",
+            category="tendance",
+            horizon="weekly",
+            score_pct=20.0,
+        ),
+        SignalScoreHistory(
+            date=dt.date(2026, 1, 2),
+            symbol="AAA",
+            source="engine:expanded_ta_simple",
+            category="momentum",
+            horizon="weekly",
+            score_pct=40.0,
+        ),
+        SignalScoreHistory(
+            date=dt.date(2026, 1, 6),
+            symbol="AAA",
+            source="engine:expanded_ta_simple",
+            category="tendance",
+            horizon="weekly",
+            score_pct=50.0,
+        ),
+        SignalScoreHistory(
+            date=dt.date(2026, 1, 6),
+            symbol="AAA",
+            source="engine:expanded_ta_simple",
+            category="momentum",
+            horizon="weekly",
+            score_pct=70.0,
+        ),
+    ]
+    client = TestClient(_app(_FakeDB({
+        SignalBacktestRun: [row],
+        MarketDataStore: [market_row],
+        SignalScoreHistory: score_rows,
+    })))
+
+    response = client.get("/strategy/backtest-mc?symbol=AAA&horizon=weekly&variant=expanded_ta_simple")
+
+    assert response.status_code == 200
+    result = response.json()["results"][0]
+    assert result["side_policy"] == "long_short"
+    assert result["cooldown_bars"] == 0
+    assert result["trades"][0]["open_date"] == "2026-01-02"
+    assert [entry["side"] for entry in result["trade_ledger"]] == ["ACHAT", "VENTE"]
+    assert result["trade_ledger"][0]["cmp"] == 101.0
+    assert result["trade_ledger"][0]["global_score_pct"] == 30.0
+    assert result["trade_ledger"][0]["pnl_latent"] == 0.0
+    assert result["trade_ledger"][1]["pnl_realise"] == 8.0
+    assert result["trade_ledger"][1]["pnl_realise_cumule"] == 8.0
+    assert result["trade_ledger"][1]["global_score_pct"] == 60.0
+    assert result["global_score_series"] == [None, 30.0, None, 60.0]
+
+
+def test_signal_backtest_results_accounting_trade_ledger_handles_short_positions():
+    row = SignalBacktestRun(
+        symbol="AAA",
+        horizon="weekly",
+        variant="expanded_ta_simple",
+        source="engine",
+        scope="global",
+        scope_key="global",
+        status="succeeded",
+        window_start=dt.date(2026, 1, 1),
+        window_end=dt.date(2026, 1, 6),
+        n_bars=3,
+        n_trades=1,
+        dates_json=["2026-01-01", "2026-01-02", "2026-01-05", "2026-01-06"],
+        equity_json=[1.0, 1.0, 1.04, 1.03],
+        close_series_json=[100.0, 99.0, 95.0, 96.0],
+        position_series_json=[0.0, -1.0, -1.0, 0.0],
+        trades_json=[
+            {
+                "open_date": "2026-01-02",
+                "close_date": "2026-01-06",
+                "open_price": 99.0,
+                "close_price": 96.0,
+                "pnl_return": 0.03,
+                "direction": -1.0,
+            }
+        ],
+        total_return=0.03,
+        cagr=0.03,
+        sharpe=1.1,
+        max_drawdown=-0.01,
+        win_rate=1.0,
+        cost_bps=0.0,
+        slippage_bps=0.0,
+        side_policy="long_short",
+        cooldown_bars=0,
+        mc_method="block_bootstrap",
+        n_paths=10,
+        computed_at=dt.datetime(2026, 1, 6, tzinfo=dt.timezone.utc),
+        data_as_of=dt.date(2026, 1, 6),
+    )
+    market_row = MarketDataStore(symbol="AAA", timeframe="1D", data_as_of=dt.date(2026, 1, 6))
+    client = TestClient(_app(_FakeDB({SignalBacktestRun: [row], MarketDataStore: [market_row]})))
+
+    response = client.get("/strategy/backtest-mc?symbol=AAA&horizon=weekly&variant=expanded_ta_simple")
+
+    assert response.status_code == 200
+    ledger = response.json()["results"][0]["trade_ledger"]
+    assert [entry["side"] for entry in ledger] == ["VENTE", "ACHAT"]
+    assert ledger[0]["position"] == -1.0
+    assert ledger[0]["cmp"] == 99.0
+    assert ledger[1]["pnl_realise"] == 3.0
+    assert ledger[1]["pnl_latent"] == 3.0
+
+
+def test_signal_backtest_results_selected_direction_filters_chart_and_ledger():
+    row = SignalBacktestRun(
+        symbol="AAA",
+        horizon="weekly",
+        variant="expanded_ta_simple",
+        source="engine",
+        scope="global",
+        scope_key="global",
+        status="succeeded",
+        window_start=dt.date(2026, 1, 1),
+        window_end=dt.date(2026, 1, 7),
+        n_bars=4,
+        n_trades=2,
+        dates_json=["2026-01-01", "2026-01-02", "2026-01-05", "2026-01-06", "2026-01-07"],
+        equity_json=[1.0, 1.0, 0.95, 1.0, 1.02],
+        close_series_json=[100.0, 110.0, 105.0, 100.0, 98.0],
+        position_series_json=[0.0, 1.0, -1.0, -1.0, 0.0],
+        trades_json=[
+            {
+                "open_date": "2026-01-02",
+                "close_date": "2026-01-05",
+                "open_price": 110.0,
+                "close_price": 105.0,
+                "pnl_return": -0.045,
+                "direction": 1.0,
+            },
+            {
+                "open_date": "2026-01-05",
+                "close_date": "2026-01-07",
+                "open_price": 105.0,
+                "close_price": 98.0,
+                "pnl_return": 0.067,
+                "direction": -1.0,
+            },
+        ],
+        total_return=0.02,
+        cagr=0.02,
+        sharpe=0.7,
+        max_drawdown=0.05,
+        win_rate=0.5,
+        cost_bps=0.0,
+        slippage_bps=0.0,
+        side_policy="long_short",
+        cooldown_bars=0,
+        mc_method="block_bootstrap",
+        n_paths=10,
+        computed_at=dt.datetime(2026, 1, 7, tzinfo=dt.timezone.utc),
+        data_as_of=dt.date(2026, 1, 7),
+    )
+    market_row = MarketDataStore(symbol="AAA", timeframe="1D", data_as_of=dt.date(2026, 1, 7))
+    client = TestClient(_app(_FakeDB({SignalBacktestRun: [row], MarketDataStore: [market_row]})))
+
+    response = client.get(
+        "/strategy/backtest-mc?symbol=AAA&horizon=weekly&variant=expanded_ta_simple&selected_direction=short"
+    )
+
+    assert response.status_code == 200
+    result = response.json()["results"][0]
+    assert result["selected_direction"] == "short"
+    assert result["position_series"] == [0.0, 0.0, -1.0, -1.0, 0.0]
+    assert [entry["side"] for entry in result["trade_ledger"]] == ["VENTE", "ACHAT"]
+    assert [entry["position"] for entry in result["trade_ledger"]] == [-1.0, 0.0]
+    assert len(result["trades"]) == 1
+    assert result["trades"][0]["direction"] == -1.0
+    assert result["metrics"]["n_trades"] == 1
+
+
 def test_trigger_all_signal_engine_enqueues_all_active_symbols_and_horizons(monkeypatch):
-    calls: list[tuple[str, str, str, str, str | None]] = []
+    calls: list[tuple[str, str, str, str, str | None, str | None]] = []
+    factor_jobs: list[tuple[str, bool]] = []
 
     def _fake_enqueue(
         symbol: str,
@@ -384,13 +1119,23 @@ def test_trigger_all_signal_engine_enqueues_all_active_symbols_and_horizons(monk
         variant: str = "expanded",
         triggered_by: str = "manual",
         batch_id: str | None = None,
+        depends_on: str | None = None,
     ):
-        calls.append((symbol, horizon, variant, triggered_by, batch_id))
+        calls.append((symbol, horizon, variant, triggered_by, batch_id, depends_on))
         return f"{symbol}-{horizon}-{variant}"
+
+    class _FakeFactorQueue:
+        def enqueue(self, _fn, symbol: str, auto_enqueue: bool, **_kwargs):
+            factor_jobs.append((symbol, auto_enqueue))
+            return types.SimpleNamespace(id=f"factor-{symbol}")
 
     fake_enqueue_module = types.ModuleType("services.worker.tasks.signal_enqueue")
     fake_enqueue_module.enqueue_signal_engine_for_symbol = _fake_enqueue
     monkeypatch.setitem(sys.modules, "services.worker.tasks.signal_enqueue", fake_enqueue_module)
+    monkeypatch.setattr(
+        "services.api.app.queue._get_macro_ingest_queue",
+        lambda: _FakeFactorQueue(),
+    )
 
     active_a = StockMaster(symbol="AAA", is_active=True)
     active_b = StockMaster(symbol="BBB", is_active=True)
@@ -404,12 +1149,34 @@ def test_trigger_all_signal_engine_enqueues_all_active_symbols_and_horizons(monk
     assert isinstance(payload["batch_id"], str)
     assert payload["batch_id"]
     assert payload["symbols"] == 2
-    assert payload["horizons"] == ["short", "medium", "long"]
-    assert payload["variants"] == ["legacy", "expanded"]
-    assert payload["total_jobs"] == 12
-    assert len(calls) == 12
-    assert all(triggered_by == "manual_global" for *_rest, triggered_by, _batch in calls)
-    assert all(batch == payload["batch_id"] for *_rest, _triggered_by, batch in calls)
+    assert payload["horizons"] == ["weekly", "monthly", "quarterly"]
+    assert payload["variants"] == [
+        "legacy_ta_simple",
+        "expanded_ta_simple",
+        "legacy_factor_x_ta_simple",
+        "expanded_factor_x_ta_simple",
+        "legacy_ta_combo",
+        "expanded_ta_combo",
+        "legacy_factor_x_ta_combo",
+        "expanded_factor_x_ta_combo",
+    ]
+    assert payload["total_jobs"] == 48
+    assert len(calls) == 48
+    assert payload["factor_selection_jobs"] == 2
+    assert sorted(factor_jobs) == [("AAA", False), ("BBB", False)]
+    assert all(triggered_by == "manual_global" for *_rest, triggered_by, _batch, _depends_on in calls)
+    assert all(batch == payload["batch_id"] for *_rest, _triggered_by, batch, _depends_on in calls)
+    assert all(
+        depends_on is not None
+        for *_rest, variant, _triggered_by, _batch, depends_on in calls
+        if "factor_x_ta" in variant
+    )
+
+
+def test_signal_engine_result_rejects_legacy_horizon_query():
+    client = TestClient(_app(_FakeDB({})))
+    response = client.get("/strategy/engine/result?symbol=AAA&horizon=short&variant=legacy")
+    assert response.status_code == 422
 
 
 def test_signal_engine_global_batch_status_dedupes_latest_rows_and_counts_partial():
@@ -419,7 +1186,7 @@ def test_signal_engine_global_batch_status_dedupes_latest_rows_and_counts_partia
         SignalEngineBatchJob(
             id=uuid.uuid4(),
             symbol="AAA",
-            horizon="short",
+            horizon="weekly",
             variant="legacy",
             job_type="signal_engine",
             triggered_by="manual_global",
@@ -430,7 +1197,7 @@ def test_signal_engine_global_batch_status_dedupes_latest_rows_and_counts_partia
         SignalEngineBatchJob(
             id=uuid.uuid4(),
             symbol="AAA",
-            horizon="short",
+            horizon="weekly",
             variant="legacy",
             job_type="signal_engine",
             triggered_by="manual_global",
@@ -441,7 +1208,7 @@ def test_signal_engine_global_batch_status_dedupes_latest_rows_and_counts_partia
         SignalEngineBatchJob(
             id=uuid.uuid4(),
             symbol="BBB",
-            horizon="medium",
+            horizon="monthly",
             variant="expanded",
             job_type="signal_engine",
             triggered_by="manual_global",
@@ -452,7 +1219,7 @@ def test_signal_engine_global_batch_status_dedupes_latest_rows_and_counts_partia
         SignalEngineBatchJob(
             id=uuid.uuid4(),
             symbol="CCC",
-            horizon="long",
+            horizon="quarterly",
             variant="expanded",
             job_type="signal_engine",
             triggered_by="manual_global",
@@ -463,7 +1230,7 @@ def test_signal_engine_global_batch_status_dedupes_latest_rows_and_counts_partia
         SignalEngineBatchJob(
             id=uuid.uuid4(),
             symbol="ZZZ",
-            horizon="short",
+            horizon="weekly",
             variant="expanded",
             job_type="signal_engine",
             triggered_by="manual_global",
@@ -474,7 +1241,7 @@ def test_signal_engine_global_batch_status_dedupes_latest_rows_and_counts_partia
         SignalEngineBatchJob(
             id=uuid.uuid4(),
             symbol="DDD",
-            horizon="short",
+            horizon="weekly",
             variant="expanded",
             job_type="signal_backtest",
             triggered_by="manual_global",
@@ -484,7 +1251,7 @@ def test_signal_engine_global_batch_status_dedupes_latest_rows_and_counts_partia
         SignalEngineBatchJob(
             id=uuid.uuid4(),
             symbol="EEE",
-            horizon="short",
+            horizon="weekly",
             variant="expanded",
             job_type="signal_engine",
             triggered_by="manual",
@@ -505,6 +1272,8 @@ def test_signal_engine_global_batch_status_dedupes_latest_rows_and_counts_partia
     assert payload["running"] == 1
     assert payload["pending"] == 0
     assert payload["failed"] == 0
+    assert payload["legacy_horizon_rows"] == 0
+    assert payload["horizon_distribution"] == {"monthly": 1, "quarterly": 1, "weekly": 1}
 
 
 def test_signal_engine_global_batch_status_filters_by_batch_id():
@@ -513,7 +1282,7 @@ def test_signal_engine_global_batch_status_filters_by_batch_id():
         SignalEngineBatchJob(
             id=uuid.uuid4(),
             symbol="AAA",
-            horizon="short",
+            horizon="weekly",
             variant="legacy",
             job_type="signal_engine",
             triggered_by="manual_global",
@@ -524,7 +1293,7 @@ def test_signal_engine_global_batch_status_filters_by_batch_id():
         SignalEngineBatchJob(
             id=uuid.uuid4(),
             symbol="AAA",
-            horizon="short",
+            horizon="weekly",
             variant="legacy",
             job_type="signal_engine",
             triggered_by="manual_global",
@@ -543,3 +1312,4 @@ def test_signal_engine_global_batch_status_filters_by_batch_id():
     assert payload["total"] == 1
     assert payload["succeeded"] == 1
     assert payload["failed"] == 0
+    assert payload["legacy_horizon_rows"] == 0

@@ -11,13 +11,13 @@ interface KpiTileProps {
 
 export function KpiTile({ label, value, sub, tone = "default" }: KpiTileProps) {
   return (
-    <div className="rounded-md border border-border bg-muted/40 px-3 py-2.5">
+    <div className="rounded-md border border-border bg-bg2 px-3 py-2.5">
       <Eyebrow className="text-[10px]">{label}</Eyebrow>
       <div
         className={cn(
           "dashboard-mono mt-1 text-[18px] font-semibold tracking-tight",
-          tone === "positive" && "text-emerald-600",
-          tone === "negative" && "text-red-600",
+          tone === "positive" && "dashboard-text-positive",
+          tone === "negative" && "dashboard-text-negative",
         )}
       >
         {value}

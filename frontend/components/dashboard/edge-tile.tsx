@@ -31,6 +31,17 @@ function formatObsWindow(edge: EdgeMetrics) {
   return `${edge.n} obs OOS - ${months} mois`
 }
 
+function actionExpectedReturn(edge: EdgeMetrics, mode: EdgeMode) {
+  if (mode === "net") return edge.action_expected_return_net ?? edge.expected_return_net
+  return edge.action_expected_return_gross ?? edge.expected_return_gross
+}
+
+function actionLabel(edge: EdgeMetrics) {
+  if (edge.direction === "long") return "Long"
+  if (edge.direction === "short") return "Short"
+  return "No trade"
+}
+
 export function EdgeTile({ edge, loading = false, mode, sourceLabel, onOpen }: EdgeTileProps) {
   if (loading) {
     return <div className="h-14 animate-pulse rounded-md border border-border bg-muted/30" />
@@ -61,7 +72,7 @@ export function EdgeTile({ edge, loading = false, mode, sourceLabel, onOpen }: E
 
   const proven = mode === "net" ? edge.proven_edge_net : edge.proven_edge_gross
   const edgeRatio = mode === "net" ? edge.edge_ratio_net : edge.edge_ratio_gross
-  const expectedReturn = mode === "net" ? edge.expected_return_net : edge.expected_return_gross
+  const expectedReturn = actionExpectedReturn(edge, mode)
   const profitFactor = mode === "net" ? edge.profit_factor_net : edge.profit_factor_gross
   const insufficient = edge.n < 30
 
@@ -87,7 +98,7 @@ export function EdgeTile({ edge, loading = false, mode, sourceLabel, onOpen }: E
         </div>
       </div>
       <div className="dashboard-mono mt-1.5 text-[11px] text-muted-foreground">
-        {formatPercent(expectedReturn)} - {formatPercent(edge.hit_rate)} - PF {formatSigned(profitFactor)} - n={edge.n}
+        {actionLabel(edge)} {formatPercent(expectedReturn)} - {formatPercent(edge.hit_rate)} - hold {edge.fwd_horizon_bars ?? "--"}j - PF {formatSigned(profitFactor)} - n={edge.n}
       </div>
       <div className="mt-0.5 text-[11px] text-muted-foreground">{formatObsWindow(edge)}</div>
     </button>

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
+import inspect
 import math
 from typing import Any
 
@@ -15,40 +16,143 @@ from core.quant_core.signal_engine.ensemble import (
     family_signal_is_available,
     run_family_ensemble_full,
 )
+from core.quant_core.signal_engine.domain import ALL_FAMILIES, VariantDef
 from core.quant_core.signal_engine.indicator_series import (
+    compute_ad_series,
+    compute_adx_series,
     compute_atr_series,
+    compute_cci_series,
+    compute_cmf_series,
+    compute_ema_cross_series,
+    compute_ema_series,
+    compute_force_index_series,
+    compute_ichimoku_series,
     compute_macd_series,
+    compute_mfi_series,
     compute_obv_deviation,
+    compute_psar_series,
+    compute_roc_series,
     compute_rsi_series,
     compute_sma_series,
+    compute_stochastic_series,
+    compute_trix_series,
+    compute_tsi_series,
+    compute_uo_series,
+    compute_vwap_series,
 )
 
 
-FAMILY_IDS = ("sma", "rsi", "macd", "obv")
+FAMILY_IDS = ALL_FAMILIES
 BASE_SCORE_KEYS = {
     "sma": "trend_score",
+    "ema": "ema_score",
+    "ema_cross": "ema_cross_score",
+    "ichimoku": "ichimoku_score",
+    "psar": "psar_score",
     "macd": "momentum_score",
+    "roc": "roc_score",
+    "trix": "trix_score",
+    "adx": "adx_score",
+    "tsi": "tsi_score",
     "rsi": "oscillation_score",
+    "stochastic": "stochastic_score",
+    "cci": "cci_score",
+    "mfi": "mfi_score",
+    "uo": "uo_score",
     "obv": "volume_score",
+    "cmf": "cmf_score",
+    "ad": "ad_score",
+    "vwap": "vwap_score",
+    "fi": "fi_score",
 }
 BASE_SCORE_LABELS = {
     "sma": "Trend Score",
+    "ema": "EMA Score",
+    "ema_cross": "EMA Cross Score",
+    "ichimoku": "Ichimoku Score",
+    "psar": "PSAR Score",
     "macd": "Momentum Score",
+    "roc": "ROC Score",
+    "trix": "TRIX Score",
+    "adx": "ADX Score",
+    "tsi": "TSI Score",
     "rsi": "Oscillation Score",
+    "stochastic": "Stochastic Score",
+    "cci": "CCI Score",
+    "mfi": "MFI Score",
+    "uo": "Ultimate Oscillator Score",
     "obv": "Volume Score",
+    "cmf": "CMF Score",
+    "ad": "A/D Line Score",
+    "vwap": "VWAP Score",
+    "fi": "Force Index Score",
 }
 DEFAULT_SOURCE_MODE = "indicator_rows"
 DEFAULT_ROW_PARAMS = {
     "sma": {"window": 21},
+    "ema": {"window": 21},
+    "ema_cross": {"fast": 12, "slow": 26},
+    "ichimoku": {"tenkan": 9, "kijun": 26, "senkou_b": 52},
+    "psar": {"af_step": 0.02, "af_max": 0.2},
     "rsi": {"period": 21},
     "macd": {"fast": 12, "slow": 26, "signal": 9},
+    "roc": {"period": 60},
+    "trix": {"period": 15},
+    "adx": {"period": 21, "adx_threshold": 25},
+    "tsi": {"long_period": 25, "short_period": 13},
+    "stochastic": {"k_period": 14, "d_period": 3},
+    "cci": {"period": 22},
+    "mfi": {"period": 14, "oversold": 20, "overbought": 80},
+    "uo": {"period_1": 7, "period_2": 14, "period_3": 28},
     "obv": {"ema_period": 21},
+    "cmf": {"period": 22},
+    "ad": {"ema_period": 21},
+    "vwap": {"period": 22, "threshold_pct": 1},
+    "fi": {"period": 21},
 }
 DEFAULT_FAMILY_ENSEMBLE_LOOKBACK = {
     "sma": 400,
+    "ema": 400,
+    "ema_cross": 400,
+    "ichimoku": 400,
+    "psar": 100,
     "rsi": 41,
     "macd": 70,
+    "roc": 80,
+    "trix": 60,
+    "adx": 70,
+    "tsi": 70,
+    "stochastic": 40,
+    "cci": 60,
+    "mfi": 40,
+    "uo": 50,
     "obv": 400,
+    "cmf": 60,
+    "ad": 400,
+    "vwap": 60,
+    "fi": 60,
+}
+INDICATOR_ARCHETYPES = {
+    "sma": "price_vs_sma",
+    "ema": "price_vs_ema",
+    "ema_cross": "ema_cross",
+    "ichimoku": "ichi_cloud",
+    "psar": "psar_trend",
+    "macd": "macd_cross",
+    "roc": "roc_zero",
+    "trix": "trix_zero",
+    "adx": "adx_trend",
+    "tsi": "tsi_zero",
+    "rsi": "rsi_level",
+    "stochastic": "stoch_level",
+    "cci": "cci_level",
+    "mfi": "mfi_level",
+    "uo": "uo_level",
+    "obv": "obv_trend",
+    "cmf": "cmf_flow",
+    "ad": "ad_trend",
+    "vwap": "vwap_dev",
+    "fi": "fi_trend",
 }
 LEGACY_RAW_SCORE_CONTRACT_VERSION = "legacy_raw_v1"
 BOUNDED_SCORE_CONTRACT_VERSION = "bounded_100_v2"
@@ -159,7 +263,7 @@ def default_family_signal_config(*, family_id: str, enabled: bool = True) -> dic
 def build_stock_config_from_enabled_families(enabled_families: list[str] | tuple[str, ...]) -> dict[str, Any]:
     enabled = {str(item).strip().lower() for item in list(enabled_families or []) if str(item).strip()}
     if not enabled:
-        enabled = set(FAMILY_IDS)
+        enabled = {"sma"}
     families = {
         family_id: {
             "enabled": family_id in enabled,
@@ -264,6 +368,102 @@ def source_params_bundle(source: ScoreSourceSpec, *, boundary: str = "current") 
     }
 
 
+def _param_number(params: dict[str, Any], names: str | tuple[str, ...], default: float | int) -> float:
+    keys = (names,) if isinstance(names, str) else names
+    for key in keys:
+        if key in params:
+            return _param_value(params.get(key), default)
+    return float(default)
+
+
+def _int_param(params: dict[str, Any], names: str | tuple[str, ...], default: int, *, minimum: int = 1) -> int:
+    return max(_safe_int(_param_number(params, names, default), default), minimum)
+
+
+def _float_param(params: dict[str, Any], name: str, default: float, *, minimum: float | None = None) -> float:
+    value = _safe_float(_param_number(params, name, default), default)
+    if minimum is not None:
+        return max(value, minimum)
+    return value
+
+
+def source_plain_params(source: ScoreSourceSpec, *, boundary: str = "current") -> dict[str, Any]:
+    defaults = DEFAULT_ROW_PARAMS.get(source.family_id, {})
+    raw = source_params_bundle(source, boundary=boundary)
+    out = {**defaults, **raw}
+    if source.family_id == "sma" and "period" in out and "window" not in out:
+        out["window"] = out["period"]
+    return out
+
+
+def score_source_variant(source: ScoreSourceSpec, *, params_override: dict[str, Any] | None = None) -> VariantDef:
+    raw_params = params_override if isinstance(params_override, dict) else source_plain_params(source)
+    params = {**DEFAULT_ROW_PARAMS.get(source.family_id, {}), **raw_params}
+    if source.family_id == "sma" and "period" in params and "window" not in params:
+        params["window"] = params["period"]
+    return VariantDef(
+        variant_id=f"strategy_{source.score_key}",
+        family=source.family_id,
+        archetype=INDICATOR_ARCHETYPES[source.family_id],
+        params=params,
+        description=source.label,
+    )
+
+
+def _safe_ratio(numerator: np.ndarray, denominator: np.ndarray) -> np.ndarray:
+    values = np.full(len(numerator), np.nan, dtype="float64")
+    mask = np.isfinite(numerator) & np.isfinite(denominator) & (denominator != 0.0)
+    values[mask] = numerator[mask] / denominator[mask]
+    return values
+
+
+def _supports_keyword(func: Any, name: str) -> bool:
+    try:
+        signature = inspect.signature(func)
+    except (TypeError, ValueError):
+        return True
+    return name in signature.parameters or any(
+        param.kind == inspect.Parameter.VAR_KEYWORD
+        for param in signature.parameters.values()
+    )
+
+
+def _wfo_param_upper_bound_any(params: dict[str, Any], names: str | tuple[str, ...], default: int) -> int:
+    keys = (names,) if isinstance(names, str) else names
+    for key in keys:
+        if key in params:
+            return _wfo_param_upper_bound(params.get(key), default)
+    return _wfo_param_upper_bound(None, default)
+
+
+def _row_max_lookback(family_id: str, params: dict[str, Any]) -> int:
+    if family_id in {"sma", "ema"}:
+        return _wfo_param_upper_bound_any(params, ("window", "period"), 21)
+    if family_id == "ema_cross":
+        return _wfo_param_upper_bound_any(params, "slow", 26)
+    if family_id == "ichimoku":
+        return _wfo_param_upper_bound_any(params, "senkou_b", 52)
+    if family_id == "psar":
+        return 2
+    if family_id == "macd":
+        slow = _wfo_param_upper_bound_any(params, "slow", 26)
+        signal = _wfo_param_upper_bound_any(params, "signal", 9)
+        return slow + signal
+    if family_id in {"roc", "trix", "rsi", "cci", "mfi", "cmf", "vwap", "fi"}:
+        return _wfo_param_upper_bound_any(params, "period", int(DEFAULT_ROW_PARAMS[family_id].get("period", 21)))
+    if family_id == "adx":
+        return 2 * _wfo_param_upper_bound_any(params, "period", 21)
+    if family_id == "tsi":
+        return _wfo_param_upper_bound_any(params, "long_period", 25) + _wfo_param_upper_bound_any(params, "short_period", 13)
+    if family_id == "stochastic":
+        return _wfo_param_upper_bound_any(params, "k_period", 14) + _wfo_param_upper_bound_any(params, "d_period", 3)
+    if family_id == "uo":
+        return _wfo_param_upper_bound_any(params, "period_3", 28)
+    if family_id in {"obv", "ad"}:
+        return _wfo_param_upper_bound_any(params, "ema_period", 21)
+    return 1
+
+
 def derive_max_lookback(
     stock_config: dict[str, Any],
     *,
@@ -286,16 +486,7 @@ def derive_max_lookback(
         rows = [item for item in list(family.get("rows") or []) if _is_record(item) and bool(item.get("enabled", True))]
         for row in rows:
             params = row.get("params") if _is_record(row.get("params")) else {}
-            if family_id == "sma":
-                max_lookback = max(max_lookback, _wfo_param_upper_bound(params.get("window"), 20))
-            elif family_id == "rsi":
-                max_lookback = max(max_lookback, _wfo_param_upper_bound(params.get("period"), 14))
-            elif family_id == "obv":
-                max_lookback = max(max_lookback, _wfo_param_upper_bound(params.get("ema_period"), 21))
-            elif family_id == "macd":
-                slow = _wfo_param_upper_bound(params.get("slow"), 26)
-                signal = _wfo_param_upper_bound(params.get("signal"), 9)
-                max_lookback = max(max_lookback, slow + signal)
+            max_lookback = max(max_lookback, _row_max_lookback(family_id, params))
     return max(max_lookback, 1)
 
 
@@ -310,26 +501,93 @@ def _row_score_values(
     atr_safe: np.ndarray,
 ) -> np.ndarray:
     if family_id == "sma":
-        period = max(_safe_int(_param_value(params.get("window"), 20), 20), 1)
+        period = _int_param(params, ("window", "period"), 21)
         sma = compute_sma_series(close, period)
-        values = np.full(len(close), np.nan, dtype="float64")
-        mask = np.isfinite(sma) & np.isfinite(atr_safe)
-        values[mask] = (close[mask] - sma[mask]) / atr_safe[mask]
-        return values
+        return _safe_ratio(close - sma, atr_safe)
+    if family_id == "ema":
+        period = _int_param(params, ("window", "period"), 21)
+        ema_values = compute_ema_series(close, period)
+        return _safe_ratio(close - ema_values, atr_safe)
+    if family_id == "ema_cross":
+        fast = _int_param(params, "fast", 12)
+        slow = max(_int_param(params, "slow", 26), fast + 1)
+        fast_ema, slow_ema = compute_ema_cross_series(close, fast, slow)
+        return _safe_ratio(fast_ema - slow_ema, atr_safe)
+    if family_id == "ichimoku":
+        tenkan = _int_param(params, "tenkan", 9)
+        kijun = max(_int_param(params, "kijun", 26), tenkan + 1)
+        senkou_b = max(_int_param(params, "senkou_b", 52), kijun + 1)
+        ichi = compute_ichimoku_series(high, low, close, tenkan, kijun, senkou_b)
+        cloud_mid = (ichi["cloud_top"] + ichi["cloud_bottom"]) / 2.0
+        return _safe_ratio(close - cloud_mid, atr_safe)
+    if family_id == "psar":
+        af_step = _float_param(params, "af_step", 0.02, minimum=0.001)
+        af_max = max(_float_param(params, "af_max", 0.2, minimum=af_step + 0.001), af_step + 0.001)
+        psar = compute_psar_series(high, low, close, af_step, af_max)
+        return _safe_ratio(close - psar, atr_safe)
     if family_id == "rsi":
-        period = max(_safe_int(_param_value(params.get("period"), 14), 14), 1)
+        period = _int_param(params, "period", 21)
         return compute_rsi_series(close, period)
     if family_id == "macd":
-        fast = max(_safe_int(_param_value(params.get("fast"), 12), 12), 1)
-        slow = max(_safe_int(_param_value(params.get("slow"), 26), 26), fast + 1)
-        signal = max(_safe_int(_param_value(params.get("signal"), 9), 9), 1)
+        fast = _int_param(params, "fast", 12)
+        slow = max(_int_param(params, "slow", 26), fast + 1)
+        signal = _int_param(params, "signal", 9)
         histogram, _signal_line = compute_macd_series(close, fast, slow, signal)
+        return _safe_ratio(histogram, atr_safe)
+    if family_id == "roc":
+        return compute_roc_series(close, _int_param(params, "period", 60))
+    if family_id == "trix":
+        return compute_trix_series(close, _int_param(params, "period", 15))
+    if family_id == "adx":
+        period = _int_param(params, "period", 21)
+        threshold = _float_param(params, "adx_threshold", 25.0)
+        plus_di, minus_di, adx = compute_adx_series(high, low, close, period)
         values = np.full(len(close), np.nan, dtype="float64")
-        mask = np.isfinite(histogram) & np.isfinite(atr_safe)
-        values[mask] = histogram[mask] / atr_safe[mask]
+        mask = np.isfinite(plus_di) & np.isfinite(minus_di) & np.isfinite(adx)
+        values[mask] = np.where(
+            adx[mask] >= threshold,
+            np.where(plus_di[mask] > minus_di[mask], adx[mask], np.where(minus_di[mask] > plus_di[mask], -adx[mask], 0.0)),
+            0.0,
+        )
         return values
-    ema_period = max(_safe_int(_param_value(params.get("ema_period"), 21), 21), 1)
-    return compute_obv_deviation(close, volume, ema_period)
+    if family_id == "tsi":
+        short_period = _int_param(params, "short_period", 13)
+        long_period = max(_int_param(params, "long_period", 25), short_period + 1)
+        return compute_tsi_series(close, long_period, short_period)
+    if family_id == "stochastic":
+        k_period = _int_param(params, "k_period", 14)
+        d_period = _int_param(params, "d_period", 3)
+        k_values, _d_values = compute_stochastic_series(high, low, close, k_period, d_period)
+        return k_values
+    if family_id == "cci":
+        return compute_cci_series(high, low, close, _int_param(params, "period", 22))
+    if family_id == "mfi":
+        return compute_mfi_series(high, low, close, volume, _int_param(params, "period", 14))
+    if family_id == "uo":
+        p1 = _int_param(params, "period_1", 7)
+        p2 = max(_int_param(params, "period_2", 14), p1 + 1)
+        p3 = max(_int_param(params, "period_3", 28), p2 + 1)
+        return compute_uo_series(high, low, close, p1, p2, p3)
+    if family_id == "obv":
+        ema_period = _int_param(params, "ema_period", 21)
+        return compute_obv_deviation(close, volume, ema_period)
+    if family_id == "cmf":
+        return compute_cmf_series(high, low, close, volume, _int_param(params, "period", 22))
+    if family_id == "ad":
+        ema_period = _int_param(params, "ema_period", 21)
+        ad_values = compute_ad_series(high, low, close, volume)
+        ad_ema = compute_ema_series(ad_values, ema_period)
+        return _safe_ratio(ad_values - ad_ema, np.abs(ad_ema))
+    if family_id == "vwap":
+        period = _int_param(params, "period", 22)
+        vwap = compute_vwap_series(close, volume, period)
+        return 100.0 * _safe_ratio(close - vwap, vwap)
+    if family_id == "fi":
+        period = _int_param(params, "period", 21)
+        force = compute_force_index_series(close, volume, period)
+        denom = compute_ema_series(np.abs(force), period)
+        return _safe_ratio(force, denom)
+    return np.full(len(close), np.nan, dtype="float64")
 
 
 def _normal_cdf(values: np.ndarray) -> np.ndarray:
@@ -639,33 +897,39 @@ def compute_strategy_score_frame(
             volume_input = volume if source.family_id != "obv" else (volume if np.isfinite(volume).any() else None)
             if source.family_id == "obv" and volume_input is None:
                 continue
-            detail = run_family_ensemble_full(
-                source.family_id,
-                close,
-                volume=volume_input,
-                symbol=symbol,
-                horizon=horizon,
-                timeframe=timeframe,
-                cost_bps=signal_cost_bps,
-                cooldown_bars=cooldown_bars,
-            )
+            ensemble_kwargs: dict[str, Any] = {
+                "volume": volume_input,
+                "symbol": symbol,
+                "horizon": horizon,
+                "timeframe": timeframe,
+                "cost_bps": signal_cost_bps,
+                "cooldown_bars": cooldown_bars,
+            }
+            if _supports_keyword(run_family_ensemble_full, "high"):
+                ensemble_kwargs["high"] = high
+            if _supports_keyword(run_family_ensemble_full, "low"):
+                ensemble_kwargs["low"] = low
+            detail = run_family_ensemble_full(source.family_id, close, **ensemble_kwargs)
             signal = getattr(detail, "signal", None)
             if signal is not None and not family_signal_is_available(signal):
                 warnings.append(
                     f"{source.score_key}: no representative variants available for {source.family_id}."
                 )
                 continue
-            values = compute_family_score_timeseries(
-                detail,
-                close,
-                volume=volume_input,
-                cooldown_bars=cooldown_bars,
-                family_history_mode=family_history_mode,
-                symbol=symbol,
-                horizon=horizon,
-                timeframe=timeframe,
-                signal_cost_bps=signal_cost_bps,
-            )
+            score_kwargs: dict[str, Any] = {
+                "volume": volume_input,
+                "cooldown_bars": cooldown_bars,
+                "family_history_mode": family_history_mode,
+                "symbol": symbol,
+                "horizon": horizon,
+                "timeframe": timeframe,
+                "signal_cost_bps": signal_cost_bps,
+            }
+            if _supports_keyword(compute_family_score_timeseries, "high"):
+                score_kwargs["high"] = high
+            if _supports_keyword(compute_family_score_timeseries, "low"):
+                score_kwargs["low"] = low
+            values = compute_family_score_timeseries(detail, close, **score_kwargs)
             source_meta[source.score_key] = {
                 "score_key": source.score_key,
                 "family": source.family_id,
@@ -685,7 +949,7 @@ def compute_strategy_score_frame(
         else:
             raw_values = _row_score_values(
                 family_id=source.family_id,
-                params=source.params,
+                params=source_plain_params(source),
                 close=close,
                 high=high,
                 low=low,

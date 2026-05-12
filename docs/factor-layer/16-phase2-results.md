@@ -4,7 +4,7 @@
 
 ## Pre-registration reference
 
-- Freeze file: `docs/research/phase2_pre_registration.yaml`
+- Freeze file: `services/worker/research/phase2_pre_registration.yaml`
 - Freeze date: 2026-04-30
 - Freeze tag: `phase2-preregistration` (to be applied before first backtest run)
 - Methodology: `docs/factor-layer/13-cross-product-variants.md`

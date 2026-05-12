@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { ArrowLeft, AlertCircle, CheckCircle2, Clock, Info } from "lucide-react"
 import { fetchWfoDetail, type WfoCategoryDetail } from "@/lib/api"
+import { formatWfoFoldRange } from "@/lib/wfo-fold-display"
 import { formatNumber } from "@/lib/format"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -32,6 +33,7 @@ function WfoDetailContent() {
   const symbol = searchParams.get("symbol") ?? ""
   const horizon = searchParams.get("horizon") ?? "medium"
   const category = searchParams.get("category") ?? ""
+  const variant = searchParams.get("variant") ?? "expanded"
 
   const [data, setData] = useState<WfoCategoryDetail | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -43,7 +45,7 @@ function WfoDetailContent() {
     setIsLoading(true)
     setError(null)
 
-    fetchWfoDetail(symbol, horizon, category)
+    fetchWfoDetail(symbol, horizon, category, variant)
       .then((res) => {
         if (!cancelled) setData(res)
       })
@@ -55,7 +57,7 @@ function WfoDetailContent() {
       })
 
     return () => { cancelled = true }
-  }, [symbol, horizon, category])
+  }, [symbol, horizon, category, variant])
 
   if (!symbol || !category) {
     return (
@@ -94,6 +96,9 @@ function WfoDetailContent() {
 
   const config = data.config as Record<string, any> | null
   const folds = data.folds as Array<Record<string, any>> | null
+  const dataAsOf = data.data_as_of || config?.data_as_of || ""
+  const lastOosEnd = config?.last_oos_end_date || ""
+  const unusedTailBars = typeof config?.unused_tail_bars === "number" ? config.unused_tail_bars : null
 
   return (
     <div className="mx-auto max-w-5xl space-y-5 p-6">
@@ -108,7 +113,7 @@ function WfoDetailContent() {
             WFO Detail — {CATEGORY_LABELS[category] || category}
           </h1>
           <p className="text-xs text-muted-foreground">
-            {symbol} / {horizon}
+            {symbol} / {horizon} / {variant}
             {data.computed_at && ` — Calcule le ${data.computed_at}`}
             {data.compute_seconds != null && ` (${data.compute_seconds.toFixed(1)}s)`}
           </p>
@@ -182,6 +187,9 @@ function WfoDetailContent() {
               <ConfigItem label="Grille" value={`${config.grid_size} variantes`} />
               <ConfigItem label="Cout" value={`${config.cost_bps} bps`} />
               <ConfigItem label="Max reps" value={String(config.max_reps)} />
+              <ConfigItem label="Dernier OOS" value={lastOosEnd || "--"} />
+              <ConfigItem label="Data as of" value={dataAsOf || "--"} />
+              <ConfigItem label="Tail inutilisee" value={`${unusedTailBars ?? "--"} barres`} />
             </div>
             {config.families && (
               <div className="mt-2 flex flex-wrap gap-1">
@@ -229,10 +237,10 @@ function WfoDetailContent() {
                     >
                       <td className="px-3 py-2 font-medium">#{fold.index + 1}</td>
                       <td className="px-3 py-2 font-mono text-[10px] text-muted-foreground">
-                        {fold.train_start}–{fold.train_end}
+                        {formatWfoFoldRange(fold, "train")}
                       </td>
                       <td className="px-3 py-2 font-mono text-[10px] text-muted-foreground">
-                        {fold.oos_start}–{fold.oos_end}
+                        {formatWfoFoldRange(fold, "oos")}
                       </td>
                       <td className="px-3 py-2 text-right font-mono">
                         <span className={fold.is_return > 0 ? "text-green-700" : "text-red-700"}>

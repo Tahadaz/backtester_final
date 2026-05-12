@@ -1,7 +1,8 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useMemo, useState } from "react"
 import { useMarketCatalog, usePersistedSignalEngineSummaries } from "@/hooks/use-api"
+import { HorizonSelector } from "@/components/strategy/horizon-selector"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -9,41 +10,44 @@ import { cn } from "@/lib/utils"
 import { Eye, EyeOff, Search } from "lucide-react"
 import type { PersistedSignalEngineSummary } from "@/lib/api"
 
-function signalLabel(score: number): { label: string; cls: string } {
-  if (score > 50) return { label: "ACHAT FORT", cls: "bg-emerald-100 text-emerald-700" }
-  if (score > 15) return { label: "ACHAT", cls: "bg-green-100 text-green-700" }
-  if (score >= -15) return { label: "NEUTRE", cls: "bg-gray-100 text-gray-600" }
-  if (score >= -50) return { label: "VENTE", cls: "bg-orange-100 text-orange-700" }
-  return { label: "VENTE FORTE", cls: "bg-red-100 text-red-700" }
+function scoreText(score: number | null | undefined): string {
+  if (score == null || !Number.isFinite(score)) return "--"
+  return `${score >= 0 ? "+" : ""}${score.toFixed(0)}`
 }
 
-const CATEGORY_FILTERS = [
-  { value: "all", label: "Tous" },
-  { value: "equity", label: "Actions" },
-  { value: "commodity", label: "MP" },
-  { value: "forex", label: "FX" },
-  { value: "bond", label: "Oblig." },
-] as const
+function signalPillText(score: number | null | undefined, loading: boolean): string {
+  if (loading && score == null) return "..."
+  if (score == null) return "No run"
+  return signalLabel(score)
+}
 
-const SUBCATEGORY_FILTERS = [
-  { value: "all", label: "Tous" },
-  { value: "masi", label: "MASI" },
-  { value: "us", label: "US" },
-  { value: "european", label: "EU" },
-  { value: "asian", label: "Asie" },
-] as const
+function signalLabel(score: number): string {
+  if (score > 50) return "Achat fort"
+  if (score > 15) return "Achat"
+  if (score >= -15) return "Neutre"
+  if (score >= -50) return "Vente"
+  return "Vente forte"
+}
+
+function signalToneClasses(score: number | null | undefined): string {
+  if (score == null) return "border-border bg-muted/20 text-muted-foreground"
+  if (score > 15) return "border-emerald-200 bg-emerald-50 text-emerald-700"
+  if (score < -15) return "border-red-200 bg-red-50 text-red-700"
+  return "border-border bg-muted/30 text-muted-foreground"
+}
 
 export function StockSidebar({
   selectedSymbol,
   onSelect,
   horizon,
+  onHorizonChange,
   variant,
-  cooldownBars,
   className,
 }: {
   selectedSymbol: string | null
   onSelect: (symbol: string) => void
   horizon: string
+  onHorizonChange: (value: string) => void
   variant: string
   cooldownBars?: number
   className?: string
@@ -51,16 +55,14 @@ export function StockSidebar({
   const { data: catalog, isLoading } = useMarketCatalog()
   const [search, setSearch] = useState("")
   const [hideUnavailable, setHideUnavailable] = useState(false)
-  const [categoryFilter, setCategoryFilter] = useState<string>("all")
-  const [subcategoryFilter, setSubcategoryFilter] = useState<string>("all")
 
   const canonicalStocks = useMemo(
-    () => (catalog ?? []).filter((r) => r.has_canonical_data),
+    () => (catalog ?? []).filter((row) => row.has_canonical_data),
     [catalog],
   )
 
   const symbolList = useMemo(
-    () => canonicalStocks.map((r) => r.symbol),
+    () => canonicalStocks.map((row) => row.symbol),
     [canonicalStocks],
   )
 
@@ -72,100 +74,51 @@ export function StockSidebar({
 
   const scoreMap = useMemo(() => {
     const map: Record<string, PersistedSignalEngineSummary> = {}
-    if (batchScores) {
-      for (const s of batchScores) map[s.symbol] = s
-    }
+    for (const row of batchScores ?? []) map[row.symbol] = row
     return map
   }, [batchScores])
 
   const filtered = useMemo(() => {
-    return canonicalStocks.filter((r) => {
-      // Category filter
-      if (categoryFilter !== "all" && (r.asset_type ?? "equity") !== categoryFilter) return false
-      // Subcategory filter (equity only)
-      if (categoryFilter === "equity" && subcategoryFilter !== "all" && r.market_region !== subcategoryFilter) return false
-      // Availability filter
-      if (hideUnavailable && !scoresLoading) {
-        const score = scoreMap[r.symbol]
-        if (!score || score.aggregate_score_pct == null) return false
-      }
-      // Text search
-      if (search) {
-        const q = search.toLowerCase()
-        if (
-          !r.symbol.toLowerCase().includes(q) &&
-          !(r.display_name?.toLowerCase().includes(q) ?? false)
-        ) return false
-      }
-      return true
+    const q = search.trim().toLowerCase()
+    return canonicalStocks.filter((row) => {
+      const score = scoreMap[row.symbol]
+      if (hideUnavailable && !scoresLoading && score?.aggregate_score_pct == null) return false
+      if (!q) return true
+      return (
+        row.symbol.toLowerCase().includes(q) ||
+        (row.display_name?.toLowerCase().includes(q) ?? false)
+      )
     })
-  }, [canonicalStocks, categoryFilter, subcategoryFilter, hideUnavailable, scoresLoading, scoreMap, search])
+  }, [canonicalStocks, hideUnavailable, scoresLoading, scoreMap, search])
 
   return (
-    <div className={cn("flex flex-col border-r bg-card", className)}>
-      {/* Category filter chips */}
-      <div className="px-2 pt-2 pb-1 border-b">
-        <div className="flex flex-wrap gap-0.5">
-          {CATEGORY_FILTERS.map((f) => (
-            <button
-              key={f.value}
-              onClick={() => {
-                setCategoryFilter(f.value)
-                setSubcategoryFilter("all")
-              }}
-              className={cn(
-                "rounded px-2 py-0.5 text-[10px] font-semibold transition-colors border",
-                categoryFilter === f.value
-                  ? "bg-slate-900 text-white border-slate-900"
-                  : "text-muted-foreground bg-background border-border hover:bg-accent",
-              )}
-            >
-              {f.label}
-            </button>
-          ))}
+    <aside className={cn("flex min-h-0 flex-col overflow-hidden border-r border-line bg-card", className)}>
+      <div className="border-b border-line px-2.5 py-2">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+            Titres
+          </span>
+          <span className="font-mono text-[10px] text-muted-foreground">
+            {filtered.length} / {canonicalStocks.length}
+          </span>
         </div>
-
-        {/* Subcategory chips — equity only */}
-        {categoryFilter === "equity" && (
-          <div className="flex flex-wrap gap-0.5 mt-1">
-            {SUBCATEGORY_FILTERS.map((f) => (
-              <button
-                key={f.value}
-                onClick={() => setSubcategoryFilter(f.value)}
-                className={cn(
-                  "rounded px-2 py-0.5 text-[10px] font-semibold transition-colors border",
-                  subcategoryFilter === f.value
-                    ? "bg-blue-700 text-white border-blue-700"
-                    : "text-muted-foreground bg-background border-border hover:bg-accent",
-                )}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Search + hide toggle */}
-      <div className="p-3 border-b">
         <div className="flex items-center gap-1.5">
-          <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+          <div className="relative min-w-0 flex-1">
+            <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Rechercher un titre…"
+              placeholder="Rechercher un titre..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="h-8 pl-8 text-xs"
+              onChange={(event) => setSearch(event.target.value)}
+              className="h-7 rounded-md border-line bg-bg2 pl-7 text-xs shadow-none"
             />
           </div>
           <button
-            onClick={() => setHideUnavailable((v) => !v)}
+            type="button"
+            onClick={() => setHideUnavailable((value) => !value)}
             title={hideUnavailable ? "Afficher tous" : "Masquer non disponibles"}
             className={cn(
-              "flex-shrink-0 p-1.5 rounded transition-colors",
-              hideUnavailable
-                ? "text-primary bg-primary/10"
-                : "text-muted-foreground hover:text-foreground hover:bg-accent",
+              "grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-bg3 hover:text-foreground",
+              hideUnavailable && "bg-accent text-accent-foreground",
             )}
           >
             {hideUnavailable ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
@@ -173,74 +126,70 @@ export function StockSidebar({
         </div>
       </div>
 
-      <ScrollArea className="flex-1 min-h-0">
+      <ScrollArea className="min-h-0 flex-1 signals-scrollbar">
         {isLoading ? (
-          <div className="p-3 space-y-2">
-            {[...Array(12)].map((_, i) => (
-              <Skeleton key={i} className="h-9 w-full" />
+          <div className="space-y-1 p-1">
+            {[...Array(12)].map((_, index) => (
+              <Skeleton key={index} className="h-[45px] w-full rounded-md" />
             ))}
           </div>
         ) : filtered.length === 0 ? (
           <div className="p-4 text-center text-xs text-muted-foreground">
-            Aucun titre trouvé
+            Aucun titre trouve
           </div>
         ) : (
-          <div className="p-1">
-            {filtered.map((row) => (
-              <button
-                key={row.symbol}
-                onClick={() => onSelect(row.symbol)}
-                className={cn(
-                  "w-full flex flex-col gap-0.5 rounded-md px-3 py-2 text-left transition-colors",
-                  "hover:bg-accent hover:text-accent-foreground",
-                  selectedSymbol === row.symbol &&
-                    "bg-accent text-accent-foreground"
-                )}
-              >
-                {/* Line 1: symbol + signal badge */}
-                <div className="flex items-center justify-between w-full">
-                  <span className={cn(
-                    "font-mono text-xs font-bold",
-                    selectedSymbol === row.symbol && "text-foreground"
-                  )}>
-                    {row.symbol}
+          <div className="space-y-1 p-1.5">
+            {filtered.map((row) => {
+              const score = scoreMap[row.symbol]
+              const value = score?.aggregate_score_pct ?? null
+              return (
+                <button
+                  key={row.symbol}
+                  type="button"
+                  onClick={() => onSelect(row.symbol)}
+                  className={cn(
+                    "grid w-full grid-cols-[minmax(0,1fr)_76px] items-center gap-2 rounded-md border border-transparent px-2.5 py-2 text-left transition-colors hover:border-line hover:bg-bg3",
+                    selectedSymbol === row.symbol && "border-primary/30 bg-primary/10 text-foreground",
+                  )}
+                >
+                  <span className="min-w-0">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="font-mono text-xs font-bold">{row.symbol}</span>
+                      <span className="truncate rounded border border-line bg-bg2 px-1 text-[9px] text-muted-foreground">
+                        {row.market_region ?? row.market ?? row.asset_type}
+                      </span>
+                    </span>
+                    <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+                      {row.display_name ?? row.sector ?? row.asset_type}
+                    </span>
                   </span>
-                  {scoreMap[row.symbol]?.aggregate_score_pct != null ? (() => {
-                    const info = signalLabel(scoreMap[row.symbol].aggregate_score_pct!)
-                    return (
-                      <div className="flex items-center gap-1">
-                        <span className={cn(
-                          "text-[9px] font-semibold px-1.5 py-0.5 rounded whitespace-nowrap",
-                          info.cls,
-                        )}>
-                          {info.label}
-                        </span>
-                        {scoreMap[row.symbol]?.is_stale ? (
-                          <span className="text-[9px] text-amber-700">stale</span>
-                        ) : null}
-                      </div>
-                    )
-                  })() : scoresLoading ? (
-                    <span className="text-[9px] text-muted-foreground animate-pulse">{"•••"}</span>
-                  ) : null}
-                </div>
-                {/* Line 2: display name */}
-                {row.display_name && (
-                  <span className="text-[10px] text-muted-foreground truncate w-full">
-                    {row.display_name}
+                  <span className="flex min-w-0 flex-col items-end gap-0.5">
+                    <span
+                      title={value != null ? signalLabel(value) : undefined}
+                      className={cn(
+                        "inline-flex max-w-full justify-center rounded border px-1.5 py-0.5 text-[10px] font-bold leading-4",
+                        signalToneClasses(value),
+                      )}
+                    >
+                      <span className="truncate">{signalPillText(value, scoresLoading)}</span>
+                    </span>
+                    <span className="font-mono text-[10px] text-muted-foreground">
+                      {scoreText(value)}
+                    </span>
                   </span>
-                )}
-              </button>
-            ))}
+                </button>
+              )
+            })}
           </div>
         )}
       </ScrollArea>
 
-      {!isLoading && (
-        <div className="p-2 border-t text-[10px] text-muted-foreground text-center">
-          {filtered.length} titre{filtered.length !== 1 ? "s" : ""}
+      <div className="border-t border-line p-2">
+        <div className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+          Horizon
         </div>
-      )}
-    </div>
+        <HorizonSelector value={horizon} onChange={onHorizonChange} compact />
+      </div>
+    </aside>
   )
 }

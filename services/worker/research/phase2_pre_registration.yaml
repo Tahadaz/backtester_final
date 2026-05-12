@@ -63,6 +63,42 @@ factor_conditions:
     interpretation: "SP500 5d up-momentum — global equity tailwind"
     citation: "Ilmanen (2011), Expected Returns, Ch.15"
 
+  ndx_mom5_above_zero:
+    factor_ticker: "^NDX"
+    form: momentum
+    lookback: 5
+    threshold: 0.0
+    direction: above
+    interpretation: "Nasdaq 100 5d up-momentum - global growth equity tailwind"
+    citation: "minimal expansion rule for active factor universe"
+
+  n225_mom5_above_zero:
+    factor_ticker: "^N225"
+    form: momentum
+    lookback: 5
+    threshold: 0.0
+    direction: above
+    interpretation: "Nikkei 225 5d up-momentum - Asia equity tailwind"
+    citation: "minimal expansion rule for active factor universe"
+
+  cac_mom5_above_zero:
+    factor_ticker: "^FCHI"
+    form: momentum
+    lookback: 5
+    threshold: 0.0
+    direction: above
+    interpretation: "CAC 40 5d up-momentum - Europe equity tailwind"
+    citation: "minimal expansion rule for active factor universe"
+
+  ftse_mom5_above_zero:
+    factor_ticker: "^FTSE"
+    form: momentum
+    lookback: 5
+    threshold: 0.0
+    direction: above
+    interpretation: "FTSE 100 5d up-momentum - Europe equity tailwind"
+    citation: "minimal expansion rule for active factor universe"
+
   brent_mom20_above_zero:
     factor_ticker: "BZ=F"
     form: momentum
@@ -72,6 +108,24 @@ factor_conditions:
     interpretation: "Rising Brent — tailwind for materials/mining sector"
     citation: "economic channel (BRENT → extractive)"
     channel_gate: [materials, mining, chemicals]
+
+  gold_mom20_above_zero:
+    factor_ticker: "GC=F"
+    form: momentum
+    lookback: 20
+    threshold: 0.0
+    direction: above
+    interpretation: "Gold 20d up-momentum - safe-haven and precious-metals channel"
+    citation: "minimal expansion rule for active factor universe"
+
+  silver_mom20_above_zero:
+    factor_ticker: "SI=F"
+    form: momentum
+    lookback: 20
+    threshold: 0.0
+    direction: above
+    interpretation: "Silver 20d up-momentum - metals and cyclicals channel"
+    citation: "minimal expansion rule for active factor universe"
 
   dxy_mom20_below_zero:
     factor_ticker: "DX-Y.NYB"
@@ -91,6 +145,15 @@ factor_conditions:
     interpretation: "Strengthening EUR — MAD appreciation tailwind"
     citation: "MAD peg channel (~60% EUR, 40% USD)"
 
+  aed_mom20_above_zero:
+    factor_ticker: "AED=X"
+    form: momentum
+    lookback: 20
+    threshold: 0.0
+    direction: above
+    interpretation: "AED/USD 20d up-momentum - GCC liquidity and regional FX proxy"
+    citation: "minimal expansion rule for active factor universe"
+
   ust10_change5_above_20bp:
     factor_ticker: "^TNX"
     form: change
@@ -100,6 +163,15 @@ factor_conditions:
     interpretation: "US10Y tightening shock — headwind for yield-sensitive sectors"
     citation: "Campbell & Shiller (1988), JF"
     channel_gate: [banks, insurance, real_estate]
+
+  btc_mom5_above_zero:
+    factor_ticker: "BTC-USD"
+    form: momentum
+    lookback: 5
+    threshold: 0.0
+    direction: above
+    interpretation: "Bitcoin 5d up-momentum - speculative liquidity and risk appetite proxy"
+    citation: "minimal expansion rule for active factor universe"
 
 # Cross-product cardinality budget
 # ~8-10 conditions × ~100 TA variants = ~800-1000 naive per stock

@@ -14,7 +14,7 @@ interface SegmentedProps<T extends string> {
 
 export function Segmented<T extends string>({ value, options, onChange, className }: SegmentedProps<T>) {
   return (
-    <div className={cn("inline-flex rounded-md border border-border bg-muted/50 p-0.5", className)}>
+    <div className={cn("inline-flex rounded-md border border-border bg-bg2 p-0.5", className)}>
       {options.map((option) => {
         const active = option.value === value
         return (
@@ -23,9 +23,9 @@ export function Segmented<T extends string>({ value, options, onChange, classNam
             type="button"
             onClick={() => onChange(option.value)}
             className={cn(
-              "min-w-0 rounded-[6px] px-2 py-1 text-[11px] font-medium transition",
+              "min-w-0 rounded-[5px] px-2 py-1 text-[11px] font-medium transition",
               active
-                ? "bg-background text-foreground shadow-sm"
+                ? "bg-card text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >

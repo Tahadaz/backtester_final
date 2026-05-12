@@ -18,6 +18,11 @@ node_modules
 **/out
 **/out-pages
 **/.env.local
+.venv
+.cache
+.codex-logs
+.pytest_cache
+.uv-cache
 
 # Root-level dev scratch that must never end up in any service image
 quant-backtesting-frontend
@@ -26,6 +31,11 @@ _execute_run*.diff
 _patch_*
 *.resolved
 worker_tail.txt
+mc.exe
+market_data_export*.xlsx
+exports
+latex
+report-pfe-mis3
 
 docs
 original backtester

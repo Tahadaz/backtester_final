@@ -16,7 +16,7 @@ from typing import Any
 import numpy as np
 from sqlalchemy.orm import Session
 
-from core.quant_core.horizons import DEFAULT_COST_BPS_PER_SIDE
+from core.quant_core.horizons import DEFAULT_COST_BPS_PER_SIDE, HORIZON_SPECS, canonical_horizon
 from core.quant_core.data import drop_incomplete_ohlcv_rows
 from core.quant_core.signal_engine.current_signal import build_current_signal
 from core.quant_core.signal_engine.domain import (
@@ -27,6 +27,7 @@ from core.quant_core.signal_engine.domain import (
     VariantDef,
     signal_type_label,
 )
+from core.quant_core.signal_engine.modes import signal_mode_read_names, signal_mode_storage_name
 from core.quant_core.signal_engine.ensemble import (
     _score_to_label,
     combine_family_signals,
@@ -79,7 +80,7 @@ def _input_hash(data_as_of: Any, cost_bps: float, cooldown_bars: int) -> str:
 
 
 def _variant_family_map(variant: str) -> dict[str, list[str]]:
-    normalized = str(variant or "expanded").strip().lower()
+    normalized = signal_mode_storage_name(variant)
     return VARIANT_FAMILIES.get(normalized, VARIANT_FAMILIES["expanded"])
 
 
@@ -236,6 +237,70 @@ def _variant_from_rep(rep: dict[str, Any], *, fallback_family: str) -> VariantDe
         params=dict(params),
         description=str(rep.get("description") or ""),
     )
+
+
+def _refresh_representatives_for_family(
+    *,
+    family: str,
+    reps_src: list[dict[str, Any]],
+    close: np.ndarray,
+    volume: np.ndarray | None,
+    high: np.ndarray | None,
+    low: np.ndarray | None,
+    cooldown_bars: int,
+) -> tuple[float, str, list[dict[str, Any]]]:
+    current_signals = []
+    refreshed_reps: list[dict[str, Any]] = []
+    for rep in reps_src:
+        variant_def = _variant_from_rep(rep, fallback_family=family)
+        rep_weight = _safe_float(
+            rep.get("reliability_weight") or rep.get("normalized_weight") or 1.0
+        ) or 1.0
+        current = build_current_signal(
+            variant_def,
+            close,
+            volume=volume,
+            high=high,
+            low=low,
+            reliability_weight=rep_weight,
+            cooldown_bars=cooldown_bars,
+        )
+        current_signals.append(current)
+        refreshed = dict(rep)
+        refreshed.update(
+            {
+                "variant_id": variant_def.variant_id,
+                "family": variant_def.family,
+                "archetype": variant_def.archetype,
+                "params": dict(variant_def.params),
+                "description": str(rep.get("description") or variant_def.description or ""),
+                "signal": _safe_float(current.signal),
+                "signal_label": str(current.signal_label),
+                "reliability_weight": _safe_float(current.reliability_weight),
+                "current_close": _safe_float(current.current_close),
+                "indicator_value": _safe_float(current.indicator_value),
+                "explanation": str(current.explanation or ""),
+                "selection_status": str(rep.get("selection_status") or "selected"),
+            }
+        )
+        refreshed_reps.append(refreshed)
+
+    score_pct, label, weighted_reps = combine_family_signals(current_signals, family)
+    weighted_by_id = {
+        str(rep.get("variant_id")): rep
+        for rep in weighted_reps
+        if isinstance(rep, dict) and rep.get("variant_id")
+    }
+    for refreshed in refreshed_reps:
+        weighted = weighted_by_id.get(str(refreshed.get("variant_id")), {})
+        refreshed["normalized_weight"] = _safe_float(
+            weighted.get("normalized_weight", refreshed.get("normalized_weight"))
+        )
+        refreshed["contribution"] = _safe_float(
+            weighted.get("contribution", refreshed.get("contribution"))
+        )
+
+    return float(score_pct), str(label), refreshed_reps
 
 
 def _upsert_family_result(
@@ -607,6 +672,7 @@ def full_rebuild_from_pipeline(
     cost_bps: float = DEFAULT_COST_BPS,
     cooldown_bars: int = DEFAULT_COOLDOWN_BARS,
 ) -> dict[str, Any]:
+    variant = signal_mode_storage_name(variant)
     started_at = time.perf_counter()
     first_error: str | None = None
     completed = 0
@@ -656,6 +722,27 @@ def full_rebuild_from_pipeline(
 
     has_valid_volume = _check_volume(volume)
     current_hash = _input_hash(data_as_of, cost_bps, cooldown_bars)
+    try:
+        canonical_h_for_selection = canonical_horizon(horizon, allow_legacy=True)
+        horizon_spec = HORIZON_SPECS[canonical_h_for_selection]
+        holdout_bars = int(horizon_spec.signal_engine_holdout_bars)
+    except Exception:
+        canonical_h_for_selection = horizon
+        holdout_bars = 0
+    min_selection_params = (
+        HORIZON_PARAMS.get(canonical_h_for_selection)
+        or HORIZON_PARAMS.get(horizon)
+        or {"train": 0, "test": 0}
+    )
+    min_selection_bars = int(min_selection_params["train"] + min_selection_params["test"])
+    selection_end = len(close)
+    if holdout_bars > 0 and len(close) - holdout_bars >= min_selection_bars:
+        selection_end = len(close) - holdout_bars
+    selection_close = close[:selection_end]
+    selection_volume = volume[:selection_end] if volume is not None else None
+    selection_high = high[:selection_end] if high is not None else None
+    selection_low = low[:selection_end] if low is not None else None
+    selection_uses_terminal_holdout = selection_end == len(close)
 
     for family in families:
         category = family_to_category.get(family, "unknown")
@@ -715,10 +802,10 @@ def full_rebuild_from_pipeline(
 
             detail = run_family_ensemble_full(
                 family,
-                close,
-                volume=volume,
-                high=high,
-                low=low,
+                selection_close,
+                volume=selection_volume,
+                high=selection_high,
+                low=selection_low,
                 symbol=symbol,
                 horizon=horizon,
                 timeframe=timeframe,
@@ -726,7 +813,30 @@ def full_rebuild_from_pipeline(
                 cooldown_bars=cooldown_bars,
             )
             sig = detail.signal
-            reps_json = _serialize_representatives(sig)
+            selected_reps_json = _serialize_representatives(sig)
+            reps_json = selected_reps_json
+            refreshed_score_pct: float | None = None
+            refreshed_label: str | None = None
+            if family_signal_is_available(sig) and selected_reps_json:
+                try:
+                    refreshed_score_pct, refreshed_label, reps_json = _refresh_representatives_for_family(
+                        family=family,
+                        reps_src=selected_reps_json,
+                        close=close,
+                        volume=volume,
+                        high=high,
+                        low=low,
+                        cooldown_bars=cooldown_bars,
+                    )
+                except Exception as refresh_exc:
+                    logger.warning(
+                        "Failed to refresh strict-holdout selected reps for %s/%s/%s/%s: %s",
+                        symbol,
+                        horizon,
+                        variant,
+                        family,
+                        refresh_exc,
+                    )
             detail_json = _build_family_detail_json(
                 family=family,
                 symbol=symbol,
@@ -735,6 +845,24 @@ def full_rebuild_from_pipeline(
                 sig=sig,
             )
             available = family_signal_is_available(sig)
+            if available and refreshed_score_pct is not None:
+                detail_json.update(
+                    {
+                        "family_score_pct": round(float(refreshed_score_pct), 2),
+                        "family_signal_label": str(refreshed_label),
+                        "representatives": reps_json,
+                        "as_of": str(data_as_of),
+                        "latest_close": _safe_float(close[-1]) if len(close) else None,
+                        "available_bars": int(len(close)),
+                        "selection_available_bars": int(selection_end),
+                        "terminal_holdout_bars_excluded_for_selection": 0
+                        if selection_uses_terminal_holdout
+                        else int(len(close) - selection_end),
+                        "methodology_mode": "strict_terminal_holdout_representative_selection"
+                        if not selection_uses_terminal_holdout
+                        else detail_json.get("methodology_mode", "robust_oos_ensemble"),
+                    }
+                )
             family_status = "succeeded" if available else "no_signal"
             family_statuses[family] = family_status
             family_representatives[family] = reps_json
@@ -747,8 +875,16 @@ def full_rebuild_from_pipeline(
                 horizon=horizon,
                 variant=variant,
                 status=family_status,
-                family_score_pct=float(sig.family_score_pct) if available else None,
-                signal_label=str(sig.family_signal_label) if available else "Pas disponible",
+                family_score_pct=(
+                    float(refreshed_score_pct)
+                    if available and refreshed_score_pct is not None
+                    else (float(sig.family_score_pct) if available else None)
+                ),
+                signal_label=(
+                    str(refreshed_label)
+                    if available and refreshed_label is not None
+                    else (str(sig.family_signal_label) if available else "Pas disponible")
+                ),
                 representatives_json=reps_json,
                 family_detail_json=detail_json,
                 tested_count=int(sig.tested_count),
@@ -765,7 +901,11 @@ def full_rebuild_from_pipeline(
             )
 
             if available:
-                family_scores[family] = float(sig.family_score_pct)
+                family_scores[family] = (
+                    float(refreshed_score_pct)
+                    if refreshed_score_pct is not None
+                    else float(sig.family_score_pct)
+                )
             completed += 1
         except Exception as exc:
             failed += 1
@@ -841,6 +981,7 @@ def refresh_from_persisted_reps(
     cooldown_bars: int = DEFAULT_COOLDOWN_BARS,
     fallback_to_full_rebuild: bool = False,
 ) -> dict[str, Any]:
+    variant = signal_mode_storage_name(variant)
     started_at = time.perf_counter()
     cat_map = _variant_family_map(variant)
     families = _expected_families(variant)
@@ -1330,18 +1471,26 @@ def resolve_signal_engine_result(
     cost_bps: float = DEFAULT_COST_BPS,
     cooldown_bars: int = DEFAULT_COOLDOWN_BARS,
 ) -> dict[str, Any]:
+    variant = signal_mode_storage_name(variant)
+    read_variants = signal_mode_read_names(variant)
     expected_families = _expected_families(variant)
     market_data_as_of = _market_data_as_of(db, symbol=symbol, timeframe=timeframe)
-    global_row = (
-        db.query(SignalEngineGlobalResult)
-        .filter_by(symbol=symbol, horizon=horizon, variant=variant)
-        .first()
-    )
-    family_rows = (
-        db.query(SignalEngineFamilyResult)
-        .filter_by(symbol=symbol, horizon=horizon, variant=variant)
-        .all()
-    )
+    global_row = None
+    family_rows = []
+    for read_variant in read_variants:
+        if global_row is None:
+            global_row = (
+                db.query(SignalEngineGlobalResult)
+                .filter_by(symbol=symbol, horizon=horizon, variant=read_variant)
+                .first()
+            )
+        family_rows.extend(
+            db.query(SignalEngineFamilyResult)
+            .filter_by(symbol=symbol, horizon=horizon, variant=read_variant)
+            .all()
+        )
+        if global_row is not None and family_rows:
+            break
     family_map = {row.family: row for row in family_rows}
     cache_state = _classify_cache_state(
         expected_families=expected_families,

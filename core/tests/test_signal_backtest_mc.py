@@ -104,6 +104,61 @@ def test_build_family_signal_uses_fallback_family_for_legacy_engine_rows():
     assert np.count_nonzero(result) > 0
 
 
+def test_build_family_signal_uses_precomputed_factor_x_ta_signal():
+    close = np.linspace(100.0, 140.0, 20)
+    expected = np.linspace(-1.0, 1.0, 20)
+    rep = {
+        "variant_id": "fx_sma_rep",
+        "family": "sma@fx",
+        "archetype": "price_vs_sma",
+        "params": {"window": 3, "factor_condition_id": "vix_gate"},
+        "normalized_weight": 1.0,
+        "factor_condition": {
+            "condition_id": "vix_gate",
+            "factor_ticker": "^VIX",
+            "form": "zscore",
+            "lookback": 20,
+            "threshold": -1.0,
+            "direction": "below",
+        },
+    }
+
+    with patch("core.quant_core.signal_engine.backtest_mc.compute_signal_array") as mock_csa:
+        result = build_family_signal_series(
+            close,
+            None,
+            None,
+            None,
+            [rep],
+            precomputed_signals={"fx_sma_rep": expected},
+        )
+
+    mock_csa.assert_not_called()
+    np.testing.assert_allclose(result, expected)
+
+
+def test_build_family_signal_requires_precomputed_factor_x_ta_signal():
+    close = np.linspace(100.0, 140.0, 20)
+    rep = {
+        "variant_id": "fx_sma_rep",
+        "family": "sma@fx",
+        "archetype": "price_vs_sma",
+        "params": {"window": 3, "factor_condition_id": "vix_gate"},
+        "normalized_weight": 1.0,
+        "factor_condition": {
+            "condition_id": "vix_gate",
+            "factor_ticker": "^VIX",
+            "form": "zscore",
+            "lookback": 20,
+            "threshold": -1.0,
+            "direction": "below",
+        },
+    }
+
+    with pytest.raises(ValueError, match="All representatives failed"):
+        build_family_signal_series(close, None, None, None, [rep])
+
+
 def test_build_family_signal_raises_when_family_cannot_be_reconstructed():
     close = np.linspace(100.0, 140.0, 50)
     rep = {
@@ -229,6 +284,48 @@ def test_category_engine_backward_compatible_with_missing_rep_family():
     result = build_category_signal_series_engine(close, None, None, None, family_results, "tendance")
 
     assert np.count_nonzero(result) > 0
+
+
+def test_category_engine_accepts_factor_x_ta_family_keys():
+    close = np.linspace(100.0, 140.0, 20)
+    family_results = {
+        "sma@fx": {
+            "status": "succeeded",
+            "viable_count": 3,
+            "tested_count": 5,
+            "representative_count": 1,
+            "is_provisional": False,
+            "representatives_json": [
+                {
+                    "variant_id": "fx_sma_rep",
+                    "family": "sma@fx",
+                    "archetype": "price_vs_sma",
+                    "params": {"window": 3, "factor_condition_id": "vix_gate"},
+                    "normalized_weight": 1.0,
+                    "factor_condition": {
+                        "condition_id": "vix_gate",
+                        "factor_ticker": "^VIX",
+                        "form": "zscore",
+                        "lookback": 20,
+                        "threshold": -1.0,
+                        "direction": "below",
+                    },
+                }
+            ],
+        }
+    }
+
+    result = build_category_signal_series_engine(
+        close,
+        None,
+        None,
+        None,
+        family_results,
+        "tendance",
+        precomputed_signals={"fx_sma_rep": np.ones(20)},
+    )
+
+    assert np.allclose(result, 1.0)
 
 
 # ---------------------------------------------------------------------------
@@ -360,6 +457,71 @@ def test_backtest_zero_signal_no_trades():
     np.testing.assert_allclose(result["equity"], 1.0)
 
 
+def test_backtest_cooldown_zero_preserves_position_series():
+    T = 20
+    close = _make_close(T)
+    signal = np.where(np.arange(T) < 10, 1.0, -1.0)
+    dates = _make_dates(T)
+
+    baseline = run_signal_backtest(
+        signal,
+        close,
+        dates,
+        cost_bps=0.0,
+        slippage_bps=0.0,
+        side_policy="long_short",
+    )
+    with_cooldown_zero = run_signal_backtest(
+        signal,
+        close,
+        dates,
+        cost_bps=0.0,
+        slippage_bps=0.0,
+        side_policy="long_short",
+        cooldown_bars=0,
+    )
+
+    assert with_cooldown_zero["position_series"] == baseline["position_series"]
+    assert with_cooldown_zero["diagnostics"]["cooldown_blocked_bars"] == 0
+
+
+def test_backtest_trade_cooldown_blocks_reentry_after_exit():
+    close = np.linspace(100.0, 108.0, 8)
+    signal = np.array([1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0])
+
+    result = run_signal_backtest(
+        signal,
+        close,
+        _make_dates(len(close)),
+        cost_bps=0.0,
+        slippage_bps=0.0,
+        cooldown_bars=2,
+    )
+
+    assert result["position_series"] == [0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+    assert result["diagnostics"]["cooldown_events"] == 2
+    assert result["diagnostics"]["cooldown_blocked_bars"] == 2
+
+
+def test_backtest_trade_cooldown_blocks_direct_side_flip():
+    close = np.linspace(100.0, 105.0, 6)
+    signal = np.array([1.0, 1.0, -1.0, -1.0, -1.0, -1.0])
+
+    result = run_signal_backtest(
+        signal,
+        close,
+        _make_dates(len(close)),
+        cost_bps=0.0,
+        slippage_bps=0.0,
+        side_policy="long_short",
+        cooldown_bars=1,
+    )
+
+    assert result["position_series"] == [0.0, 1.0, 1.0, 0.0, 0.0, -1.0]
+    assert result["diagnostics"]["cooldown_events"] == 1
+    assert result["diagnostics"]["cooldown_blocked_bars"] == 2
+
+
 def test_backtest_short_series():
     close = np.array([100.0])
     signal = np.array([1.0])
@@ -417,6 +579,27 @@ def test_input_hash_changes_on_mc_config():
         n_paths=2000,
         block_mean=None,
         seed=42,
+    )
+    assert h1 != h2
+
+
+def test_input_hash_changes_on_cooldown():
+    reps = [{"variant_id": "v1", "archetype": "sma_cross", "params": {"n": 20}}]
+    h1 = compute_input_hash(
+        reps,
+        date(2024, 6, 1),
+        5.0,
+        5.0,
+        "long_only",
+        cooldown_bars=0,
+    )
+    h2 = compute_input_hash(
+        reps,
+        date(2024, 6, 1),
+        5.0,
+        5.0,
+        "long_only",
+        cooldown_bars=5,
     )
     assert h1 != h2
 

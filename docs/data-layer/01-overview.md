@@ -62,7 +62,7 @@ The data layer manages the complete lifecycle of Moroccan market OHLCV data: ing
 | `ingest_market_data.py` | Excel → per-sheet symbol detection → format detection → normalize OHLCV → merge parquet → write ingest report |
 | `refresh_market_data.py` | Per-symbol: resolve provider → pick adapter → incremental fetch → merge parquet → update DB → log errors |
 
-### Frontend Layer (`quant-backtesting-frontend/`)
+### Frontend Layer (`frontend/`)
 | File | Purpose |
 |------|---------|
 | `app/data/page.tsx` | Main data page (596 lines): catalog table, MASI/Autres tabs, action buttons, embedded dialogs |

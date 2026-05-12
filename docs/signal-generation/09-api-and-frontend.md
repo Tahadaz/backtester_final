@@ -1,5 +1,7 @@
 # 09 — API Endpoints & Frontend Architecture
 
+> This document is the Signals API/data contract. The page-level product and UI contract is [15-ui-goals-and-design.md](./15-ui-goals-and-design.md).
+
 ---
 
 ## Backend API
@@ -127,20 +129,22 @@ class BatchScoresRequest(BaseModel):
 
 ### Page: `/signals`
 
-**File**: `quant-backtesting-frontend/app/signals/page.tsx`
+**File**: `frontend/app/signals/page.tsx`
 
 **Layout**: Flex — StockSidebar (280px) | Main content (flex-1)
 
 **State**:
 - `selectedSymbol: string | null`
-- `horizon: "short" | "medium" | "long"` (default: "medium")
+- `horizon: "weekly" | "monthly" | "quarterly"` in the current UI (default: `"weekly"` on `/signals`). Legacy API examples in this folder may still use `short | medium | long`; `frontend/lib/horizon.ts` maps those aliases to `weekly | monthly | quarterly`.
 - `cooldownBars: number` (default: 0)
 
-**Tabs** (only first enabled):
-1. **Analyse Technique** → `TechnicalAnalysisPanel`
-2. **Fondamentale** → PlaceholderTab ("Bientôt disponible")
-3. **Quantitative** → PlaceholderTab
-4. **Personnelle** → PlaceholderTab
+**Tabs**:
+1. **Analyse Technique** -> active technical-analysis surface.
+   - Nested tabs: Signaux, Indicateurs, WFO, Backtest & MC.
+   - Indicateurs/WFO/Backtest are disabled until a stock is selected.
+2. **Fondamentale** -> PlaceholderTab.
+3. **Quantitative** -> PlaceholderTab.
+4. **Personnelle** -> PlaceholderTab.
 
 ### Component Hierarchy
 

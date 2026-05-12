@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import numpy as np
+import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -22,13 +23,28 @@ from sqlalchemy.orm import Session
 
 from services.api.app.db import get_db
 from services.api.app.models import SignalEngineFamilyResult, WfoSignalSummary
-from core.quant_core.macro import MACRO_SERIES_BY_SYMBOL
+from core.quant_core.macro import get_macro_series, get_macro_series_by_symbol
+from core.quant_core.research.alignment import align_factor_to_target
 from core.quant_core.research.factors.conditions import evaluate_condition
 from core.quant_core.signal_engine.domain import FactorConditionMeta
 
 router = APIRouter(prefix="/factor-signals", tags=["factor-signals"])
 
-_FACTOR_TICKERS = ["^VIX", "^GSPC", "BZ=F", "DX-Y.NYB", "EURUSD=X", "^TNX"]
+FACTOR_X_TA_SIMPLE_VARIANTS = ("expanded_factor_x_ta_simple", "factor_x_ta")
+
+def _factor_specs():
+    return list(get_macro_series())
+
+
+def _factor_tickers() -> list[str]:
+    return [spec.symbol for spec in _factor_specs()]
+
+
+def _factor_label(ticker: str) -> str:
+    spec = get_macro_series_by_symbol().get(ticker)
+    if spec is None:
+        return ticker
+    return f"{spec.canonical_id} - {spec.description}"
 
 _FACTOR_LABELS = {
     "^VIX": "VIX — Risk appetite",
@@ -87,20 +103,18 @@ class FactorXTaSignalResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 def _ensure_config_rows(db: Session, symbol: str) -> None:
-    count = db.execute(
-        text("SELECT COUNT(*) FROM stock_factor_config WHERE stock_symbol = :sym"),
-        {"sym": symbol},
-    ).scalar()
-    if count == 0:
-        db.execute(
-            text(
-                "INSERT INTO stock_factor_config (stock_symbol, factor_ticker, enabled) "
-                "VALUES (:sym, :ticker, true) "
-                "ON CONFLICT (stock_symbol, factor_ticker) DO NOTHING"
-            ),
-            [{"sym": symbol, "ticker": t} for t in _FACTOR_TICKERS],
-        )
-        db.commit()
+    tickers = _factor_tickers()
+    if not tickers:
+        return
+    db.execute(
+        text(
+            "INSERT INTO stock_factor_config (stock_symbol, factor_ticker, enabled) "
+            "VALUES (:sym, :ticker, true) "
+            "ON CONFLICT (stock_symbol, factor_ticker) DO NOTHING"
+        ),
+        [{"sym": symbol, "ticker": t} for t in tickers],
+    )
+    db.commit()
 
 
 def _get_config_rows(db: Session, symbol: str) -> dict[str, bool]:
@@ -111,8 +125,19 @@ def _get_config_rows(db: Session, symbol: str) -> dict[str, bool]:
     return {r[0]: bool(r[1]) for r in rows}
 
 
-def _load_factor_prices(db: Session, canonical_id: str):
-    """Return (close_array, last_date_str) or (None, None)."""
+def _date_indexed_series(series: pd.Series) -> pd.Series:
+    idx = pd.to_datetime(series.index, errors="coerce")
+    idx = pd.DatetimeIndex(idx)
+    if idx.tz is not None:
+        idx = idx.tz_convert("UTC").tz_localize(None)
+    idx = idx.normalize()
+    out = pd.Series(series.to_numpy(dtype=np.float64), index=idx)
+    out = out[~out.index.isna()]
+    return out[~out.index.duplicated(keep="last")].sort_index()
+
+
+def _load_factor_price_series(db: Session, canonical_id: str) -> tuple[pd.Series | None, str | None]:
+    """Return (close_series, last_date_str) or (None, None)."""
     try:
         from services.api.app.market_data_loader import load_ohlcv_for_symbol
         prices = load_ohlcv_for_symbol(db, canonical_id, timeframe="1D")
@@ -123,11 +148,27 @@ def _load_factor_prices(db: Session, canonical_id: str):
     close_col = next((c for c in ["Close", "close", "Adj Close"] if c in prices.columns), None)
     if close_col is None:
         return None, None
-    series = prices[close_col].dropna()
-    arr = series.values.astype(np.float64)
+    series = _date_indexed_series(prices[close_col].dropna())
+    if series.empty:
+        return None, None
     last_idx = series.index[-1]
     as_of = last_idx.strftime("%Y-%m-%d") if hasattr(last_idx, "strftime") else str(last_idx)
-    return arr, as_of
+    return series, as_of
+
+
+def _load_target_close_series(db: Session, symbol: str) -> pd.Series | None:
+    try:
+        from services.api.app.market_data_loader import load_ohlcv_for_symbol
+        prices = load_ohlcv_for_symbol(db, symbol, timeframe="1D")
+    except Exception:
+        return None
+    if prices is None or prices.empty:
+        return None
+    close_col = next((c for c in ["Close", "close", "Adj Close"] if c in prices.columns), None)
+    if close_col is None:
+        return None
+    series = _date_indexed_series(prices[close_col].dropna())
+    return series if not series.empty else None
 
 
 def _compute_current_metric(condition: FactorConditionMeta, factor_close: np.ndarray) -> float | None:
@@ -191,29 +232,63 @@ def _format_human_rule(condition: FactorConditionMeta) -> str:
 def _collect_factor_conditions_from_reps(reps_list: list[dict]) -> dict[str, dict[str, dict]]:
     """Walk representatives and collect unique conditions by factor_ticker → condition_id."""
     result: dict[str, dict[str, dict]] = {}
-    for rep in reps_list:
-        cond = rep.get("factor_condition")
-        if not cond:
-            continue
+
+    def _add_condition(cond: Any) -> None:
+        if not isinstance(cond, dict):
+            return
         ticker = cond.get("factor_ticker")
         cond_id = cond.get("condition_id")
         if ticker and cond_id:
             result.setdefault(ticker, {})[cond_id] = cond
+
+    for rep in reps_list:
+        _add_condition(rep.get("factor_condition"))
+        params = rep.get("params")
+        if isinstance(params, dict):
+            for component in params.get("components", []):
+                if isinstance(component, dict):
+                    _add_condition(component.get("factor_condition"))
     return result
 
 
-def _build_factor_state(db: Session, factor_conditions: dict[str, dict[str, dict]]) -> list[dict]:
+def _prefer_canonical_factor_rows(rows: list[Any], key_attr: str) -> list[Any]:
+    best: dict[str, Any] = {}
+    for row in rows:
+        key = str(getattr(row, key_attr, "") or "")
+        current = best.get(key)
+        if current is None or getattr(row, "variant", "") == "expanded_factor_x_ta_simple":
+            best[key] = row
+    return list(best.values())
+
+
+def _build_factor_state(
+    db: Session,
+    factor_conditions: dict[str, dict[str, dict]],
+    target_close: pd.Series | None = None,
+) -> list[dict]:
     """Compute current value + is_active for each used factor condition."""
     state_list = []
     for factor_ticker, conditions_by_id in factor_conditions.items():
-        spec = MACRO_SERIES_BY_SYMBOL.get(factor_ticker)
+        spec = get_macro_series_by_symbol().get(factor_ticker)
         if spec is None:
             continue
         canonical_id = spec.canonical_id
 
-        factor_close, as_of_str = _load_factor_prices(db, canonical_id)
-        if factor_close is None or len(factor_close) == 0:
+        factor_series, as_of_str = _load_factor_price_series(db, canonical_id)
+        if factor_series is None or factor_series.empty:
             continue
+        if target_close is not None and not target_close.empty:
+            aligned = align_factor_to_target(
+                target_close,
+                factor_series,
+                lag_rule="precede_open",
+                max_staleness=3,
+            )
+            factor_close = aligned.to_numpy(dtype=np.float64)
+            target_last_idx = target_close.index[-1]
+            as_of_str = target_last_idx.strftime("%Y-%m-%d") if hasattr(target_last_idx, "strftime") else str(target_last_idx)
+        else:
+            factor_close = factor_series.to_numpy(dtype=np.float64)
 
         conditions_out = []
         for cond_id, cond_dict in conditions_by_id.items():
@@ -243,10 +318,14 @@ def _build_factor_state(db: Session, factor_conditions: dict[str, dict[str, dict
             except Exception:
                 pass
 
+        current_value = float(factor_close[-1])
+        if not np.isfinite(current_value):
+            continue
+
         state_list.append({
             "factor_ticker": factor_ticker,
             "canonical_id": canonical_id,
-            "current_value": float(factor_close[-1]),
+            "current_value": current_value,
             "as_of": as_of_str,
             "conditions": conditions_out,
         })
@@ -262,13 +341,14 @@ def _build_factor_state(db: Session, factor_conditions: dict[str, dict[str, dict
 def get_factor_config(symbol: str, db: Session = Depends(get_db)) -> FactorConfigResponse:
     _ensure_config_rows(db, symbol)
     config = _get_config_rows(db, symbol)
+    tickers = _factor_tickers()
     items = [
         FactorConfigItem(
             factor_ticker=ticker,
-            label=_FACTOR_LABELS.get(ticker, ticker),
+            label=_factor_label(ticker),
             enabled=config.get(ticker, True),
         )
-        for ticker in _FACTOR_TICKERS
+        for ticker in tickers
     ]
     return FactorConfigResponse(stock_symbol=symbol, factors=items)
 
@@ -296,13 +376,14 @@ def update_factor_config(
         )
     db.commit()
     config = _get_config_rows(db, symbol)
+    tickers = _factor_tickers()
     items = [
         FactorConfigItem(
             factor_ticker=ticker,
-            label=_FACTOR_LABELS.get(ticker, ticker),
+            label=_factor_label(ticker),
             enabled=config.get(ticker, True),
         )
-        for ticker in _FACTOR_TICKERS
+        for ticker in tickers
     ]
     return FactorConfigResponse(stock_symbol=symbol, factors=items)
 
@@ -321,10 +402,12 @@ def get_factor_x_ta_signals(
     # --- Engine ×fx: read from signal_engine_family_result ---
     engine_rows = (
         db.query(SignalEngineFamilyResult)
-        .filter_by(symbol=symbol, horizon=horizon, variant="factor_x_ta")
+        .filter_by(symbol=symbol, horizon=horizon)
+        .filter(SignalEngineFamilyResult.variant.in_(FACTOR_X_TA_SIMPLE_VARIANTS))
         .filter(SignalEngineFamilyResult.status.in_(["succeeded", "no_signal"]))
         .all()
     )
+    engine_rows = _prefer_canonical_factor_rows(engine_rows, "family")
     engine_families = [
         FamilyResultSummary(
             family=row.family,
@@ -345,10 +428,12 @@ def get_factor_x_ta_signals(
     # --- WFO ×fx: read from wfo_signal_summary ---
     wfo_rows = (
         db.query(WfoSignalSummary)
-        .filter_by(symbol=symbol, horizon=horizon, variant="factor_x_ta")
+        .filter_by(symbol=symbol, horizon=horizon)
+        .filter(WfoSignalSummary.variant.in_(FACTOR_X_TA_SIMPLE_VARIANTS))
         .filter(WfoSignalSummary.status.in_(["succeeded", "no_signal"]))
         .all()
     )
+    wfo_rows = _prefer_canonical_factor_rows(wfo_rows, "category")
     wfo_families = [
         FamilyResultSummary(
             family=row.category,          # WFO is stored per-category, not per-family
@@ -391,7 +476,8 @@ def get_factor_x_ta_detail(
         family_fx = family if family.endswith("@fx") else f"{family}@fx"
         row = (
             db.query(SignalEngineFamilyResult)
-            .filter_by(symbol=symbol, horizon=horizon, variant="factor_x_ta")
+            .filter_by(symbol=symbol, horizon=horizon)
+            .filter(SignalEngineFamilyResult.variant.in_(FACTOR_X_TA_SIMPLE_VARIANTS))
             .filter(SignalEngineFamilyResult.family.in_([family, family_fx]))
             .first()
         )
@@ -418,7 +504,8 @@ def get_factor_x_ta_detail(
     elif variant == "wfo":
         row = (
             db.query(WfoSignalSummary)
-            .filter_by(symbol=symbol, horizon=horizon, variant="factor_x_ta", category=family)
+            .filter_by(symbol=symbol, horizon=horizon, category=family)
+            .filter(WfoSignalSummary.variant.in_(FACTOR_X_TA_SIMPLE_VARIANTS))
             .first()
         )
         if row is None:
@@ -459,7 +546,8 @@ def get_factor_x_ta_factor_state(
     if variant == "engine":
         rows = (
             db.query(SignalEngineFamilyResult)
-            .filter_by(symbol=symbol, horizon=horizon, variant="factor_x_ta")
+            .filter_by(symbol=symbol, horizon=horizon)
+            .filter(SignalEngineFamilyResult.variant.in_(FACTOR_X_TA_SIMPLE_VARIANTS))
             .filter(SignalEngineFamilyResult.status == "succeeded")
             .all()
         )
@@ -468,7 +556,8 @@ def get_factor_x_ta_factor_state(
     elif variant == "wfo":
         rows = (
             db.query(WfoSignalSummary)
-            .filter_by(symbol=symbol, horizon=horizon, variant="factor_x_ta")
+            .filter_by(symbol=symbol, horizon=horizon)
+            .filter(WfoSignalSummary.variant.in_(FACTOR_X_TA_SIMPLE_VARIANTS))
             .filter(WfoSignalSummary.status == "succeeded")
             .all()
         )
@@ -481,7 +570,7 @@ def get_factor_x_ta_factor_state(
     if not factor_conditions:
         return []
 
-    return _build_factor_state(db, factor_conditions)
+    return _build_factor_state(db, factor_conditions, _load_target_close_series(db, symbol))
 
 
 # ---------------------------------------------------------------------------
@@ -497,14 +586,13 @@ def enqueue_factor_x_ta_run(
     """Enqueue Factor Selection followed by Signal Engine ×fx AND WFO ×fx jobs in parallel."""
     try:
         from services.api.app.queue import _get_macro_ingest_queue
-        from services.worker.tasks.factor_selection_full import run_factor_selection_for_symbol
         from services.worker.tasks.factor_x_ta_batch import enqueue_factor_x_ta_for_symbol
         from services.worker.tasks.wfo_factor_x_ta_batch import enqueue_wfo_factor_x_ta_for_symbol
 
         # 1. Enqueue the econometric factor selection pipeline
         q = _get_macro_ingest_queue()
         fs_job = q.enqueue(
-            run_factor_selection_for_symbol,
+            "services.worker.tasks.factor_selection_full.run_factor_selection_for_symbol",
             symbol,
             False,
             job_timeout=3600
@@ -535,13 +623,12 @@ def enqueue_wfo_factor_x_ta_run(
     """Enqueue Factor Selection followed by the WFO ×fx job."""
     try:
         from services.api.app.queue import _get_macro_ingest_queue
-        from services.worker.tasks.factor_selection_full import run_factor_selection_for_symbol
         from services.worker.tasks.wfo_factor_x_ta_batch import enqueue_wfo_factor_x_ta_for_symbol
 
         # 1. Enqueue the econometric factor selection pipeline
         q = _get_macro_ingest_queue()
         fs_job = q.enqueue(
-            run_factor_selection_for_symbol,
+            "services.worker.tasks.factor_selection_full.run_factor_selection_for_symbol",
             symbol,
             False,
             job_timeout=3600

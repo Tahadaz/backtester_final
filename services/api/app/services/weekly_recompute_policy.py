@@ -6,10 +6,11 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
+from core.quant_core.signal_engine.modes import ALL_SIGNAL_MODE_NAMES, signal_mode_storage_name
 from services.api.app.models import SignalEngineGlobalResult, WfoGlobalSignal, WfoSignalSummary
 
 HORIZONS = ("weekly", "monthly", "quarterly")
-VARIANTS = ("legacy", "expanded")
+VARIANTS = ALL_SIGNAL_MODE_NAMES
 WFO_CATEGORIES = ("tendance", "momentum", "oscillation", "volume")
 MARKET_REFRESH_TIMEZONE = ZoneInfo("Africa/Casablanca")
 WEEKLY_RECOMPUTE_DELTA = timedelta(days=7)
@@ -96,7 +97,8 @@ def iter_signal_engine_weekly_stale_tuples(
     stale: list[tuple[str, str, str]] = []
     for symbol in symbols:
         for horizon in horizons:
-            for variant in variants:
+            for raw_variant in variants:
+                variant = signal_mode_storage_name(raw_variant)
                 last_computed_at = get_signal_engine_last_full_compute_at(
                     db,
                     symbol=symbol,
@@ -120,7 +122,8 @@ def iter_wfo_weekly_stale_tuples(
     stale: list[tuple[str, str, str]] = []
     for symbol in symbols:
         for horizon in horizons:
-            for variant in variants:
+            for raw_variant in variants:
+                variant = signal_mode_storage_name(raw_variant)
                 last_computed_at = get_wfo_last_full_compute_at(
                     db,
                     symbol=symbol,

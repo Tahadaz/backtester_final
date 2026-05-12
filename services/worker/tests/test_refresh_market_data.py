@@ -4,6 +4,7 @@ import importlib
 import datetime as dt
 
 from services.api.app.models import SignalEngineGlobalResult, WfoGlobalSignal
+from core.quant_core.signal_engine.modes import ALL_SIGNAL_MODE_NAMES
 from services.worker.tasks import signal_engine_batch as signal_engine_batch_mod
 from services.worker.tasks import wfo_signal_batch as wfo_signal_batch_mod
 
@@ -37,11 +38,23 @@ class _FakeDB:
         return _FakeQuery(self.rows_by_model.get(model, []))
 
 
+class _CaptureDB:
+    def __init__(self):
+        self.executed = []
+        self.commits = 0
+
+    def execute(self, statement, params=None):
+        self.executed.append((str(statement), params or {}))
+
+    def commit(self):
+        self.commits += 1
+
+
 def _engine_global_rows(symbol: str, *, stale_target: tuple[str, str] | None = None):
     now = dt.datetime(2026, 4, 24, 19, 0, tzinfo=dt.timezone.utc)
     rows = []
-    for horizon in ("short", "medium", "long"):
-        for variant in ("legacy", "expanded"):
+    for horizon in ("weekly", "monthly", "quarterly"):
+        for variant in ALL_SIGNAL_MODE_NAMES:
             computed_at = now - dt.timedelta(days=8 if stale_target == (horizon, variant) else 2)
             rows.append(
                 SignalEngineGlobalResult(
@@ -57,8 +70,8 @@ def _engine_global_rows(symbol: str, *, stale_target: tuple[str, str] | None = N
 def _wfo_global_rows(symbol: str, *, stale_target: tuple[str, str] | None = None):
     now = dt.datetime(2026, 4, 24, 19, 0, tzinfo=dt.timezone.utc)
     rows = []
-    for horizon in ("short", "medium", "long"):
-        for variant in ("legacy", "expanded"):
+    for horizon in ("weekly", "monthly", "quarterly"):
+        for variant in ALL_SIGNAL_MODE_NAMES:
             computed_at = now - dt.timedelta(days=8 if stale_target == (horizon, variant) else 2)
             rows.append(
                 WfoGlobalSignal(
@@ -94,12 +107,9 @@ def test_enqueue_signal_layers_after_refresh_enqueues_engine_and_wfo_for_all_hor
     refresh_market_data_mod._enqueue_signal_layers_after_refresh("IAM")
 
     expected = {
-        ("IAM", "short", "legacy", "market_refresh"),
-        ("IAM", "short", "expanded", "market_refresh"),
-        ("IAM", "medium", "legacy", "market_refresh"),
-        ("IAM", "medium", "expanded", "market_refresh"),
-        ("IAM", "long", "legacy", "market_refresh"),
-        ("IAM", "long", "expanded", "market_refresh"),
+        ("IAM", horizon, variant, "market_refresh")
+        for horizon in ("weekly", "monthly", "quarterly")
+        for variant in ALL_SIGNAL_MODE_NAMES
     }
     assert set(engine_calls) == expected
     assert set(wfo_calls) == expected
@@ -112,8 +122,8 @@ def test_enqueue_signal_layers_after_refresh_friday_enqueues_full_recompute_only
     wfo_full_calls: list[tuple[str, str, str, str]] = []
     fake_db = _FakeDB(
         {
-            SignalEngineGlobalResult: _engine_global_rows("IAM", stale_target=("short", "legacy")),
-            WfoGlobalSignal: _wfo_global_rows("IAM", stale_target=("medium", "expanded")),
+            SignalEngineGlobalResult: _engine_global_rows("IAM", stale_target=("weekly", "legacy_ta_simple")),
+            WfoGlobalSignal: _wfo_global_rows("IAM", stale_target=("monthly", "expanded_ta_simple")),
         }
     )
 
@@ -153,10 +163,10 @@ def test_enqueue_signal_layers_after_refresh_friday_enqueues_full_recompute_only
         now=dt.datetime(2026, 4, 24, 19, 0, tzinfo=dt.timezone.utc),
     )
 
-    assert len(engine_refresh_calls) == 6
-    assert len(wfo_refresh_calls) == 6
-    assert engine_full_calls == [("IAM", "short", "legacy", "weekly_market_refresh")]
-    assert wfo_full_calls == [("IAM", "medium", "expanded", "weekly_market_refresh")]
+    assert len(engine_refresh_calls) == 24
+    assert len(wfo_refresh_calls) == 24
+    assert engine_full_calls == [("IAM", "weekly", "legacy_ta_simple", "weekly_market_refresh")]
+    assert wfo_full_calls == [("IAM", "monthly", "expanded_ta_simple", "weekly_market_refresh")]
 
 
 def test_enqueue_signal_layers_after_refresh_non_friday_skips_weekly_full_recompute(monkeypatch):
@@ -164,8 +174,8 @@ def test_enqueue_signal_layers_after_refresh_non_friday_skips_weekly_full_recomp
     wfo_full_calls: list[tuple[str, str, str, str]] = []
     fake_db = _FakeDB(
         {
-            SignalEngineGlobalResult: _engine_global_rows("IAM", stale_target=("short", "legacy")),
-            WfoGlobalSignal: _wfo_global_rows("IAM", stale_target=("medium", "expanded")),
+            SignalEngineGlobalResult: _engine_global_rows("IAM", stale_target=("weekly", "legacy_ta_simple")),
+            WfoGlobalSignal: _wfo_global_rows("IAM", stale_target=("monthly", "expanded_ta_simple")),
         }
     )
 
@@ -193,3 +203,31 @@ def test_enqueue_signal_layers_after_refresh_non_friday_skips_weekly_full_recomp
 
     assert engine_full_calls == []
     assert wfo_full_calls == []
+
+
+def test_upsert_market_data_store_persists_dashboard_stats():
+    db = _CaptureDB()
+
+    refresh_market_data_mod._upsert_market_data_store(
+        db=db,
+        symbol="IAM",
+        timeframe="1D",
+        object_key="market/IAM/1D.parquet",
+        start_ts=dt.datetime(2026, 5, 1, tzinfo=dt.timezone.utc),
+        end_ts=dt.datetime(2026, 5, 8, tzinfo=dt.timezone.utc),
+        row_count=6,
+        source_provider="bourse_direct",
+        data_as_of=dt.date(2026, 5, 8),
+        close_last=105.0,
+        prev_close=100.0,
+        adv_20d=12345.0,
+    )
+
+    assert db.commits == 1
+    sql, params = db.executed[0]
+    assert "close_last" in sql
+    assert "prev_close" in sql
+    assert "adv_20d" in sql
+    assert params["close_last"] == 105.0
+    assert params["prev_close"] == 100.0
+    assert params["adv_20d"] == 12345.0

@@ -8,16 +8,26 @@ from sqlalchemy.orm import Session
 
 SELECTION_HORIZONS: tuple[str, ...] = ("short", "mid", "long")
 PIPELINE_TO_SELECTION_HORIZON = {
+    "weekly": "short",
     "short": "short",
+    "monthly": "mid",
     "mid": "mid",
     "medium": "mid",
+    "quarterly": "long",
     "long": "long",
 }
 SELECTION_TO_PIPELINE_HORIZON = {
-    "short": "short",
-    "mid": "medium",
-    "long": "long",
+    "short": "weekly",
+    "mid": "monthly",
+    "long": "quarterly",
 }
+FACTOR_X_TA_VARIANT_SQL_LIST = (
+    "'factor_x_ta', "
+    "'legacy_factor_x_ta_simple', "
+    "'expanded_factor_x_ta_simple', "
+    "'legacy_factor_x_ta_combo', "
+    "'expanded_factor_x_ta_combo'"
+)
 
 
 def normalize_selection_horizon(value: str) -> str:
@@ -45,19 +55,19 @@ def invalidate_factor_x_ta_results(db: Session, symbol: str, selection_horizon: 
     pipeline_horizon = to_pipeline_horizon(selection_horizon)
     params = {"symbol": symbol.upper(), "horizon": pipeline_horizon}
     db.execute(
-        text("DELETE FROM signal_engine_family_result WHERE symbol = :symbol AND horizon = :horizon AND variant = 'factor_x_ta'"),
+        text(f"DELETE FROM signal_engine_family_result WHERE symbol = :symbol AND horizon = :horizon AND variant IN ({FACTOR_X_TA_VARIANT_SQL_LIST})"),
         params,
     )
     db.execute(
-        text("DELETE FROM signal_engine_global_result WHERE symbol = :symbol AND horizon = :horizon AND variant = 'factor_x_ta'"),
+        text(f"DELETE FROM signal_engine_global_result WHERE symbol = :symbol AND horizon = :horizon AND variant IN ({FACTOR_X_TA_VARIANT_SQL_LIST})"),
         params,
     )
     db.execute(
-        text("DELETE FROM wfo_signal_summary WHERE symbol = :symbol AND horizon = :horizon AND variant = 'factor_x_ta'"),
+        text(f"DELETE FROM wfo_signal_summary WHERE symbol = :symbol AND horizon = :horizon AND variant IN ({FACTOR_X_TA_VARIANT_SQL_LIST})"),
         params,
     )
     db.execute(
-        text("DELETE FROM wfo_global_signal WHERE symbol = :symbol AND horizon = :horizon AND variant = 'factor_x_ta'"),
+        text(f"DELETE FROM wfo_global_signal WHERE symbol = :symbol AND horizon = :horizon AND variant IN ({FACTOR_X_TA_VARIANT_SQL_LIST})"),
         params,
     )
 

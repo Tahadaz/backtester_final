@@ -6,8 +6,7 @@ universe for one `(symbol, horizon, source)`. No I/O — all data is injected by
 the caller (loaders, OHLCV index) so the module is unit-testable with synthetic
 inputs.
 
-Two key constraints baked in here (see §4.1.a-finding in
-docs/plans/edge-deploy-plan.md):
+Two key constraints baked in here:
 - WFO `folds_json` rows in production carry **bar-index** OOS bounds, not
   timestamps. The optional `*_date` keys emitted by recent writers are
   preferred when present; otherwise we resolve via the symbol's OHLCV index.
@@ -66,6 +65,17 @@ def _coerce_ts(value: Any) -> pd.Timestamp | None:
     return None if pd.isna(ts) else ts
 
 
+def _align_ts_to_index(ts: pd.Timestamp | None, index: pd.DatetimeIndex | None) -> pd.Timestamp | None:
+    if ts is None or index is None or len(index) == 0:
+        return ts
+    index_tz = index.tz
+    if index_tz is None:
+        return ts.tz_convert(None) if ts.tzinfo is not None else ts
+    if ts.tzinfo is None:
+        return ts.tz_localize(index_tz)
+    return ts.tz_convert(index_tz)
+
+
 def _fold_to_window(fold: Mapping[str, Any],
                     ohlcv_index: pd.DatetimeIndex | None) -> OosWindow | None:
     """Convert one element of `WfoSignalSummary.folds_json` to an OosWindow.
@@ -98,6 +108,8 @@ def _fold_to_window(fold: Mapping[str, Any],
         # business day to land on an inclusive boundary that matches the
         # bar-index path above.
         if ohlcv_index is not None and len(ohlcv_index) > 0:
+            start = _align_ts_to_index(start, ohlcv_index)
+            end = _align_ts_to_index(end, ohlcv_index)
             pos = ohlcv_index.searchsorted(end, side="left")
             if pos > 0:
                 end = pd.Timestamp(ohlcv_index[pos - 1])

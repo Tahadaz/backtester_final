@@ -23,6 +23,7 @@ interface EdgePanelProps {
   symbol: string | null
   horizon: TradingHorizon
   initialSource: EdgeSource
+  initialVariant?: string | null
   mode: EdgeMode
   onModeChange: (mode: EdgeMode) => void
   costBps: number
@@ -33,6 +34,30 @@ function formatSigned(value: number | null | undefined, digits = 2) {
   if (value == null || !Number.isFinite(value)) return "--"
   const sign = value > 0 ? "+" : ""
   return `${sign}${value.toFixed(digits)}`
+}
+
+function actionExpectedReturn(edge: EdgeMetrics, mode: EdgeMode) {
+  if (mode === "net") return edge.action_expected_return_net ?? edge.expected_return_net
+  return edge.action_expected_return_gross ?? edge.expected_return_gross
+}
+
+function actionExpectedReturnCi(edge: EdgeMetrics, mode: EdgeMode) {
+  if (mode === "net") {
+    return {
+      lower: edge.action_expected_return_net_ci_lower ?? edge.expected_return_net_ci_lower,
+      upper: edge.action_expected_return_net_ci_upper ?? edge.expected_return_net_ci_upper,
+    }
+  }
+  return {
+    lower: edge.action_expected_return_gross_ci_lower ?? edge.expected_return_gross_ci_lower,
+    upper: edge.action_expected_return_gross_ci_upper ?? edge.expected_return_gross_ci_upper,
+  }
+}
+
+function actionLabel(edge: EdgeMetrics) {
+  if (edge.direction === "long") return "Long"
+  if (edge.direction === "short") return "Short"
+  return "No trade"
 }
 
 function GateRow({ ok, label, value }: { ok: boolean; label: string; value: string }) {
@@ -93,6 +118,7 @@ export function EdgePanel({
   symbol,
   horizon,
   initialSource,
+  initialVariant,
   mode,
   onModeChange,
   costBps,
@@ -107,31 +133,40 @@ export function EdgePanel({
     { value: "gross" as const, label: "Couts exclus" },
   ]
   const [source, setSource] = React.useState<EdgeSource>(initialSource)
+  const [variant, setVariant] = React.useState<string | null>(initialVariant ?? null)
 
   React.useEffect(() => {
     setSource(initialSource)
-  }, [initialSource, symbol, horizon])
+    setVariant(initialVariant ?? null)
+  }, [initialSource, initialVariant, symbol, horizon])
+
+  const requestVariant = source === initialSource ? variant ?? undefined : undefined
 
   const { data: edge, isLoading } = useSWR<EdgeMetrics | null>(
-    open && symbol ? `edge-panel-${symbol}-${horizon}-${source}-${costBps}` : null,
-    () => fetchEdge(symbol!, horizon, source, costBps).catch(() => null),
+    open && symbol ? `edge-panel-${symbol}-${horizon}-${source}-${requestVariant ?? "default"}-${costBps}` : null,
+    () => fetchEdge(symbol!, horizon, source, costBps, requestVariant).catch(() => null),
     { fallbackData: initialEdge ?? null, revalidateOnFocus: false },
   )
 
   const selected = edge
     ? {
-        expectedReturn: mode === "net" ? edge.expected_return_net : edge.expected_return_gross,
+        expectedReturn: actionExpectedReturn(edge, mode),
+        expectedReturnCi: actionExpectedReturnCi(edge, mode),
         edgeRatio: mode === "net" ? edge.edge_ratio_net : edge.edge_ratio_gross,
         profitFactor: mode === "net" ? edge.profit_factor_net : edge.profit_factor_gross,
         mcPvalue: mode === "net" ? edge.mc_luck_pvalue_net : edge.mc_luck_pvalue_gross,
+        labelShufflePvalue: mode === "net" ? edge.label_shuffle_pvalue_net : edge.label_shuffle_pvalue_gross,
         proven: mode === "net" ? edge.proven_edge_net : edge.proven_edge_gross,
         mcGate: mode === "net" ? edge.gates.mc_net : edge.gates.mc_gross,
+        labelShuffleGate: mode === "net" ? edge.gates.label_shuffle_net : edge.gates.label_shuffle_gross,
+        freshnessGate: mode === "net" ? edge.gates.freshness_net : edge.gates.freshness_gross,
       }
     : null
 
   const chartData = edge
     ? [
-        { metric: "ER", gross: (edge.expected_return_gross ?? 0) * 100, net: (edge.expected_return_net ?? 0) * 100 },
+        { metric: "Action ER", gross: (edge.action_expected_return_gross ?? edge.expected_return_gross ?? 0) * 100, net: (edge.action_expected_return_net ?? edge.expected_return_net ?? 0) * 100 },
+        { metric: "Stock ER", gross: (edge.stock_expected_return ?? 0) * 100, net: (edge.stock_expected_return ?? 0) * 100 },
         { metric: "Edge", gross: edge.edge_ratio_gross ?? 0, net: edge.edge_ratio_net ?? 0 },
         { metric: "PF", gross: edge.profit_factor_gross ?? 0, net: edge.profit_factor_net ?? 0 },
       ]
@@ -143,7 +178,7 @@ export function EdgePanel({
         <SheetHeader className="border-b border-border pb-4">
           <SheetTitle className="font-semibold tracking-tight">{symbol ?? "Edge"}</SheetTitle>
           <SheetDescription>
-            {horizon} - {source === "signal_engine" ? "Signal Engine" : "WFO"}
+            {horizon} - {source === "signal_engine" ? "Signal Engine" : "WFO"}{requestVariant ? ` - ${requestVariant}` : ""}
           </SheetDescription>
         </SheetHeader>
 
@@ -162,11 +197,16 @@ export function EdgePanel({
             </div>
           ) : (
             <>
-              <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid gap-3 md:grid-cols-3">
                 <StatBox
                   label="Mode actif"
                   value={selected.proven ? "Edge prouve" : edge.n < 30 ? "Insuffisant" : "A surveiller"}
-                  sub={`Cout par cote: ${edge.cost_bps_per_side} bps`}
+                  sub={`${actionLabel(edge)} - ${edge.side_policy} - cout par cote: ${edge.cost_bps_per_side} bps`}
+                />
+                <StatBox
+                  label="Holding optimal"
+                  value={<span className="dashboard-mono">{edge.fwd_horizon_bars != null ? `${edge.fwd_horizon_bars}j` : "--"}</span>}
+                  sub={`${edge.return_calc_method === "open_to_open" ? "open T+1 -> open T+1+d" : edge.return_calc_method} · ${edge.holding_period_min_bars ?? "--"}-${edge.holding_period_max_bars ?? "--"}j`}
                 />
                 <StatBox
                   label="Fenetre"
@@ -175,11 +215,30 @@ export function EdgePanel({
                 />
               </div>
 
+              <div className="grid gap-3 md:grid-cols-2">
+                <StatBox
+                  label="Action E[R]"
+                  value={<span className="dashboard-mono">{formatPercent(selected.expectedReturn)}</span>}
+                  sub={`IC ${formatPercent(selected.expectedReturnCi.lower)} -> ${formatPercent(selected.expectedReturnCi.upper)}`}
+                />
+                <StatBox
+                  label="Stock E[R]"
+                  value={<span className="dashboard-mono">{formatPercent(edge.stock_expected_return)}</span>}
+                  sub={`IC ${formatPercent(edge.stock_expected_return_ci_lower)} -> ${formatPercent(edge.stock_expected_return_ci_upper)}`}
+                />
+              </div>
+
               <div className="space-y-2">
-                <Eyebrow className="text-[10px]">3 gates</Eyebrow>
+                <Eyebrow className="text-[10px]">5 gates</Eyebrow>
                 <GateRow ok={selected.mcGate} label="Test de chance MC" value={`p=${selected.mcPvalue?.toFixed(3) ?? "--"}`} />
+                <GateRow ok={selected.labelShuffleGate} label="Label shuffle" value={`p=${selected.labelShufflePvalue?.toFixed(3) ?? "--"}`} />
                 <GateRow ok={edge.gates.wilson} label="Wilson LB" value={`${edge.hit_ci_lower?.toFixed(2) ?? "--"} > 0.50`} />
                 <GateRow ok={edge.gates.n} label="Echantillon" value={`${edge.n} >= 30`} />
+                <GateRow
+                  ok={selected.freshnessGate}
+                  label="Freshness"
+                  value={`${edge.freshness_n} >= ${edge.freshness_min_n}; ER net ${formatPercent(edge.freshness_action_expected_return_net)}`}
+                />
               </div>
 
               <StatBox
@@ -206,7 +265,8 @@ export function EdgePanel({
                 <MetricCard
                   label="Brut"
                   rows={[
-                    { name: "ER", value: formatPercent(edge.expected_return_gross) },
+                    { name: "Action E[R]", value: formatPercent(edge.action_expected_return_gross ?? edge.expected_return_gross) },
+                    { name: "Stock E[R]", value: formatPercent(edge.stock_expected_return) },
                     { name: "Edge ratio", value: formatSigned(edge.edge_ratio_gross) },
                     { name: "Profit factor", value: formatSigned(edge.profit_factor_gross) },
                     { name: "Expectance", value: formatPercent(edge.expectancy_gross?.expectancy) },
@@ -215,7 +275,8 @@ export function EdgePanel({
                 <MetricCard
                   label="Net"
                   rows={[
-                    { name: "ER", value: formatPercent(edge.expected_return_net) },
+                    { name: "Action E[R]", value: formatPercent(edge.action_expected_return_net ?? edge.expected_return_net) },
+                    { name: "Stock E[R]", value: formatPercent(edge.stock_expected_return) },
                     { name: "Edge ratio", value: formatSigned(edge.edge_ratio_net) },
                     { name: "Profit factor", value: formatSigned(edge.profit_factor_net) },
                     { name: "Expectance", value: formatPercent(edge.expectancy_net?.expectancy) },
@@ -265,9 +326,11 @@ export function EdgePanel({
                 <AccordionItem value="method">
                   <AccordionTrigger>Methodologie / limites</AccordionTrigger>
                   <AccordionContent className="space-y-2 text-sm text-muted-foreground">
-                    <p>Le badge repose sur 3 gates: MC, Wilson et taille d echantillon.</p>
-                    <p>En mode net, un aller-retour retire 2 x le cout configure avant calcul d ER, d expectance, d edge ratio et de profit factor.</p>
-                    <p>Pour WFO, la fragilite locale est pre-calculee par fold et sert au triage, pas au calcul des 3 gates.</p>
+                    <p>Le badge repose sur 4 gates: MC, label shuffle, Wilson et taille d echantillon.</p>
+                    <p>Action E[R] est calcule sur le holding optimal choisi dans la bande d horizon: open T+1 vers open T+1+d.</p>
+                    <p>Stock E[R] est le rendement brut du titre sur ce meme holding. Action E[R] applique ensuite le sens long/short.</p>
+                    <p>En mode net, un aller-retour retire 2 x le cout configure avant calcul d Action E[R], d expectance, d edge ratio et de profit factor.</p>
+                    <p>Pour WFO, la fragilite locale est pre-calculee par fold et sert au triage, pas au calcul des gates.</p>
                     <p>Le hit rate ne depend pas des couts. Les p-values restent des diagnostics, pas une garantie de regime stable.</p>
                   </AccordionContent>
                 </AccordionItem>

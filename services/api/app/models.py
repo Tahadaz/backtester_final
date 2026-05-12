@@ -603,6 +603,53 @@ class DashboardCustomIndex(Base):
     )
 
 
+class DeskPortfolioPosition(Base):
+    """Manual current-position state used by the daily dashboard blotter."""
+    __tablename__ = "desk_portfolio_position"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    symbol = Column(String, nullable=False)
+    side = Column(String(16), nullable=False, default="long")
+    quantity = Column(Float, nullable=False, default=0.0)
+    average_price_mad = Column(Float, nullable=True)
+    opened_at = Column(Date, nullable=True)
+    planned_holding_bars = Column(Integer, nullable=True)
+    stop_loss = Column(Float, nullable=True)
+    target_1 = Column(Float, nullable=True)
+    status = Column(String(16), nullable=False, default="active")
+    notes = Column(Text, nullable=True)
+    meta_json = Column(JSONB, nullable=False, default=dict)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("symbol", "side", name="uq_desk_portfolio_position_symbol_side"),
+        Index("ix_desk_portfolio_position_status", "status"),
+        Index("ix_desk_portfolio_position_symbol", "symbol"),
+    )
+
+
+class DeskPortfolioFill(Base):
+    """Manual fill audit trail for desk portfolio reconciliation."""
+    __tablename__ = "desk_portfolio_fill"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    symbol = Column(String, nullable=False)
+    side = Column(String(16), nullable=False)
+    quantity = Column(Float, nullable=False)
+    price_mad = Column(Float, nullable=False)
+    fees_mad = Column(Float, nullable=False, default=0.0)
+    notes = Column(Text, nullable=True)
+    meta_json = Column(JSONB, nullable=False, default=dict)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_desk_portfolio_fill_timestamp", "timestamp"),
+        Index("ix_desk_portfolio_fill_symbol_timestamp", "symbol", "timestamp"),
+    )
+
+
 class StrategyBacktestRun(Base):
     __tablename__ = "strategy_backtest_run"
 
@@ -677,7 +724,7 @@ class WfoSignalSummary(Base):
     symbol = Column(String, nullable=False)
     category = Column(String(32), nullable=False)       # "tendance" | "momentum" | "oscillation" | "volume"
     horizon = Column(String(16), nullable=False)         # "short" | "medium" | "long"
-    variant = Column(String(16), nullable=False, server_default="expanded")  # "legacy" | "expanded"
+    variant = Column(String(64), nullable=False, server_default="expanded")
     status = Column(String(20), nullable=False, default="pending")  # "pending" | "running" | "succeeded" | "failed"
 
     # --- WFO results ---
@@ -721,7 +768,7 @@ class WfoGlobalSignal(Base):
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     symbol = Column(String, nullable=False)
     horizon = Column(String(16), nullable=False)
-    variant = Column(String(16), nullable=False, server_default="expanded")  # "legacy" | "expanded"
+    variant = Column(String(64), nullable=False, server_default="expanded")
     status = Column(String(20), nullable=False, default="pending")
 
     # --- Consensus signal ---
@@ -779,10 +826,10 @@ class SignalEngineFamilyResult(Base):
 
     # Natural key
     symbol = Column(String, nullable=False)
-    family = Column(String(32), nullable=False)        # "sma" | "macd" | "rsi" | …
+    family = Column(String(64), nullable=False)        # "sma" | "macd" | "rsi" | …
     category = Column(String(32), nullable=False)      # denormalized from CATEGORY_FAMILIES
     horizon = Column(String(16), nullable=False)       # "short" | "medium" | "long"
-    variant = Column(String(16), nullable=False, server_default="expanded")
+    variant = Column(String(64), nullable=False, server_default="expanded")
     status = Column(String(20), nullable=False, server_default="pending")
 
     # Signal output
@@ -833,7 +880,7 @@ class SignalEngineGlobalResult(Base):
 
     symbol = Column(String, nullable=False)
     horizon = Column(String(16), nullable=False)
-    variant = Column(String(16), nullable=False, server_default="expanded")
+    variant = Column(String(64), nullable=False, server_default="expanded")
     status = Column(String(20), nullable=False, server_default="pending")
 
     # Aggregate scores
@@ -873,7 +920,7 @@ class SignalScoreHistory(Base):
 
     date = Column(Date, primary_key=True, nullable=False)
     symbol = Column(String, primary_key=True, nullable=False)
-    source = Column(String(20), primary_key=True, nullable=False)
+    source = Column(String(64), primary_key=True, nullable=False)
     category = Column(String(32), primary_key=True, nullable=False)
     horizon = Column(String(16), primary_key=True, nullable=False)
     score_pct = Column(Float, nullable=True)
@@ -907,7 +954,7 @@ class ScoreHistoryJob(Base):
 class SignalBacktestRun(Base):
     """Persisted signal-based backtest result with Monte Carlo equity-fan data.
 
-    One row per (symbol, horizon, source, scope, scope_key, variant, window_start, window_end).
+    One row per (symbol, horizon, source, scope, scope_key, variant, window_start, window_end, cooldown_bars).
     Equity curve and MC envelope are stored in JSONB (small arrays — ~80 daily bars max).
     """
     __tablename__ = "signal_backtest_run"
@@ -920,7 +967,7 @@ class SignalBacktestRun(Base):
     source = Column(String(10), nullable=False)        # "engine" | "wfo"
     scope = Column(String(20), nullable=False)         # "per_category" | "global" | "combination"
     scope_key = Column(String(64), nullable=False)     # "tendance" | "global" | "tendance+momentum"
-    variant = Column(String(16), nullable=False, server_default="expanded")
+    variant = Column(String(64), nullable=False, server_default="expanded")
     window_start = Column(Date, nullable=False)
     window_end = Column(Date, nullable=False)
 
@@ -929,6 +976,7 @@ class SignalBacktestRun(Base):
     cost_bps = Column(Float, nullable=False, server_default="5.0")
     slippage_bps = Column(Float, nullable=False, server_default="5.0")
     side_policy = Column(String(16), nullable=False, server_default="long_only")
+    cooldown_bars = Column(Integer, nullable=False, server_default="0")
     n_paths = Column(Integer, nullable=False, server_default="2000")
     mc_method = Column(String(20), nullable=False, server_default="block_bootstrap")
     block_mean = Column(Integer, nullable=True)        # null = auto ceil(T^(1/3))
@@ -960,7 +1008,7 @@ class SignalBacktestRun(Base):
     warning_code = Column(String(32), nullable=True)     # "flat_signal" | "few_trades" | null
     shuffle_stats_json = Column(JSONB, nullable=True)    # shuffled-trade bootstrap result
 
-    # Staleness: SHA-256 of (representatives_json + data_as_of + cost_bps + slippage_bps + side_policy)
+    # Staleness: SHA-256 of (representatives_json + data_as_of + cost/slippage/side/cooldown)
     input_hash = Column(String(64), nullable=True)
 
     computed_at = Column(DateTime(timezone=True), nullable=True)
@@ -973,7 +1021,7 @@ class SignalBacktestRun(Base):
     __table_args__ = (
         UniqueConstraint(
             "symbol", "horizon", "source", "scope", "scope_key", "variant",
-            "window_start", "window_end",
+            "window_start", "window_end", "cooldown_bars",
             name="uq_sbr_natural_key",
         ),
         Index("ix_sbr_symbol_horizon", "symbol", "horizon"),
@@ -995,7 +1043,7 @@ class SignalEngineBatchJob(Base):
 
     symbol = Column(String, nullable=False)
     horizon = Column(String(16), nullable=False)
-    variant = Column(String(16), nullable=False, server_default="expanded")
+    variant = Column(String(64), nullable=False, server_default="expanded")
     job_type = Column(String(20), nullable=False)      # "signal_engine" | "signal_backtest"
     status = Column(String(20), nullable=False, server_default="pending")
     rq_job_id = Column(String, nullable=True)

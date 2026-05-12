@@ -21,7 +21,6 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 from threading import Lock
 from redis import Redis
-from rq import get_current_job
 from plotly.utils import PlotlyJSONEncoder
 
 from sqlalchemy import inspect, text
@@ -79,6 +78,21 @@ def _sha256_bytes(b: bytes) -> str:
 
 _ARTIFACT_SHA_CACHE_LOCK = Lock()
 _ARTIFACT_SHA_CACHE: dict[tuple[str, str], str] = {}
+_GET_CURRENT_JOB = None
+
+
+def _get_current_rq_job():
+    global _GET_CURRENT_JOB
+    if _GET_CURRENT_JOB is None:
+        try:
+            from rq import get_current_job as _rq_get_current_job
+        except Exception:
+            return None
+        _GET_CURRENT_JOB = _rq_get_current_job
+    try:
+        return _GET_CURRENT_JOB()
+    except Exception:
+        return None
 
 
 def _preferred_dataset_cache_root() -> Path:
@@ -153,7 +167,7 @@ def _is_dataset_cache_path(path: Path | None) -> bool:
         return False
 def _rq_job_id() -> str | None:
     try:
-        job = get_current_job()
+        job = _get_current_rq_job()
         return job.id if job else None
     except Exception:
         return None
@@ -193,7 +207,7 @@ def _set_progress(
         except Exception:
             pct_int = None
 
-    job = get_current_job()
+    job = _get_current_rq_job()
     if job is not None:
         meta = job.meta or {}
         if pct_int is not None:

@@ -267,11 +267,14 @@ def _build_strategy_snapshot(strategy: models.SavedStrategy) -> tuple[dict[str, 
     universe["basket"] = basket
     portfolio["universe"] = universe
     canonical_config["portfolio"] = portfolio
+    selected_signal_candidates = list(universe.get("selected_signal_candidates") or [])
     snapshot = {
         "strategy_name": strategy.name,
         "side_policy": strategy.side_policy,
         "horizon": strategy.horizon,
         "basket": basket,
+        "selection_mode": universe.get("selection_mode", "manual"),
+        "selected_signal_candidates": selected_signal_candidates,
         "config_json": canonical_config,
     }
     return snapshot, basket

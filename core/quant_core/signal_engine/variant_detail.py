@@ -37,6 +37,7 @@ from .indicator_series import (
     compute_vwap_series,
 )
 from .oos_eval import apply_cooldown, compute_signal_array, signal_to_long_only_positions
+from .backtest_mc import apply_trade_cooldown_to_position_series
 from .rsi_semantics import (
     compute_rsi_variant_actions,
     compute_rsi_variant_positions,
@@ -44,6 +45,7 @@ from .rsi_semantics import (
     rsi_window_marker_indices,
     transition_marker_indices,
 )
+from .ta_combo import is_combo_variant, variant_from_component
 
 
 # ---------------------------------------------------------------------------
@@ -64,6 +66,25 @@ def _compute_indicator(
     - overlay: {"type": "overlay", "name": str, "values": np.ndarray}
     - subplot: {"type": "subplot", "name": str, ...indicator-specific keys}
     """
+    if is_combo_variant(variant):
+        components = []
+        for payload in variant.params.get("components", []):
+            if isinstance(payload, dict):
+                try:
+                    component = variant_from_component(payload)
+                except Exception:
+                    continue
+                components.append(
+                    {
+                        "family": component.family,
+                        "archetype": component.archetype,
+                        "variant_id": component.variant_id,
+                        "description": component.description,
+                        "params": dict(component.params or {}),
+                    }
+                )
+        return {"type": "composite", "name": "Strict AND combo", "components": components}
+
     p = variant.params
     arch = variant.archetype
 
@@ -143,8 +164,8 @@ def _compute_indicator(
         }
 
     if arch == "tsi_zero":
-        long_period = int(p.get("long_period", p["quarterly_period"]))
-        short_period = int(p.get("short_period", p["weekly_period"]))
+        long_period = int(p.get("long_period") or p.get("quarterly_period", 25))
+        short_period = int(p.get("short_period") or p.get("weekly_period", 13))
         vals = compute_tsi_series(close, long_period, short_period)
         return {"type": "secondary_yaxis", "name": f"TSI({long_period},{short_period})", "values": vals, "zero_line": True}
 
@@ -269,6 +290,7 @@ def compute_variant_trade_register(
     low: np.ndarray | None = None,
     cost_bps: float = DEFAULT_COST_BPS_PER_SIDE,
     cooldown_bars: int = 0,
+    trade_cooldown_bars: int = 0,
     force_valid_windows: bool = False,
 ) -> tuple[list[dict[str, Any]], dict[int, float]]:
     """Return the per-fill trade ledger for one variant without building plots."""
@@ -279,6 +301,10 @@ def compute_variant_trade_register(
         high=high,
         low=low,
         cooldown_bars=cooldown_bars,
+    )
+    position_sig, _cooldown_diag = apply_trade_cooldown_to_position_series(
+        position_sig,
+        trade_cooldown_bars,
     )
     return _extract_trade_register(
         position_sig,
@@ -302,6 +328,7 @@ def compute_variant_detail(
     low: np.ndarray | None = None,
     cost_bps: float = DEFAULT_COST_BPS_PER_SIDE,
     cooldown_bars: int = 0,
+    trade_cooldown_bars: int = 0,
     force_valid_windows: bool = False,
 ) -> dict[str, Any]:
     """Return plots + trade ledger + trade performance for a variant.
@@ -340,6 +367,10 @@ def compute_variant_detail(
         low=low_arr,
         cooldown_bars=cooldown_bars,
     )
+    position_sig, cooldown_diag = apply_trade_cooldown_to_position_series(
+        position_sig,
+        trade_cooldown_bars,
+    )
 
     # --- trades across all OOS windows ---
     trades, window_cash_starts = compute_variant_trade_register(
@@ -352,6 +383,7 @@ def compute_variant_detail(
         low=low_arr,
         cost_bps=cost_bps,
         cooldown_bars=cooldown_bars,
+        trade_cooldown_bars=trade_cooldown_bars,
         force_valid_windows=force_valid_windows,
     )
 
@@ -376,6 +408,7 @@ def compute_variant_detail(
     # --- aggregate metrics (same as stub but kept for compat) ---
     metrics: dict[str, Any] = {
         "total_pnl_realise_1u": total_pnl_realise_1u,
+        **cooldown_diag,
     }
     if oos_windows:
         valid = [w for w in oos_windows if w.is_valid]

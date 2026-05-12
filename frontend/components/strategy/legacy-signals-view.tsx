@@ -1,18 +1,26 @@
 "use client"
 
-import { useState } from "react"
-import { Activity, LineChart, Settings, TrendingUp } from "lucide-react"
-import { LegacyIndicatorExplorer } from "@/components/strategy/legacy-indicator-explorer"
-import { LegacyTechnicalAnalysisPanel } from "@/components/strategy/legacy-technical-analysis-panel"
+import { useState, type ReactNode } from "react"
+import { Activity, Gauge, Layers3, Settings, TrendingUp } from "lucide-react"
 import { SignalsViewLayout } from "@/components/strategy/signals-view-layout"
-import { WfoMethodologyTab } from "@/components/strategy/wfo-methodology-tab"
+import { SignalTechniqueDashboard } from "@/components/strategy/signal-technique-dashboard"
+import { SignalEngineResultsPanel } from "@/components/strategy/signal-engine-results-panel"
+import { SignalEvidenceTab } from "@/components/strategy/signal-evidence-tab"
+import { WfoEvidenceTab } from "@/components/strategy/wfo-evidence-tab"
 import { BacktestMCPanel } from "@/components/signals/backtest-mc-panel"
+import type { LegacySignalsPageView } from "@/components/strategy/signals-view-layout"
 
 type LegacySignalsViewProps = {
   selectedSymbol: string | null
   onSelectSymbol: (symbol: string) => void
   horizon: string
   onHorizonChange: (value: string) => void
+  topbarContent?: ReactNode
+  variant?: LegacySignalsPageView
+  evidenceVariant?: string
+  defaultTab?: "technique" | "evidence" | "indicateurs" | "wfo" | "backtest"
+  evidenceSource?: "auto" | "signal_engine" | "wfo"
+  selectedVariantId?: string | null
 }
 
 function EmptyState({
@@ -37,6 +45,12 @@ export function LegacySignalsView({
   onSelectSymbol,
   horizon,
   onHorizonChange,
+  topbarContent,
+  variant = "legacy_ta_simple",
+  evidenceVariant = variant,
+  defaultTab,
+  evidenceSource = "auto",
+  selectedVariantId = null,
 }: LegacySignalsViewProps) {
   const [cooldownBars, setCooldownBars] = useState(0)
 
@@ -45,15 +59,18 @@ export function LegacySignalsView({
       selectedSymbol={selectedSymbol}
       onSelectSymbol={onSelectSymbol}
       horizon={horizon}
-      variant="legacy"
+      variant={variant}
       onHorizonChange={onHorizonChange}
       cooldownBars={cooldownBars}
       onCooldownBarsChange={setCooldownBars}
+      topbarContent={topbarContent}
+      defaultTab={defaultTab}
       techniqueContent={
         selectedSymbol ? (
-          <LegacyTechnicalAnalysisPanel
+          <SignalTechniqueDashboard
             symbol={selectedSymbol}
             horizon={horizon}
+            variant={variant}
             cooldownBars={cooldownBars}
           />
         ) : (
@@ -63,19 +80,41 @@ export function LegacySignalsView({
           />
         )
       }
-      indicatorsContent={
+      evidenceContent={
         selectedSymbol ? (
-          <LegacyIndicatorExplorer symbol={selectedSymbol} />
+          <SignalEvidenceTab
+            symbol={selectedSymbol}
+            horizon={horizon}
+            variant={evidenceVariant}
+            source={evidenceSource}
+            selectedVariantId={selectedVariantId}
+            cooldownBars={cooldownBars}
+          />
         ) : (
           <EmptyState
-            icon={LineChart}
+            icon={Gauge}
+            message="Selectionnez un titre pour afficher la preuve du signal."
+          />
+        )
+      }
+      indicatorsContent={
+        selectedSymbol ? (
+          <SignalEngineResultsPanel
+            symbol={selectedSymbol}
+            horizon={horizon}
+            variant={variant}
+            cooldownBars={cooldownBars}
+          />
+        ) : (
+          <EmptyState
+            icon={Layers3}
             message="Selectionnez un titre pour afficher les indicateurs."
           />
         )
       }
       wfoContent={
         selectedSymbol ? (
-          <WfoMethodologyTab symbol={selectedSymbol} horizon={horizon} variant="legacy" />
+          <WfoEvidenceTab symbol={selectedSymbol} horizon={horizon} variant={variant} />
         ) : (
           <EmptyState
             icon={Settings}
@@ -85,7 +124,7 @@ export function LegacySignalsView({
       }
       backtestContent={
         selectedSymbol ? (
-          <BacktestMCPanel symbol={selectedSymbol} horizon={horizon} variant="legacy" />
+          <BacktestMCPanel symbol={selectedSymbol} horizon={horizon} variant={variant} cooldownBars={cooldownBars} />
         ) : (
           <EmptyState
             icon={TrendingUp}

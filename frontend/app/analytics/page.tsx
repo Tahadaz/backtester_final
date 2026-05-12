@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useState, useMemo, useEffect, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import { useAnalyticsSignalsOverview } from "@/hooks/use-api"
@@ -13,16 +14,21 @@ import { RecomputeControls } from "@/components/analytics/recompute-controls"
 import { RecomputeStatusCard } from "@/components/analytics/recompute-status-card"
 import { PredictiveAbilityPanel } from "@/components/analytics/predictive-ability-panel"
 import { TopSignauxLeaderboard } from "@/components/analytics/top-signaux-leaderboard"
+import { MethodEvaluationPanel } from "@/components/analytics/method-evaluation-panel"
 import { FactorLeaderboardPanel } from "@/components/analytics/factor-leaderboard-panel"
-import { BarChart2, Database, TrendingUp, Search, Trophy, Eye, ListOrdered } from "lucide-react"
+import { Activity, BarChart2, BookOpen, CheckCircle2, Database, Download, Globe, Layers3, RefreshCw, Search, TrendingUp, Trophy, Eye, ListOrdered } from "lucide-react"
 
-const ADV_THRESHOLD = 1000
+const ADV_THRESHOLD = 1_000_000
+const fmtIc = (value: number | null | undefined) => {
+  if (value == null || Number.isNaN(value)) return "--"
+  return `${value >= 0 ? "+" : ""}${value.toFixed(3)}`
+}
 
 type Tab = "signals" | "macro" | "factors"
-type SubTab = "top" | "par-action"
+type SubTab = "top" | "methodes" | "par-action"
 type FactorSubTab = "leaderboard" | "par-action"
 type EngineHorizon = "short" | "medium" | "long"
-type Source = "engine_legacy" | "engine_expanded" | "wfo" | "factor_x_ta"
+type Source = string
 
 function AnalyticsPageInner() {
   const [tab, setTab] = useState<Tab>("signals")
@@ -39,6 +45,7 @@ function AnalyticsPageInner() {
   const [lookbackEnabled, setLookbackEnabled] = useState(false)
   const [lookbackNum, setLookbackNum] = useState(3)
   const [lookbackUnit, setLookbackUnit] = useState<"months" | "years">("months")
+  const [selectedSignalId, setSelectedSignalId] = useState<string | null>(null)
   const lookbackDays = lookbackEnabled ? lookbackNum * (lookbackUnit === "months" ? 21 : 252) : 0
   const searchParams = useSearchParams()
 
@@ -85,6 +92,51 @@ function AnalyticsPageInner() {
     return symbolList.filter((s) => s.toUpperCase().includes(q))
   }, [symbolList, factorFilter])
 
+  const topSignals = useMemo(() => {
+    const grouped = new Map<string, { signal_id: string; category: string; sum: number; count: number; symbols: Set<string> }>()
+    for (const row of allRows ?? []) {
+      const ic = typeof row.ic_h1 === "number" && Number.isFinite(row.ic_h1) ? row.ic_h1 : null
+      if (ic == null) continue
+      const existing = grouped.get(row.signal_id) ?? {
+        signal_id: row.signal_id,
+        category: row.category,
+        sum: 0,
+        count: 0,
+        symbols: new Set<string>(),
+      }
+      existing.sum += ic
+      existing.count += 1
+      existing.symbols.add(row.symbol)
+      grouped.set(row.signal_id, existing)
+    }
+    return Array.from(grouped.values())
+      .map((item) => ({
+        signal_id: item.signal_id,
+        category: item.category,
+        meanIc: item.count > 0 ? item.sum / item.count : null,
+        count: item.count,
+        symbols: item.symbols.size,
+      }))
+      .sort((a, b) => Math.abs(b.meanIc ?? 0) - Math.abs(a.meanIc ?? 0))
+      .slice(0, 20)
+  }, [allRows])
+
+  const signalStats = useMemo(() => {
+    const rows = allRows ?? []
+    const icRows = rows.filter((row) => typeof row.ic_h1 === "number" && Number.isFinite(row.ic_h1))
+    const avgIc = icRows.length > 0 ? icRows.reduce((sum, row) => sum + (row.ic_h1 ?? 0), 0) / icRows.length : null
+    const significantPct = rows.length > 0 ? (rows.filter((row) => row.fdr_pass).length / rows.length) * 100 : null
+    return {
+      avgIc,
+      significantPct,
+      best: topSignals[0] ?? null,
+    }
+  }, [allRows, topSignals])
+
+  useEffect(() => {
+    if (!selectedSignalId && topSignals[0]) setSelectedSignalId(topSignals[0].signal_id)
+  }, [selectedSignalId, topSignals])
+
   const handleSelectFromLeaderboard = (
     symbol: string,
     source: string,
@@ -97,11 +149,358 @@ function AnalyticsPageInner() {
   }
 
   return (
-    <div className="container mx-auto max-w-7xl px-4 py-6 space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+    <div className="claude-analytics-shell">
+      <aside className="lb-sidebar">
+        <div className="lsh">
+          <h4>Top Signaux</h4>
+          <div className="eyebrow mb-1">Classement IC - Moyen terme</div>
+          <div className="method-pills">
+            <button type="button" className="method-pill">C-C</button>
+            <button type="button" className="method-pill active">C-O</button>
+            <button type="button" className="method-pill">O-O</button>
+            <button type="button" className="method-pill">O-C</button>
+          </div>
+        </div>
+        <div className="lb-list">
+          {isLoading && topSignals.length === 0 ? (
+            <div className="space-y-1 p-1">
+              {Array.from({ length: 12 }).map((_, index) => <Skeleton key={index} className="h-9 w-full" />)}
+            </div>
+          ) : topSignals.length === 0 ? (
+            <div className="px-3 py-6 text-xs text-muted-foreground">No signal history yet.</div>
+          ) : (
+            topSignals.map((signal, index) => (
+              <button
+                key={signal.signal_id}
+                type="button"
+                className={`lb-item ${selectedSignalId === signal.signal_id ? "active" : ""}`}
+                onClick={() => {
+                  setSelectedSignalId(signal.signal_id)
+                  setTab("signals")
+                  setSubTab("top")
+                }}
+              >
+                <span className="rank">{index + 1}</span>
+                <span className="nm truncate">
+                  {signal.signal_id}
+                  <br />
+                  <span className="text-[10px] text-muted-foreground">{signal.category}</span>
+                </span>
+                <span className={`ic-v ${(signal.meanIc ?? 0) >= 0 ? "t-pos" : "t-neg"}`}>{fmtIc(signal.meanIc)}</span>
+              </button>
+            ))
+          )}
+        </div>
+      </aside>
+
+      <section className="analytics-main">
+        <div className="atabs">
+          <button type="button" onClick={() => setTab("signals")} className={tab === "signals" ? "active" : ""}>
+            <Activity className="h-3.5 w-3.5" />
+            Signaux
+          </button>
+          <button type="button" onClick={() => setTab("macro")} className={tab === "macro" ? "active" : ""}>
+            <Globe className="h-3.5 w-3.5" />
+            Macro
+          </button>
+          <button type="button" onClick={() => setTab("factors")} className={tab === "factors" ? "active" : ""}>
+            <Layers3 className="h-3.5 w-3.5" />
+            Facteurs
+          </button>
+        </div>
+
+        <div className="ctrl-bar">
+          <span className="ctrl-field">
+            <label>Methode OOS</label>
+            <select className="select" defaultValue="close_to_open">
+              <option value="close_to_open">C-O (Close to Open)</option>
+              <option value="close_to_close">C-C</option>
+              <option value="open_to_open">O-O</option>
+              <option value="open_to_close">O-C</option>
+            </select>
+          </span>
+          <span className="ctrl-field">
+            <label>Horizon</label>
+            {tab === "factors" ? (
+              <select className="select" value={factorHorizon} onChange={(event) => setFactorHorizon(event.target.value as EngineHorizon)}>
+                <option value="short">5 j (court terme)</option>
+                <option value="medium">21 j (moyen terme)</option>
+                <option value="long">63 j (long terme)</option>
+              </select>
+            ) : (
+              <select className="select" defaultValue="medium">
+                <option value="medium">21 j (moyen terme)</option>
+                <option value="short">5 j (court terme)</option>
+                <option value="long">63 j (long terme)</option>
+              </select>
+            )}
+          </span>
+          <span className="ctrl-field">
+            <label>Lookback</label>
+            <select
+              className="select"
+              value={lookbackEnabled ? `${lookbackNum}-${lookbackUnit}` : "all"}
+              onChange={(event) => {
+                const value = event.target.value
+                if (value === "all") {
+                  setLookbackEnabled(false)
+                  return
+                }
+                const [num, unit] = value.split("-")
+                setLookbackEnabled(true)
+                setLookbackNum(Number(num))
+                setLookbackUnit(unit as "months" | "years")
+              }}
+            >
+              <option value="all">Historique complet</option>
+              <option value="3-months">3 mois</option>
+              <option value="1-years">1 an</option>
+              <option value="3-years">3 ans</option>
+              <option value="5-years">5 ans</option>
+            </select>
+          </span>
+          <span className="ctrl-field">
+            <label>Liquidite</label>
+            <select className="select" value={liquidityFilter ? "advValue" : "all"} onChange={(event) => setLiquidityFilter(event.target.value !== "all")}>
+              <option value="advValue">ADV &gt;= 1 000 000 MAD</option>
+              <option value="all">Tous</option>
+            </select>
+          </span>
+          <div className="ml-auto flex gap-2">
+            <Link href="/glossary#analytics" className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-card px-3 text-xs font-medium text-muted-foreground hover:bg-bg3 hover:text-foreground">
+              <BookOpen className="h-3.5 w-3.5" />
+              Glossaire
+            </Link>
+            <RecomputeControls scope="all" />
+            <button type="button" className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-card px-3 text-xs font-medium text-muted-foreground">
+              <Download className="h-3.5 w-3.5" />
+              Export
+            </button>
+          </div>
+        </div>
+
+        <div className="content">
+          <div className="recompute-card">
+            <div className="icon-wrap"><CheckCircle2 className="h-5 w-5" /></div>
+            <div className="min-w-0">
+              <div className="text-xs font-semibold">Scores a jour</div>
+              <p>{symbolList.length} symbols - lookback {lookbackDays > 0 ? `${lookbackDays}j` : "complet"} - top signal {signalStats.best?.signal_id ?? "--"}</p>
+            </div>
+            <div className="actions">
+              <button type="button" className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground">
+                <RefreshCw className="h-3.5 w-3.5" />
+                Forcer le recalcul
+              </button>
+            </div>
+          </div>
+          <RecomputeStatusCard />
+
+          {tab === "signals" ? (
+            <>
+              <div className="three-col">
+                <div className="claude-stat">
+                  <div className="lbl">IC moyen (univers)</div>
+                  <div className={`val ${(signalStats.avgIc ?? 0) >= 0 ? "t-pos" : "t-neg"}`}>{fmtIc(signalStats.avgIc)}</div>
+                  <div className="sub">C-O - 21j - {symbolList.length} titres</div>
+                </div>
+                <div className="claude-stat">
+                  <div className="lbl">% signaux significatifs</div>
+                  <div className="val">{signalStats.significantPct == null ? "--" : `${signalStats.significantPct.toFixed(1)}%`}</div>
+                  <div className="sub">FDR pass</div>
+                </div>
+                <div className="claude-stat">
+                  <div className="lbl">Meilleur signal</div>
+                  <div className="val !text-sm">{signalStats.best?.signal_id ?? "--"}</div>
+                  <div className="sub">{signalStats.best ? `IC ${fmtIc(signalStats.best.meanIc)} - ${signalStats.best.symbols} actions` : "No data"}</div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-3">
+                <div className="seg">
+                  <button type="button" className={subTab === "top" ? "active" : ""} onClick={() => setSubTab("top")}>Top signaux</button>
+                  <button type="button" className={subTab === "methodes" ? "active" : ""} onClick={() => setSubTab("methodes")}>Methodes</button>
+                  <button type="button" className={subTab === "par-action" ? "active" : ""} onClick={() => setSubTab("par-action")}>Par action</button>
+                </div>
+                {selectedSignalId ? <span className="text-xs text-muted-foreground">Signal actif: <span className="font-mono">{selectedSignalId}</span></span> : null}
+              </div>
+
+              {subTab === "top" ? (
+                <div className="two-col">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Capacite predictive par indicateur</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <TopSignauxLeaderboard
+                        onSelectSymbol={handleSelectFromLeaderboard}
+                        advBySymbol={advBySymbol}
+                        liquidityFilter={liquidityFilter}
+                        advThreshold={ADV_THRESHOLD}
+                        lookback_days={lookbackDays}
+                      />
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Relevance facteurs x actions selectionnees</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <FactorLeaderboardPanel
+                        lookbackDays={lookbackDays}
+                        returnMethod="close_to_close"
+                        onSelectSymbol={(sym) => {
+                          setFactorSymbol(sym)
+                          setTab("factors")
+                          setFactorSubTab("par-action")
+                        }}
+                      />
+                    </CardContent>
+                  </Card>
+                </div>
+              ) : subTab === "methodes" ? (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Evaluation des methodes</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <MethodEvaluationPanel />
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="two-col">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Actions</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      <div className="relative">
+                        <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                        <Input placeholder="Filtrer..." value={filter} onChange={(event) => setFilter(event.target.value)} className="h-8 pl-7 text-xs" />
+                      </div>
+                      <div className="max-h-[520px] overflow-y-auto rounded-md border border-line">
+                        {filteredSymbols.map((sym) => (
+                          <button
+                            key={sym}
+                            type="button"
+                            onClick={() => {
+                              setSelectedSymbol(sym)
+                              setPresetSource(null)
+                              setPresetHorizon(null)
+                            }}
+                            className={`w-full px-3 py-2 text-left font-mono text-xs hover:bg-muted/60 ${selectedSymbol === sym ? "bg-[oklch(0.94_0.04_260_/_0.55)] font-semibold text-[oklch(0.30_0.14_260)]" : ""}`}
+                          >
+                            {sym}
+                          </button>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <div>
+                    {!selectedSymbol ? (
+                      <div className="flex h-64 items-center justify-center rounded-lg border border-dashed border-line bg-card text-sm text-muted-foreground">
+                        Selectionnez une action pour voir sa capacite predictive.
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-mono text-base font-semibold">{selectedSymbol}</span>
+                          <RecomputeControls scope="symbol" symbol={selectedSymbol} horizon={presetHorizon ?? "short"} />
+                        </div>
+                        <PredictiveAbilityPanel symbol={selectedSymbol} initialSource={presetSource ?? undefined} initialHorizon={presetHorizon ?? undefined} lookback_days={lookbackDays} />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : null}
+
+          {tab === "macro" ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Database className="h-4 w-4 text-primary" />
+                  Series Macro - VIX, SP500, Brent, DXY, EURUSD, US10Y
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <MacroCatalogTable />
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {tab === "factors" ? (
+            <>
+              <div className="seg w-fit">
+                <button type="button" className={factorSubTab === "leaderboard" ? "active" : ""} onClick={() => setFactorSubTab("leaderboard")}>Classement</button>
+                <button type="button" className={factorSubTab === "par-action" ? "active" : ""} onClick={() => setFactorSubTab("par-action")}>Par action</button>
+              </div>
+              {factorSubTab === "leaderboard" ? (
+                <Card>
+                  <CardHeader><CardTitle>Factor Leaderboard</CardTitle></CardHeader>
+                  <CardContent>
+                    <FactorLeaderboardPanel
+                      lookbackDays={lookbackDays}
+                      returnMethod="close_to_close"
+                      onSelectSymbol={(sym) => {
+                        setFactorSymbol(sym)
+                        setFactorSubTab("par-action")
+                      }}
+                    />
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="two-col">
+                  <Card>
+                    <CardHeader><CardTitle>Actions</CardTitle></CardHeader>
+                    <CardContent className="space-y-2">
+                      <div className="relative">
+                        <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                        <Input placeholder="Filtrer..." value={factorFilter} onChange={(event) => setFactorFilter(event.target.value)} className="h-8 pl-7 text-xs" />
+                      </div>
+                      <div className="max-h-[520px] overflow-y-auto rounded-md border border-line">
+                        {filteredFactorSymbols.map((sym) => (
+                          <button key={sym} type="button" onClick={() => setFactorSymbol(sym)} className={`w-full px-3 py-2 text-left font-mono text-xs hover:bg-muted/60 ${factorSymbol === sym ? "bg-[oklch(0.94_0.04_260_/_0.55)] font-semibold text-[oklch(0.30_0.14_260)]" : ""}`}>
+                            {sym}
+                          </button>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <div>
+                    {!factorSymbol ? (
+                      <div className="flex h-64 items-center justify-center rounded-lg border border-dashed border-line bg-card text-sm text-muted-foreground">
+                        Selectionnez une action pour voir sa pertinence factorielle.
+                      </div>
+                    ) : (
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2">
+                            <TrendingUp className="h-4 w-4 text-primary" />
+                            Diagnostic factoriel - {factorSymbol}
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <FactorRelevancePanel symbol={factorSymbol} horizon={factorHorizon} />
+                        </CardContent>
+                      </Card>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : null}
+        </div>
+      </section>
+    </div>
+  )
+
+  return (
+    <div className="claude-page space-y-4">
+      <div className="claude-page-h">
         <div>
           <h1 className="text-xl font-semibold tracking-tight flex items-center gap-2">
-            <BarChart2 className="h-5 w-5 text-blue-600" />
+            <BarChart2 className="h-5 w-5 text-primary" />
             Analytics — Capacité prédictive des signaux
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
@@ -113,14 +512,14 @@ function AnalyticsPageInner() {
 
       <RecomputeStatusCard />
 
-      <div className="flex gap-1 border-b">
+      <div className="flex border-b border-line bg-bg2">
         {(["signals", "macro", "factors"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            className={`inline-flex h-10 items-center gap-1.5 border-b-2 px-4 text-sm font-medium transition-colors ${
               tab === t
-                ? "border-blue-600 text-blue-700"
+                ? "border-primary bg-card text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
@@ -144,13 +543,13 @@ function AnalyticsPageInner() {
       {tab === "signals" && (
         <div className="space-y-4">
           {/* Lookback period selector */}
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="claude-control-bar">
             <button
               onClick={() => setLookbackEnabled((v) => !v)}
-              className={`inline-flex items-center gap-2 rounded-md border px-2 py-1 text-xs font-medium transition-colors ${
+              className={`claude-chip transition-colors ${
                 lookbackEnabled
-                  ? "border-amber-300 bg-amber-50 text-amber-800"
-                  : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
+                  ? "amber"
+                  : "hover:bg-bg3"
               }`}
             >
               <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${lookbackEnabled ? "bg-amber-500" : "bg-slate-300"}`} />
@@ -164,7 +563,7 @@ function AnalyticsPageInner() {
                   max={600}
                   value={lookbackNum}
                   onChange={(e) => setLookbackNum(Math.max(1, Number(e.target.value)))}
-                  className="w-14 h-7 rounded-md border border-input bg-background px-2 text-xs text-center focus:outline-none focus:ring-1 focus:ring-ring"
+                  className="h-7 w-14 rounded-md border border-input bg-background px-2 text-center text-xs focus:outline-none focus:ring-1 focus:ring-ring"
                 />
                 <select
                   value={lookbackUnit}
@@ -179,12 +578,12 @@ function AnalyticsPageInner() {
             )}
           </div>
           {/* Sub-tabs */}
-          <div className="flex gap-1 border-b">
+          <div className="flex gap-1 border-b border-line">
             <button
               onClick={() => setSubTab("top")}
-              className={`px-3 py-1.5 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
+              className={`flex items-center gap-1.5 border-b-2 px-3 py-1.5 text-sm font-medium transition-colors ${
                 subTab === "top"
-                  ? "border-blue-600 text-blue-700"
+                  ? "border-primary text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -192,9 +591,9 @@ function AnalyticsPageInner() {
             </button>
             <button
               onClick={() => setSubTab("par-action")}
-              className={`px-3 py-1.5 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
+              className={`flex items-center gap-1.5 border-b-2 px-3 py-1.5 text-sm font-medium transition-colors ${
                 subTab === "par-action"
-                  ? "border-blue-600 text-blue-700"
+                  ? "border-primary text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -213,8 +612,8 @@ function AnalyticsPageInner() {
           )}
 
           {subTab === "par-action" && (
-            <div className="flex gap-4">
-              <div className="w-44 shrink-0 space-y-2">
+            <div className="flex flex-col gap-4 lg:flex-row">
+              <div className="shrink-0 space-y-2 rounded-lg border border-line bg-card p-2 shadow-xs lg:w-56">
                 <div className="relative">
                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                   <Input
@@ -226,16 +625,16 @@ function AnalyticsPageInner() {
                 </div>
                 <button
                   onClick={() => setLiquidityFilter((v) => !v)}
-                  className={`w-full inline-flex items-center gap-2 rounded-md border px-2 py-1 text-xs font-medium transition-colors ${
+                  className={`claude-chip w-full justify-start transition-colors ${
                     liquidityFilter
-                      ? "border-amber-300 bg-amber-50 text-amber-800"
-                      : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
+                      ? "amber"
+                      : "hover:bg-bg3"
                   }`}
                 >
                   <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${liquidityFilter ? "bg-amber-500" : "bg-slate-300"}`} />
-                  {liquidityFilter ? `ADV ≥ ${ADV_THRESHOLD.toLocaleString("fr-FR")}` : "Liquidité"}
+                  {liquidityFilter ? `ADV ≥ ${ADV_THRESHOLD.toLocaleString("fr-FR")} MAD` : "Liquidité"}
                 </button>
-                <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide px-1">
+                <div className="px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   Actions ({filteredSymbols.length})
                 </div>
                 {isLoading ? (
@@ -245,7 +644,7 @@ function AnalyticsPageInner() {
                     ))}
                   </div>
                 ) : (
-                  <div className="border rounded-md overflow-y-auto max-h-[640px]">
+                  <div className="max-h-[640px] overflow-y-auto rounded-md border border-line">
                     {filteredSymbols.map((sym) => (
                       <button
                         key={sym}
@@ -256,7 +655,7 @@ function AnalyticsPageInner() {
                         }}
                         className={`w-full text-left px-3 py-1.5 text-xs font-mono transition-colors hover:bg-muted/60 ${
                           selectedSymbol === sym
-                            ? "bg-blue-50 text-blue-700 font-semibold dark:bg-blue-950/30"
+                            ? "bg-[oklch(0.94_0.04_260_/_0.55)] text-[oklch(0.30_0.14_260)] font-semibold"
                             : "text-foreground"
                         }`}
                       >
@@ -274,7 +673,7 @@ function AnalyticsPageInner() {
 
               <div className="flex-1 min-w-0">
                 {!selectedSymbol ? (
-                  <div className="flex h-64 items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
+                  <div className="flex h-64 items-center justify-center rounded-lg border border-dashed border-line text-sm text-muted-foreground">
                     Sélectionnez une action pour voir sa capacité prédictive.
                   </div>
                 ) : (
@@ -283,12 +682,12 @@ function AnalyticsPageInner() {
                       <span className="text-base font-semibold font-mono">{selectedSymbol}</span>
                       <RecomputeControls
                         scope="symbol"
-                        symbol={selectedSymbol}
+                        symbol={selectedSymbol ?? undefined}
                         horizon={presetHorizon ?? "short"}
                       />
                     </div>
                     <PredictiveAbilityPanel
-                      symbol={selectedSymbol}
+                      symbol={selectedSymbol as string}
                       initialSource={presetSource ?? undefined}
                       initialHorizon={presetHorizon ?? undefined}
                       lookback_days={lookbackDays}
@@ -307,10 +706,10 @@ function AnalyticsPageInner() {
       )}
 
       {tab === "macro" && (
-        <Card>
+        <Card className="claude-card">
           <CardHeader className="px-5 pb-2 pt-4">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Database className="h-4 w-4 text-blue-600" />
+              <Database className="h-4 w-4 text-primary" />
               Séries Macro — VIX, SP500, Brent, DXY, EURUSD, US10Y
             </CardTitle>
           </CardHeader>
@@ -322,17 +721,17 @@ function AnalyticsPageInner() {
 
       {tab === "factors" && (
         <div className="space-y-4">
-          <div className="flex items-center gap-3 flex-wrap">
+          <div className="claude-control-bar">
             <div className="flex items-center gap-1.5">
-              <span className="text-xs text-muted-foreground">Horizon:</span>
+              <span className="claude-field-label">Horizon</span>
               {(["short", "medium", "long"] as EngineHorizon[]).map((h) => (
                 <button
                   key={h}
                   onClick={() => setFactorHorizon(h)}
-                  className={`px-2 py-0.5 rounded text-xs font-mono border transition-colors ${
+                  className={`rounded border px-2 py-0.5 font-mono text-xs transition-colors ${
                     factorHorizon === h
-                      ? "border-blue-400 bg-blue-50 text-blue-700"
-                      : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                      ? "border-[oklch(0.80_0.06_260)] bg-[oklch(0.94_0.04_260_/_0.4)] text-[oklch(0.30_0.14_260)]"
+                      : "border-line bg-card text-muted-foreground hover:bg-bg3"
                   }`}
                 >
                   {h}
@@ -342,12 +741,12 @@ function AnalyticsPageInner() {
           </div>
 
           {/* Sub-tabs */}
-          <div className="flex gap-1 border-b">
+          <div className="flex gap-1 border-b border-line">
             <button
               onClick={() => setFactorSubTab("leaderboard")}
-              className={`px-3 py-1.5 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
+              className={`flex items-center gap-1.5 border-b-2 px-3 py-1.5 text-sm font-medium transition-colors ${
                 factorSubTab === "leaderboard"
-                  ? "border-blue-600 text-blue-700"
+                  ? "border-primary text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -355,9 +754,9 @@ function AnalyticsPageInner() {
             </button>
             <button
               onClick={() => setFactorSubTab("par-action")}
-              className={`px-3 py-1.5 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
+              className={`flex items-center gap-1.5 border-b-2 px-3 py-1.5 text-sm font-medium transition-colors ${
                 factorSubTab === "par-action"
-                  ? "border-blue-600 text-blue-700"
+                  ? "border-primary text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -377,8 +776,8 @@ function AnalyticsPageInner() {
           )}
 
           {factorSubTab === "par-action" && (
-            <div className="flex gap-4">
-              <div className="w-44 shrink-0 space-y-2">
+            <div className="flex flex-col gap-4 lg:flex-row">
+              <div className="shrink-0 space-y-2 rounded-lg border border-line bg-card p-2 shadow-xs lg:w-56">
                 <div className="relative">
                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                   <Input
@@ -388,7 +787,7 @@ function AnalyticsPageInner() {
                     className="h-8 pl-7 text-xs"
                   />
                 </div>
-                <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide px-1">
+                <div className="px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   Actions ({filteredFactorSymbols.length})
                 </div>
                 {isLoading ? (
@@ -398,14 +797,14 @@ function AnalyticsPageInner() {
                     ))}
                   </div>
                 ) : (
-                  <div className="border rounded-md overflow-y-auto max-h-[640px]">
+                  <div className="max-h-[640px] overflow-y-auto rounded-md border border-line">
                     {filteredFactorSymbols.map((sym) => (
                       <button
                         key={sym}
                         onClick={() => setFactorSymbol(sym)}
                         className={`w-full text-left px-3 py-1.5 text-xs font-mono transition-colors hover:bg-muted/60 ${
                           factorSymbol === sym
-                            ? "bg-blue-50 text-blue-700 font-semibold dark:bg-blue-950/30"
+                            ? "bg-[oklch(0.94_0.04_260_/_0.55)] text-[oklch(0.30_0.14_260)] font-semibold"
                             : "text-foreground"
                         }`}
                       >
@@ -423,25 +822,25 @@ function AnalyticsPageInner() {
 
               <div className="flex-1 min-w-0">
                 {!factorSymbol ? (
-                  <div className="flex h-64 items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
+                  <div className="flex h-64 items-center justify-center rounded-lg border border-dashed border-line text-sm text-muted-foreground">
                     Sélectionnez une action pour voir sa pertinence factorielle.
                   </div>
                 ) : (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between flex-wrap gap-2">
                       <span className="text-base font-semibold font-mono">{factorSymbol}</span>
-                      <RecomputeControls scope="symbol" symbol={factorSymbol} />
+                      <RecomputeControls scope="symbol" symbol={factorSymbol ?? undefined} />
                     </div>
-                    <Card>
+                    <Card className="claude-card">
                       <CardHeader className="px-5 pb-2 pt-4">
                         <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                          <TrendingUp className="h-4 w-4 text-blue-600" />
+                          <TrendingUp className="h-4 w-4 text-primary" />
                           Diagnostic factoriel par horizon — {factorSymbol}
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="p-4">
                         <FactorRelevancePanel
-                          symbol={factorSymbol}
+                          symbol={factorSymbol as string}
                           horizon={factorHorizon}
                         />
                       </CardContent>

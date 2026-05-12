@@ -9,17 +9,26 @@ POST /strategy/wfo/trigger  — enqueue on-demand WFO computation
 from __future__ import annotations
 
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+
+from core.quant_core.signal_engine.modes import (
+    ALL_SIGNAL_MODE_NAMES,
+    resolve_signal_mode,
+    signal_mode_read_names,
+    signal_mode_storage_name,
+)
 
 from ..auth import rate_limit_trigger, require_admin
 from ..db import get_db
 from ..models import StockMaster, WfoGlobalSignal, WfoSignalSummary
 
 router = APIRouter(prefix="/strategy/wfo", tags=["wfo-signals"])
+
+CanonicalHorizon = Literal["weekly", "monthly", "quarterly"]
 
 
 # ---------------------------------------------------------------------------
@@ -103,7 +112,7 @@ class WfoSummaryResponse(BaseModel):
 
 class WfoTriggerRequest(BaseModel):
     symbol: str
-    horizon: str
+    horizon: CanonicalHorizon
     variant: str = "expanded"
     categories: list[str] | None = None    # None = all 4
     # Optional parameter overrides (None = use defaults)
@@ -126,7 +135,7 @@ class WfoTriggerResponse(BaseModel):
 
 
 class WfoTriggerAllRequest(BaseModel):
-    variants: list[str] = ["legacy", "expanded", "factor_x_ta"]
+    variants: list[str] = list(ALL_SIGNAL_MODE_NAMES)
     train_bars: int | None = None
     oos_bars: int | None = None
     step_bars: int | None = None
@@ -233,7 +242,7 @@ def _row_to_detail(row: WfoSignalSummary) -> WfoCategoryDetailOut:
 @router.get("/summary", response_model=WfoSummaryResponse)
 def get_wfo_summary(
     symbol: str = Query(...),
-    horizon: str = Query(...),
+    horizon: CanonicalHorizon = Query(...),
     variant: str = Query("expanded"),
     db: Session = Depends(get_db),
 ) -> WfoSummaryResponse:
@@ -242,15 +251,20 @@ def get_wfo_summary(
     Fast DB read — no computation. Returns whatever is stored,
     including "pending" placeholders for categories not yet computed.
     """
-    rows = (
-        db.query(WfoSignalSummary)
-        .filter_by(symbol=symbol, horizon=horizon, variant=variant)
-        .all()
-    )
+    variant = signal_mode_storage_name(variant)
+    read_variants = signal_mode_read_names(variant)
+    rows = []
+    for read_variant in read_variants:
+        rows.extend(
+            db.query(WfoSignalSummary)
+            .filter_by(symbol=symbol, horizon=horizon, variant=read_variant)
+            .all()
+        )
 
     categories: dict[str, WfoCategorySummaryOut] = {}
     for row in rows:
-        categories[row.category] = _row_to_summary(row)
+        if row.category not in categories:
+            categories[row.category] = _row_to_summary(row)
 
     # Ensure all 4 categories are present (pending placeholders for missing ones)
     for cat in ("tendance", "momentum", "oscillation", "volume"):
@@ -258,11 +272,15 @@ def get_wfo_summary(
             categories[cat] = WfoCategorySummaryOut(category=cat, status="pending")
 
     # Global signal
-    global_row = (
-        db.query(WfoGlobalSignal)
-        .filter_by(symbol=symbol, horizon=horizon, variant=variant)
-        .first()
-    )
+    global_row = None
+    for read_variant in read_variants:
+        global_row = (
+            db.query(WfoGlobalSignal)
+            .filter_by(symbol=symbol, horizon=horizon, variant=read_variant)
+            .first()
+        )
+        if global_row is not None:
+            break
     global_out = None
     if global_row:
         global_out = WfoGlobalSignalOut(
@@ -300,17 +318,22 @@ def get_wfo_summary(
 @router.get("/detail", response_model=WfoCategoryDetailOut)
 def get_wfo_detail(
     symbol: str = Query(...),
-    horizon: str = Query(...),
+    horizon: CanonicalHorizon = Query(...),
     category: str = Query(...),
     variant: str = Query("expanded"),
     db: Session = Depends(get_db),
 ) -> WfoCategoryDetailOut:
     """Return detailed WFO results for one category including fold data."""
-    row = (
-        db.query(WfoSignalSummary)
-        .filter_by(symbol=symbol, horizon=horizon, category=category, variant=variant)
-        .first()
-    )
+    variant = signal_mode_storage_name(variant)
+    row = None
+    for read_variant in signal_mode_read_names(variant):
+        row = (
+            db.query(WfoSignalSummary)
+            .filter_by(symbol=symbol, horizon=horizon, category=category, variant=read_variant)
+            .first()
+        )
+        if row is not None:
+            break
     if row is None:
         raise HTTPException(status_code=404, detail=f"No WFO data for {symbol}/{horizon}/{category}/{variant}")
     return _row_to_detail(row)
@@ -493,7 +516,7 @@ def trigger_wfo_computation(
     from ..config import settings
 
     categories = body.categories or ["tendance", "momentum", "oscillation", "volume"]
-    variant = body.variant
+    variant = signal_mode_storage_name(body.variant)
 
     # Set initial "running" status so frontend sees immediate feedback
     for cat in categories:
@@ -537,8 +560,8 @@ def trigger_wfo_computation(
         body.symbol,
         body.horizon,
         overrides if overrides else None,
-        variant,
-        job_timeout=1800,
+        body.variant,
+        job_timeout=7200,
     )
 
     return WfoTriggerResponse(triggered=categories, job_id=str(job.id))
@@ -558,11 +581,14 @@ def trigger_all_wfo(
     from rq import Queue
     from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+    from services.api.app.queue import _get_macro_ingest_queue
+
     from ..config import settings
 
-    horizons = ["short", "medium", "long"]
+    horizons: list[CanonicalHorizon] = ["weekly", "monthly", "quarterly"]
     categories = ["tendance", "momentum", "oscillation", "volume"]
     symbols = [row.symbol for row in db.query(StockMaster).filter_by(is_active=True).all()]
+    variants = list(dict.fromkeys(signal_mode_storage_name(v) for v in (body.variants or list(ALL_SIGNAL_MODE_NAMES))))
 
     overrides: dict[str, Any] = {
         k: v
@@ -585,7 +611,7 @@ def trigger_all_wfo(
     # Single bulk upsert — 1 query instead of 1,656 individual SELECTs
     rows_to_upsert = [
         {"symbol": s, "horizon": h, "variant": v, "category": c, "status": "running", "error_message": None}
-        for s in symbols for h in horizons for v in body.variants for c in categories
+        for s in symbols for h in horizons for v in variants for c in categories
     ]
     stmt = pg_insert(WfoSignalSummary).values(rows_to_upsert)
     stmt = stmt.on_conflict_do_update(
@@ -598,14 +624,27 @@ def trigger_all_wfo(
     # Enqueue one RQ job per (symbol, horizon, variant)
     redis_conn = Redis.from_url(settings.REDIS_URL, decode_responses=False)
     q = Queue("wfo_signals", connection=redis_conn)
+    factor_selection_jobs: dict[str, str] = {}
+    if any(resolve_signal_mode(variant).is_factor_x_ta for variant in variants):
+        factor_queue = _get_macro_ingest_queue()
+        for s in symbols:
+            job = factor_queue.enqueue(
+                "services.worker.tasks.factor_selection_full.run_factor_selection_for_symbol",
+                s,
+                False,
+                job_timeout=3600,
+            )
+            factor_selection_jobs[s] = str(job.id)
     total_jobs = 0
     for s in symbols:
         for h in horizons:
-            for v in body.variants:
+            for v in variants:
+                mode = resolve_signal_mode(v)
                 q.enqueue(
                     "services.worker.tasks.wfo_signal_batch.enqueue_wfo_for_symbol_horizon",
                     s, h, overrides or None, v,
-                    job_timeout=1800,
+                    job_timeout=7200,
+                    depends_on=factor_selection_jobs.get(s) if mode.is_factor_x_ta else None,
                 )
                 total_jobs += 1
 
@@ -613,7 +652,7 @@ def trigger_all_wfo(
         total_jobs=total_jobs,
         symbols=len(symbols),
         horizons=horizons,
-        variants=body.variants,
+        variants=variants,
     )
 
 

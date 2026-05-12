@@ -1,16 +1,42 @@
 "use client"
 
+import Link from "next/link"
 import { useMemo, useState } from "react"
-import { ChevronDown, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react"
+import { ArrowRight, ChevronDown, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react"
 import type {
   DashboardBreadth,
+  DashboardCustomIndexDefinition,
+  DashboardDisplayMode,
+  DashboardPortfolioEdge,
   DashboardScoreSource,
   DashboardIndex,
   DashboardStock,
   FamilyScore,
+  Horizon,
+  SignalEngineScores,
 } from "@/lib/dashboard-types"
-import { FAMILY_LABELS, FAMILY_ORDER, aggregateScoreLabel, familyScoreLabel, formatScore } from "@/lib/dashboard-constants"
+import { FAMILY_LABELS, FAMILY_ORDER, FAMILY_SHORT_LABELS, aggregateScoreLabel, familyScoreLabel } from "@/lib/dashboard-constants"
 import { FamilyCell } from "./family-cell"
+import {
+  BestSignalBadgeCell,
+  BestSignalExpectedReturnCell,
+  BestSignalHitRateCell,
+  BestSignalMethodCell,
+  EdgeBadge,
+  PortfolioEdgeBadgeCell,
+  PortfolioEdgeExpectedReturnCell,
+  PortfolioEdgeHitRateCell,
+  PortfolioEdgeMethodCell,
+  bestSignalForDisplay,
+  bestSignalTriage,
+  compareBestSignalStocks,
+  compareTechnicalSignalStocks,
+  displayVariantLabel,
+  portfolioEdgeTriage,
+  summarizeBestSignals,
+  summarizeTechnicalSignals,
+  technicalSignalForDisplay,
+} from "./best-signal-cells"
 import { SignalBadge } from "./signal-badge"
 import { buildDashboardIndexPayload, normalizeDashboardIndexName } from "./index-tab-utils.mjs"
 import { Button } from "@/components/ui/button"
@@ -18,18 +44,28 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
+import { signalEvidenceUrl } from "@/lib/signal-evidence-url"
+import { cn } from "@/lib/utils"
 
 interface IndexTabProps {
   baseIndex: DashboardIndex
   stocks: DashboardStock[]
-  customDefinitions: Array<{ id: string; name: string; symbols: string[] }>
+  customDefinitions: DashboardCustomIndexDefinition[]
   readOnly: boolean
   actionError?: string | null
   scoreSource?: DashboardScoreSource
+  displayMode?: DashboardDisplayMode
+  signalView?: "legacy" | "expanded" | "factor_x_ta"
+  horizon: Horizon
+  horizonDays: number
+  edgeEnabled?: boolean
+  visibleFamilies?: Partial<Record<FamilyKey, boolean>>
   onCreate?: (payload: { name: string; symbols: string[] }) => Promise<void>
   onUpdate?: (id: string, payload: { name: string; symbols: string[] }) => Promise<void>
   onDelete?: (id: string) => Promise<void>
 }
+
+type FamilyKey = (typeof FAMILY_ORDER)[number]
 
 interface IndexMemberSourceScore {
   signal_label: string | null
@@ -40,6 +76,7 @@ interface IndexMemberSourceScore {
 interface IndexMember {
   symbol: string
   display_name: string | null
+  stock: DashboardStock | null
   scores: {
     signal_engine: IndexMemberSourceScore
     wfo: IndexMemberSourceScore | null
@@ -61,11 +98,15 @@ interface ComputedIndex {
     signal_engine: IndexScoreBlock
     wfo: IndexScoreBlock | null
   }
+  bestStats: ReturnType<typeof summarizeBestSignals>
+  technicalStats: ReturnType<typeof summarizeTechnicalSignals>
+  portfolioEdge: DashboardPortfolioEdge | null
   members: IndexMember[]
   editable: boolean
 }
 
 const MASI_KEY = "__masi__"
+type SignalView = NonNullable<IndexTabProps["signalView"]>
 
 function normalizeSymbols(symbols: string[]): string[] {
   const seen = new Set<string>()
@@ -149,6 +190,73 @@ function computeScoreBlock(
   }
 }
 
+function resolveSeAggregateScore(item: SignalEngineScores, signalView: SignalView): number | null {
+  if (signalView === "factor_x_ta") return item.factor_x_ta_aggregate_score_pct ?? null
+  if (signalView === "expanded") return item.expanded_aggregate_score_pct ?? item.aggregate_score_pct
+  return item.aggregate_score_pct
+}
+
+function resolveSeAggregateLabel(item: SignalEngineScores, signalView: SignalView): string | null {
+  if (signalView === "factor_x_ta") return item.factor_x_ta_aggregate_signal_label ?? null
+  if (signalView === "expanded") return item.expanded_aggregate_signal_label ?? item.aggregate_signal_label
+  return item.aggregate_signal_label
+}
+
+function resolveSePerFamily(item: SignalEngineScores, signalView: SignalView): Record<string, FamilyScore> {
+  if (signalView === "factor_x_ta") return item.factor_x_ta_per_family ?? {}
+  if (signalView === "expanded") return item.expanded_per_family ?? item.per_family
+  return item.per_family
+}
+
+function evidenceHref(
+  stock: DashboardStock,
+  horizon: Horizon,
+  signalView: SignalView,
+  scoreSource: DashboardScoreSource,
+) {
+  const signal = bestSignalForDisplay(stock)
+  const fallbackView = scoreSource === "wfo" ? "expanded_ta_simple" : signalView
+  return signalEvidenceUrl({
+    symbol: stock.symbol,
+    horizon,
+    view: signal?.variant ?? fallbackView,
+    source: signal?.source ?? "auto",
+    evidenceVariant: signal?.variant,
+  })
+}
+
+function technicalHref(stock: DashboardStock, horizon: Horizon) {
+  const signal = technicalSignalForDisplay(stock)
+  const variant = signal?.variant ?? "expanded_ta_simple"
+  return signalEvidenceUrl({
+    symbol: stock.symbol,
+    horizon,
+    view: variant,
+    source: signal?.source ?? "auto",
+    evidenceVariant: signal?.variant,
+    tab: "technique",
+  })
+}
+
+function technicalDirectionLabel(direction: string | null | undefined) {
+  if (direction === "long") return "Long"
+  if (direction === "short") return "Short"
+  return "Neutre"
+}
+
+function formatScorePct(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return "--"
+  const sign = value > 0 ? "+" : ""
+  return `${sign}${value.toFixed(1)}`
+}
+
+function compareIndexMembers(left: IndexMember, right: IndexMember) {
+  if (left.stock && right.stock) return compareBestSignalStocks(left.stock, right.stock)
+  if (left.stock) return -1
+  if (right.stock) return 1
+  return left.symbol.localeCompare(right.symbol)
+}
+
 function BreadthBar({
   breadth,
   total,
@@ -179,33 +287,98 @@ function BreadthBar({
   )
 }
 
-function renderIndexHeaderSignal(index: ComputedIndex, scoreSource: DashboardScoreSource) {
-  if (scoreSource === "both") {
+function renderIndexHeaderSignal(index: ComputedIndex, displayMode: DashboardDisplayMode) {
+  if (displayMode === "technical_directions") {
     return (
-      <div className="space-y-1">
-        <div className="flex items-center justify-end gap-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">SE</span>
-          <SignalBadge label={index.scores.signal_engine.aggregate_signal_label} />
-          <span className="font-mono text-xs font-semibold text-foreground">
-            {formatScore(index.scores.signal_engine.aggregate_score_pct)}
-          </span>
-        </div>
-        <div className="flex items-center justify-end gap-2 border-t pt-1">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">WFO</span>
-          <SignalBadge label={index.scores.wfo?.aggregate_signal_label ?? null} />
-          <span className="font-mono text-xs font-semibold text-foreground">
-            {formatScore(index.scores.wfo?.aggregate_score_pct ?? null)}
-          </span>
+      <div className="space-y-1 text-right">
+        <SignalBadge label={index.technicalStats.topSignal?.signal_label ?? "Indisponible"} />
+        <div className="dashboard-mono text-[10px] text-muted-foreground">
+          {index.technicalStats.topStock?.symbol ?? "--"} - {index.technicalStats.directionalCount}/{index.stock_count} directions
         </div>
       </div>
     )
   }
+  return (
+    <div className="space-y-1 text-right">
+      <PortfolioEdgeBadgeCell edge={index.portfolioEdge} />
+      <div className="dashboard-mono text-[10px] text-muted-foreground">
+        {index.portfolioEdge?.active_count ?? index.bestStats.actionableCount}/{index.stock_count} actives
+      </div>
+    </div>
+  )
+}
 
-  if (scoreSource === "wfo") {
-    return <SignalBadge label={index.scores.wfo?.aggregate_signal_label ?? null} />
-  }
+function IndexSignalOverview({
+  index,
+  horizonDays,
+  edgeEnabled,
+  displayMode,
+}: {
+  index: ComputedIndex
+  horizonDays: number
+  edgeEnabled: boolean
+  displayMode: DashboardDisplayMode
+}) {
+  const portfolioEdge = index.portfolioEdge
+  const technicalSignal = index.technicalStats.topSignal
+  const isTechnicalMode = displayMode === "technical_directions"
 
-  return <SignalBadge label={index.scores.signal_engine.aggregate_signal_label} />
+  return (
+    <div className={cn("grid gap-2", !isTechnicalMode && edgeEnabled ? "md:grid-cols-5" : "md:grid-cols-3")}>
+      <div className="dashboard-field px-3 py-2">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{isTechnicalMode ? "Direction best" : "Portefeuille"}</div>
+        <div className="mt-1">
+          {isTechnicalMode ? <SignalBadge label={technicalSignal?.signal_label ?? "Indisponible"} /> : <PortfolioEdgeBadgeCell edge={portfolioEdge} />}
+          <div className="dashboard-mono mt-1 text-[10px] text-muted-foreground">
+            {isTechnicalMode
+              ? `${index.technicalStats.bullishCount}L/${index.technicalStats.bearishCount}S - ${index.technicalStats.directionalCount}/${index.stock_count}`
+              : `${portfolioEdge?.long_count ?? 0}L/${portfolioEdge?.short_count ?? 0}S - ${portfolioEdge?.active_count ?? index.bestStats.actionableCount}/${index.stock_count}`}
+          </div>
+        </div>
+      </div>
+      <div className="dashboard-field px-3 py-2">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{isTechnicalMode ? "Methode technique" : "Methode auto"}</div>
+        <div className="mt-1">
+          {isTechnicalMode ? (
+            <div className="space-y-1">
+              <div className="max-w-[180px] truncate text-[11px] font-semibold" title={technicalSignal?.label ?? ""}>
+                {technicalSignal?.label?.replace("Signal Engine - ", "Engine ").replace("Factor x TA", "FX") ?? "No technical signal"}
+              </div>
+              <div className="dashboard-mono text-[10px] text-muted-foreground">{index.technicalStats.topStock?.symbol ?? "--"}</div>
+            </div>
+          ) : <PortfolioEdgeMethodCell edge={portfolioEdge} />}
+        </div>
+      </div>
+      <div className="dashboard-field px-3 py-2">
+        <div className="text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{isTechnicalMode ? "Score technique" : "retour attendu"}</div>
+        <div className="mt-1">
+          {isTechnicalMode ? (
+            <div className="space-y-0.5 text-right">
+              <div>{formatScorePct(technicalSignal?.score_pct)}</div>
+              <div className="text-[10px] text-muted-foreground">{technicalDirectionLabel(technicalSignal?.direction)}</div>
+            </div>
+          ) : <PortfolioEdgeExpectedReturnCell edge={portfolioEdge} fallbackDays={horizonDays} />}
+        </div>
+      </div>
+      {!isTechnicalMode && edgeEnabled ? (
+        <>
+          <div className="dashboard-field px-3 py-2">
+            <div className="text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">%succés port.</div>
+            <div className="mt-1">
+              <PortfolioEdgeHitRateCell edge={portfolioEdge} />
+            </div>
+          </div>
+          <div className="dashboard-field px-3 py-2">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Edge</div>
+            <div className="mt-1 space-y-1">
+              <EdgeBadge triage={portfolioEdgeTriage(portfolioEdge)} />
+              <div className="dashboard-mono text-[10px] text-muted-foreground">n={portfolioEdge?.n ?? 0}</div>
+            </div>
+          </div>
+        </>
+      ) : null}
+    </div>
+  )
 }
 
 export function IndexTab({
@@ -218,6 +391,12 @@ export function IndexTab({
   onCreate,
   onUpdate,
   onDelete,
+  signalView = "expanded",
+  displayMode = "trade_opportunities",
+  horizon,
+  horizonDays,
+  edgeEnabled = true,
+  visibleFamilies,
 }: IndexTabProps) {
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
@@ -229,6 +408,7 @@ export function IndexTab({
   const [editSearch, setEditSearch] = useState("")
   const [editSymbols, setEditSymbols] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const isTechnicalMode = displayMode === "technical_directions"
 
   const createNameTrimmed = normalizeDashboardIndexName(createName)
   const editNameTrimmed = normalizeDashboardIndexName(editName)
@@ -238,6 +418,10 @@ export function IndexTab({
   const editPayload = buildDashboardIndexPayload(editName, editSymbols)
   const canSubmitCreate = Boolean(onCreate) && !isSubmitting && createPayload !== null
   const canSubmitEdit = Boolean(editingId) && Boolean(onUpdate) && !isSubmitting && editPayload !== null
+  const shownFamilies = useMemo(
+    () => isTechnicalMode ? FAMILY_ORDER.filter((family) => visibleFamilies?.[family] !== false) : [],
+    [isTechnicalMode, visibleFamilies],
+  )
 
   const stockCatalog = useMemo(
     () =>
@@ -265,11 +449,12 @@ export function IndexTab({
     const makeMember = (stock: DashboardStock | undefined, symbolFallback?: string): IndexMember => ({
       symbol: stock?.symbol ?? symbolFallback ?? "",
       display_name: stock?.display_name ?? null,
+      stock: stock ?? null,
       scores: {
         signal_engine: {
-          signal_label: stock?.scores.signal_engine.aggregate_signal_label ?? null,
-          aggregate_score_pct: stock?.scores.signal_engine.aggregate_score_pct ?? null,
-          per_family: stock?.scores.signal_engine.per_family ?? {},
+          signal_label: stock ? resolveSeAggregateLabel(stock.scores.signal_engine, signalView) : null,
+          aggregate_score_pct: stock ? resolveSeAggregateScore(stock.scores.signal_engine, signalView) : null,
+          per_family: stock ? resolveSePerFamily(stock.scores.signal_engine, signalView) : {},
         },
         wfo: stock?.scores.wfo
           ? {
@@ -297,6 +482,9 @@ export function IndexTab({
           },
         wfo: computeScoreBlock(masiMembers, "wfo"),
       },
+      bestStats: summarizeBestSignals(stocks),
+      technicalStats: summarizeTechnicalSignals(stocks),
+      portfolioEdge: baseIndex.portfolio_edge ?? null,
       members: masiMembers,
       editable: false,
     }
@@ -304,6 +492,9 @@ export function IndexTab({
     const custom = customDefinitions.map((definition) => {
       const symbols = normalizeSymbols(definition.symbols)
       const members = symbols.map((symbol) => makeMember(stockBySymbol.get(symbol), symbol))
+      const memberStocks = members
+        .map((member) => member.stock)
+        .filter((stock): stock is DashboardStock => Boolean(stock))
 
       return {
         id: definition.id,
@@ -319,13 +510,16 @@ export function IndexTab({
             },
           wfo: computeScoreBlock(members, "wfo"),
         },
+        bestStats: summarizeBestSignals(memberStocks),
+        technicalStats: summarizeTechnicalSignals(memberStocks),
+        portfolioEdge: definition.portfolio_edge ?? null,
         members,
         editable: true,
       } satisfies ComputedIndex
     })
 
     return [base, ...custom]
-  }, [baseIndex.name, customDefinitions, stockBySymbol, stocks])
+  }, [baseIndex.name, customDefinitions, signalView, stockBySymbol, stocks])
 
   function symbolOptions(query: string) {
     const normalized = query.trim().toLowerCase()
@@ -401,7 +595,7 @@ export function IndexTab({
   return (
     <div className="space-y-4">
       {!readOnly && (
-        <Card>
+        <Card className="dashboard-panel">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -488,9 +682,14 @@ export function IndexTab({
       {computedIndices.map((index) => {
         const isOpen = openKey === index.id
         const isEditing = editingId === index.id
+        const sortedMembers = [...index.members].sort((left, right) => {
+          if (isTechnicalMode && left.stock && right.stock) return compareTechnicalSignalStocks(left.stock, right.stock)
+          return compareIndexMembers(left, right)
+        })
+        const memberColumnCount = 2 + shownFamilies.length + 3 + (!isTechnicalMode && edgeEnabled ? 2 : 0) + 1
         return (
           <Collapsible key={index.id} open={isOpen}>
-            <Card>
+            <Card className="dashboard-panel">
               <CardHeader
                 className="cursor-pointer pb-3"
                 onClick={() => setOpenKey(isOpen ? null : index.id)}
@@ -504,7 +703,7 @@ export function IndexTab({
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {renderIndexHeaderSignal(index, scoreSource)}
+                    {renderIndexHeaderSignal(index, displayMode)}
                     {!readOnly && index.editable && !isEditing && (
                       <>
                         <Button
@@ -536,6 +735,13 @@ export function IndexTab({
               </CardHeader>
 
               <CardContent className="space-y-4">
+                <IndexSignalOverview
+                  index={index}
+                  horizonDays={horizonDays}
+                  edgeEnabled={edgeEnabled}
+                  displayMode={displayMode}
+                />
+
                 {isEditing && !readOnly && index.editable && (
                   <div className="space-y-3 rounded-md border p-3">
                     <Input
@@ -592,30 +798,34 @@ export function IndexTab({
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                  {FAMILY_ORDER.map((family) => (
-                    <div key={`${index.id}-${family}`} className="space-y-1">
-                      <p className="text-sm font-medium">{FAMILY_LABELS[family]}</p>
+                {shownFamilies.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    {shownFamilies.map((family) => (
+                      <div key={`${index.id}-${family}`} className="space-y-1">
+                        <p className="text-sm font-medium">{FAMILY_LABELS[family]}</p>
 
-                      {scoreSource === "both" ? (
-                        <div className="space-y-1">
-                          <div>
-                            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">SE</p>
-                            <FamilyCell score={index.scores.signal_engine.per_family[family]} />
+                        {isTechnicalMode ? (
+                          <FamilyCell score={index.technicalStats.topSignal?.per_family?.[family] ?? null} factorDependencies={index.technicalStats.topSignal?.factor_dependencies?.[family]} />
+                        ) : scoreSource === "both" ? (
+                          <div className="space-y-1">
+                            <div>
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">SE</p>
+                              <FamilyCell score={index.scores.signal_engine.per_family[family]} />
+                            </div>
+                            <div className="border-t pt-1">
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">WFO</p>
+                              <FamilyCell score={index.scores.wfo?.per_family[family] ?? null} />
+                            </div>
                           </div>
-                          <div className="border-t pt-1">
-                            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">WFO</p>
-                            <FamilyCell score={index.scores.wfo?.per_family[family] ?? null} />
-                          </div>
-                        </div>
-                      ) : scoreSource === "wfo" ? (
-                        <FamilyCell score={index.scores.wfo?.per_family[family] ?? null} />
-                      ) : (
-                        <FamilyCell score={index.scores.signal_engine.per_family[family]} />
-                      )}
-                    </div>
-                  ))}
-                </div>
+                        ) : scoreSource === "wfo" ? (
+                          <FamilyCell score={index.scores.wfo?.per_family[family] ?? null} />
+                        ) : (
+                          <FamilyCell score={index.scores.signal_engine.per_family[family]} />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
 
                 <div className="space-y-2">
                   <p className="text-sm font-medium">Largeur de marche</p>
@@ -648,46 +858,145 @@ export function IndexTab({
                 {isOpen && (
                   <CardContent className="pt-0">
                     <div className="rounded-md border">
-                      <Table>
+                      <Table className="min-w-[1080px] text-[12px]">
                         <TableHeader>
-                          <TableRow>
-                            <TableHead>Symbole</TableHead>
-                            <TableHead>Nom</TableHead>
-                            <TableHead>Decision</TableHead>
+                          <TableRow className="border-b border-border bg-bg2 hover:bg-bg2">
+                            <TableHead className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Ticker</TableHead>
+                            <TableHead className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Nom</TableHead>
+                            {shownFamilies.map((family) => (
+                              <TableHead key={`${index.id}-member-${family}`} className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                                {FAMILY_SHORT_LABELS[family]}
+                              </TableHead>
+                            ))}
+                            <TableHead className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                              {isTechnicalMode ? "Direction best" : "Signal"}
+                            </TableHead>
+                            <TableHead className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                              {isTechnicalMode ? "Methode technique" : "Methode auto"}
+                            </TableHead>
+                            <TableHead className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                              {isTechnicalMode ? "Score technique" : "retour attendu"}
+                            </TableHead>
+                            {!isTechnicalMode && edgeEnabled ? (
+                              <>
+                                <TableHead className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">%succés</TableHead>
+                                <TableHead className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Edge</TableHead>
+                              </>
+                            ) : null}
+                            <TableHead className="h-auto w-10 px-2 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground" />
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {index.members.length === 0 ? (
                             <TableRow>
-                              <TableCell colSpan={3} className="text-center text-sm text-muted-foreground">
+                              <TableCell colSpan={memberColumnCount} className="text-center text-sm text-muted-foreground">
                                 Aucune action dans cet indice.
                               </TableCell>
                             </TableRow>
                           ) : (
-                            index.members.map((member) => (
-                              <TableRow key={`${index.id}-${member.symbol}`}>
-                                <TableCell className="font-mono font-medium">{member.symbol}</TableCell>
-                                <TableCell className="text-muted-foreground">{member.display_name ?? "-"}</TableCell>
-                                <TableCell>
-                                  {scoreSource === "both" ? (
-                                    <div className="space-y-1">
-                                      <div className="flex items-center gap-2">
-                                        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">SE</span>
-                                        <SignalBadge label={member.scores.signal_engine.signal_label} />
+                            sortedMembers.map((member) => {
+                              const signal = bestSignalForDisplay(member.stock)
+                              const technicalSignal = technicalSignalForDisplay(member.stock)
+                              const href = member.stock
+                                ? isTechnicalMode
+                                  ? technicalHref(member.stock, horizon)
+                                  : evidenceHref(member.stock, horizon, signalView, scoreSource)
+                                : null
+
+                              return (
+                                <TableRow key={`${index.id}-${member.symbol}`} className="border-b border-border/70 hover:bg-bg2">
+                                  <TableCell className="px-3 py-2.5">
+                                    {href ? (
+                                      <Link href={href} className="dashboard-mono text-[12px] font-semibold hover:underline">
+                                        {member.symbol}
+                                      </Link>
+                                    ) : (
+                                      <span className="dashboard-mono text-[12px] font-semibold">{member.symbol}</span>
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="max-w-[220px] px-3 py-2.5">
+                                    {href ? (
+                                      <Link href={href} className="block hover:underline">
+                                        <div className="text-[12px] font-medium">{member.display_name ?? "-"}</div>
+                                      </Link>
+                                    ) : (
+                                      <div className="text-[12px] font-medium text-muted-foreground">{member.display_name ?? "-"}</div>
+                                    )}
+                                  </TableCell>
+                                  {shownFamilies.map((family) => (
+                                    <TableCell key={`${index.id}-${member.symbol}-${family}`} className="px-3 py-2.5">
+                                      {isTechnicalMode ? (
+                                        <FamilyCell score={technicalSignal?.per_family?.[family] ?? null} factorDependencies={technicalSignal?.factor_dependencies?.[family]} />
+                                      ) : scoreSource === "both" ? (
+                                        <div className="space-y-1">
+                                          <div>
+                                            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">SE</p>
+                                            <FamilyCell score={member.scores.signal_engine.per_family[family]} />
+                                          </div>
+                                          <div className="border-t pt-1">
+                                            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">WFO</p>
+                                            <FamilyCell score={member.scores.wfo?.per_family[family] ?? null} />
+                                          </div>
+                                        </div>
+                                      ) : scoreSource === "wfo" ? (
+                                        <FamilyCell score={member.scores.wfo?.per_family[family] ?? null} />
+                                      ) : (
+                                        <FamilyCell score={member.scores.signal_engine.per_family[family]} />
+                                      )}
+                                    </TableCell>
+                                  ))}
+                                  <TableCell className="px-3 py-2.5">
+                                    {isTechnicalMode ? <SignalBadge label={technicalSignal?.signal_label ?? "Indisponible"} /> : <BestSignalBadgeCell signal={signal} />}
+                                  </TableCell>
+                                  <TableCell className="px-3 py-2.5">
+                                    {isTechnicalMode ? (
+                                      <div className="space-y-1">
+                                        <div className="max-w-[180px] truncate text-[11px] font-semibold" title={technicalSignal?.label ?? ""}>
+                                          {technicalSignal?.label?.replace("Signal Engine - ", "Engine ").replace("Factor x TA", "FX") ?? "No technical signal"}
+                                        </div>
+                                        <div className="dashboard-mono text-[10px] text-muted-foreground">{displayVariantLabel(technicalSignal?.variant)}</div>
                                       </div>
-                                      <div className="flex items-center gap-2 border-t pt-1">
-                                        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">WFO</span>
-                                        <SignalBadge label={member.scores.wfo?.signal_label ?? null} />
-                                      </div>
-                                    </div>
-                                  ) : scoreSource === "wfo" ? (
-                                    <SignalBadge label={member.scores.wfo?.signal_label ?? null} />
-                                  ) : (
-                                    <SignalBadge label={member.scores.signal_engine.signal_label} />
-                                  )}
-                                </TableCell>
-                              </TableRow>
-                            ))
+                                    ) : <BestSignalMethodCell signal={signal} />}
+                                  </TableCell>
+                                  <TableCell className="dashboard-mono px-3 py-2.5 text-right text-[11px]">
+                                    {href ? (
+                                      <Link href={href} className="block hover:text-foreground hover:underline">
+                                        {isTechnicalMode ? (
+                                          <div className="space-y-0.5 text-right">
+                                            <div>{formatScorePct(technicalSignal?.score_pct)}</div>
+                                            <div className="text-[10px] text-muted-foreground">{technicalDirectionLabel(technicalSignal?.direction)}</div>
+                                          </div>
+                                        ) : <BestSignalExpectedReturnCell signal={signal} fallbackDays={horizonDays} />}
+                                      </Link>
+                                    ) : (
+                                      isTechnicalMode ? (
+                                        <div className="space-y-0.5 text-right">
+                                          <div>{formatScorePct(technicalSignal?.score_pct)}</div>
+                                          <div className="text-[10px] text-muted-foreground">{technicalDirectionLabel(technicalSignal?.direction)}</div>
+                                        </div>
+                                      ) : <BestSignalExpectedReturnCell signal={signal} fallbackDays={horizonDays} />
+                                    )}
+                                  </TableCell>
+                                  {!isTechnicalMode && edgeEnabled ? (
+                                    <>
+                                      <TableCell className="px-3 py-2.5 text-right"><BestSignalHitRateCell signal={signal} /></TableCell>
+                                      <TableCell className="px-3 py-2.5"><EdgeBadge triage={bestSignalTriage(signal)} /></TableCell>
+                                    </>
+                                  ) : null}
+                                  <TableCell className="px-2 py-2.5 align-middle">
+                                    {href ? (
+                                      <Link
+                                        href={href}
+                                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-muted-foreground transition hover:border-border hover:bg-muted/30 hover:text-foreground"
+                                        aria-label={`Voir la preuve OOS ${member.symbol}`}
+                                      >
+                                        <ArrowRight className="h-3.5 w-3.5" />
+                                      </Link>
+                                    ) : null}
+                                  </TableCell>
+                                </TableRow>
+                              )
+                            })
                           )}
                         </TableBody>
                       </Table>

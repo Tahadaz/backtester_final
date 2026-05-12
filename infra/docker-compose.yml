@@ -331,6 +331,7 @@ services:
       API_WORKERS: ${API_WORKERS:-4}
       REDIS_URL: redis://quant_redis:6379/0
       DATABASE_URL: postgresql+psycopg2://app:app@quant_postgres:5432/quant
+      SNAPSHOT_READ_MODE_OVERRIDES: dashboard=snapshot
       RUN_JOB_TIMEOUT_SECONDS: "21600"
       RUN_JOB_RESULT_TTL_SECONDS: "86400"
       RUN_JOB_FAILURE_TTL_SECONDS: "604800"
@@ -386,11 +387,20 @@ services:
       dockerfile: Dockerfile
     environment:
       UPSTREAM_API_BASE: http://quant_api:8000
+      UPSTREAM_TIMEOUT_MS: ${UPSTREAM_TIMEOUT_MS:-120000}
+      DATABASE_URL: postgresql://app:app@quant_postgres:5432/quant
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-local-demo-auth-secret-change-me}
+      AUTH_SECRET: ${AUTH_SECRET:-local-demo-auth-secret-change-me}
+      AUTH_TRUST_HOST: "true"
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3001}
+      DASHBOARD_PUBLIC_ONLY: ${DASHBOARD_PUBLIC_ONLY:-true}
     depends_on:
       quant_api:
         condition: service_healthy
+      quant_postgres:
+        condition: service_healthy
     ports:
-      - "3000:3000"
+      - "${FRONTEND_HOST_PORT:-3001}:3000"
 
 volumes:
   pgdata:

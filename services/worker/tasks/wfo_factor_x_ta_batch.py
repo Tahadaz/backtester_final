@@ -31,11 +31,16 @@ from core.quant_core.signal_engine.domain import (
     FAMILY_SIGNAL_TYPE,
     HORIZON_PARAMS,
     FactorConditionMeta,
+    LEGACY_CATEGORY_FAMILIES,
     VariantDef,
     signal_type_label,
     variant_signal_label,
 )
-from core.quant_core.signal_engine.factor_x_ta import _compute_ta_signal_for_conditioned
+from core.quant_core.signal_engine.modes import resolve_signal_mode, signal_mode_storage_name
+from core.quant_core.signal_engine.factor_x_ta import (
+    _compute_ta_signal_for_conditioned,
+    build_factor_x_ta_combo_pool_for_category,
+)
 from core.quant_core.research.factors.conditions import evaluate_condition
 from core.quant_core.research.factors.conditioned_variants import compose_and_signal
 from core.quant_core.signal_engine.redundancy import _pearson_corr
@@ -66,14 +71,9 @@ from services.worker.tasks.wfo_signal_batch import _build_folds_json, _get_sr_le
 
 # Re-use shared helpers from the engine ×fx batch
 from services.worker.tasks.factor_x_ta_batch import (
-    _build_channel_tag_gate,
+    _build_runtime_inputs,
     _build_conditions,
-    _build_ticker_to_canonical,
-    _get_enabled_factor_tickers,
-    _get_selected_factor_tickers,
-    _get_stock_sector,
     _load_channel_tags,
-    _load_factor_series_from_store,
     _load_pre_registration,
     DEFAULT_COST_BPS,
     DEFAULT_TIMEFRAME,
@@ -82,6 +82,11 @@ from services.worker.tasks.factor_x_ta_batch import (
 
 logger = logging.getLogger(__name__)
 VARIANT = "factor_x_ta"
+
+
+def _category_families_for_variant(variant: str) -> dict[str, list[str]]:
+    mode = resolve_signal_mode(variant)
+    return LEGACY_CATEGORY_FAMILIES if mode.universe == "legacy" else CATEGORY_FAMILIES
 CATEGORIES = ("tendance", "momentum", "oscillation", "volume")
 
 
@@ -335,6 +340,7 @@ def run_wfo_fx_for_category(
         **_config_to_dict(config),
         "min_bars_needed": min_bars,
         "max_lookback": max_lookback,
+        "cap_len": cap_len,
     }
 
     return WfoCategoryResult(
@@ -372,6 +378,7 @@ def _upsert_wfo_fx_summary(
     category: str,
     horizon: str,
     *,
+    variant: str,
     status: str,
     result: WfoCategoryResult | None = None,
     data_as_of=None,
@@ -380,22 +387,25 @@ def _upsert_wfo_fx_summary(
 ) -> None:
     row = (
         db.query(WfoSignalSummary)
-        .filter_by(symbol=symbol, category=category, horizon=horizon, variant=VARIANT)
+        .filter_by(symbol=symbol, category=category, horizon=horizon, variant=variant)
         .first()
     )
     if row is None:
         row = WfoSignalSummary(
-            symbol=symbol, category=category, horizon=horizon, variant=VARIANT,
+            symbol=symbol, category=category, horizon=horizon, variant=variant,
         )
         db.add(row)
 
     row.status = status
     row.error_message = error_message
+    row.computed_at = datetime.now(timezone.utc)
+    row.data_as_of = data_as_of
 
     if result is not None and status == "succeeded":
         row.score_pct = result.score_pct
         row.signal_label = result.signal_label
         row.representatives_json = result.representatives
+        row.folds_json = folds_json
         row.wfe_pct = result.wfe_pct
         row.robustness_ratio = result.robustness_ratio
         row.total_folds = result.total_folds
@@ -406,14 +416,23 @@ def _upsert_wfo_fx_summary(
         row.composite_score = result.composite_score
         row.robustness_grade = result.robustness_grade
         row.config_json = result.config_used
-        row.computed_at = datetime.now(timezone.utc)
-        row.data_as_of = data_as_of
         row.compute_seconds = result.compute_seconds
-
-def _build_folds_json_fx(result: WfoCategoryResult, pool: list[VariantDef] | None = None) -> list[dict] | None:
-    """Wrapper to safely call _build_folds_json with VariantDef pool."""
-    return _build_folds_json(result, pool)
-
+    else:
+        row.score_pct = None
+        row.signal_label = None
+        row.representatives_json = []
+        row.folds_json = folds_json
+        row.wfe_pct = None
+        row.robustness_ratio = None
+        row.total_folds = None
+        row.profitable_folds = None
+        row.mean_oos_sharpe = None
+        row.total_oos_pnl = None
+        row.worst_fold_drawdown = None
+        row.composite_score = None
+        row.robustness_grade = None
+        row.config_json = result.config_used if result is not None else None
+        row.compute_seconds = result.compute_seconds if result is not None else None
 
 # ---------------------------------------------------------------------------
 # Top-level RQ task
@@ -422,6 +441,7 @@ def _build_folds_json_fx(result: WfoCategoryResult, pool: list[VariantDef] | Non
 def compute_wfo_factor_x_ta_for_symbol(
     symbol: str,
     horizon: str,
+    variant: str = VARIANT,
     cost_bps: float = DEFAULT_COST_BPS,
     cooldown_bars: int = DEFAULT_COOLDOWN_BARS,
 ) -> dict:
@@ -431,6 +451,9 @@ def compute_wfo_factor_x_ta_for_symbol(
     """
     t0 = time.perf_counter()
     db: Session = SessionLocal()
+    mode = resolve_signal_mode(variant)
+    variant = mode.name
+    category_families = _category_families_for_variant(variant)
 
     try:
         pre_reg = _load_pre_registration()
@@ -453,32 +476,50 @@ def compute_wfo_factor_x_ta_for_symbol(
         low = ohlcv["Low"].values.astype(np.float64) if "Low" in ohlcv.columns else None
         volume = ohlcv["Volume"].values.astype(np.float64) if "Volume" in ohlcv.columns else None
 
-        selected_tickers = _get_selected_factor_tickers(db, symbol, horizon)
-        enabled_tickers = _get_enabled_factor_tickers(db, symbol)
-        if not enabled_tickers:
-            enabled_tickers = {c.factor_ticker for c in all_conditions}
-        if selected_tickers:
-            enabled_tickers &= selected_tickers
+        runtime = _build_runtime_inputs(
+            db,
+            symbol=symbol,
+            horizon=horizon,
+            ohlcv=ohlcv,
+            all_conditions=all_conditions,
+            channel_tags_yaml=channel_tags_yaml,
+        )
+        if runtime.selection_warning:
+            logger.warning(
+                "WFO×fx: factor selection unavailable for %s/%s; using stock_factor_config fallback: %s",
+                symbol,
+                horizon,
+                runtime.selection_warning,
+            )
 
-        stock_sector = _get_stock_sector(db, symbol)
-        channel_gate = _build_channel_tag_gate(channel_tags_yaml, enabled_tickers)
-
-        active_conditions = [c for c in all_conditions if c.factor_ticker in enabled_tickers]
-        if not active_conditions:
+        if not runtime.conditions:
+            for category in category_families:
+                _upsert_wfo_fx_summary(
+                    db,
+                    symbol,
+                    category,
+                    horizon,
+                    variant=variant,
+                    status="no_signal",
+                    data_as_of=data_as_of,
+                    error_message="no active factor conditions",
+                )
+            db.commit()
             return {"symbol": symbol, "horizon": horizon, "status": "skipped", "reason": "no active conditions"}
 
-        aligned_factor_arrays: dict[str, np.ndarray] = {}
-        ticker_to_canonical = _build_ticker_to_canonical()
-        for condition in active_conditions:
-            ticker = condition.factor_ticker
-            if ticker in aligned_factor_arrays:
-                continue
-            canonical_id = ticker_to_canonical.get(ticker, ticker)
-            arr = _load_factor_series_from_store(db, canonical_id)
-            if arr is not None:
-                aligned_factor_arrays[ticker] = arr
-
-        if not aligned_factor_arrays:
+        if not runtime.aligned_factor_arrays:
+            for category in category_families:
+                _upsert_wfo_fx_summary(
+                    db,
+                    symbol,
+                    category,
+                    horizon,
+                    variant=variant,
+                    status="no_signal",
+                    data_as_of=data_as_of,
+                    error_message="factor series not ingested or not alignable",
+                )
+            db.commit()
             return {"symbol": symbol, "horizon": horizon, "status": "skipped", "reason": "factor series not ingested"}
 
         n = len(close)
@@ -486,58 +527,75 @@ def compute_wfo_factor_x_ta_for_symbol(
         failed = 0
         category_results: dict[str, Any] = {}
 
-        for category, families in CATEGORY_FAMILIES.items():
-            _upsert_wfo_fx_summary(db, symbol, category, horizon, status="running")
+        for category, families in category_families.items():
+            _upsert_wfo_fx_summary(db, symbol, category, horizon, variant=variant, status="running")
             db.commit()
 
             t_cat = time.perf_counter()
             try:
-                # Generate factor-conditioned candidates for all families in this category
-                conditioned_pool: list[VariantDef] = []
-                for family in families:
-                    try:
-                        ta_candidates = generate_candidates(family, horizon)
-                    except (ValueError, NotImplementedError):
-                        ta_candidates = []
-                    conditioned = generate_factor_conditioned_candidates(
-                        ta_candidates,
-                        active_conditions,
-                        channel_tags=channel_gate or None,
-                        stock_sector=stock_sector,
-                        active_factors=sorted(enabled_tickers),
+                if mode.is_combo:
+                    combo_prefix = "legacy_fx_combo" if mode.universe == "legacy" else "expanded_fx_combo"
+                    conditioned_pool, precomputed = build_factor_x_ta_combo_pool_for_category(
+                        category=category,
+                        combo_family=f"{combo_prefix}_{category}",
+                        category_families=category_families,
+                        horizon=horizon,
+                        close=close,
+                        aligned_factor_arrays=runtime.aligned_factor_arrays,
+                        conditions=runtime.conditions,
+                        volume=volume,
+                        high=high,
+                        low=low,
+                        channel_tags=runtime.channel_gate,
+                        stock_sector=runtime.stock_sector,
                     )
-                    conditioned_pool.extend(conditioned)
+                else:
+                    # Generate factor-conditioned candidates for all families in this category
+                    conditioned_pool = []
+                    for family in families:
+                        try:
+                            ta_candidates = generate_candidates(family, horizon)
+                        except (ValueError, NotImplementedError):
+                            ta_candidates = []
+                        conditioned = generate_factor_conditioned_candidates(
+                            ta_candidates,
+                            runtime.conditions,
+                            channel_tags=runtime.channel_gate or None,
+                            stock_sector=runtime.stock_sector,
+                        )
+                        conditioned_pool.extend(conditioned)
 
-                # Precompute AND signals for the full close array
-                precomputed: dict[str, np.ndarray] = {}
-                for c_variant in conditioned_pool:
-                    cond = c_variant.factor_condition
-                    if cond is None:
-                        continue
-                    factor_close = aligned_factor_arrays.get(cond.factor_ticker)
-                    if factor_close is None or len(factor_close) == 0:
-                        continue
+                    # Precompute AND signals for the full close array
+                    precomputed = {}
+                    for c_variant in conditioned_pool:
+                        cond = c_variant.factor_condition
+                        if cond is None:
+                            continue
+                        factor_close = runtime.aligned_factor_arrays.get(cond.factor_ticker)
+                        if factor_close is None or len(factor_close) == 0:
+                            continue
 
-                    # Align factor to stock length
-                    fc = factor_close
-                    if len(fc) > n:
-                        fc = fc[-n:]
-                    elif len(fc) < n:
-                        fc = np.concatenate([np.full(n - len(fc), np.nan), fc])
+                        # Align factor to stock length
+                        fc = factor_close
+                        if len(fc) > n:
+                            fc = fc[-n:]
+                        elif len(fc) < n:
+                            fc = np.concatenate([np.full(n - len(fc), np.nan), fc])
 
-                    ta_sig = _compute_ta_signal_for_conditioned(
-                        c_variant, close, volume=volume, high=high, low=low,
-                    )
-                    if ta_sig is None:
-                        continue
+                        ta_sig = _compute_ta_signal_for_conditioned(
+                            c_variant, close, volume=volume, high=high, low=low,
+                        )
+                        if ta_sig is None:
+                            continue
 
-                    condition_mask = evaluate_condition(cond, fc)
-                    composed = compose_and_signal(ta_sig, condition_mask)
-                    precomputed[c_variant.variant_id] = composed
+                        condition_mask = evaluate_condition(cond, fc)
+                        composed = compose_and_signal(ta_sig, condition_mask)
+                        precomputed[c_variant.variant_id] = composed
 
                 if not precomputed:
                     _upsert_wfo_fx_summary(
                         db, symbol, category, horizon,
+                        variant=variant,
                         status="no_signal",
                         error_message="No precomputed signals for category",
                     )
@@ -559,11 +617,14 @@ def compute_wfo_factor_x_ta_for_symbol(
                 result.data_as_of = str(data_as_of)
                 result.compute_seconds = round(time.perf_counter() - t_cat, 2)
 
-                folds_json = _build_folds_json_fx(result, conditioned_pool)
+                cap_len = int((result.config_used or {}).get("cap_len") or len(ohlcv.index))
+                fold_index = ohlcv.index[-cap_len:] if cap_len > 0 else ohlcv.index
+                folds_json = _build_folds_json(result, conditioned_pool, fold_index)
                 _upsert_wfo_fx_summary(
                     db, symbol, category, horizon,
+                    variant=variant,
                     status=result.status if result.representatives else "no_signal",
-                    result=result if result.representatives else None,
+                    result=result,
                     data_as_of=data_as_of,
                     error_message=result.error_message or None,
                     folds_json=folds_json,
@@ -577,6 +638,7 @@ def compute_wfo_factor_x_ta_for_symbol(
                 logger.exception("WFO×fx category failed: %s/%s/%s/%s", symbol, category, horizon, exc)
                 _upsert_wfo_fx_summary(
                     db, symbol, category, horizon,
+                    variant=variant,
                     status="failed",
                     error_message=str(exc),
                 )
@@ -598,12 +660,16 @@ def compute_wfo_factor_x_ta_for_symbol(
             )
             global_result.symbol = symbol
             global_result.horizon = horizon
-            _upsert_global(db, symbol, horizon, global_result, data_as_of, variant=VARIANT)
+            _upsert_global(db, symbol, horizon, global_result, data_as_of, variant=variant)
         except Exception:
             logger.exception("WFO×fx global failed: %s/%s", symbol, horizon)
         db.commit()
 
-        overall_status = "succeeded" if failed == 0 else ("partial" if completed > 0 else "failed")
+        overall_status = (
+            "succeeded"
+            if completed > 0 and failed == 0
+            else ("partial" if completed > 0 else ("no_signal" if failed == 0 else "failed"))
+        )
         return {
             "symbol": symbol,
             "horizon": horizon,
@@ -627,6 +693,7 @@ def compute_wfo_factor_x_ta_for_symbol(
 def enqueue_wfo_factor_x_ta_for_symbol(
     symbol: str,
     horizon: str,
+    variant: str = VARIANT,
     triggered_by: str = "manual",
     depends_on: str | None = None,
 ) -> str:
@@ -634,13 +701,15 @@ def enqueue_wfo_factor_x_ta_for_symbol(
     from rq import Queue
     from services.worker.config import settings
 
+    variant = signal_mode_storage_name(variant)
     redis = connect_redis_with_fallback(settings.REDIS_URL, decode_responses=False, logger=logger)
     q = Queue(settings.SIGNAL_ENGINE_QUEUE_NAME, connection=redis)
     job = q.enqueue(
         compute_wfo_factor_x_ta_for_symbol,
         symbol,
         horizon,
-        job_timeout=3600,
+        variant,
+        job_timeout=7200,
         depends_on=depends_on,
         meta={"triggered_by": triggered_by},
     )

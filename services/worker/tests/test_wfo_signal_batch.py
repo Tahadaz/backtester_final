@@ -9,6 +9,7 @@ import pandas as pd
 from services.api.app.models import StockMaster, WfoGlobalSignal, WfoSignalSummary
 from services.worker.tasks import wfo_signal_batch as wfo_batch_mod
 from core.quant_core.signal_engine.domain import VariantDef
+from core.quant_core.signal_engine.modes import ALL_SIGNAL_MODE_NAMES
 
 
 class _FakeQuery:
@@ -138,12 +139,90 @@ def test_build_folds_json_persists_indices_and_dates():
     assert fold["train_end_idx"] == 5
     assert fold["oos_start_idx"] == 5
     assert fold["oos_end_idx"] == 8
+    assert fold["train_start_abs_idx"] == 0
+    assert fold["train_end_abs_idx"] == 5
+    assert fold["oos_start_abs_idx"] == 5
+    assert fold["oos_end_abs_idx"] == 8
     assert fold["train_start_date"] == "2026-01-01"
     assert fold["train_end_date"] == "2026-01-05"
     assert fold["oos_start_date"] == "2026-01-06"
     assert fold["oos_end_date"] == "2026-01-08"
     assert fold["winner_variant_id"] == "sma-5"
     assert fold["winner_params"] == {}
+
+
+def test_build_folds_json_resolves_dates_with_horizon_cap_offset():
+    dates = pd.date_range("2026-01-01", periods=20, freq="D")
+    pool = [SimpleNamespace(variant_id="sma-5", description="SMA-5")]
+    result = SimpleNamespace(
+        window_diagnostics={"horizon_cap_start_offset": 10},
+        engine_result=SimpleNamespace(
+            windows=[
+                SimpleNamespace(
+                    winner_key=0,
+                    window=SimpleNamespace(
+                        index=0,
+                        train_start=0,
+                        train_end=5,
+                        oos_start=5,
+                        oos_end=8,
+                    ),
+                    is_return=0.01,
+                    oos_return=0.02,
+                    oos_sharpe=1.2,
+                    winner_prom=0.03,
+                    profile=SimpleNamespace(
+                        passes=True,
+                        reason="ok",
+                        pct_profitable=0.75,
+                    ),
+                )
+            ]
+        ),
+    )
+
+    folds = wfo_batch_mod._build_folds_json(result, pool, dates)
+
+    assert folds is not None
+    fold = folds[0]
+    assert fold["train_start_idx"] == 0
+    assert fold["oos_end_idx"] == 8
+    assert fold["train_start_abs_idx"] == 10
+    assert fold["train_end_abs_idx"] == 15
+    assert fold["oos_start_abs_idx"] == 15
+    assert fold["oos_end_abs_idx"] == 18
+    assert fold["train_start_date"] == "2026-01-11"
+    assert fold["train_end_date"] == "2026-01-15"
+    assert fold["oos_start_date"] == "2026-01-16"
+    assert fold["oos_end_date"] == "2026-01-18"
+
+
+def test_build_config_json_includes_fold_coverage_metadata():
+    dates = pd.date_range("2026-01-01", periods=20, freq="D")
+    folds_json = [
+        {
+            "oos_start_date": "2026-01-16",
+            "oos_end_date": "2026-01-18",
+            "oos_end_abs_idx": 18,
+        }
+    ]
+
+    payload = wfo_batch_mod._build_config_json(
+        horizon="weekly",
+        category="tendance",
+        close_len=20,
+        pool_size=1,
+        overrides={},
+        folds_json=folds_json,
+        index=dates,
+        data_as_of=dt.date(2026, 1, 20),
+    )
+
+    assert payload["last_oos_start_date"] == "2026-01-16"
+    assert payload["last_oos_end_date"] == "2026-01-18"
+    assert payload["last_oos_end_abs_idx"] == 18
+    assert payload["unused_tail_bars"] == 2
+    assert payload["data_as_of"] == "2026-01-20"
 
 
 def test_fragility_classifies_stable_and_aggregate_no_severe():
@@ -250,40 +329,14 @@ def test_run_weekly_wfo_batch_only_processes_weekly_stale_tuples(monkeypatch):
             WfoGlobalSignal: [
                 WfoGlobalSignal(
                     symbol="AAA",
-                    horizon="weekly",
-                    variant="legacy",
-                    computed_at=now - dt.timedelta(days=8),
-                ),
-                WfoGlobalSignal(
-                    symbol="AAA",
-                    horizon="weekly",
-                    variant="expanded",
-                    computed_at=now - dt.timedelta(days=2),
-                ),
-                WfoGlobalSignal(
-                    symbol="AAA",
-                    horizon="monthly",
-                    variant="legacy",
-                    computed_at=now - dt.timedelta(days=2),
-                ),
-                WfoGlobalSignal(
-                    symbol="AAA",
-                    horizon="monthly",
-                    variant="expanded",
-                    computed_at=now - dt.timedelta(days=2),
-                ),
-                WfoGlobalSignal(
-                    symbol="AAA",
-                    horizon="quarterly",
-                    variant="legacy",
-                    computed_at=now - dt.timedelta(days=2),
-                ),
-                WfoGlobalSignal(
-                    symbol="AAA",
-                    horizon="quarterly",
-                    variant="expanded",
-                    computed_at=now - dt.timedelta(days=2),
-                ),
+                    horizon=horizon,
+                    variant=variant,
+                    computed_at=now - dt.timedelta(
+                        days=8 if (horizon, variant) == ("weekly", "legacy_ta_simple") else 2
+                    ),
+                )
+                for horizon in ("weekly", "monthly", "quarterly")
+                for variant in ALL_SIGNAL_MODE_NAMES
             ],
         }
     )
@@ -301,4 +354,4 @@ def test_run_weekly_wfo_batch_only_processes_weekly_stale_tuples(monkeypatch):
     result = wfo_batch_mod.run_weekly_wfo_batch(now=now)
 
     assert result == {"total": 1, "succeeded": 1, "failed": 0}
-    assert calls == [("AAA", "weekly", "legacy")]
+    assert calls == [("AAA", "weekly", "legacy_ta_simple")]

@@ -1628,7 +1628,7 @@ STRATEGY_ADAPTERS: Dict[str, StrategyAdapter] = {
 
 
 # ============================================================
-# Catalog helpers (optional but useful for Streamlit UI)
+# Catalog helpers (optional but useful for UI clients)
 # ============================================================
 
 def default_param_catalog(strategy_kind: str) -> Dict[str, ParamDef]:

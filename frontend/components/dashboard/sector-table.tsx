@@ -15,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
+import { signalEvidenceUrl } from "@/lib/signal-evidence-url"
 import { ChevronDown, ChevronRight } from "lucide-react"
 
 interface SectorTableProps {
@@ -110,8 +111,8 @@ export function SectorTable({ sectors, stocks, horizon }: SectorTableProps) {
                                 {sectorStocks.map((stock) => (
                                   <TableRow key={`${sector.sector}-${stock.symbol}`} className="border-none hover:bg-slate-50 dark:hover:bg-slate-800">
                                     <TableCell className="pl-8 py-3">
-                                      <Link
-                                        href={`/signals?symbol=${encodeURIComponent(stock.symbol)}&horizon=${horizon}`}
+                                        <Link
+                                        href={signalEvidenceUrl({ symbol: stock.symbol, horizon })}
                                         className="block hover:text-blue-600 dark:hover:text-blue-400"
                                       >
                                         <p className="font-semibold text-slate-900 dark:text-white">{stock.symbol}</p>

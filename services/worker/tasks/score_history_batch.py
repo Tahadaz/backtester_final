@@ -23,10 +23,19 @@ from services.api.app.market_data_loader import load_ohlcv_for_symbol
 from services.api.app import models
 from core.quant_core.data import drop_incomplete_ohlcv_rows
 from core.quant_core.research.score_history import (
+    _variant_from_rep,
     build_engine_category_series,
     build_wfo_category_series,
 )
 from core.quant_core.research.oos_index import oos_windows_from_wfo
+from core.quant_core.signal_engine.factor_x_ta import precompute_factor_x_ta_signals
+from core.quant_core.signal_engine.modes import (
+    ALL_SIGNAL_MODE_NAMES,
+    resolve_signal_mode,
+    signal_mode_read_names,
+    signal_mode_storage_name,
+)
+from core.quant_core.signal_engine.ta_combo import compute_strict_and_combo_signal, is_combo_variant, variant_from_component
 from core.quant_core.signal_engine.variant_detail import compute_variant_signal_array
 from core.quant_core.signal_engine.wfo_signal import build_category_candidate_grid
 from core.quant_core.signal_engine.domain import VARIANT_FAMILIES
@@ -35,7 +44,27 @@ from core.quant_core.signal_engine.domain import VARIANT_FAMILIES
 logger = logging.getLogger(__name__)
 
 HORIZONS = ("weekly", "monthly", "quarterly")
-ENGINE_VARIANTS = ("legacy", "expanded")
+ENGINE_VARIANTS = ALL_SIGNAL_MODE_NAMES
+WFO_VARIANTS = ALL_SIGNAL_MODE_NAMES
+
+
+def _score_source(kind: str, variant: str) -> str:
+    return f"{kind}:{signal_mode_storage_name(variant)}"
+
+
+def _compat_sources(kind: str, variant: str) -> tuple[str, ...]:
+    variant = signal_mode_storage_name(variant)
+    aliases: list[str] = []
+    if kind == "engine":
+        if variant == "legacy_ta_simple":
+            aliases.append("engine_legacy")
+        elif variant == "expanded_ta_simple":
+            aliases.append("engine_expanded")
+        elif variant == "expanded_factor_x_ta_simple":
+            aliases.append("factor_x_ta")
+    elif kind == "wfo" and variant == "expanded_ta_simple":
+        aliases.append("wfo")
+    return tuple(aliases)
 
 
 def _upsert_job(db: Session, symbol: str, status: str, error: str | None = None) -> None:
@@ -82,11 +111,15 @@ def _ohlcv_arrays(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray | None,
 def _replace_history(db: Session, symbol: str, source: str, horizon: str,
                      series_by_cat: dict[str, pd.Series],
                      *,
+                     delete_sources: tuple[str, ...] = (),
                      is_oos_dates_by_cat: dict[str, set[pd.Timestamp]] | None = None) -> int:
     """Upsert the per-bar series into signal_score_history. Returns row count."""
     # Wipe the existing slice for atomicity, then bulk-insert.
-    db.query(models.SignalScoreHistory).filter_by(
-        symbol=symbol, source=source, horizon=horizon,
+    sources_to_delete = tuple(dict.fromkeys((source, *delete_sources)))
+    db.query(models.SignalScoreHistory).filter(
+        models.SignalScoreHistory.symbol == symbol,
+        models.SignalScoreHistory.horizon == horizon,
+        models.SignalScoreHistory.source.in_(sources_to_delete),
     ).delete(synchronize_session=False)
 
     rows: list[dict[str, Any]] = []
@@ -127,31 +160,33 @@ def _replace_history(db: Session, symbol: str, source: str, horizon: str,
 
 def _engine_family_rows(db: Session, symbol: str, horizon: str, variant: str
                         ) -> dict[str, list[dict[str, Any]]]:
-    fam_rows = (
-        db.query(models.SignalEngineFamilyResult)
-        .filter_by(symbol=symbol, horizon=horizon, variant=variant, status="succeeded")
-        .all()
-    )
     out: dict[str, list[dict[str, Any]]] = {}
-    for r in fam_rows:
-        reps = r.representatives_json or []
-        if isinstance(reps, list) and reps:
-            out[r.family] = reps
+    for read_variant in signal_mode_read_names(variant):
+        fam_rows = (
+            db.query(models.SignalEngineFamilyResult)
+            .filter_by(symbol=symbol, horizon=horizon, variant=read_variant, status="succeeded")
+            .all()
+        )
+        for r in fam_rows:
+            reps = r.representatives_json or []
+            if isinstance(reps, list) and reps and r.family not in out:
+                out[r.family] = reps
     return out
 
 
-def _wfo_category_reps(db: Session, symbol: str, horizon: str
+def _wfo_category_reps(db: Session, symbol: str, horizon: str, variant: str
                        ) -> dict[str, models.WfoSignalSummary]:
-    rows = (
-        db.query(models.WfoSignalSummary)
-        .filter_by(symbol=symbol, horizon=horizon, variant="expanded", status="succeeded")
-        .all()
-    )
     out: dict[str, models.WfoSignalSummary] = {}
-    for r in rows:
-        reps = r.representatives_json or []
-        if isinstance(reps, list) and reps:
-            out[r.category] = r
+    for read_variant in signal_mode_read_names(variant):
+        rows = (
+            db.query(models.WfoSignalSummary)
+            .filter_by(symbol=symbol, horizon=horizon, variant=read_variant, status="succeeded")
+            .all()
+        )
+        for r in rows:
+            reps = r.representatives_json or []
+            if isinstance(reps, list) and reps and r.category not in out:
+                out[r.category] = r
     return out
 
 
@@ -217,32 +252,170 @@ def _dates_for_windows(
     return out
 
 
+def _reps_from_family_rows(family_rows: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    return [rep for reps in family_rows.values() for rep in reps if isinstance(rep, dict)]
+
+
+def _reps_from_wfo_rows(cat_rows: dict[str, models.WfoSignalSummary]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for row in cat_rows.values():
+        out.extend(rep for rep in (row.representatives_json or []) if isinstance(rep, dict))
+    return out
+
+
+def _factor_conditions_from_variant(variant) -> list:
+    conditions = []
+    condition = getattr(variant, "factor_condition", None)
+    if condition is not None:
+        conditions.append(condition)
+    if is_combo_variant(variant):
+        for payload in variant.params.get("components", []):
+            if not isinstance(payload, dict):
+                continue
+            try:
+                component = variant_from_component(payload)
+            except Exception:
+                continue
+            component_condition = getattr(component, "factor_condition", None)
+            if component_condition is not None:
+                conditions.append(component_condition)
+    return conditions
+
+
+def _factor_precomputed_signals(
+    db: Session,
+    ohlcv: pd.DataFrame,
+    reps: list[dict[str, Any]],
+    *,
+    close: np.ndarray,
+    volume: np.ndarray | None,
+    high: np.ndarray | None,
+    low: np.ndarray | None,
+) -> dict[str, np.ndarray]:
+    variants = [v for rep in reps if (v := _variant_from_rep(rep)) is not None]
+    conditions = []
+    for variant in variants:
+        conditions.extend(_factor_conditions_from_variant(variant))
+    if not conditions:
+        return {}
+
+    from services.worker.tasks.factor_x_ta_batch import _align_factor_arrays_for_conditions
+
+    aligned_factor_arrays = _align_factor_arrays_for_conditions(db, ohlcv, conditions)
+    if not aligned_factor_arrays:
+        return {}
+
+    component_variants = []
+    for variant in variants:
+        if getattr(variant, "factor_condition", None) is not None:
+            component_variants.append(variant)
+        if is_combo_variant(variant):
+            for payload in variant.params.get("components", []):
+                if isinstance(payload, dict):
+                    try:
+                        component_variants.append(variant_from_component(payload))
+                    except Exception:
+                        continue
+
+    precomputed = precompute_factor_x_ta_signals(
+        component_variants,
+        close,
+        aligned_factor_arrays,
+        volume=volume,
+        high=high,
+        low=low,
+    )
+
+    for variant in variants:
+        if not is_combo_variant(variant) or variant.variant_id in precomputed:
+            continue
+
+        def _compute_component(component) -> np.ndarray:
+            if component.variant_id in precomputed:
+                return precomputed[component.variant_id]
+            return compute_variant_signal_array(
+                close,
+                component,
+                volume=volume,
+                high=high,
+                low=low,
+            )
+
+        try:
+            precomputed[variant.variant_id] = compute_strict_and_combo_signal(
+                close,
+                variant,
+                compute_component_signal=_compute_component,
+            )
+        except Exception:
+            continue
+
+    return precomputed
+
+
 def run_score_history_for_symbol(db: Session, symbol: str) -> dict[str, int]:
     """Compute and persist all (source, horizon) score series for one symbol."""
-    df = load_ohlcv_for_symbol(db, symbol)
+    df = drop_incomplete_ohlcv_rows(load_ohlcv_for_symbol(db, symbol)).copy().sort_index()
     close, volume, high, low, idx = _ohlcv_arrays(df)
     if len(close) < 100:
         raise ValueError(f"Not enough bars for {symbol}: {len(close)}")
 
-    summary = {"engine_legacy": 0, "engine_expanded": 0, "wfo": 0}
+    summary = {
+        **{_score_source("engine", variant): 0 for variant in ENGINE_VARIANTS},
+        **{_score_source("wfo", variant): 0 for variant in WFO_VARIANTS},
+    }
 
     for horizon in HORIZONS:
-        # Engine legacy + expanded
         for variant in ENGINE_VARIANTS:
             family_rows = _engine_family_rows(db, symbol, horizon, variant)
             if not family_rows:
                 continue
+            precomputed = (
+                _factor_precomputed_signals(
+                    db,
+                    df,
+                    _reps_from_family_rows(family_rows),
+                    close=close,
+                    volume=volume,
+                    high=high,
+                    low=low,
+                )
+                if resolve_signal_mode(variant).is_factor_x_ta
+                else {}
+            )
             series = build_engine_category_series(
                 symbol=symbol, horizon=horizon, variant=variant,
                 close=close, volume=volume, high=high, low=low,
                 family_rows=family_rows, index=idx,
+                precomputed_signals=precomputed,
             )
-            source = f"engine_{variant}"
-            summary[source] += _replace_history(db, symbol, source, horizon, series)
+            source = _score_source("engine", variant)
+            summary[source] += _replace_history(
+                db,
+                symbol,
+                source,
+                horizon,
+                series,
+                delete_sources=_compat_sources("engine", variant),
+            )
 
-        # WFO
-        cat_reps = _wfo_category_reps(db, symbol, horizon)
-        if cat_reps:
+        for variant in WFO_VARIANTS:
+            cat_reps = _wfo_category_reps(db, symbol, horizon, variant)
+            if not cat_reps:
+                continue
+            precomputed = (
+                _factor_precomputed_signals(
+                    db,
+                    df,
+                    _reps_from_wfo_rows(cat_reps),
+                    close=close,
+                    volume=volume,
+                    high=high,
+                    low=low,
+                )
+                if resolve_signal_mode(variant).is_factor_x_ta
+                else {}
+            )
             category_reps = {
                 category: list(row.representatives_json or [])
                 for category, row in cat_reps.items()
@@ -251,6 +424,7 @@ def run_score_history_for_symbol(db: Session, symbol: str) -> dict[str, int]:
                 symbol=symbol, horizon=horizon,
                 close=close, volume=volume, high=high, low=low,
                 category_reps=category_reps, index=idx,
+                precomputed_signals=precomputed,
             )
             for category, row in cat_reps.items():
                 if category in series:
@@ -267,12 +441,14 @@ def run_score_history_for_symbol(db: Session, symbol: str) -> dict[str, int]:
                 category: _dates_for_windows(idx, row.folds_json)
                 for category, row in cat_reps.items()
             }
-            summary["wfo"] += _replace_history(
+            source = _score_source("wfo", variant)
+            summary[source] += _replace_history(
                 db,
                 symbol,
-                "wfo",
+                source,
                 horizon,
                 series,
+                delete_sources=_compat_sources("wfo", variant),
                 is_oos_dates_by_cat=is_oos_dates_by_cat,
             )
 

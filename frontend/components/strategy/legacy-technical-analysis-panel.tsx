@@ -154,13 +154,15 @@ export function LegacyTechnicalAnalysisPanel({
   symbol,
   horizon,
   cooldownBars,
+  variant = "legacy",
 }: {
   symbol: string
   horizon: string
   cooldownBars?: number
+  variant?: string
 }) {
-  const regime = useRegimeConsensus(symbol, horizon, cooldownBars)
-  const { data: wfoData, isLoading: wfoLoading, error: wfoError, refresh: wfoRefresh } = useWfoSummary(symbol, horizon, "legacy")
+  const regime = useRegimeConsensus(symbol, horizon, cooldownBars, variant)
+  const { data: wfoData, isLoading: wfoLoading, error: wfoError, refresh: wfoRefresh } = useWfoSummary(symbol, horizon, variant)
 
   const [familyData, setFamilyData] = useState<Record<LegacyFamilyId, { data?: FamilyCombinedSignal; isLoading: boolean; error: unknown }>>({
     sma: { data: undefined, isLoading: true, error: null },
@@ -178,7 +180,7 @@ export function LegacyTechnicalAnalysisPanel({
   useEffect(() => {
     setLevel(0)
     setSelectedFamily(null)
-  }, [symbol, horizon])
+  }, [symbol, horizon, variant])
 
   useEffect(() => {
     const token = ++requestTokenRef.current
@@ -195,7 +197,7 @@ export function LegacyTechnicalAnalysisPanel({
     const loadAutoResolved = async (isInitial: boolean) => {
       if (isInitial) markLoading()
       try {
-        const result = await fetchSignalEngineResultWithBootstrap(symbol, horizon, "legacy")
+        const result = await fetchSignalEngineResultWithBootstrap(symbol, horizon, variant)
         if (requestTokenRef.current !== token) return
         const payload = asRecord(result.families) ?? {}
         const next: Record<LegacyFamilyId, { data?: FamilyCombinedSignal; isLoading: boolean; error: unknown }> = {
@@ -237,7 +239,7 @@ export function LegacyTechnicalAnalysisPanel({
     return () => {
       if (pollTimer) clearTimeout(pollTimer)
     }
-  }, [horizon, symbol])
+  }, [horizon, symbol, variant])
 
   const loadedFamilies = ALL_FAMILIES.filter((family) => familyData[family.id].data)
   const anyLoading = ALL_FAMILIES.some((family) => familyData[family.id].isLoading)
@@ -520,7 +522,7 @@ export function LegacyTechnicalAnalysisPanel({
                 error={wfoError}
                 symbol={symbol}
                 horizon={horizon}
-                variant="legacy"
+                variant={variant}
                 onRefresh={wfoRefresh}
               />
             </div>

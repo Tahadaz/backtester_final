@@ -26,10 +26,11 @@ interface RiskTabProps {
   horizon: HorizonKey
   risk: RiskConfigV2
   preview?: RiskPreview
+  errorMessage?: string | null
   onChange: (next: RiskConfigV2) => void
 }
 
-export function RiskTab({ horizon, risk, preview, onChange }: RiskTabProps) {
+export function RiskTab({ horizon, risk, preview, errorMessage, onChange }: RiskTabProps) {
   return (
     <Card>
       <CardHeader>
@@ -53,6 +54,12 @@ export function RiskTab({ horizon, risk, preview, onChange }: RiskTabProps) {
               <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Preview</p>
               <p className="mt-1 text-xs text-muted-foreground">{preview.explain}</p>
             </div>
+          </div>
+        ) : null}
+
+        {errorMessage ? (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            Preview unavailable: {errorMessage}
           </div>
         ) : null}
 

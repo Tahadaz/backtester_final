@@ -12,6 +12,7 @@ from core.quant_core.optimize import ema
 from core.quant_core.significance import sharpe_ratio
 
 from .domain import HORIZON_PARAMS, VALID_HORIZONS, MethodologyWindow, OOSWindowResult, VariantDef
+from .ta_combo import compute_strict_and_combo_signal, is_combo_variant
 from .indicator_series import (
     compute_ad_series,
     compute_adx_series,
@@ -66,6 +67,25 @@ def compute_signal_array(
 ) -> np.ndarray:
     """Compute the signal array for *variant* on *close*."""
     close_arr = np.asarray(close, dtype=np.float64)
+    if is_combo_variant(variant):
+        def _compute_component(component: VariantDef) -> np.ndarray:
+            if component.factor_condition is not None or component.family.endswith("@fx"):
+                raise ValueError("Factor-conditioned combo components require precomputed replay")
+            return compute_signal_array(
+                close_arr,
+                component,
+                volume=volume,
+                high=high,
+                low=low,
+            )
+
+        raw_combo = compute_strict_and_combo_signal(
+            close_arr,
+            variant,
+            compute_component_signal=_compute_component,
+        )
+        return np.sign(np.clip(np.where(np.isnan(raw_combo), 0.0, raw_combo), -1.0, 1.0))
+
     # Factor-conditioned variants have family="{ta_family}@fx"; strip suffix for dispatch.
     base_family = variant.family.split("@")[0] if "@" in variant.family else variant.family
     key = (base_family, variant.archetype)

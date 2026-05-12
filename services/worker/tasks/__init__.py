@@ -40,11 +40,15 @@ def ingest_macro_series(*args, **kwargs):
     return _ingest_macro_series(*args, **kwargs)
 
 
-# RQ resolves dotted-string jobs by walking attributes from this package in some
-# versions. Expose the module so queued jobs using
-# "services.worker.tasks.factor_selection_full.run_factor_selection_for_symbol"
-# can be imported reliably.
-from . import factor_selection_full  # noqa: E402,F401
+def __getattr__(name):
+    # RQ resolves dotted-string jobs by walking attributes from this package in
+    # some versions. Keep heavy task modules lazy so API containers can import
+    # lightweight enqueue helpers without loading worker-only dependencies.
+    if name == "factor_selection_full":
+        from importlib import import_module
+
+        return import_module(f"{__name__}.factor_selection_full")
+    raise AttributeError(name)
 
 
 class _DefaultsDiscoveryProxy:

@@ -9,6 +9,7 @@ from itertools import combinations
 from typing import Any
 
 import numpy as np
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from core.quant_core.horizons import DEFAULT_COST_BPS_PER_SIDE
@@ -23,7 +24,12 @@ from core.quant_core.signal_engine.backtest_mc import (
     compute_input_hash,
     run_signal_backtest,
 )
-from core.quant_core.signal_engine.domain import CATEGORY_FAMILIES
+from core.quant_core.signal_engine.domain import CATEGORY_FAMILIES, FactorConditionMeta, VariantDef
+from core.quant_core.signal_engine.factor_x_ta import _compute_ta_signal_for_conditioned
+from core.quant_core.signal_engine.modes import resolve_signal_mode, signal_mode_storage_name
+from core.quant_core.signal_engine.ta_combo import compute_strict_and_combo_signal, is_combo_variant
+from core.quant_core.research.factors.conditions import evaluate_condition
+from core.quant_core.research.factors.conditioned_variants import compose_and_signal
 from services.api.app.market_data_loader import load_ohlcv_for_symbol
 from services.api.app.models import (
     SignalBacktestRun,
@@ -53,9 +59,21 @@ DEFAULT_BACKTEST_CONFIG = {
     "cost_bps": DEFAULT_COST_BPS,
     "slippage_bps": DEFAULT_SLIPPAGE_BPS,
     "side_policy": DEFAULT_SIDE_POLICY,
+    "cooldown_bars": 0,
 }
 MIN_TRADE_BOOTSTRAP_TRADES = 30
-BACKTEST_INPUT_LOGIC_VERSION = "family-aware-rebuild-v4-horizon-param-caps"
+BACKTEST_INPUT_LOGIC_VERSION = "family-aware-rebuild-v6-trade-cooldown"
+SIGNAL_BACKTEST_NATURAL_KEY_COLUMNS = {
+    "symbol",
+    "horizon",
+    "source",
+    "scope",
+    "scope_key",
+    "variant",
+    "window_start",
+    "window_end",
+    "cooldown_bars",
+}
 
 
 def run_signal_backtest_batch() -> dict:
@@ -102,6 +120,7 @@ def enqueue_signal_backtest_for_symbol(
 
     from services.worker.config import settings
 
+    variant = signal_mode_storage_name(variant)
     redis = connect_redis_with_fallback(settings.REDIS_URL, decode_responses=False, logger=logger)
     queue_name = settings.SIGNAL_BACKTEST_QUEUE_NAME
     q = Queue(queue_name, connection=redis)
@@ -148,6 +167,8 @@ def compute_signal_backtest_for_symbol(
     triggered_by: str | None = None,
 ) -> dict:
     """RQ task: compute backtests + Monte Carlo for one symbol x horizon."""
+    mode = resolve_signal_mode(variant)
+    variant = mode.name
     job_config = _normalize_backtest_config(mc_config)
     t0 = time.perf_counter()
     db: Session = SessionLocal()
@@ -206,6 +227,19 @@ def compute_signal_backtest_for_symbol(
 
         engine_family_rows = _load_engine_family_rows(db, symbol, horizon, variant)
         wfo_category_rows = _load_wfo_category_rows(db, symbol, horizon, variant)
+        factor_x_ta_precomputed = (
+            _build_factor_x_ta_precomputed_signals(
+                db,
+                ohlcv_window,
+                close,
+                volume,
+                high,
+                low,
+                _all_representatives(engine_family_rows, wfo_category_rows),
+            )
+            if mode.is_factor_x_ta
+            else {}
+        )
         wfo_global_row = (
             db.query(WfoGlobalSignal)
             .filter_by(symbol=symbol, horizon=horizon, variant=variant)
@@ -216,11 +250,22 @@ def compute_signal_backtest_for_symbol(
 
         engine_cat_series: dict[str, np.ndarray] = {}
         build_failures: list[tuple[str, str, str, list[dict], str, float]] = []
+        replay_kwargs = (
+            {"precomputed_signals": factor_x_ta_precomputed}
+            if mode.is_factor_x_ta
+            else {}
+        )
         for cat in CATEGORIES:
             t_scope = time.perf_counter()
             try:
                 engine_cat_series[cat] = build_category_signal_series_engine(
-                    close, volume, high, low, engine_family_rows, cat
+                    close,
+                    volume,
+                    high,
+                    low,
+                    engine_family_rows,
+                    cat,
+                    **replay_kwargs,
                 )
             except Exception as exc:
                 logger.warning(
@@ -245,7 +290,14 @@ def compute_signal_backtest_for_symbol(
         for cat, reps in wfo_category_rows.items():
             t_scope = time.perf_counter()
             try:
-                wfo_cat_series[cat] = build_category_signal_series_wfo(close, volume, high, low, reps)
+                wfo_cat_series[cat] = build_category_signal_series_wfo(
+                    close,
+                    volume,
+                    high,
+                    low,
+                    reps,
+                    **replay_kwargs,
+                )
             except Exception as exc:
                 logger.warning(
                     "WFO category series failed: %s/%s/%s: %s",
@@ -357,6 +409,7 @@ def compute_signal_backtest_for_symbol(
                     job_config["cost_bps"],
                     job_config["slippage_bps"],
                     job_config["side_policy"],
+                    cooldown_bars=job_config["cooldown_bars"],
                     mc_method=job_config["method"],
                     n_paths=job_config["n_paths"],
                     block_mean=job_config["block_mean"],
@@ -375,6 +428,7 @@ def compute_signal_backtest_for_symbol(
                         variant=variant,
                         window_start=win_start,
                         window_end=win_end,
+                        cooldown_bars=job_config["cooldown_bars"],
                     )
                     .first()
                 )
@@ -391,6 +445,7 @@ def compute_signal_backtest_for_symbol(
                     cost_bps=job_config["cost_bps"],
                     slippage_bps=job_config["slippage_bps"],
                     side_policy=job_config["side_policy"],
+                    cooldown_bars=job_config["cooldown_bars"],
                 )
                 diag = dict(bt.get("diagnostics") or {})
                 diag_reps = _diagnostic_representatives(reps)
@@ -455,9 +510,10 @@ def compute_signal_backtest_for_symbol(
                     data_as_of=data_as_of,
                     compute_seconds=time.perf_counter() - t_scope,
                 )
-                completed += 1
-                _update_batch_job_progress(job_row, completed_units=completed, failed_units=failed)
+                next_completed = completed + 1
+                _update_batch_job_progress(job_row, completed_units=next_completed, failed_units=failed)
                 db.commit()
+                completed = next_completed
             except Exception as exc:
                 logger.exception(
                     "Signal backtest scope failed: %s/%s/%s/%s: %s",
@@ -467,6 +523,7 @@ def compute_signal_backtest_for_symbol(
                     source,
                     exc,
                 )
+                db.rollback()
                 _upsert_backtest_run(
                     db,
                     symbol,
@@ -483,9 +540,10 @@ def compute_signal_backtest_for_symbol(
                     data_as_of=data_as_of,
                     compute_seconds=time.perf_counter() - t_scope,
                 )
-                failed += 1
-                _update_batch_job_progress(job_row, completed_units=completed, failed_units=failed)
+                next_failed = failed + 1
+                _update_batch_job_progress(job_row, completed_units=completed, failed_units=next_failed)
                 db.commit()
+                failed = next_failed
 
         final_status = "succeeded" if failed == 0 else ("partial" if completed > 0 else "failed")
         _finish_batch_job(
@@ -531,6 +589,7 @@ def _load_engine_family_rows(db: Session, symbol: str, horizon: str, variant: st
         representatives = _normalize_engine_representatives(row.representatives_json or [], row.family)
         rows[row.family] = {
             "status": "succeeded",
+            "category": row.category,
             "family_score_pct": row.family_score_pct,
             "viable_count": row.viable_count or 0,
             "tested_count": row.tested_count or 1,
@@ -565,6 +624,146 @@ def _load_wfo_category_rows(db: Session, symbol: str, horizon: str, variant: str
     return rows
 
 
+def _all_representatives(
+    engine_family_rows: dict[str, dict],
+    wfo_category_rows: dict[str, list[dict]],
+) -> list[dict]:
+    reps: list[dict] = []
+    for row in engine_family_rows.values():
+        reps.extend([rep for rep in row.get("representatives_json") or [] if isinstance(rep, dict)])
+    for category_reps in wfo_category_rows.values():
+        reps.extend([rep for rep in category_reps or [] if isinstance(rep, dict)])
+    return reps
+
+
+def _factor_condition_from_rep(rep: dict) -> FactorConditionMeta | None:
+    payload = rep.get("factor_condition")
+    if not isinstance(payload, dict):
+        return None
+    try:
+        return FactorConditionMeta(
+            condition_id=str(payload["condition_id"]),
+            factor_ticker=str(payload["factor_ticker"]),
+            form=str(payload["form"]),
+            lookback=int(payload["lookback"]),
+            threshold=float(payload["threshold"]),
+            direction=str(payload["direction"]),
+        )
+    except Exception:
+        return None
+
+
+def _factor_conditions_from_rep(rep: dict) -> list[FactorConditionMeta]:
+    conditions: list[FactorConditionMeta] = []
+    top_level = _factor_condition_from_rep(rep)
+    if top_level is not None:
+        conditions.append(top_level)
+    params = rep.get("params")
+    if isinstance(params, dict):
+        for payload in params.get("components", []):
+            if not isinstance(payload, dict):
+                continue
+            condition = _factor_condition_from_rep(payload)
+            if condition is not None:
+                conditions.append(condition)
+    return conditions
+
+
+def _build_factor_x_ta_precomputed_signals(
+    db: Session,
+    ohlcv_window,
+    close: np.ndarray,
+    volume: np.ndarray | None,
+    high: np.ndarray | None,
+    low: np.ndarray | None,
+    representatives: list[dict],
+) -> dict[str, np.ndarray]:
+    """Rebuild AND-composed Factor x TA signals for persisted representatives."""
+    conditions_by_id: dict[str, FactorConditionMeta] = {}
+    for rep in representatives:
+        for condition in _factor_conditions_from_rep(rep):
+            conditions_by_id[condition.condition_id] = condition
+    if not conditions_by_id:
+        return {}
+
+    from services.worker.tasks.factor_x_ta_batch import _align_factor_arrays_for_conditions
+
+    aligned_factor_arrays = _align_factor_arrays_for_conditions(
+        db,
+        ohlcv_window,
+        list(conditions_by_id.values()),
+    )
+    if not aligned_factor_arrays:
+        return {}
+
+    precomputed: dict[str, np.ndarray] = {}
+    for rep in representatives:
+        condition = _factor_condition_from_rep(rep)
+        params = dict(rep.get("params") or {})
+        variant_id = str(rep.get("variant_id") or "").strip()
+        family = str(rep.get("family") or "").strip()
+        archetype = str(rep.get("archetype") or "").strip()
+        if not variant_id or not family or not archetype:
+            continue
+
+        variant = VariantDef(
+            variant_id=variant_id,
+            family=family,
+            archetype=archetype,
+            params=params,
+            description=str(rep.get("description") or ""),
+            factor_condition=condition,
+        )
+
+        if condition is None and is_combo_variant(variant):
+            def _compute_component(component: VariantDef) -> np.ndarray:
+                component_condition = component.factor_condition
+                if component_condition is None:
+                    raise ValueError("factor combo component is missing factor_condition")
+                factor_close = aligned_factor_arrays.get(component_condition.factor_ticker)
+                if factor_close is None or len(factor_close) != len(close):
+                    raise ValueError("aligned factor series is missing for combo component")
+                ta_sig = _compute_ta_signal_for_conditioned(
+                    component,
+                    close,
+                    volume=volume,
+                    high=high,
+                    low=low,
+                )
+                if ta_sig is None:
+                    raise ValueError("TA signal computation failed for combo component")
+                condition_mask = evaluate_condition(component_condition, factor_close)
+                return compose_and_signal(ta_sig, condition_mask)
+
+            try:
+                precomputed[variant_id] = compute_strict_and_combo_signal(
+                    close,
+                    variant,
+                    compute_component_signal=_compute_component,
+                )
+            except Exception:
+                continue
+            continue
+
+        if condition is None:
+            continue
+        factor_close = aligned_factor_arrays.get(condition.factor_ticker)
+        if factor_close is None or len(factor_close) != len(close):
+            continue
+        ta_sig = _compute_ta_signal_for_conditioned(
+            variant,
+            close,
+            volume=volume,
+            high=high,
+            low=low,
+        )
+        if ta_sig is None:
+            continue
+        condition_mask = evaluate_condition(condition, factor_close)
+        precomputed[variant_id] = compose_and_signal(ta_sig, condition_mask)
+    return precomputed
+
+
 def _normalize_backtest_config(mc_config: dict | None) -> dict[str, Any]:
     merged = {**DEFAULT_BACKTEST_CONFIG, **(mc_config or {})}
     return {
@@ -577,6 +776,7 @@ def _normalize_backtest_config(mc_config: dict | None) -> dict[str, Any]:
         "cost_bps": float(merged.get("cost_bps", DEFAULT_BACKTEST_CONFIG["cost_bps"])),
         "slippage_bps": float(merged.get("slippage_bps", DEFAULT_BACKTEST_CONFIG["slippage_bps"])),
         "side_policy": str(merged.get("side_policy", DEFAULT_BACKTEST_CONFIG["side_policy"])),
+        "cooldown_bars": min(252, max(0, int(merged.get("cooldown_bars", DEFAULT_BACKTEST_CONFIG["cooldown_bars"]) or 0))),
     }
 
 
@@ -598,8 +798,13 @@ def _compute_engine_category_weights(family_rows: dict[str, dict]) -> dict[str, 
     for cat, families in CATEGORY_FAMILIES.items():
         scores = []
         for fam in families:
-            family_row = family_rows.get(fam)
+            family_row = family_rows.get(fam) or family_rows.get(f"{fam}@fx")
             if family_row and family_row.get("family_score_pct") is not None:
+                scores.append(abs(float(family_row["family_score_pct"])))
+        for family_key, family_row in family_rows.items():
+            if family_row.get("category") != cat or family_key in families or family_key.endswith("@fx"):
+                continue
+            if family_row.get("family_score_pct") is not None:
                 scores.append(abs(float(family_row["family_score_pct"])))
         if scores:
             cat_scores[cat] = sum(scores) / len(scores)
@@ -613,8 +818,14 @@ def _compute_engine_category_weights(family_rows: dict[str, dict]) -> dict[str, 
 def _flatten_reps(family_rows: dict[str, dict], category: str) -> list[dict]:
     reps: list[dict] = []
     for fam in CATEGORY_FAMILIES.get(category, []):
-        family_row = family_rows.get(fam)
+        family_row = family_rows.get(fam) or family_rows.get(f"{fam}@fx")
         if family_row:
+            reps.extend(family_row.get("representatives_json") or [])
+    for family_key, family_row in family_rows.items():
+        if family_row.get("category") == category and not any(
+            family_key == fam or family_key == f"{fam}@fx"
+            for fam in CATEGORY_FAMILIES.get(category, [])
+        ):
             reps.extend(family_row.get("representatives_json") or [])
     return reps
 
@@ -641,6 +852,67 @@ def _numeric_params(params: Any) -> dict[str, float]:
     return out
 
 
+def _diagnostic_factor_condition(condition: Any) -> dict[str, Any] | None:
+    if not isinstance(condition, dict):
+        return None
+    out: dict[str, Any] = {}
+    for key in ("condition_id", "factor_ticker", "form", "direction"):
+        value = condition.get(key)
+        if value is not None:
+            out[key] = str(value)
+    for key in ("lookback", "threshold"):
+        value = _as_finite_float(condition.get(key))
+        if value is not None:
+            out[key] = value
+    return out or None
+
+
+def _diagnostic_component(component: Any) -> dict[str, Any] | None:
+    if not isinstance(component, dict):
+        return None
+    family = str(component.get("family") or "").strip()
+    variant_id = str(component.get("variant_id") or "").strip()
+    if not family or not variant_id:
+        return None
+    out: dict[str, Any] = {
+        "family": family,
+        "archetype": str(component.get("archetype") or ""),
+        "variant_id": variant_id,
+        "description": str(component.get("description") or component.get("label") or variant_id).strip() or variant_id,
+        "params": _numeric_params(component.get("params")),
+    }
+    condition = _diagnostic_factor_condition(component.get("factor_condition"))
+    if condition is not None:
+        out["factor_condition"] = condition
+    return out
+
+
+def _diagnostic_params(params: Any) -> dict[str, Any]:
+    out: dict[str, Any] = _numeric_params(params)
+    if not isinstance(params, dict):
+        return out
+
+    for key in ("operator", "primary_category", "conditioning"):
+        value = params.get(key)
+        if isinstance(value, str) and value.strip():
+            out[key] = value.strip()
+
+    component_families = params.get("component_families")
+    if isinstance(component_families, list):
+        families = [str(item).strip() for item in component_families if str(item).strip()]
+        if families:
+            out["component_families"] = families
+
+    components = [
+        component
+        for component in (_diagnostic_component(raw) for raw in params.get("components", []))
+        if component is not None
+    ]
+    if components:
+        out["components"] = components
+    return out
+
+
 def _diagnostic_representatives(reps: list[dict]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
@@ -659,7 +931,7 @@ def _diagnostic_representatives(reps: list[dict]) -> list[dict[str, Any]]:
             continue
         seen.add(key)
 
-        params = _numeric_params(rep.get("params"))
+        params = _diagnostic_params(rep.get("params"))
         label = str(rep.get("description") or rep.get("label") or variant_id).strip() or variant_id
         out.append(
             {
@@ -803,73 +1075,166 @@ def _upsert_backtest_run(
     data_as_of: Any = None,
     compute_seconds: float | None = None,
     error_message: str | None = None,
-) -> SignalBacktestRun:
+) -> SignalBacktestRun | None:
+    values = _backtest_run_values(
+        symbol=symbol,
+        horizon=horizon,
+        source=source,
+        scope=scope,
+        scope_key=scope_key,
+        variant=variant,
+        window_start=window_start,
+        window_end=window_end,
+        bt=bt,
+        mc_result=mc_result,
+        shuffle_result=shuffle_result,
+        warning_code=warning_code,
+        mc_config=mc_config,
+        status=status,
+        input_hash=input_hash,
+        data_as_of=data_as_of,
+        compute_seconds=compute_seconds,
+        error_message=error_message,
+    )
+
+    if hasattr(db, "execute"):
+        stmt = pg_insert(SignalBacktestRun).values(**values)
+        update_cols = {
+            key: getattr(stmt.excluded, key)
+            for key in values
+            if key not in SIGNAL_BACKTEST_NATURAL_KEY_COLUMNS
+        }
+        db.execute(
+            stmt.on_conflict_do_update(
+                constraint="uq_sbr_natural_key",
+                set_=update_cols,
+            )
+        )
+        return None
+
+    return _orm_upsert_backtest_run(db, values)
+
+
+def _backtest_run_values(
+    *,
+    symbol: str,
+    horizon: str,
+    source: str,
+    scope: str,
+    scope_key: str,
+    variant: str,
+    window_start: date,
+    window_end: date,
+    bt: dict | None = None,
+    mc_result: dict | None = None,
+    shuffle_result: dict | None = None,
+    warning_code: str | None = None,
+    mc_config: dict | None = None,
+    status: str = "succeeded",
+    input_hash: str | None = None,
+    data_as_of: Any = None,
+    compute_seconds: float | None = None,
+    error_message: str | None = None,
+) -> dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    values: dict[str, Any] = {
+        "symbol": symbol,
+        "horizon": horizon,
+        "source": source,
+        "scope": scope,
+        "scope_key": scope_key,
+        "variant": variant,
+        "window_start": window_start,
+        "window_end": window_end,
+        "cooldown_bars": int((mc_config or {}).get("cooldown_bars", DEFAULT_BACKTEST_CONFIG["cooldown_bars"]) or 0),
+        "status": status,
+        "error_message": error_message,
+        "input_hash": input_hash,
+        "data_as_of": data_as_of,
+        "computed_at": now,
+        "compute_seconds": compute_seconds,
+        "warning_code": warning_code,
+        "updated_at": now,
+    }
+
+    if mc_config:
+        values.update(
+            {
+                "cost_bps": float(mc_config.get("cost_bps", DEFAULT_COST_BPS)),
+                "slippage_bps": float(mc_config.get("slippage_bps", DEFAULT_SLIPPAGE_BPS)),
+                "side_policy": str(mc_config.get("side_policy", DEFAULT_SIDE_POLICY)),
+                "cooldown_bars": int(mc_config.get("cooldown_bars", DEFAULT_BACKTEST_CONFIG["cooldown_bars"]) or 0),
+                "n_paths": int(mc_config.get("n_paths", DEFAULT_BACKTEST_CONFIG["n_paths"])),
+                "mc_method": str(mc_config.get("method", DEFAULT_BACKTEST_CONFIG["method"])),
+                "block_mean": mc_config.get("block_mean"),
+            }
+        )
+
+    if bt and status == "succeeded":
+        metrics = bt.get("metrics", {})
+        trades = bt.get("trades", [])
+        values.update(
+            {
+                "n_bars": len(bt.get("equity", [])) - 1,
+                "n_trades": len(trades),
+                "equity_json": bt.get("equity"),
+                "dates_json": bt.get("dates"),
+                "total_return": metrics.get("total_return"),
+                "cagr": metrics.get("cagr"),
+                "sharpe": metrics.get("sharpe"),
+                "max_drawdown": metrics.get("max_drawdown"),
+                "win_rate": metrics.get("win_rate"),
+                "trades_json": trades,
+                "close_series_json": bt.get("close_series"),
+                "position_series_json": bt.get("position_series"),
+                "signal_diagnostics_json": bt.get("diagnostics"),
+            }
+        )
+
+    if mc_result and status == "succeeded":
+        values.update(
+            {
+                "mc_envelope_json": mc_result.get("envelope"),
+                "mc_stats_json": mc_result.get("stats"),
+            }
+        )
+
+    if shuffle_result and status == "succeeded":
+        values["shuffle_stats_json"] = shuffle_result
+
+    return values
+
+
+def _orm_upsert_backtest_run(db: Session, values: dict[str, Any]) -> SignalBacktestRun:
     row = (
         db.query(SignalBacktestRun)
         .filter_by(
-            symbol=symbol,
-            horizon=horizon,
-            source=source,
-            scope=scope,
-            scope_key=scope_key,
-            variant=variant,
-            window_start=window_start,
-            window_end=window_end,
+            symbol=values["symbol"],
+            horizon=values["horizon"],
+            source=values["source"],
+            scope=values["scope"],
+            scope_key=values["scope_key"],
+            variant=values["variant"],
+            window_start=values["window_start"],
+            window_end=values["window_end"],
+            cooldown_bars=values["cooldown_bars"],
         )
         .first()
     )
     if row is None:
         row = SignalBacktestRun(
-            symbol=symbol,
-            horizon=horizon,
-            source=source,
-            scope=scope,
-            scope_key=scope_key,
-            variant=variant,
-            window_start=window_start,
-            window_end=window_end,
+            symbol=values["symbol"],
+            horizon=values["horizon"],
+            source=values["source"],
+            scope=values["scope"],
+            scope_key=values["scope_key"],
+            variant=values["variant"],
+            window_start=values["window_start"],
+            window_end=values["window_end"],
         )
         db.add(row)
 
-    row.status = status
-    row.error_message = error_message
-    row.input_hash = input_hash
-    row.data_as_of = data_as_of
-    row.computed_at = datetime.now(timezone.utc)
-    row.compute_seconds = compute_seconds
-
-    if mc_config:
-        row.cost_bps = float(mc_config.get("cost_bps", DEFAULT_COST_BPS))
-        row.slippage_bps = float(mc_config.get("slippage_bps", DEFAULT_SLIPPAGE_BPS))
-        row.side_policy = str(mc_config.get("side_policy", DEFAULT_SIDE_POLICY))
-        row.n_paths = int(mc_config.get("n_paths", DEFAULT_BACKTEST_CONFIG["n_paths"]))
-        row.mc_method = str(mc_config.get("method", DEFAULT_BACKTEST_CONFIG["method"]))
-        row.block_mean = mc_config.get("block_mean")
-
-    if bt and status == "succeeded":
-        metrics = bt.get("metrics", {})
-        trades = bt.get("trades", [])
-        row.n_bars = len(bt.get("equity", [])) - 1
-        row.n_trades = len(trades)
-        row.equity_json = bt.get("equity")
-        row.dates_json = bt.get("dates")
-        row.total_return = metrics.get("total_return")
-        row.cagr = metrics.get("cagr")
-        row.sharpe = metrics.get("sharpe")
-        row.max_drawdown = metrics.get("max_drawdown")
-        row.win_rate = metrics.get("win_rate")
-        row.trades_json = trades
-        row.close_series_json = bt.get("close_series")
-        row.position_series_json = bt.get("position_series")
-        row.signal_diagnostics_json = bt.get("diagnostics")
-
-    row.warning_code = warning_code
-
-    if mc_result and status == "succeeded":
-        row.mc_envelope_json = mc_result.get("envelope")
-        row.mc_stats_json = mc_result.get("stats")
-
-    if shuffle_result and status == "succeeded":
-        row.shuffle_stats_json = shuffle_result
+    for key, value in values.items():
+        setattr(row, key, value)
 
     return row

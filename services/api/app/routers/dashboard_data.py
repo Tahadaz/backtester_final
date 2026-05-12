@@ -20,15 +20,30 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from ..auth import rate_limit_trigger, require_admin
+from ..auth import rate_limit_trigger, require_admin, require_auth
 from ..config import settings
 from ..db import get_db
 from ..freshness import set_freshness
 from ..services.dashboard_builder import (
+    DASHBOARD_PAYLOAD_VERSION,
     HORIZON_ALIASES,
     HORIZONS,
     build_dashboard_payload,
     derive_upstream_rev,
+)
+from ..schemas.dashboard_portfolio import (
+    DashboardDailyBlotterRequest,
+    DashboardDailyBlotterResponse,
+    DashboardPortfolioPositionsRequest,
+    DashboardPortfolioPositionsResponse,
+    DashboardPortfolioTicketRequest,
+    DashboardPortfolioTicketResponse,
+)
+from ..services.dashboard_portfolio import (
+    build_dashboard_daily_blotter,
+    build_dashboard_portfolio_ticket,
+    list_dashboard_positions,
+    replace_dashboard_positions,
 )
 
 logger = logging.getLogger(__name__)
@@ -48,10 +63,85 @@ def _etag_for(computed_at: Any, upstream_rev: Any) -> str:
     return '"' + hashlib.md5(key.encode()).hexdigest() + '"'
 
 
+def _compact_dashboard_payload(payload: Any) -> Any:
+    """Remove fields that are too heavy for the initial dashboard table load."""
+    if isinstance(payload, str):
+        payload = json.loads(payload)
+    if not isinstance(payload, dict):
+        return payload
+    for stock in payload.get("stocks") or []:
+        if not isinstance(stock, dict):
+            continue
+        edge = stock.get("edge")
+        if not isinstance(edge, dict):
+            continue
+        for edge_payload in edge.values():
+            if isinstance(edge_payload, dict):
+                edge_payload.pop("fragility_details", None)
+    return payload
+
+
+def _compact_dashboard_payload_json(payload: Any) -> str | None:
+    try:
+        compact = _compact_dashboard_payload(payload)
+    except (TypeError, json.JSONDecodeError):
+        return payload if isinstance(payload, str) else None
+    return json.dumps(compact, separators=(",", ":"), default=str)
+
+
+def _payload_dict(payload: Any) -> dict[str, Any] | None:
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except json.JSONDecodeError:
+            return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _dashboard_snapshot_has_current_shape(payload: Any) -> bool:
+    """Return whether a snapshot carries the fields required by the current UI."""
+    payload_dict = _payload_dict(payload)
+    if payload_dict is None:
+        return False
+    if payload_dict.get("payload_version") != DASHBOARD_PAYLOAD_VERSION:
+        return False
+    stocks = payload_dict.get("stocks")
+    if not isinstance(stocks, list):
+        return False
+    return all(
+        not isinstance(stock, dict) or "best_technical_signal" in stock
+        for stock in stocks
+    )
+
+
+def _dashboard_snapshot_can_merge_live_technical(payload: Any) -> bool:
+    """Return whether a stale snapshot is usable after a lightweight technical merge."""
+    payload_dict = _payload_dict(payload)
+    if payload_dict is None:
+        return False
+    stocks = payload_dict.get("stocks")
+    return isinstance(stocks, list)
+
+
+def _merge_live_technical_signals(snapshot_payload: dict[str, Any], live_payload: dict[str, Any]) -> dict[str, Any]:
+    technical_by_symbol = {
+        str(stock.get("symbol") or "").upper(): stock.get("best_technical_signal")
+        for stock in live_payload.get("stocks") or []
+        if isinstance(stock, dict)
+    }
+    for stock in snapshot_payload.get("stocks") or []:
+        if not isinstance(stock, dict):
+            continue
+        symbol = str(stock.get("symbol") or "").upper()
+        stock["best_technical_signal"] = technical_by_symbol.get(symbol)
+    snapshot_payload.setdefault("payload_version", DASHBOARD_PAYLOAD_VERSION)
+    return snapshot_payload
+
+
 def _latest_snapshot(db: Session, horizon: str) -> Any:
     return db.execute(
         text("""
-        SELECT payload_jsonb, upstream_rev, computed_at, as_of_date
+        SELECT payload_jsonb::text AS payload_jsonb, upstream_rev, computed_at, as_of_date
         FROM dashboard_snapshot
         WHERE horizon = :horizon
         ORDER BY as_of_date DESC
@@ -78,8 +168,52 @@ def get_dashboard_data(
         return _serve_shadow(horizon, request, response, db)
 
     # legacy — original live-compute path
-    payload = build_dashboard_payload(db, horizon)
+    payload = build_dashboard_payload(db, horizon, include_edge=True)
     return payload
+
+
+@router.post("/portfolio-ticket", response_model=DashboardPortfolioTicketResponse)
+def get_dashboard_portfolio_ticket(
+    body: DashboardPortfolioTicketRequest,
+    db: Session = Depends(get_db),
+) -> DashboardPortfolioTicketResponse:
+    """Build a next-session trade ticket from a manually selected dashboard basket."""
+    return build_dashboard_portfolio_ticket(
+        db,
+        body,
+        cost_bps=float(settings.EDGE_COST_BPS_PER_SIDE),
+    )
+
+
+@router.get("/portfolio/positions", response_model=DashboardPortfolioPositionsResponse)
+def get_dashboard_portfolio_positions(
+    db: Session = Depends(get_db),
+) -> DashboardPortfolioPositionsResponse:
+    """Return the manually maintained desk portfolio state used by the blotter."""
+    return list_dashboard_positions(db)
+
+
+@router.put("/portfolio/positions", response_model=DashboardPortfolioPositionsResponse)
+def put_dashboard_portfolio_positions(
+    body: DashboardPortfolioPositionsRequest,
+    _auth: None = Depends(require_auth),
+    db: Session = Depends(get_db),
+) -> DashboardPortfolioPositionsResponse:
+    """Replace active manual positions for portfolio follow-up."""
+    return replace_dashboard_positions(db, body)
+
+
+@router.post("/daily-blotter", response_model=DashboardDailyBlotterResponse)
+def get_dashboard_daily_blotter(
+    body: DashboardDailyBlotterRequest,
+    db: Session = Depends(get_db),
+) -> DashboardDailyBlotterResponse:
+    """Build the next-session desk blotter from selected symbols and positions."""
+    return build_dashboard_daily_blotter(
+        db,
+        body,
+        cost_bps=float(settings.EDGE_COST_BPS_PER_SIDE),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -95,12 +229,48 @@ def _serve_snapshot(
             status_code=503,
             detail=(
                 f"No snapshot available for horizon '{horizon}'. "
-                "Trigger a backfill via POST /dashboard/snapshot/backfill and retry."
+            "Trigger a backfill via POST /dashboard/snapshot/backfill and retry."
             ),
         )
 
     payload_jsonb, upstream_rev, computed_at, as_of_date = row
-    etag = _etag_for(computed_at, upstream_rev)
+    if not _dashboard_snapshot_has_current_shape(payload_jsonb):
+        if not _dashboard_snapshot_can_merge_live_technical(payload_jsonb):
+            logger.warning(
+                "dashboard snapshot for %s has unusable stale shape; refusing live edge fallback",
+                horizon,
+            )
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    f"Dashboard snapshot for horizon '{horizon}' is stale or invalid. "
+                    "Trigger a backfill via POST /dashboard/snapshot/backfill and retry."
+                ),
+            )
+        logger.warning(
+            "dashboard snapshot for %s has stale shape; merging live technical signals until backfill refreshes it",
+            horizon,
+        )
+        response.headers["Cache-Control"] = "private, max-age=30"
+        set_freshness(request, cache="stale")
+        snapshot_payload = _payload_dict(payload_jsonb)
+        if snapshot_payload is None:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    f"Dashboard snapshot for horizon '{horizon}' is invalid. "
+                    "Trigger a backfill via POST /dashboard/snapshot/backfill and retry."
+                ),
+            )
+        live_payload = build_dashboard_payload(db, horizon, include_edge=False)
+        return _compact_dashboard_payload(
+            _merge_live_technical_signals(snapshot_payload, live_payload)
+        )
+
+    etag = _etag_for(
+        computed_at,
+        {"upstream_rev": upstream_rev, "payload_shape": "dashboard-compact-v1"},
+    )
 
     set_freshness(
         request,
@@ -108,15 +278,26 @@ def _serve_snapshot(
         upstream_rev=upstream_rev,
         cache="hit",
     )
-    response.headers["ETag"] = etag
-    response.headers["Cache-Control"] = "private, max-age=60"
+    headers = {
+        "ETag": etag,
+        "Cache-Control": "private, max-age=60",
+    }
+    response.headers.update(headers)
 
     if_none_match = request.headers.get("if-none-match", "")
     if if_none_match and etag in (t.strip() for t in if_none_match.split(",")):
         response.status_code = 304
         return Response(status_code=304, headers={"ETag": etag})
 
-    return payload_jsonb
+    compact_json = _compact_dashboard_payload_json(payload_jsonb)
+    if compact_json is not None:
+        return Response(
+            content=compact_json,
+            media_type="application/json",
+            headers=headers,
+        )
+
+    return _compact_dashboard_payload(payload_jsonb)
 
 
 # ---------------------------------------------------------------------------
@@ -126,7 +307,7 @@ def _serve_snapshot(
 def _serve_shadow(
     horizon: str, request: Request, response: Response, db: Session
 ) -> Any:
-    payload = build_dashboard_payload(db, horizon)
+    payload = build_dashboard_payload(db, horizon, include_edge=True)
 
     row = _latest_snapshot(db, horizon)
     if row is None:
@@ -134,6 +315,13 @@ def _serve_shadow(
         set_freshness(request, cache="miss")
     else:
         _payload, upstream_rev, computed_at, _ = row
+        if isinstance(_payload, str):
+            try:
+                _payload = json.loads(_payload)
+            except json.JSONDecodeError:
+                logger.warning("dashboard shadow: snapshot JSON decode failed for %s", horizon)
+                _payload = {}
+        _payload = _compact_dashboard_payload(_payload)
         set_freshness(request, computed_at=computed_at, upstream_rev=upstream_rev, cache="shadow")
         # Diff: compare stock count and index aggregate as a lightweight sentinel.
         snap_stocks = len(_payload.get("stocks", []))

@@ -315,7 +315,7 @@ def make_price_indicators_trades_plot(
 
 
 # ======================================================================
-# MOVED FROM app.py (pure Plotly, no Streamlit, no DB)
+# Legacy plotting helper kept pure Plotly with no UI or DB dependency.
 # Keep the name to minimize changes across your codebase.
 # ======================================================================
 def plot_price_indicators_trades_line(

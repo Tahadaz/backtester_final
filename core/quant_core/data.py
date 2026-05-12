@@ -416,6 +416,7 @@ class BaseDataSource:
         self.timezone = timezone
         self.cache_dir = Path(cache_dir) if cache_dir else None
         self.use_cache = use_cache
+        self.fill_adj_close = True
 
         if self.cache_dir:
             self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -452,7 +453,7 @@ class BaseDataSource:
         # Normalize, validate OHLC integrity, then slice
         normed: Dict[str, pd.DataFrame] = {}
         for sym, df in bars.items():
-            df = _standardize_ohlcv(df, tz=self.timezone)
+            df = _standardize_ohlcv(df, tz=self.timezone, fill_adj_close=self.fill_adj_close)
             df = _validate_ohlcv(df, symbol=sym)
             df = slice_date_range(df, start, end)
             normed[sym] = df
@@ -683,6 +684,7 @@ class BMCEDataSource(BaseDataSource):
         super().__init__(timezone=timezone, cache_dir=cache_dir, use_cache=use_cache)
         self.dayfirst = dayfirst
         self.date_format = date_format
+        self.fill_adj_close = False
 
     def _load_impl(
         self,

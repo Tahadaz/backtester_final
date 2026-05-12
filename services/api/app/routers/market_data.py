@@ -12,7 +12,7 @@ from fastapi.responses import StreamingResponse
 import pandas as pd
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 
 from .. import models
 from ..config import settings
@@ -81,6 +81,24 @@ def _normalize_symbols(raw_symbols: list[str]) -> list[str]:
         seen.add(sym)
         out.append(sym)
     return out
+
+
+def _has_table(db: Session, table_name: str) -> bool:
+    try:
+        return inspect(db.get_bind()).has_table(table_name)
+    except Exception:
+        return False
+
+
+def _next_sqlite_provider_map_id(db: Session) -> int | None:
+    try:
+        bind = db.get_bind()
+        if bind.dialect.name != "sqlite":
+            return None
+        value = db.execute(text("SELECT COALESCE(MAX(id), 0) + 1 FROM provider_symbol_map")).scalar()
+        return int(value or 1)
+    except Exception:
+        return None
 
 
 def _normalize_windows(raw_windows: list[int]) -> list[int]:
@@ -639,25 +657,31 @@ def add_tracked_stock(
 
     # MASI symbols use registry-owned names; other symbols may still provide a display name.
     masi_info = get_masi_info(symbol)
-    display_name = masi_info["display_name"] if masi_info else body.display_name
-    sector = body.sector or (masi_info["sector"] if masi_info else None)
+    lookup = _bourse_lookup(symbol)
+    display_name = masi_info["display_name"] if masi_info else (body.display_name or lookup.display_name)
+    sector = body.sector or (masi_info["sector"] if masi_info else lookup.sector)
 
     stock = models.StockMaster(
         symbol=symbol,
         display_name=display_name,
-        isin=body.isin,
+        isin=body.isin or lookup.isin,
         sector=sector,
         market_cap_class=body.market_cap_class,
         is_active=True,
         track_source=body.track_source or "bourse_direct",
-        bourse_url=body.bourse_url,
+        bourse_url=body.bourse_url or lookup.bourse_url,
         notes=body.notes,
     )
     db.add(stock)
     db.flush()  # persist stock_master row so FK constraint is satisfied before inserting provider maps
 
+    sqlite_next_id = _next_sqlite_provider_map_id(db)
+    yahoo_map_kwargs = {"id": sqlite_next_id} if sqlite_next_id is not None else {}
+    bourse_map_kwargs = {"id": sqlite_next_id + 1} if sqlite_next_id is not None else {}
+
     # Auto-create Yahoo provider mapping at confidence=0.9
     yahoo_map = models.ProviderSymbolMap(
+        **yahoo_map_kwargs,
         symbol=symbol,
         provider="yahoo",
         provider_symbol=f"{symbol}.CS",
@@ -668,6 +692,7 @@ def add_tracked_stock(
 
     # Auto-create bourse_direct mapping at confidence=1.0
     bourse_map = models.ProviderSymbolMap(
+        **bourse_map_kwargs,
         symbol=symbol,
         provider="bourse_direct",
         provider_symbol=symbol,
@@ -833,6 +858,7 @@ def _bourse_lookup(symbol: str) -> BourseStockLookupOut:
     Constructs the instrument page URL and scrapes basic metadata (name, sector, ISIN).
     Returns whatever it can find; always returns a URL even if scraping fails.
     """
+    import html as _html
     import re as _re
     try:
         import requests as _requests
@@ -840,11 +866,10 @@ def _bourse_lookup(symbol: str) -> BourseStockLookupOut:
         raise HTTPException(status_code=500, detail="requests package not installed")
 
     import os as _os
-    # The Bourse de Casablanca uses `valeur` parameter for ticker lookup.
     # URL template is configurable via BOURSE_STOCK_PAGE_URL env var.
     url_template = _os.environ.get(
         "BOURSE_STOCK_PAGE_URL",
-        "https://www.casablanca-bourse.com/bourseweb/Detail-Valeur.aspx?Cat=3&valeur={symbol}",
+        "https://www.casablanca-bourse.com/fr/live-market/instruments/{symbol}?pwa=1",
     )
     bourse_url = url_template.format(symbol=symbol)
 
@@ -856,17 +881,25 @@ def _bourse_lookup(symbol: str) -> BourseStockLookupOut:
         resp = _requests.get(
             bourse_url,
             timeout=10,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; QuantBot/1.0)"},
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                )
+            },
             allow_redirects=True,
+            verify=False,
         )
         if resp.status_code == 200:
             html = resp.text
-            # Try to extract company name (typically in <title> or a heading element)
-            title_match = _re.search(r"<title[^>]*>([^<]+)</title>", html, _re.IGNORECASE)
-            if title_match:
-                raw_title = title_match.group(1).strip()
-                # Strip site name suffix like " - Bourse de Casablanca"
-                name_part = _re.sub(r"\s*[-|–]\s*Bourse.*$", "", raw_title, flags=_re.IGNORECASE).strip()
+            name_match = _re.search(
+                rf'href=["\']/fr/live-market/instruments/{_re.escape(symbol)}\?pwa[^"\']*["\'][^>]*>([^<]+)<',
+                html,
+                _re.IGNORECASE,
+            )
+            if name_match:
+                name_part = _html.unescape(name_match.group(1)).strip()
                 if name_part and name_part.upper() != symbol:
                     display_name = name_part
 
@@ -875,12 +908,13 @@ def _bourse_lookup(symbol: str) -> BourseStockLookupOut:
             if isin_match:
                 isin = isin_match.group(1)
 
-            # Try to extract sector from common patterns
             sector_match = _re.search(
-                r"[Ss]ecteur[^:]*:\s*<[^>]+>([^<]+)<", html
+                r"<th[^>]*>\s*Secteur\s*</th>\s*<td[^>]*>(?:<[^>]+>)*([^<]+)",
+                html,
+                _re.IGNORECASE | _re.DOTALL,
             ) or _re.search(r"[Ss]ecteur[^:]*:\s*([^<\n]{3,50})", html)
             if sector_match:
-                sector = sector_match.group(1).strip()
+                sector = _html.unescape(sector_match.group(1)).strip()
 
     except Exception:
         pass  # URL is still valid; return it even if scraping failed
@@ -896,7 +930,7 @@ def _bourse_lookup(symbol: str) -> BourseStockLookupOut:
 
 
 @router.get("/stocks/{symbol}/bourse-lookup")
-def bourse_lookup_stock(symbol: str) -> BourseStockLookupOut:
+def bourse_lookup_stock(symbol: str, db: Session = Depends(get_db)) -> BourseStockLookupOut:
     """
     Look up a stock on the Bourse de Casablanca website by ticker symbol.
     Returns the direct page URL and any metadata that can be scraped (name, sector, ISIN).
@@ -904,6 +938,23 @@ def bourse_lookup_stock(symbol: str) -> BourseStockLookupOut:
     """
     symbol = symbol.strip().upper()
     result = _bourse_lookup(symbol)
+    stock = db.query(models.StockMaster).filter(models.StockMaster.symbol == symbol).one_or_none()
+    if stock:
+        changed = False
+        if result.bourse_url and not stock.bourse_url:
+            stock.bourse_url = result.bourse_url
+            changed = True
+        if result.isin and not stock.isin:
+            stock.isin = result.isin
+            changed = True
+        if result.sector and not stock.sector:
+            stock.sector = result.sector
+            changed = True
+        if result.display_name and not stock.display_name:
+            stock.display_name = result.display_name
+            changed = True
+        if changed:
+            db.commit()
     return result
 
 
@@ -1375,6 +1426,33 @@ def get_market_catalog(db: Session = Depends(get_db)) -> list[MarketCatalogRowOu
       C. Factors: market_data_store (asset_class='factor') ↔ macro_factor_meta.
          + macro_factor_meta rows without a market_data_store entry yet.
     """
+    if not _has_table(db, "index_master"):
+        db.execute(
+            text(
+                """
+                CREATE TEMPORARY TABLE IF NOT EXISTS index_master (
+                    symbol TEXT,
+                    display_name TEXT,
+                    market_region TEXT
+                )
+                """
+            )
+        )
+    if not _has_table(db, "macro_factor_meta"):
+        db.execute(
+            text(
+                """
+                CREATE TEMPORARY TABLE IF NOT EXISTS macro_factor_meta (
+                    canonical_id TEXT,
+                    display_name TEXT,
+                    notes TEXT,
+                    asset_type TEXT,
+                    market_region TEXT,
+                    active BOOLEAN
+                )
+                """
+            )
+        )
     rows = db.execute(
         text("""
             -- ── ARM 1: equities/unknown with data ───────────────────────────
@@ -1521,7 +1599,9 @@ def get_market_catalog(db: Session = Depends(get_db)) -> list[MarketCatalogRowOu
         if isinstance(data_as_of, datetime.datetime):
             data_as_of = data_as_of.date()
         masi_info = get_masi_info(r["symbol"])
-        display_name = r["display_name"] or (masi_info.get("display_name") if masi_info else None)
+        display_name = r["display_name"]
+        if masi_info and (not display_name or str(display_name).strip().upper() == str(r["symbol"]).strip().upper()):
+            display_name = masi_info.get("display_name")
         sector = r["sector"] or (masi_info.get("sector") if masi_info else None)
         asset_type = r["asset_type"] or None
         market_region = r["market_region"]
@@ -1779,14 +1859,31 @@ def download_all_market_data_excel(
     db: Session = Depends(get_db),
     asset_type: str | None = Query(default=None),
     market_region: str | None = Query(default=None),
+    symbols: list[str] | None = Query(default=None),
+    preset: str | None = Query(default=None),
 ):
     """Download 1D OHLCV data as a multi-sheet Excel file.
 
-    Optional filters: asset_type ("equity"|"commodity"|"forex"|"bond")
+    Optional filters: symbols (repeatable or comma-separated explicit tickers),
+                      asset_type ("equity"|"commodity"|"forex"|"bond")
                       market_region ("masi"|"us"|"european"|"asian")
     Without filters, returns all symbols.
     """
-    if asset_type or market_region:
+    requested_symbols: list[str] = []
+    for raw in symbols or []:
+        requested_symbols.extend(part.strip().upper() for part in str(raw).split(","))
+    requested_symbols = list(dict.fromkeys(sym for sym in requested_symbols if sym))
+
+    if requested_symbols:
+        rows = db.execute(
+            text("SELECT symbol FROM market_data_store WHERE timeframe = '1D'")
+        ).scalars().all()
+        available = {str(symbol) for symbol in rows}
+        symbols = [symbol for symbol in requested_symbols if symbol in available]
+        if not symbols:
+            raise HTTPException(status_code=404, detail="No downloadable 1D data found for selected symbols")
+        filename = "masi20-data.xlsx" if preset == "masi20" else "selected-data.xlsx"
+    elif asset_type or market_region:
         # Need to join with stock_master to filter by category
         conditions = ["mds.timeframe = '1D'"]
         params: dict = {}

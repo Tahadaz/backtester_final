@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import inspect
 from typing import Any
 from uuid import UUID
 
@@ -38,6 +40,8 @@ from ..schemas.strategy import (
     SavedStrategyListItem,
     SavedStrategyOut,
     SavedStrategyUpdate,
+    SignalCandidateOut,
+    SignalCandidateRequest,
     SignalConsensusOut,
     SignalConsensusRequest,
     SignalConstructionPreviewOut,
@@ -55,22 +59,18 @@ from .strategy_signals import (
     _get_all_representative_indicators,
     _get_or_compute,
     _get_top_representative_indicator,
-    _macd_label,
-    _obv_label,
-    _rsi_label,
     _score_to_label,
     _safe_float,
-    _sma_label,
 )
 
 from core.quant_core.data import drop_incomplete_ohlcv_rows
+from core.quant_core.horizons import canonical_horizon
 from core.quant_core.strategy_plan.allocation import compute_strategy_allocation
 from core.quant_core.strategy_plan.backtest import run_strategy_plan_backtest
 from core.quant_core.signal_engine.domain import (
     CATEGORY_FAMILIES,
     FAMILY_SIGNAL_TYPE,
     HORIZON_PARAMS,
-    VariantDef,
     signal_type_label,
 )
 from core.quant_core.signal_engine.ensemble import family_signal_is_available
@@ -82,6 +82,7 @@ from core.quant_core.strategy_plan.score_sources import (
     iter_score_sources,
     source_has_wfo_params,
     source_params_bundle,
+    score_source_variant,
     source_wfo_param_names,
     score_variable_catalog,
 )
@@ -114,7 +115,8 @@ router = APIRouter(prefix="/strategy/plan", tags=["strategy-plan"])
 # ---------------------------------------------------------------------------
 
 def _truncate_for_horizon(ohlcv, horizon: str):
-    max_bars = HORIZON_PARAMS[horizon]["max_years"] * 252
+    signal_horizon = canonical_horizon(horizon, allow_legacy=True)
+    max_bars = HORIZON_PARAMS[signal_horizon]["max_years"] * 252
     if len(ohlcv) > max_bars:
         return ohlcv.iloc[-max_bars:]
     return ohlcv
@@ -122,6 +124,19 @@ def _truncate_for_horizon(ohlcv, horizon: str):
 
 def _clean_ohlcv(ohlcv):
     return drop_incomplete_ohlcv_rows(ohlcv)
+
+
+def _compute_adv20_value(ohlcv: pd.DataFrame) -> float | None:
+    if ohlcv.empty or "Close" not in ohlcv.columns or "Volume" not in ohlcv.columns:
+        return None
+    recent = ohlcv.tail(20)
+    close = pd.to_numeric(recent["Close"], errors="coerce")
+    volume = pd.to_numeric(recent["Volume"], errors="coerce")
+    traded_value = (close * volume).replace([np.inf, -np.inf], np.nan).dropna()
+    if traded_value.empty:
+        return None
+    adv20 = float(traded_value.mean())
+    return adv20 if np.isfinite(adv20) else None
 
 
 def _resolve_execution_policy(
@@ -196,6 +211,260 @@ def _compute_batch_scores(
     return result
 
 
+def _build_universe_stock_dicts(db: Session, timeframe: str) -> tuple[list[dict[str, Any]], list[str]]:
+    """Build the strategy universe from tracked stocks plus stored equity data."""
+    stocks_raw = (
+        db.query(models.StockMaster)
+        .order_by(models.StockMaster.symbol.asc())
+        .all()
+    )
+    stores_raw = (
+        db.query(models.MarketDataStore)
+        .filter(
+            models.MarketDataStore.timeframe == timeframe,
+            models.MarketDataStore.asset_class == "equity",
+        )
+        .order_by(models.MarketDataStore.symbol.asc())
+        .all()
+    )
+    store_by_symbol = {store.symbol: store for store in stores_raw}
+    stock_by_symbol = {stock.symbol: stock for stock in stocks_raw if stock.is_active}
+    inactive_symbols = {stock.symbol for stock in stocks_raw if not stock.is_active}
+    symbols = sorted(set(stock_by_symbol) | (set(store_by_symbol) - inactive_symbols))
+
+    stock_dicts: list[dict[str, Any]] = []
+    for symbol in symbols:
+        stock = stock_by_symbol.get(symbol)
+        store = store_by_symbol.get(symbol)
+        masi_info = get_masi_info(symbol) or {}
+        adv20 = None
+        try:
+            ohlcv = load_ohlcv_for_symbol(db, symbol, timeframe)
+            ohlcv = _clean_ohlcv(ohlcv)
+            adv20 = _compute_adv20_value(ohlcv)
+        except Exception:
+            logger.debug("ADV20 unavailable for %s", symbol, exc_info=True)
+
+        stock_dicts.append({
+            "symbol": symbol,
+            "display_name": (stock.display_name if stock else None) or masi_info.get("name") or symbol,
+            "sector": (stock.sector if stock else None) or masi_info.get("sector"),
+            "market_cap_class": stock.market_cap_class if stock else None,
+            "row_count": store.row_count if store else 0,
+            "data_as_of": str(store.data_as_of)[:10] if store and store.data_as_of else None,
+            "adv20": adv20,
+        })
+
+    return stock_dicts, symbols
+
+
+def _candidate_id_for(row: dict[str, Any]) -> str:
+    parts = [
+        row.get("symbol"),
+        row.get("source"),
+        row.get("variant"),
+        row.get("bucket"),
+        row.get("direction"),
+        row.get("fwd_horizon_bars"),
+    ]
+    return ":".join(str(part or "").strip().lower() for part in parts)
+
+
+def _candidate_float(value: Any) -> float | None:
+    try:
+        out = float(value)
+    except Exception:
+        return None
+    return out if np.isfinite(out) else None
+
+
+def _candidate_int(value: Any) -> int | None:
+    try:
+        out = int(value)
+    except Exception:
+        return None
+    return out
+
+
+def _basic_candidate_exclusion(stock: dict[str, Any], body: SignalCandidateRequest) -> str | None:
+    row_count = _candidate_int(stock.get("row_count")) or 0
+    if row_count < body.min_bars:
+        return f"Insufficient history: {row_count} bars < {body.min_bars}."
+    adv20 = _candidate_float(stock.get("adv20"))
+    if body.min_adv20 > 0 and (adv20 is None or adv20 < body.min_adv20):
+        return "Below ADV20 liquidity gate."
+    if body.sector_filter:
+        wanted = {str(item).strip().lower() for item in body.sector_filter if str(item).strip()}
+        sector = str(stock.get("sector") or "").strip().lower()
+        if wanted and sector not in wanted:
+            return "Outside selected sector filter."
+    return None
+
+
+def _edge_payloads_for_signal_candidate(
+    db: Session,
+    *,
+    symbol: str,
+    horizon: str,
+    cost_bps: float,
+) -> list[dict[str, Any]]:
+    try:
+        from ..services.dashboard_builder import (
+            EDGE_CANDIDATE_COUNT,
+            EDGE_SIGNAL_MODES,
+            _apply_wfo_all_oos_proof_to_edge,
+            _best_signal_rank,
+            _bucket_to_signal_label,
+            _signal_method_label,
+        )
+        from .analytics import _build_edge_metrics_from_db, _edge_metrics_to_out
+    except Exception:
+        logger.exception("signal candidate dependencies unavailable")
+        return []
+
+    out: list[dict[str, Any]] = []
+    for source in ("signal_engine", "wfo"):
+        for variant in EDGE_SIGNAL_MODES:
+            try:
+                metrics = _build_edge_metrics_from_db(
+                    symbol=symbol,
+                    horizon=horizon,
+                    source=source,
+                    variant=variant,
+                    cost_bps=cost_bps,
+                    db=db,
+                    multiple_testing_count=EDGE_CANDIDATE_COUNT,
+                )
+                if metrics is None:
+                    continue
+                edge = json.loads(_edge_metrics_to_out(metrics).model_dump_json())
+                if source == "wfo":
+                    edge = _apply_wfo_all_oos_proof_to_edge(
+                        db,
+                        symbol=symbol,
+                        horizon=horizon,
+                        variant=variant,
+                        edge=edge,
+                        cost_bps=cost_bps,
+                    )
+            except Exception:
+                logger.exception(
+                    "signal candidate edge build failed",
+                    extra={"symbol": symbol, "horizon": horizon, "source": source, "variant": variant},
+                )
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+                continue
+
+            rank = _best_signal_rank(edge)
+            if rank is None:
+                continue
+
+            out.append(
+                {
+                    "_rank": rank,
+                    "source": source,
+                    "variant": variant,
+                    "label": _signal_method_label(source, variant),
+                    "signal_label": _bucket_to_signal_label(edge.get("bucket")),
+                    "triage": "proven" if bool(edge.get("proven_edge_net")) else "watch",
+                    "bucket": edge.get("bucket"),
+                    "direction": edge.get("direction"),
+                    "score": rank[1],
+                    "action_expected_return_net": edge.get("action_expected_return_net"),
+                    "action_expected_return_net_ci_lower": edge.get("action_expected_return_net_ci_lower"),
+                    "action_expected_return_net_ci_upper": edge.get("action_expected_return_net_ci_upper"),
+                    "hit_rate": edge.get("hit_rate"),
+                    "hit_ci_lower": edge.get("hit_ci_lower"),
+                    "hit_ci_upper": edge.get("hit_ci_upper"),
+                    "n": edge.get("n"),
+                    "proof_n": edge.get("proof_n"),
+                    "proof_window_start": edge.get("proof_window_start"),
+                    "proof_window_end": edge.get("proof_window_end"),
+                    "fwd_horizon_bars": edge.get("fwd_horizon_bars"),
+                    "return_calc_method": edge.get("return_calc_method"),
+                    "entry_price_kind": edge.get("entry_price_kind"),
+                    "entry_lag_bars": edge.get("entry_lag_bars"),
+                    "exit_price_kind": edge.get("exit_price_kind"),
+                    "exit_lag_bars": edge.get("exit_lag_bars"),
+                    "exit_timing_label": edge.get("exit_timing_label"),
+                    "gates": edge.get("gates") if isinstance(edge.get("gates"), dict) else {},
+                    "proven_edge_net": edge.get("proven_edge_net"),
+                }
+            )
+    return out
+
+
+def _sort_signal_candidate_rows(rows: list[dict[str, Any]], body: SignalCandidateRequest) -> list[dict[str, Any]]:
+    metric_key = {
+        "edge_score": "score",
+        "expected_return": "action_expected_return_net",
+        "hit_rate": "hit_rate",
+        "adv20": "adv20",
+        "symbol": "symbol",
+    }.get(body.sort_by, "score")
+    reverse = body.sort_dir != "asc"
+
+    def metric_value(row: dict[str, Any]) -> Any:
+        if metric_key == "symbol":
+            return str(row.get("symbol") or "")
+        metric = _candidate_float(row.get(metric_key))
+        if metric is None:
+            return -float("inf") if reverse else float("inf")
+        return metric
+
+    sorted_rows = sorted(rows, key=metric_value, reverse=reverse)
+    return sorted(sorted_rows, key=lambda row: 0 if bool(row.get("eligible")) else 1)
+
+
+def _build_signal_candidate_rows(db: Session, body: SignalCandidateRequest) -> list[dict[str, Any]]:
+    stock_dicts, _symbols = _build_universe_stock_dicts(db, body.timeframe)
+    triage_allowed = {str(item).strip().lower() for item in body.triage_filter if str(item).strip()}
+    if not triage_allowed:
+        triage_allowed = {"proven", "watch"}
+    source_allowed = {str(item).strip().lower() for item in body.source_filter or [] if str(item).strip()}
+    rows: list[dict[str, Any]] = []
+
+    for stock in stock_dicts:
+        symbol = str(stock.get("symbol") or "").strip().upper()
+        if not symbol:
+            continue
+        base_exclusion = _basic_candidate_exclusion(stock, body)
+        payloads = _edge_payloads_for_signal_candidate(
+            db,
+            symbol=symbol,
+            horizon=body.horizon,
+            cost_bps=body.cost_bps,
+        )
+        if body.mode == "best" and payloads:
+            payloads = [max(payloads, key=lambda item: item.get("_rank") or (0, 0.0, 0.0))]
+
+        for payload in payloads:
+            triage = str(payload.get("triage") or "").strip().lower()
+            source = str(payload.get("source") or "").strip().lower()
+            if triage not in triage_allowed:
+                continue
+            if source_allowed and source not in source_allowed:
+                continue
+            exclusion_reason = base_exclusion
+            if exclusion_reason is None and not payload.get("direction"):
+                exclusion_reason = "No actionable direction."
+            row = {
+                **stock,
+                **{key: value for key, value in payload.items() if key != "_rank"},
+                "candidate_id": "",
+                "symbol": symbol,
+                "eligible": exclusion_reason is None,
+                "exclusion_reason": exclusion_reason,
+            }
+            row["candidate_id"] = _candidate_id_for(row)
+            rows.append(row)
+
+    return _sort_signal_candidate_rows(rows, body)
+
+
 def _extract_enabled_families(stock_config: dict[str, Any]) -> list[str]:
     seen: list[str] = []
     for source in iter_score_sources(stock_config):
@@ -208,15 +477,7 @@ def _score_label_for_source(source_family: str, score: float | None) -> str | No
     if score is None:
         return None
     value = float(score)
-    if source_family == "sma":
-        return _sma_label(value)
-    if source_family == "macd":
-        return _macd_label(value)
-    if source_family == "rsi":
-        return _rsi_label(value)
-    if source_family == "obv":
-        return _obv_label(value)
-    return None
+    return signal_type_label(FAMILY_SIGNAL_TYPE.get(source_family, "trend"), value)
 
 
 def _normalize_indicator_payload(
@@ -251,6 +512,17 @@ def _normalize_indicator_payload(
             None if o is None or e is None or e == 0 else float((float(o) - float(e)) / float(e))
             for o, e in zip(payload["obv"], payload["ema_values"])
         ]
+    if "ad" in payload and "ema_values" in payload:
+        payload["bar_signals"] = [
+            "accumulation" if a is not None and e is not None and a > e else
+            "distribution" if a is not None and e is not None and a < e else
+            "neutral"
+            for a, e in zip(payload["ad"], payload["ema_values"])
+        ]
+        payload["deviation_values"] = [
+            None if a is None or e is None or e == 0 else float((float(a) - float(e)) / abs(float(e)))
+            for a, e in zip(payload["ad"], payload["ema_values"])
+        ]
     if "macd_line" in payload and "signal_line" in payload:
         crossovers: list[dict[str, Any]] = []
         macd_line = payload["macd_line"]
@@ -272,21 +544,49 @@ def _normalize_indicator_payload(
         payload["plot_kind"] = "line"
         payload["plot_values"] = payload["values"]
         payload["plot_axis"] = "price"
-    elif family_id == "rsi" and "values" in payload:
+    elif payload.get("type") == "overlay_dual" and "fast" in payload:
+        payload["plot_kind"] = "line"
+        payload["plot_values"] = payload["fast"]
+        payload["plot_axis"] = "price"
+    elif payload.get("type") == "overlay_cloud" and "cloud_top" in payload:
+        payload["plot_kind"] = "line"
+        payload["plot_values"] = payload["cloud_top"]
+        payload["plot_axis"] = "price"
+    elif payload.get("type") == "overlay_dots" and "values" in payload:
+        payload["plot_kind"] = "dots"
+        payload["plot_values"] = payload["values"]
+        payload["plot_axis"] = "price"
+    elif payload.get("type") == "overlay_band" and "values" in payload:
         payload["plot_kind"] = "line"
         payload["plot_values"] = payload["values"]
-        payload["plot_axis"] = "indicator"
-        payload["zero_line"] = 50.0
-    elif family_id == "macd" and "histogram" in payload:
+        payload["plot_axis"] = "price"
+    elif "histogram" in payload:
         payload["plot_kind"] = "histogram"
         payload["plot_values"] = payload["histogram"]
         payload["plot_axis"] = "indicator"
         payload["zero_line"] = 0.0
-    elif family_id == "obv" and "deviation_values" in payload:
+    elif "deviation_values" in payload:
         payload["plot_kind"] = "line"
         payload["plot_values"] = payload["deviation_values"]
         payload["plot_axis"] = "indicator"
         payload["zero_line"] = 0.0
+    elif "adx" in payload:
+        payload["plot_kind"] = "line"
+        payload["plot_values"] = payload["adx"]
+        payload["plot_axis"] = "indicator"
+    elif "k" in payload:
+        payload["plot_kind"] = "line"
+        payload["plot_values"] = payload["k"]
+        payload["plot_axis"] = "indicator"
+        payload["zero_line"] = 50.0
+    elif "values" in payload:
+        payload["plot_kind"] = "line"
+        payload["plot_values"] = payload["values"]
+        payload["plot_axis"] = "indicator"
+        if payload.get("zero_line") is True:
+            payload["zero_line"] = 0.0
+        elif family_id in {"rsi", "mfi", "uo", "stochastic"}:
+            payload["zero_line"] = 50.0
     return payload
 
 
@@ -295,29 +595,24 @@ def _indicator_payload_for_source(
     close: Any,
     volume: Any,
     *,
+    high: Any | None = None,
+    low: Any | None = None,
     params_override: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    params_source = params_override if isinstance(params_override, dict) else source.params
-    archetype_map = {
-        "sma": ("price_vs_sma", {"window": int(round(float(params_source.get("window", {}).get("value", 20) if isinstance(params_source.get("window"), dict) else params_source.get("window", 20))))}),
-        "rsi": ("rsi_level", {"period": int(round(float(params_source.get("period", {}).get("value", 14) if isinstance(params_source.get("period"), dict) else params_source.get("period", 14)))), "oversold": 30, "overbought": 70}),
-        "macd": ("macd_cross", {
-            "fast": int(round(float(params_source.get("fast", {}).get("value", 12) if isinstance(params_source.get("fast"), dict) else params_source.get("fast", 12)))),
-            "slow": int(round(float(params_source.get("slow", {}).get("value", 26) if isinstance(params_source.get("slow"), dict) else params_source.get("slow", 26)))),
-            "signal": int(round(float(params_source.get("signal", {}).get("value", 9) if isinstance(params_source.get("signal"), dict) else params_source.get("signal", 9)))),
-        }),
-        "obv": ("obv_trend", {"ema_period": int(round(float(params_source.get("ema_period", {}).get("value", 21) if isinstance(params_source.get("ema_period"), dict) else params_source.get("ema_period", 21))))}),
-    }
-    archetype, params = archetype_map[source.family_id]
-    variant = VariantDef(
-        variant_id=f"preview_{source.score_key}",
-        family=source.family_id,
-        archetype=archetype,
-        params=params,
-        description=source.label,
-    )
-    indicator = _compute_indicator(close, variant, volume=volume)
+    variant = score_source_variant(source, params_override=params_override)
+    indicator = _compute_indicator(close, variant, volume=volume, high=high, low=low)
     return _normalize_indicator_payload(indicator, family_id=source.family_id, fallback_name=source.label)
+
+
+def _call_indicator_helper(func: Any, detail: Any, close: Any, volume: Any, high: Any | None, low: Any | None) -> Any:
+    try:
+        signature = inspect.signature(func)
+        has_varargs = any(param.kind == inspect.Parameter.VAR_POSITIONAL for param in signature.parameters.values())
+        if not has_varargs and len(signature.parameters) <= 3:
+            return func(detail, close, volume)
+    except (TypeError, ValueError):
+        pass
+    return func(detail, close, volume, high, low)
 
 
 def _build_chart_payload(
@@ -333,6 +628,8 @@ def _build_chart_payload(
     frame: pd.DataFrame,
 ) -> dict[str, Any]:
     close = ohlcv["Close"].astype(float).to_numpy(dtype="float64")
+    high = ohlcv["High"].astype(float).to_numpy(dtype="float64") if "High" in ohlcv.columns else None
+    low = ohlcv["Low"].astype(float).to_numpy(dtype="float64") if "Low" in ohlcv.columns else None
     volume = ohlcv["Volume"].astype(float).to_numpy(dtype="float64") if "Volume" in ohlcv.columns else None
     bars: list[dict[str, Any]] = []
     for index, row in ohlcv.iterrows():
@@ -362,7 +659,7 @@ def _build_chart_payload(
         }
         if source.source_kind == "family_ensemble":
             detail = _get_or_compute(db, source.family_id, symbol, horizon, timeframe, cost_bps, cooldown_bars)
-            reps = _get_all_representative_indicators(detail, close, volume)
+            reps = _call_indicator_helper(_get_all_representative_indicators, detail, close, volume, high, low)
             source_payload["representatives"] = [
                 {
                     **rep,
@@ -375,7 +672,7 @@ def _build_chart_payload(
                 for rep in reps
             ]
             source_payload["indicator"] = _normalize_indicator_payload(
-                _get_top_representative_indicator(detail, close, volume),
+                _call_indicator_helper(_get_top_representative_indicator, detail, close, volume, high, low),
                 family_id=source.family_id,
                 fallback_name=source.label,
             )
@@ -383,18 +680,22 @@ def _build_chart_payload(
             source_payload["wfo_end_indicator"] = None
         else:
             source_payload["representatives"] = []
-            source_payload["indicator"] = _indicator_payload_for_source(source, close, volume)
+            source_payload["indicator"] = _indicator_payload_for_source(source, close, volume, high=high, low=low)
             if wfo_param_names:
                 source_payload["wfo_start_indicator"] = _indicator_payload_for_source(
                     source,
                     close,
                     volume,
+                    high=high,
+                    low=low,
                     params_override=source_params_bundle(source, boundary="start"),
                 )
                 source_payload["wfo_end_indicator"] = _indicator_payload_for_source(
                     source,
                     close,
                     volume,
+                    high=high,
+                    low=low,
                     params_override=source_params_bundle(source, boundary="end"),
                 )
             else:
@@ -591,43 +892,10 @@ def get_universe(
 ) -> list[UniverseStockOut]:
     """Filter stock universe by data availability, signal strength, and sector."""
 
-    # 1. Load all active stocks from StockMaster + MarketDataStore
-    stocks_raw = (
-        db.query(models.StockMaster)
-        .filter(models.StockMaster.is_active.is_(True))
-        .order_by(models.StockMaster.symbol.asc())
-        .all()
-    )
-
-    stock_dicts: list[dict[str, Any]] = []
-    symbols: list[str] = []
-    for stock in stocks_raw:
-        store = (
-            db.query(models.MarketDataStore)
-            .filter(
-                models.MarketDataStore.symbol == stock.symbol,
-                models.MarketDataStore.timeframe == body.timeframe,
-            )
-            .one_or_none()
-        )
-        adv20 = None
-        try:
-            ohlcv = load_ohlcv_for_symbol(db, stock.symbol, body.timeframe)
-            ohlcv = _clean_ohlcv(ohlcv)
-            if not ohlcv.empty and "Volume" in ohlcv.columns:
-                adv20 = float(ohlcv["Volume"].tail(20).mean())
-        except Exception:
-            logger.debug("ADV20 unavailable for %s", stock.symbol, exc_info=True)
-        stock_dicts.append({
-            "symbol": stock.symbol,
-            "display_name": stock.display_name,
-            "sector": stock.sector or ((get_masi_info(stock.symbol) or {}).get("sector")),
-            "market_cap_class": stock.market_cap_class,
-            "row_count": store.row_count if store else 0,
-            "data_as_of": str(store.data_as_of)[:10] if store and store.data_as_of else None,
-            "adv20": adv20,
-        })
-        symbols.append(stock.symbol)
+    # 1. Load all active stocks from StockMaster plus equity rows that already
+    # exist in MarketDataStore. The latter prevents an empty strategy universe
+    # when data has been ingested but the registry has not been backfilled yet.
+    stock_dicts, symbols = _build_universe_stock_dicts(db, body.timeframe)
 
     # 2. Compute signal scores for all symbols
     signal_scores = _compute_batch_scores(
@@ -648,6 +916,16 @@ def get_universe(
     )
 
     return [UniverseStockOut(**item) for item in enriched]
+
+
+@router.post("/signal-candidates")
+def get_signal_candidates(
+    body: SignalCandidateRequest,
+    db: Session = Depends(get_db),
+) -> list[SignalCandidateOut]:
+    """Return edge-qualified dashboard signals for strategy-universe selection."""
+
+    return [SignalCandidateOut(**item) for item in _build_signal_candidate_rows(db, body)]
 
 
 @router.post("/allocation")

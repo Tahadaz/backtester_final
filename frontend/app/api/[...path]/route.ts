@@ -5,10 +5,10 @@ import { NextRequest, NextResponse } from "next/server"
 const UPSTREAM =
   process.env.UPSTREAM_API_BASE ??
   process.env.API_URL ??
-  "http://localhost:8000"
+  "http://127.0.0.1:8000"
 const API_KEY = process.env.API_KEY ?? ""
 const IS_PROD = process.env.NODE_ENV === "production"
-const UPSTREAM_TIMEOUT_MS = Number(process.env.UPSTREAM_TIMEOUT_MS ?? "30000")
+const UPSTREAM_TIMEOUT_MS = Number(process.env.UPSTREAM_TIMEOUT_MS ?? "120000")
 const OFFLINE_EMPTY_GET_PATHS = new Set([
   "/runs",
   "/defaults/runs",
@@ -31,12 +31,17 @@ function buildTargetUrl(req: NextRequest, pathParts: string[]): string {
 }
 
 function buildUpstreamHeaders(req: NextRequest): Headers {
-  const headers = new Headers(req.headers)
+  const headers = new Headers()
+  const contentType = req.headers.get("content-type")
+  const accept = req.headers.get("accept")
+  const authorization = req.headers.get("authorization")
+  const cookie = req.headers.get("cookie")
+
+  if (contentType) headers.set("content-type", contentType)
+  if (accept) headers.set("accept", accept)
+  if (authorization) headers.set("authorization", authorization)
+  if (cookie) headers.set("cookie", cookie)
   if (API_KEY) headers.set("x-api-key", API_KEY)
-  headers.delete("host")
-  headers.delete("connection")
-  headers.delete("content-length")
-  headers.delete("transfer-encoding")
   return headers
 }
 
@@ -75,8 +80,8 @@ async function proxy(req: NextRequest, { params }: RouteContext) {
   }
 
   if (method !== "GET" && method !== "HEAD") {
-    init.body = req.body
-    init.duplex = "half"
+    const body = await req.arrayBuffer()
+    if (body.byteLength > 0) init.body = body
   }
 
   const controller = new AbortController()

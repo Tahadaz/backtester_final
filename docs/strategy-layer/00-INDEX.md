@@ -22,6 +22,7 @@
 | 10 | [api-data-flow-and-frontend-contracts.md](./10-api-data-flow-and-frontend-contracts.md) | Strategy definition schema, per-stock config, WFO flags, API endpoints, frontend state |
 | 11 | [implementation-roadmap.md](./11-implementation-roadmap.md) | Phase 1 dependency, Phase 2 implementation order, success criteria, verification |
 | 12 | [methodology-and-sources.md](./12-methodology-and-sources.md) | Academic justification for every design choice, full bibliography |
+| 13 | [ui-goals-and-design.md](./13-ui-goals-and-design.md) | Strategy page product/UI contract, design reference, current ownership, states, and handoff boundaries |
 
 ---
 

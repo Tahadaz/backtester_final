@@ -41,3 +41,14 @@ def test_mark_ohlc_zeros_as_missing_keeps_volume_zero() -> None:
     assert pd.isna(cleaned.loc[1, "Low"])
     assert pd.isna(cleaned.loc[0, "Close"])
     assert cleaned.loc[0, "Volume"] == 0.0
+
+
+def test_compute_adv_20d_value_uses_price_times_share_volume() -> None:
+    frame = pd.DataFrame(
+        {
+            "Close": [10.0] * 10 + [20.0] * 20,
+            "Volume": [100.0] * 30,
+        }
+    )
+
+    assert ingest_mod._compute_adv_20d_value(frame) == 2_000.0

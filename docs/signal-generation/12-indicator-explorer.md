@@ -1,6 +1,6 @@
 # 12 — Indicator Explorer (Indicateurs Tab)
 
-> **Status:** Designed, not yet implemented. This document specifies the second tab on the Signals page — an interactive chart-based indicator explorer that lets users visualize individual indicators on real stock data with quantified signal strength.
+> **Status:** Implemented / partial. The Signals page has an indicator tab with chart, sidebar, parameter controls, and live indicator-series API calls. This document remains the product/methodology reference for that explorer, with current implementation notes below.
 
 ---
 
@@ -57,18 +57,18 @@ The sidebar organizes indicators into 4 families following Elder's (1993) classi
 
 Each family is expandable. Clicking the family header reveals available indicator types within it. Each indicator type can be toggled on/off independently.
 
-| Family | Category | v1 Indicators | Future Additions |
-|--------|----------|---------------|------------------|
-| **Tendance** | Trend-following | SMA | EMA, DEMA, WMA |
-| **Momentum** | Trend acceleration | MACD | Stochastic, CCI, ADX |
-| **Oscillation** | Mean-reversion | RSI | Williams %R, Stochastic RSI, MFI |
-| **Volume** | Volume-based | OBV | VWAP, A/D Line, CMF |
+| Family | Category | Current frontend indicators |
+|--------|----------|-----------------------------|
+| **Tendance** | Trend-following | SMA, EMA, EMA Cross, Ichimoku, PSAR |
+| **Momentum** | Trend acceleration | MACD, ROC, TRIX, ADX, TSI |
+| **Oscillation** | Mean-reversion | RSI, Stochastic, CCI, MFI, UO |
+| **Volume** | Volume-based | OBV, CMF, AD, VWAP, FI |
 
-The v1 indicators (SMA, MACD, RSI, OBV) correspond exactly to the 4 families in the signal engine pipeline. Future additions extend within families but do not change the family structure.
+The current frontend indicator list is defined in `frontend/components/strategy/indicator-config.ts`. Keep that file as the implementation source of truth for indicator keys, default parameters, and slider bounds.
 
 ### Parameter Controls
 
-Each indicator exposes its configurable parameters as sliders or numeric inputs in the sidebar:
+Each indicator exposes its configurable parameters as sliders or numeric inputs in the sidebar. The table below is the original four-indicator subset; current complete ranges live in `frontend/components/strategy/indicator-config.ts`.
 
 | Indicator | Parameters | Default | Range |
 |-----------|-----------|---------|-------|
@@ -255,7 +255,7 @@ The Data page shows raw OHLCV data. The Indicateurs tab adds computed indicators
 ### Backend
 
 - **Indicator computation** reuses existing `compute_signal_array()` from `core/quant_core/signal_engine/oos_eval.py`. This function already computes the underlying indicator values (SMA, RSI, MACD, OBV) as intermediate steps before producing discrete signals.
-- **New API endpoint** required: `GET /api/signals/{symbol}/indicators`. This endpoint returns raw indicator time series (not just +1/-1/0 discrete signals) along with the continuous score at the current bar. Parameters (period, etc.) are passed as query parameters.
+- **Current API endpoint**: `POST /strategy/signal/indicator-series`. The frontend calls it through `fetchIndicatorSeries()` in `frontend/lib/api.ts`. It returns raw indicator time series, optional overlays, current continuous score, current label, and ATR where applicable.
 - **Response schema** (indicative):
 
 ```json

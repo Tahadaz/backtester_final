@@ -30,6 +30,17 @@ INTEGER_WFO_PARAM_SUFFIXES = (
     ".slow",
     ".signal",
     ".ema_period",
+    ".tenkan",
+    ".kijun",
+    ".senkou_b",
+    ".k_period",
+    ".d_period",
+    ".period_1",
+    ".period_2",
+    ".period_3",
+    ".long_period",
+    ".short_period",
+    ".adx_threshold",
     ".bars",
     ".cooldown_bars",
 )
@@ -77,6 +88,100 @@ def _to_string_list(value: Any) -> list[str]:
         text = str(item).strip()
         if text:
             out.append(text)
+    return out
+
+
+def _optional_string(value: Any) -> str | None:
+    text = str(value or "").strip()
+    return text or None
+
+
+def _optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        out = float(value)
+    except Exception:
+        return None
+    return out if math.isfinite(out) else None
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except Exception:
+        return None
+
+
+def _normalize_signal_candidate_ref(raw: Any) -> dict[str, Any] | None:
+    record = raw if _is_record(raw) else {}
+    symbol = _optional_string(record.get("symbol"))
+    source = _optional_string(record.get("source"))
+    variant = _optional_string(record.get("variant"))
+    if not symbol or not source or not variant:
+        return None
+
+    candidate_id = _optional_string(record.get("candidate_id")) or ":".join(
+        [
+            symbol.upper(),
+            source,
+            variant,
+            _optional_string(record.get("bucket")) or "",
+            _optional_string(record.get("direction")) or "",
+            str(_optional_int(record.get("fwd_horizon_bars")) or ""),
+        ]
+    ).lower()
+    gates_raw = record.get("gates") if _is_record(record.get("gates")) else {}
+    gates = {str(key): bool(value) for key, value in gates_raw.items()}
+    return {
+        "candidate_id": candidate_id,
+        "symbol": symbol.upper(),
+        "source": source,
+        "variant": variant,
+        "label": _optional_string(record.get("label")),
+        "triage": _optional_string(record.get("triage")) or "watch",
+        "bucket": _optional_string(record.get("bucket")),
+        "direction": _optional_string(record.get("direction")),
+        "signal_label": _optional_string(record.get("signal_label")),
+        "score": _optional_float(record.get("score")),
+        "action_expected_return_net": _optional_float(record.get("action_expected_return_net")),
+        "action_expected_return_net_ci_lower": _optional_float(record.get("action_expected_return_net_ci_lower")),
+        "action_expected_return_net_ci_upper": _optional_float(record.get("action_expected_return_net_ci_upper")),
+        "hit_rate": _optional_float(record.get("hit_rate")),
+        "hit_ci_lower": _optional_float(record.get("hit_ci_lower")),
+        "hit_ci_upper": _optional_float(record.get("hit_ci_upper")),
+        "n": _optional_int(record.get("n")),
+        "proof_n": _optional_int(record.get("proof_n")),
+        "proof_window_start": _optional_string(record.get("proof_window_start")),
+        "proof_window_end": _optional_string(record.get("proof_window_end")),
+        "fwd_horizon_bars": _optional_int(record.get("fwd_horizon_bars")),
+        "return_calc_method": _optional_string(record.get("return_calc_method")),
+        "entry_price_kind": _optional_string(record.get("entry_price_kind")),
+        "entry_lag_bars": _optional_int(record.get("entry_lag_bars")),
+        "exit_price_kind": _optional_string(record.get("exit_price_kind")),
+        "exit_lag_bars": _optional_int(record.get("exit_lag_bars")),
+        "exit_timing_label": _optional_string(record.get("exit_timing_label")),
+        "gates": gates,
+        "proven_edge_net": bool(record.get("proven_edge_net")) if record.get("proven_edge_net") is not None else None,
+    }
+
+
+def _normalize_signal_candidate_refs(raw: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in raw:
+        ref = _normalize_signal_candidate_ref(item)
+        if ref is None:
+            continue
+        key = str(ref.get("candidate_id") or "")
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(ref)
     return out
 
 
@@ -151,7 +256,7 @@ def _rule_direct_sizing_default_spaces(value: float) -> dict[str, dict[str, floa
 
 def default_family_configs() -> dict[str, Any]:
     return {
-        family_id: default_family_signal_config(family_id=family_id)
+        family_id: default_family_signal_config(family_id=family_id, enabled=family_id == "sma")
         for family_id in FAMILY_IDS
     }
 
@@ -493,9 +598,17 @@ def _normalize_stock_strategy_config(raw: Any, *, horizon: str) -> dict[str, Any
         strategy_type = "trend_following"
     base["strategy_type"] = strategy_type
 
+    signal_construction_raw = raw.get("signal_construction") if _is_record(raw.get("signal_construction")) else {}
+    signal_source_mode = str(signal_construction_raw.get("source_mode") or "manual").strip().lower()
+    if signal_source_mode == "dashboard_edge_signal":
+        base["signal_construction"]["source_mode"] = "dashboard_edge_signal"
+        selected_signal = _normalize_signal_candidate_ref(signal_construction_raw.get("selected_signal_candidate"))
+        if selected_signal is not None:
+            base["signal_construction"]["selected_signal_candidate"] = selected_signal
+
     families_raw = (
-        raw.get("signal_construction", {}).get("families")
-        if _is_record(raw.get("signal_construction")) and _is_record(raw.get("signal_construction", {}).get("families"))
+        signal_construction_raw.get("families")
+        if _is_record(signal_construction_raw.get("families"))
         else {}
     )
     for family_id in FAMILY_IDS:
@@ -556,6 +669,12 @@ def migrate_strategy_config_v2(raw: Any, *, horizon: str) -> dict[str, Any]:
         universe_raw = portfolio_raw.get("universe") if _is_record(portfolio_raw.get("universe")) else {}
         allocation_raw = portfolio_raw.get("allocation") if _is_record(portfolio_raw.get("allocation")) else {}
         basket = [symbol.upper() for symbol in _to_string_list(universe_raw.get("basket"))]
+        selected_signal_candidates = _normalize_signal_candidate_refs(universe_raw.get("selected_signal_candidates"))
+        selection_mode = str(universe_raw.get("selection_mode") or "").strip().lower()
+        if selection_mode != "edge_candidates" and selected_signal_candidates:
+            selection_mode = "edge_candidates"
+        if selection_mode != "edge_candidates":
+            selection_mode = "manual"
         stocks_raw = raw.get("stocks") if _is_record(raw.get("stocks")) else {}
         if not basket and stocks_raw:
             basket = [str(symbol).strip().upper() for symbol in stocks_raw.keys() if str(symbol).strip()]
@@ -586,6 +705,8 @@ def migrate_strategy_config_v2(raw: Any, *, horizon: str) -> dict[str, Any]:
                     "min_adv20": _to_float(universe_raw.get("min_adv20"), 0.0),
                     "sort_by": "signal_score" if str(universe_raw.get("sort_by") or "").strip() == "signal_score" else "adv20",
                     "sort_dir": "asc" if str(universe_raw.get("sort_dir") or "").strip() == "asc" else "desc",
+                    "selection_mode": selection_mode,
+                    "selected_signal_candidates": selected_signal_candidates,
                 },
                 "allocation": {
                     "method": "hrp",
@@ -611,7 +732,7 @@ def migrate_strategy_config_v2(raw: Any, *, horizon: str) -> dict[str, Any]:
         if item.lower() in FAMILY_IDS
     }
     if not enabled_families:
-        enabled_families = set(FAMILY_IDS)
+        enabled_families = {"sma"}
 
     manual_raw = allocation.get("manual_overrides_by_symbol") if _is_record(allocation.get("manual_overrides_by_symbol")) else {}
     manual_overrides: dict[str, Any] = {}
@@ -667,6 +788,8 @@ def migrate_strategy_config_v2(raw: Any, *, horizon: str) -> dict[str, Any]:
                 "min_adv20": _to_float(universe.get("min_adv20"), 0.0),
                 "sort_by": "signal_score" if str(universe.get("sort_by") or "").strip() == "signal_score" else "adv20",
                 "sort_dir": "asc" if str(universe.get("sort_dir") or "").strip() == "asc" else "desc",
+                "selection_mode": "manual",
+                "selected_signal_candidates": [],
             },
             "allocation": {
                 "method": "hrp",
@@ -791,6 +914,13 @@ def _family_has_active_source(family: dict[str, Any]) -> bool:
     return len(rows) > 0
 
 
+def _stock_uses_dashboard_edge_signal(stock_config: dict[str, Any]) -> bool:
+    signal_construction = stock_config.get("signal_construction") if _is_record(stock_config.get("signal_construction")) else {}
+    if str(signal_construction.get("source_mode") or "").strip().lower() != "dashboard_edge_signal":
+        return False
+    return _is_record(signal_construction.get("selected_signal_candidate"))
+
+
 def _rule_variable_blockers(stock: str, stock_config: dict[str, Any]) -> list[str]:
     available_variables = score_variable_keys(stock_config)
     out: list[str] = []
@@ -849,7 +979,7 @@ def _stock_readiness(stock: str, stock_config: dict[str, Any]) -> dict[str, Any]
         if _is_record(stock_config.get("signal_construction")) and _is_record(stock_config.get("signal_construction", {}).get("families"))
         else {}
     )
-    has_signal = any(_family_has_active_source(value if _is_record(value) else {}) for value in families.values())
+    has_signal = _stock_uses_dashboard_edge_signal(stock_config) or any(_family_has_active_source(value if _is_record(value) else {}) for value in families.values())
     entry_rules = list(stock_config.get("entry_rules") or [])
     exit_rules = list(stock_config.get("exit_rules") or [])
     has_risk = _is_record(stock_config.get("risk"))
@@ -946,6 +1076,7 @@ def build_strategy_handoff(*, strategy_id: str, strategy_name: str, raw: Any, ho
         "strategy_name": strategy_name,
         "portfolio": config["portfolio"],
         "stocks": config["stocks"],
+        "selected_signal_candidates": list(config["portfolio"]["universe"].get("selected_signal_candidates") or []),
         "wfo_params": {"params": build_wfo_param_manifest(config)},
         "total_wfo_param_count": review["total_wfo_param_count"],
         "warnings": warnings,
@@ -988,10 +1119,24 @@ def _canonical_risk_signature(stock_config: dict[str, Any]) -> tuple[Any, ...]:
 def build_legacy_backtest_config_from_v2(raw: Any, *, horizon: str) -> dict[str, Any]:
     config = migrate_strategy_config_v2(raw, horizon=horizon)
     basket = get_basket_from_strategy_config(config, horizon=horizon)
+    universe = config["portfolio"]["universe"]
+    selected_signal_candidates = list(universe.get("selected_signal_candidates") or [])
+    candidates_by_symbol: dict[str, list[dict[str, Any]]] = {}
+    for ref in selected_signal_candidates:
+        if not _is_record(ref):
+            continue
+        symbol = str(ref.get("symbol") or "").strip().upper()
+        if not symbol:
+            continue
+        candidates_by_symbol.setdefault(symbol, []).append(deepcopy(ref))
     if not basket:
         return {
             "capital": {"total_capital_mad": config["portfolio"]["total_capital_mad"]},
-            "universe": {"basket": []},
+            "universe": {
+                "basket": [],
+                "selection_mode": universe.get("selection_mode", "manual"),
+                "selected_signal_candidates": selected_signal_candidates,
+            },
             "allocation": config["portfolio"]["allocation"],
             "signal": {"enabled_families": list(FAMILY_IDS)},
             "bet_sizing": {
@@ -1036,7 +1181,8 @@ def build_legacy_backtest_config_from_v2(raw: Any, *, horizon: str) -> dict[str,
                     family_id
                     for family_id, enabled in _canonical_signal_signature(candidate)
                     if enabled
-                ]
+                ],
+                "selected_signal_candidates": candidates_by_symbol.get(symbol, []),
             },
             "signal_construction": deepcopy(candidate.get("signal_construction") or {}),
             "entry_rules": deepcopy(list(candidate.get("entry_rules") or [])),
@@ -1058,7 +1204,11 @@ def build_legacy_backtest_config_from_v2(raw: Any, *, horizon: str) -> dict[str,
         }
     return {
         "capital": {"total_capital_mad": config["portfolio"]["total_capital_mad"]},
-        "universe": {"basket": basket},
+        "universe": {
+            "basket": basket,
+            "selection_mode": universe.get("selection_mode", "manual"),
+            "selected_signal_candidates": selected_signal_candidates,
+        },
         "allocation": config["portfolio"]["allocation"],
         "signal": {"enabled_families": enabled_families},
         "bet_sizing": {

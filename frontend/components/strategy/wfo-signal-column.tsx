@@ -20,7 +20,7 @@ type WfoSignalColumnProps = {
   error: string | null
   symbol: string
   horizon: string
-  variant: "legacy" | "expanded" | "factor_x_ta"
+  variant: string
   onRefresh?: () => void
 }
 

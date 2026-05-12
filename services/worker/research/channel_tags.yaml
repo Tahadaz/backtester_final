@@ -26,6 +26,34 @@ factors:
       SP500 returns positively correlated with MASI via global risk appetite channel.
       Expected positive IC across all sectors.
 
+  NDX:
+    description: "Nasdaq 100 - US growth equity beta"
+    tags: [all]
+    direction_hypothesis: >
+      Nasdaq 100 returns proxy global growth-risk appetite and liquidity.
+      Expected positive IC across all sectors.
+
+  N225:
+    description: "Nikkei 225 - Asia equity beta"
+    tags: [all]
+    direction_hypothesis: >
+      Nikkei 225 returns proxy Asia equity risk appetite.
+      Expected positive IC across all sectors.
+
+  CAC:
+    description: "CAC 40 - Europe equity beta"
+    tags: [all]
+    direction_hypothesis: >
+      CAC 40 returns proxy European equity risk appetite.
+      Expected positive IC across all sectors.
+
+  FTSE:
+    description: "FTSE 100 - Europe equity beta"
+    tags: [all]
+    direction_hypothesis: >
+      FTSE 100 returns proxy European equity risk appetite and global cyclicals.
+      Expected positive IC across all sectors.
+
   BRENT:
     description: "Brent Crude futures — energy/materials channel"
     tags: [materials, mining, chemicals]
@@ -33,6 +61,20 @@ factors:
       Rising Brent costs for oil-importing Morocco is a mixed signal.
       Positive for extractive sectors (mining, phosphates) that benefit from
       higher commodity prices; neutral or negative for industrials/consumers.
+
+  GOLD:
+    description: "Gold futures - precious metals and safe-haven channel"
+    tags: [all]
+    direction_hypothesis: >
+      Gold strength can proxy safe-haven demand and precious-metals momentum.
+      Sign can vary by sector, so the expanded universe keeps it visible across stocks.
+
+  SILVER:
+    description: "Silver futures - precious metals and cyclicals channel"
+    tags: [all]
+    direction_hypothesis: >
+      Silver strength can proxy metals momentum and cyclical liquidity.
+      Sign can vary by sector, so the expanded universe keeps it visible across stocks.
 
   DXY:
     description: "US Dollar Index — EM capital flows"
@@ -49,12 +91,26 @@ factors:
       MAD liquidity and is negative for import-dependent sectors.
       Expected to be the highest-IC factor for Moroccan equities.
 
+  AED:
+    description: "AED/USD - GCC liquidity and regional FX proxy"
+    tags: [all]
+    direction_hypothesis: >
+      AED/USD movement is retained as a regional FX and liquidity proxy.
+      Expected sign is empirical and stock-dependent.
+
   US10Y:
     description: "10-Year US Treasury yield — global discount rate"
     tags: [banks, insurance, real_estate]
     direction_hypothesis: >
       Rising US10Y → tighter global financial conditions → negative for yield-
       sensitive sectors (banks, insurance). Less direct for industrials.
+
+  BTC:
+    description: "Bitcoin - global risk appetite and liquidity proxy"
+    tags: [all]
+    direction_hypothesis: >
+      Bitcoin momentum can proxy speculative liquidity and risk appetite.
+      Expected positive IC in risk-on regimes, subject to empirical filtering.
 
 # MASI sector taxonomy
 sectors:

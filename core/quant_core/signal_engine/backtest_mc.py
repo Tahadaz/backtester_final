@@ -18,8 +18,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from .domain import CATEGORY_FAMILIES
+from .domain import CATEGORY_FAMILIES, FactorConditionMeta
 from .oos_eval import compute_signal_array, VariantDef
+from .ta_combo import is_combo_variant, variant_from_component
 
 logger = logging.getLogger(__name__)
 
@@ -36,12 +37,40 @@ def _make_variant_def(rep: dict, *, fallback_family: str | None = None) -> Varia
             f"Representative {rep.get('variant_id', '<missing>')} missing family; "
             "cannot reconstruct VariantDef safely."
         )
+    condition = None
+    cond_payload = rep.get("factor_condition")
+    if isinstance(cond_payload, dict):
+        condition = FactorConditionMeta(
+            condition_id=str(cond_payload["condition_id"]),
+            factor_ticker=str(cond_payload["factor_ticker"]),
+            form=str(cond_payload["form"]),
+            lookback=int(cond_payload["lookback"]),
+            threshold=float(cond_payload["threshold"]),
+            direction=str(cond_payload["direction"]),
+        )
+
     return VariantDef(
         variant_id=str(rep["variant_id"]),
         family=family,
         archetype=str(rep["archetype"]),
         params=dict(rep.get("params") or {}),
+        factor_condition=condition,
     )
+
+
+def _combo_requires_precomputed(variant: VariantDef) -> bool:
+    if not is_combo_variant(variant):
+        return False
+    for payload in variant.params.get("components", []):
+        if not isinstance(payload, dict):
+            continue
+        try:
+            component = variant_from_component(payload)
+        except Exception:
+            continue
+        if component.factor_condition is not None or component.family.endswith("@fx"):
+            return True
+    return False
 
 
 def _build_family_signal_series_result(
@@ -52,6 +81,7 @@ def _build_family_signal_series_result(
     representatives_json: list[dict],
     *,
     fallback_family: str | None = None,
+    precomputed_signals: dict[str, np.ndarray] | None = None,
 ) -> tuple[np.ndarray, int, int]:
     """Return (signal_series, successful_rep_count, failed_rep_count)."""
     if not representatives_json:
@@ -69,7 +99,22 @@ def _build_family_signal_series_result(
             w = 1.0
         try:
             variant = _make_variant_def(rep, fallback_family=fallback_family)
-            sig = compute_signal_array(close, variant, volume=volume, high=high, low=low).astype(np.float64)
+            if (
+                variant.factor_condition is not None
+                or variant.family.endswith("@fx")
+                or _combo_requires_precomputed(variant)
+            ):
+                if not precomputed_signals or variant.variant_id not in precomputed_signals:
+                    raise ValueError(
+                        f"missing precomputed Factor x TA signal for {variant.variant_id}"
+                    )
+                sig = np.asarray(precomputed_signals[variant.variant_id], dtype=np.float64)
+                if len(sig) != len(close):
+                    raise ValueError(
+                        f"precomputed signal length {len(sig)} != close length {len(close)}"
+                    )
+            else:
+                sig = compute_signal_array(close, variant, volume=volume, high=high, low=low).astype(np.float64)
         except Exception as exc:
             failed_count += 1
             if len(failure_samples) < 3:
@@ -139,6 +184,7 @@ def build_family_signal_series(
     representatives_json: list[dict],
     *,
     fallback_family: str | None = None,
+    precomputed_signals: dict[str, np.ndarray] | None = None,
 ) -> np.ndarray:
     """Build a bar-by-bar signal series from committed representative variants.
 
@@ -153,6 +199,7 @@ def build_family_signal_series(
         low,
         representatives_json,
         fallback_family=fallback_family,
+        precomputed_signals=precomputed_signals,
     )
     return result
 
@@ -164,6 +211,8 @@ def build_category_signal_series_engine(
     low: np.ndarray | None,
     family_results: dict[str, dict],
     category: str,
+    *,
+    precomputed_signals: dict[str, np.ndarray] | None = None,
 ) -> np.ndarray:
     """Aggregate family-level signals into one per-category series (A→G engine path).
 
@@ -180,9 +229,18 @@ def build_category_signal_series_engine(
     if not families_in_category:
         return np.zeros(len(close), dtype=np.float64)
 
-    family_sigs: list[tuple[float, np.ndarray]] = []
+    family_keys: list[str] = []
     for family in families_in_category:
-        fr = family_results.get(family)
+        for candidate_key in (family, f"{family}@fx"):
+            if candidate_key in family_results and candidate_key not in family_keys:
+                family_keys.append(candidate_key)
+    for family_key, row in family_results.items():
+        if row.get("category") == category and family_key not in family_keys:
+            family_keys.append(family_key)
+
+    family_sigs: list[tuple[float, np.ndarray]] = []
+    for family_key in family_keys:
+        fr = family_results.get(family_key)
         if not fr or fr.get("status") != "succeeded":
             continue
         if fr.get("is_provisional"):
@@ -202,7 +260,8 @@ def build_category_signal_series_engine(
             high,
             low,
             reps,
-            fallback_family=family,
+            fallback_family=family_key,
+            precomputed_signals=precomputed_signals,
         )
         if success_count == 0:
             continue
@@ -227,13 +286,22 @@ def build_category_signal_series_wfo(
     high: np.ndarray | None,
     low: np.ndarray | None,
     representatives_json: list[dict],
+    *,
+    precomputed_signals: dict[str, np.ndarray] | None = None,
 ) -> np.ndarray:
     """Build signal series from WFO-selected representatives for one category.
 
     representatives_json comes from wfo_signal_summary.representatives_json.
     Same weight scheme as build_family_signal_series (normalized_weight).
     """
-    return build_family_signal_series(close, volume, high, low, representatives_json)
+    return build_family_signal_series(
+        close,
+        volume,
+        high,
+        low,
+        representatives_json,
+        precomputed_signals=precomputed_signals,
+    )
 
 
 def build_global_signal_series(
@@ -283,6 +351,70 @@ def build_combination_signal_series(
 # Backtest kernel
 # ---------------------------------------------------------------------------
 
+def _position_side(value: float) -> int:
+    if value > 0.0:
+        return 1
+    if value < 0.0:
+        return -1
+    return 0
+
+
+def apply_trade_cooldown_to_position_series(
+    position_series: np.ndarray,
+    cooldown_bars: int,
+) -> tuple[np.ndarray, dict[str, int]]:
+    """Gate a desired position series with a post-exit trade cooldown.
+
+    The cooldown is execution-level: once an existing position is closed, or an
+    opposite-side target appears, the strategy must stay flat for the next N
+    bars before opening a new position. Same-side exposure changes are allowed.
+    """
+    desired = np.asarray(position_series, dtype=np.float64)
+    cooldown = max(0, int(cooldown_bars or 0))
+    diagnostics = {
+        "cooldown_bars": cooldown,
+        "cooldown_events": 0,
+        "cooldown_blocked_bars": 0,
+    }
+    if cooldown <= 0 or len(desired) == 0:
+        return desired.copy(), diagnostics
+
+    executed = np.zeros(len(desired), dtype=np.float64)
+    cooldown_left = 0
+
+    for i, raw_desired in enumerate(desired):
+        target = float(np.clip(raw_desired, -1.0, 1.0))
+        target_side = _position_side(target)
+        prev = float(executed[i - 1]) if i > 0 else 0.0
+        prev_side = _position_side(prev)
+        started_cooldown = False
+
+        if prev_side != 0:
+            if target_side == 0:
+                executed[i] = 0.0
+                cooldown_left = cooldown
+                diagnostics["cooldown_events"] += 1
+                started_cooldown = True
+            elif target_side == prev_side:
+                executed[i] = target
+            else:
+                executed[i] = 0.0
+                cooldown_left = cooldown
+                diagnostics["cooldown_events"] += 1
+                diagnostics["cooldown_blocked_bars"] += 1
+                started_cooldown = True
+        elif target_side != 0 and cooldown_left > 0:
+            executed[i] = 0.0
+            diagnostics["cooldown_blocked_bars"] += 1
+        else:
+            executed[i] = target
+
+        if not started_cooldown and cooldown_left > 0 and _position_side(float(executed[i])) == 0:
+            cooldown_left -= 1
+
+    return executed, diagnostics
+
+
 def run_signal_backtest(
     signal_series: np.ndarray,
     close: np.ndarray,
@@ -291,6 +423,7 @@ def run_signal_backtest(
     cost_bps: float = 5.0,
     slippage_bps: float = 5.0,
     side_policy: str = "long_only",
+    cooldown_bars: int = 0,
 ) -> dict[str, Any]:
     """Run a signal-based backtest on a price series.
 
@@ -312,6 +445,9 @@ def run_signal_backtest(
         "target_mean": 0.0,
         "target_min": 0.0,
         "target_max": 0.0,
+        "cooldown_bars": max(0, int(cooldown_bars or 0)),
+        "cooldown_events": 0,
+        "cooldown_blocked_bars": 0,
     }
     if T < 2 or len(sig) < T:
         return {
@@ -336,9 +472,13 @@ def run_signal_backtest(
         target_position = np.clip(target_position, 0.0, 1.0)
     else:
         target_position = np.clip(target_position, -1.0, 1.0)
-    executed_position = np.zeros(T, dtype=np.float64)
+    desired_position = np.zeros(T, dtype=np.float64)
     if T > 1:
-        executed_position[1:] = target_position[:-1]
+        desired_position[1:] = target_position[:-1]
+    executed_position, cooldown_diag = apply_trade_cooldown_to_position_series(
+        desired_position,
+        cooldown_bars,
+    )
 
     diagnostics = {
         "flat_executed": bool(np.all(executed_position == 0.0)),
@@ -346,6 +486,7 @@ def run_signal_backtest(
         "target_mean": float(np.mean(target_position)),
         "target_min": float(np.min(target_position)),
         "target_max": float(np.max(target_position)),
+        **cooldown_diag,
     }
 
     # Per-bar close-to-close returns
@@ -447,6 +588,7 @@ def compute_input_hash(
     slippage_bps: float,
     side_policy: str,
     *,
+    cooldown_bars: int | None = None,
     mc_method: str | None = None,
     n_paths: int | None = None,
     block_mean: int | None = None,
@@ -465,6 +607,7 @@ def compute_input_hash(
             "cost_bps": round(cost_bps, 4),
             "slippage_bps": round(slippage_bps, 4),
             "side_policy": side_policy,
+            "cooldown_bars": max(0, int(cooldown_bars or 0)),
             "mc_method": mc_method,
             "n_paths": n_paths,
             "block_mean": block_mean,

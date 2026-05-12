@@ -4,7 +4,7 @@
 
 ## Page: `/data`
 
-**File**: `quant-backtesting-frontend/app/data/page.tsx` (596 lines)
+**File**: `frontend/app/data/page.tsx`
 **Component**: `DataPage()` — client component
 
 ### Layout

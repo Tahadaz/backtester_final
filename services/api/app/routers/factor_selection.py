@@ -153,10 +153,12 @@ def trigger_factor_recalibration(
     if not exists:
         raise HTTPException(status_code=404, detail=f"Stock {symbol} not found")
 
-    from services.worker.tasks.factor_selection_full import run_factor_selection_for_symbol
-
     q = _get_macro_ingest_queue()
-    job = q.enqueue(run_factor_selection_for_symbol, symbol, True)
+    job = q.enqueue(
+        "services.worker.tasks.factor_selection_full.run_factor_selection_for_symbol",
+        symbol,
+        True,
+    )
     return {"status": "enqueued", "job_id": job.id, "symbol": symbol}
 
 

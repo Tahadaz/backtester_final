@@ -1,8 +1,7 @@
 """Unit tests for core.quant_core.research.oos_index.
 
-Synthetic inputs only — no DB access. Covers the cases listed in §4.1 A.1.b
-of docs/plans/edge-deploy-plan.md plus a few edge cases surfaced by the
-§4.1.a-finding (bar-index-only folds, empty winner_variant_id).
+Synthetic inputs only - no DB access. Covers OOS index resolution edge cases:
+bar-index-only folds, optional date bounds, and empty winner_variant_id.
 """
 from __future__ import annotations
 
@@ -123,6 +122,25 @@ def test_wfo_folds_prefers_json_dates_when_present():
     # exclusive → inclusive: previous business day in the index
     pos = idx.searchsorted(pd.Timestamp("2024-07-15"), side="left")
     assert windows[0].end == pd.Timestamp(idx[pos - 1])
+
+
+def test_wfo_folds_normalize_aware_json_dates_to_naive_index():
+    """Production folds may carry UTC timestamps while OHLCV indexes are naive."""
+    idx = _bidx("2024-01-01", 300)
+    folds = [{
+        "index": 0,
+        "oos_start": 0, "oos_end": 999,
+        "oos_start_date": "2024-06-03T00:00:00+00:00",
+        "oos_end_date": "2024-07-15T00:00:00+00:00",
+        "winner_variant_id": "sv_a",
+    }]
+
+    windows = oos_windows_from_wfo(folds, ohlcv_index=idx)
+
+    assert len(windows) == 1
+    assert windows[0].start == pd.Timestamp("2024-06-03")
+    assert windows[0].start.tzinfo is None
+    assert windows[0].end.tzinfo is None
 
 
 # ---------------------------------------------------------------------------
