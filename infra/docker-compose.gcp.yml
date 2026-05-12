@@ -114,6 +114,7 @@ services:
       API_WORKERS: ${API_WORKERS:-1}
       REDIS_URL: redis://quant_redis:6379/0
       DATABASE_URL: postgresql+psycopg2://app:app@quant_postgres:5432/quant
+      SNAPSHOT_READ_MODE_OVERRIDES: ${SNAPSHOT_READ_MODE_OVERRIDES:-dashboard=snapshot}
       RUN_JOB_TIMEOUT_SECONDS: "21600"
       RUN_JOB_RESULT_TTL_SECONDS: "86400"
       RUN_JOB_FAILURE_TTL_SECONDS: "604800"
