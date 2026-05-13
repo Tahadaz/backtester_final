@@ -49,6 +49,7 @@ const isPublicDashboardOnly = process.env.NEXT_PUBLIC_DASHBOARD_PUBLIC_ONLY === 
 const edgeEnabled = process.env.NEXT_PUBLIC_EDGE_ENABLED !== "false"
 const EDGE_COST_BPS = 33
 const ADV_THRESHOLD = 1_000_000
+const EMPTY_DASHBOARD_POSITIONS: DashboardManualPosition[] = []
 
 const DASHBOARD_HORIZONS = [
   { value: "weekly" as const, label: "Court" },
@@ -338,6 +339,13 @@ function shareMapFromPositions(positions: DashboardManualPosition[]) {
   return out
 }
 
+function equalStringRecords(left: Record<string, string>, right: Record<string, string>) {
+  const leftKeys = Object.keys(left)
+  const rightKeys = Object.keys(right)
+  if (leftKeys.length !== rightKeys.length) return false
+  return leftKeys.every((key) => left[key] === right[key])
+}
+
 function parseShareQuantity(value: string | number | null | undefined) {
   const parsed = Number(String(value ?? "").replace(",", "."))
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null
@@ -475,22 +483,23 @@ export default function DashboardV1Page() {
   } = useDashboardIndices(viewMode === "masi" && view === "index", horizon)
   const { data: catalogData } = useMarketCatalog()
   const {
-    data: savedPositions = [],
+    data: savedPositionsData,
     mutate: mutatePortfolioPositions,
   } = useSWR<DashboardManualPosition[]>("dashboard-portfolio-positions", fetchDashboardPortfolioPositions, {
     revalidateOnFocus: false,
   })
+  const savedPositions = savedPositionsData ?? EMPTY_DASHBOARD_POSITIONS
 
   useEffect(() => {
-    if (!positionsDirty) {
-      setPositionText(formatPositionsText(savedPositions))
-    }
+    if (positionsDirty) return
+    const nextText = formatPositionsText(savedPositions)
+    setPositionText((current) => (current === nextText ? current : nextText))
   }, [positionsDirty, savedPositions])
 
   useEffect(() => {
-    if (!sectorSharesDirty) {
-      setSectorShareQuantities(shareMapFromPositions(savedPositions))
-    }
+    if (sectorSharesDirty) return
+    const nextShares = shareMapFromPositions(savedPositions)
+    setSectorShareQuantities((current) => (equalStringRecords(current, nextShares) ? current : nextShares))
   }, [savedPositions, sectorSharesDirty])
 
   const parsedPositions = useMemo(() => parsePositionsText(positionText), [positionText])
