@@ -514,6 +514,69 @@ class BloombergSeries(Base):
     )
 
 
+class BloombergBridgeStatus(Base):
+    """Last known state for a Bloomberg Terminal bridge listener."""
+    __tablename__ = "bloomberg_bridge_status"
+
+    bridge_id = Column(String(128), primary_key=True)
+    status = Column(String(32), nullable=False, default="offline")
+    capabilities_json = Column(JSONB, nullable=False, default=dict)
+    preflight_json = Column(JSONB, nullable=False, default=dict)
+    active_job_id = Column(UUID(as_uuid=True), ForeignKey("bloomberg_job.id"), nullable=True)
+    error_message = Column(Text, nullable=True)
+    last_seen_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_bloomberg_bridge_status_last_seen_at", "last_seen_at"),
+        Index("ix_bloomberg_bridge_status_status", "status"),
+    )
+
+
+class BloombergJob(Base):
+    """Control-plane job requested by the app and executed by a Bloomberg bridge."""
+    __tablename__ = "bloomberg_job"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    job_type = Column(String(32), nullable=False)
+    status = Column(String(32), nullable=False, default="queued")
+    requested_by = Column(String(128), nullable=True)
+    bridge_id = Column(String(128), nullable=True)
+    spec_json = Column(JSONB, nullable=False, default=dict)
+    progress_json = Column(JSONB, nullable=False, default=dict)
+    result_json = Column(JSONB, nullable=False, default=dict)
+    error_message = Column(Text, nullable=True)
+    lease_expires_at = Column(DateTime(timezone=True), nullable=True)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_bloomberg_job_status_created_at", "status", "created_at"),
+        Index("ix_bloomberg_job_bridge_id", "bridge_id"),
+        Index("ix_bloomberg_job_job_type", "job_type"),
+    )
+
+
+class BloombergJobEvent(Base):
+    """Append-only status/progress events for Bloomberg control-plane jobs."""
+    __tablename__ = "bloomberg_job_event"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    job_id = Column(UUID(as_uuid=True), ForeignKey("bloomberg_job.id"), nullable=False)
+    bridge_id = Column(String(128), nullable=True)
+    status = Column(String(32), nullable=True)
+    message = Column(Text, nullable=True)
+    payload_json = Column(JSONB, nullable=False, default=dict)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_bloomberg_job_event_job_id_created_at", "job_id", "created_at"),
+    )
+
+
 class StockFactorRelevance(Base):
     """Stores the active factors selected for a specific stock by the Phase 3 econometric pipeline.
     
@@ -648,17 +711,21 @@ class SavedStrategy(Base):
 
 
 class DashboardCustomIndex(Base):
-    """Persisted custom dashboard index definition (shared/global)."""
+    """Persisted custom dashboard index definition owned by one app user."""
     __tablename__ = "dashboard_custom_index"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    owner_user_id = Column(String, nullable=True)
     name = Column(String(120), nullable=False)
     symbols = Column(JSONB, nullable=False, default=list)
+    component_shares = Column(JSONB, nullable=False, default=dict)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     __table_args__ = (
         Index("ix_dashboard_custom_index_updated_at", "updated_at"),
+        Index("ix_dashboard_custom_index_owner_updated_at", "owner_user_id", "updated_at"),
+        Index("uq_dashboard_custom_index_owner_name_ci", "owner_user_id", func.lower(name), unique=True),
     )
 
 
@@ -667,6 +734,7 @@ class DeskPortfolioPosition(Base):
     __tablename__ = "desk_portfolio_position"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    owner_user_id = Column(String, nullable=True)
     symbol = Column(String, nullable=False)
     side = Column(String(16), nullable=False, default="long")
     quantity = Column(Float, nullable=False, default=0.0)
@@ -682,9 +750,10 @@ class DeskPortfolioPosition(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     __table_args__ = (
-        UniqueConstraint("symbol", "side", name="uq_desk_portfolio_position_symbol_side"),
+        UniqueConstraint("owner_user_id", "symbol", "side", name="uq_desk_portfolio_position_owner_symbol_side"),
         Index("ix_desk_portfolio_position_status", "status"),
         Index("ix_desk_portfolio_position_symbol", "symbol"),
+        Index("ix_desk_portfolio_position_owner_status", "owner_user_id", "status"),
     )
 
 

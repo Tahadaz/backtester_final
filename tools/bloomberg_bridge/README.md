@@ -2,6 +2,24 @@
 
 No-Docker Windows-side bridge for pushing Bloomberg Terminal data into the deployed app.
 
+The safest workflow on a locked-down Bloomberg computer is the Jupyter notebook kit. It avoids Docker, an EXE, and standalone `.py` execution while still running on the Bloomberg computer where local Bloomberg access exists.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\prepare_jupyter_kit.ps1
+```
+
+That creates `dist\bloomberg-jupyter-kit.zip`. Open `Bloomberg_Jupyter_Bridge.ipynb` on the Bloomberg computer and follow `JUPYTER_RUNBOOK.md`.
+
+The browser link alone cannot directly read Bloomberg Terminal data. The notebook, script, or listener must run on the Bloomberg computer and upload data over HTTPS.
+
+For a supervisor/Bloomberg-computer visit, use `FIELD_VISIT_RUNBOOK.md` and package this folder with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\prepare_field_kit.ps1
+```
+
+That creates `dist\bloomberg-field-kit.zip`.
+
 ## Configuration
 
 Set environment variables on the Bloomberg machine:
@@ -19,6 +37,14 @@ POST /bridge/bloomberg/batches
 ```
 
 ## Mock Smoke Test
+
+You can run the guided check:
+
+```powershell
+.\check_connection.ps1 -Endpoint "https://your-domain.example.com" -BridgeId "supervisor-terminal-01"
+```
+
+Or run the bridge directly:
 
 ```powershell
 python .\bridge.py mock `
@@ -57,3 +83,33 @@ powershell -ExecutionPolicy Bypass -File .\build_exe.ps1
 ```
 
 The executable is written to `dist\bt-bloomberg-bridge.exe`.
+
+## App-Controlled Listener
+
+Run this on the Bloomberg Terminal computer after Bloomberg is open and logged in:
+
+```powershell
+.\start_listener.ps1 -Endpoint "https://your-domain.example.com" -BridgeId "supervisor-terminal-01"
+```
+
+Or run the bridge directly:
+
+```powershell
+.\bt-bloomberg-bridge.exe listen
+```
+
+Or with Python:
+
+```powershell
+python .\bridge.py listen
+```
+
+The listener uses outbound HTTPS only. It polls:
+
+```text
+GET /bridge/bloomberg/jobs/next
+POST /bridge/bloomberg/jobs/{job_id}/status
+POST /bridge/bloomberg/heartbeat
+```
+
+The Data page can then queue preflight, discovery, backfill, and refresh jobs. The bridge only runs structured Bloomberg requests from the job spec; it does not run shell commands from the app.

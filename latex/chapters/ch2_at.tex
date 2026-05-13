@@ -1,0 +1,772 @@
+%% ============================================================
+%%  Chapitre 2 — Analyse Technique et Indicateurs Financiers
+%% ============================================================
+\chapter{Analyse Technique et Indicateurs Financiers}
+\label{ch:at}
+
+\section*{Introduction du chapitre}
+
+L'analyse technique est le socle méthodologique sur lequel repose l'ensemble de la
+plateforme développée dans ce projet. Avant de présenter le moteur de signaux
+(Chapitre~\ref{ch:signaux}) et le moteur de backtest
+(Chapitre~\ref{ch:wfo}), il est nécessaire de poser les fondements conceptuels et
+mathématiques des vingt familles d'indicateurs constituant l'univers candidat de la
+plateforme. Ce chapitre répond à la question~: \textit{sur quoi se fonde techniquement
+un signal de trading, et quelles sont les limites de l'analyse technique prise isolément ?}
+
+%% ------------------------------------------------------------------
+\section{Fondements de l'analyse technique}
+\label{sec:at_fondements}
+%% ------------------------------------------------------------------
+
+\subsection{La Dow Theory — les origines}
+
+L'analyse technique trouve ses racines dans les écrits de \textbf{Charles Dow} à la fin
+du XIX\textsuperscript{e} siècle. Fondateur du \textit{Wall Street Journal} et
+co-créateur du Dow Jones Industrial Average, Dow a formulé plusieurs observations sur
+le comportement des marchés~:
+
+\begin{enumerate}
+    \item \textbf{Les marchés évoluent en trois tendances imbriquées.}
+    La tendance primaire (bull ou bear market) dure de quelques mois à plusieurs années.
+    Les corrections secondaires représentent des contremouvements de 33 à 66~\% de la
+    tendance primaire. Les fluctuations tertiaires (intraday, hebdomadaires) constituent
+    le bruit de court terme.
+
+    \item \textbf{Le volume confirme la tendance.}
+    Un mouvement haussier sur volume croissant est fondamentalement plus fiable qu'une
+    hausse sur volume décroissant. Ce principe structure directement la catégorie Volume
+    de la plateforme.
+
+    \item \textbf{Les tendances persistent jusqu'à un signal de retournement clair.}
+    En l'absence de signal contraire, la tendance en cours est présumée maintenue.
+    C'est le fondement des stratégies trend-following.
+\end{enumerate}
+
+\subsection{Les trois prémisses de l'analyse technique moderne}
+
+Murphy~\cite{murphy1999} formalise les principes de l'AT moderne autour de trois
+prémisses fondamentales~:
+
+\begin{description}
+    \item[Prémisse 1 — Le marché escompte tout.]
+    Le prix de marché reflète instantanément toute l'information disponible~:
+    fondamentaux, anticipations des investisseurs, facteurs macro. Cette prémisse
+    justifie d'analyser le prix plutôt que les raisons du mouvement.
+
+    \item[Prémisse 2 — Les prix évoluent en tendances.]
+    Les marchés ne sont pas purement aléatoires. Ils exhibent des persistances
+    (momentum) et des retours à la moyenne documentés empiriquement~\cite{harvey2016}.
+    Cette prémisse est le fondement des vingt familles d'indicateurs~: chacune capte
+    l'une de ces deux dynamiques.
+
+    \item[Prémisse 3 — L'histoire se répète.]
+    Les configurations récurrentes reflètent des comportements humains stables~:
+    aversion aux pertes, ancrage cognitif, réactions asymétriques à l'information.
+    Cette récurrence rend les indicateurs paramétriques exploitables sur plusieurs cycles.
+\end{description}
+
+\subsection{Position par rapport à l'efficience des marchés}
+
+La théorie des marchés efficients (Fama, 1970) postule que les prix reflètent
+instantanément toute l'information, rendant l'AT théoriquement inutile. La position
+pragmatique retenue dans ce projet est intermédiaire~:
+
+Le MASI est un marché \textit{semi-efficient à faible liquidité}. La littérature
+sur les marchés émergents documente des primes de momentum et des anomalies de retour
+à la moyenne statistiquement exploitables~\cite{harvey2016}. De plus, l'AT est
+utilisée dans ce projet non comme oracle mais comme \textit{filtre systématique}~:
+sa valeur réside dans la cohérence et la discipline qu'elle impose, et c'est le
+Signal Engine (Chapitre~\ref{ch:signaux}) qui filtre, via une évaluation hors
+échantillon, les indicateurs réellement informatifs.
+
+%% ------------------------------------------------------------------
+\section{Classification en quatre catégories}
+\label{sec:at_classification}
+%% ------------------------------------------------------------------
+
+La plateforme organise ses vingt familles en quatre catégories, chacune capturant une
+dimension distincte de la dynamique de marché~:
+
+\begin{description}
+    \item[\textbf{Tendance (Trend-Following)}]
+    Ces indicateurs mesurent la direction et la persistance d'une tendance. Ils
+    sur-performent dans les marchés directionnels et sous-performent en marché range,
+    car ils sont naturellement en retard sur les retournements.
+
+    \item[\textbf{Momentum}]
+    Ces indicateurs mesurent la vitesse et l'accélération du mouvement des prix. Ils
+    permettent de capter l'élan d'une tendance ou son essoufflement — complémentant
+    les indicateurs de tendance qui ne signalent que la direction.
+
+    \item[\textbf{Oscillation / Mean-Reversion}]
+    Ces indicateurs oscillent dans un intervalle borné et détectent les états de
+    surachat (prix trop haut par rapport à une norme récente) et de survente (prix
+    trop bas). Ils sur-performent dans les marchés sans tendance et permettent d'identifier
+    des points de retournement potentiels.
+
+    \item[\textbf{Volume}]
+    Le volume est la « deuxième dimension » du marché. Ces indicateurs mesurent la
+    conviction derrière un mouvement~: un prix en hausse sur volume décroissant est
+    suspect, un prix en hausse sur volume croissant est bien plus fiable. Particulièrement
+    pertinents sur le MASI, où les titres hors top~20 présentent une liquidité faible.
+\end{description}
+
+La complémentarité de ces quatre catégories est la justification principale du signal
+d'ensemble (Chapitre~\ref{ch:signaux}, couche G)~: un consensus positif à travers
+plusieurs catégories orthogonales est structurellement plus robuste qu'un signal
+isolé.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\linewidth]{generated/ch2_taxonomie.png}
+\caption{Taxonomie des vingt familles d'indicateurs utilisées par le Signal Engine.
+Source~: documentation locale du moteur de signaux~\cite{repo_signal_docs}.}
+\label{fig:ch2_fig1_taxonomie}
+\end{figure}
+
+%% ------------------------------------------------------------------
+\section{Catégorie Tendance — cinq familles}
+\label{sec:at_tendance}
+%% ------------------------------------------------------------------
+
+Les cinq familles de cette catégorie partagent une logique commune~: elles identifient
+si le prix se situe au-dessus ou au-dessous d'une référence calculée sur l'historique
+récent, et si les références courtes et longues convergent dans une direction donnée.
+Leur signal est ternaire~: $+1$ (haussier), $-1$ (baissier), $0$ (neutre).
+
+\subsection{SMA — Moyenne Mobile Simple}
+
+La SMA est le plus ancien indicateur de tendance. Elle lisse le bruit journalier en
+calculant la moyenne arithmétique des $n$ derniers prix de clôture~:
+
+\begin{equation}
+    \text{SMA}_n(t) = \frac{1}{n} \sum_{i=0}^{n-1} P_{t-i}
+    \label{eq:sma}
+\end{equation}
+
+Dans la plateforme, la règle de signal utilisée est \textit{price vs SMA}~: le titre
+est haussier si le prix courant est au-dessus de sa SMA, baissier sinon. Cette règle
+est paramétrée par la période $n$, dont la valeur optimale varie selon l'horizon~:
+courte (5 à 20~jours) pour les signaux court terme, longue (120 à 250~jours) pour
+les signaux de fond.
+
+\textbf{Interprétation économique.}
+La SMA représente le prix moyen auquel le titre a été échangé sur les $n$ derniers jours.
+Si le prix courant est au-dessus, les acheteurs récents sont en gain~: ils ont tendance
+à maintenir leur position. Si le prix est en dessous, les acheteurs récents sont en perte
+et une pression vendeuse s'exerce naturellement.
+
+\subsection{EMA — Moyenne Mobile Exponentielle}
+
+L'EMA corrige le principal défaut de la SMA~: la pondération uniforme de tous les prix
+passés. Elle donne un poids décroissant exponentiellement aux données plus anciennes~:
+
+\begin{equation}
+    \text{EMA}_n(t) = \alpha \cdot P_t + (1 - \alpha) \cdot \text{EMA}_n(t-1),
+    \quad \alpha = \frac{2}{n+1}
+    \label{eq:ema}
+\end{equation}
+
+Le facteur de lissage $\alpha$ détermine la réactivité~: une EMA courte (petit $n$)
+réagit rapidement aux changements de prix mais génère plus de faux signaux~; une EMA
+longue (grand $n$) est plus stable mais plus lente à réagir. Comme pour la SMA,
+le signal est~: $+1$ si $P_t > \text{EMA}_n(t)$, $-1$ sinon.
+
+\subsection{EMA Cross — Croisement de deux EMA}
+
+Le croisement de deux EMA de périodes différentes est l'une des stratégies de
+tendance les plus utilisées en trading institutionnel. L'idée est de comparer une
+EMA rapide ($n_1$) à une EMA lente ($n_2 > n_1$)~:
+
+\begin{equation}
+    s_{\text{EMA-cross}}(t) =
+    \begin{cases}
+        +1 & \text{si } \text{EMA}_{n_1}(t) > \text{EMA}_{n_2}(t) \\
+        -1 & \text{si } \text{EMA}_{n_1}(t) < \text{EMA}_{n_2}(t)
+    \end{cases}
+    \label{eq:ema_cross}
+\end{equation}
+
+\textbf{Interprétation économique.}
+Quand la moyenne courte passe au-dessus de la longue (\textit{golden cross}), cela
+signifie que le momentum récent accélère par rapport à la tendance de fond — signal
+d'achat. L'inverse (\textit{death cross}) signale un retournement baissier. En pratique,
+ce croisement est plus lent que le signal \textit{price vs EMA} mais génère moins de
+faux signaux, car il filtre les fluctuations de court terme.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\linewidth]{generated/ch2_sma_iam.png}
+\caption{Exemple de moyennes mobiles sur l'action IAM~: clôture, SMA20, SMA50 et EMA200.
+Source~: historique local IAM, calculs de l'auteur.}
+\label{fig:ch2_fig2_sma}
+\end{figure}
+
+\subsection{Ichimoku Kinko Hyo}
+
+Le système Ichimoku, développé par Goichi Hosoda dans les années 1930 au Japon, est
+le plus complet des indicateurs de tendance. En un seul graphe, il délivre des
+informations sur la tendance, le support/résistance dynamique et le momentum.
+Il repose sur cinq composantes~:
+
+\begin{align}
+    \text{Tenkan-sen}  &= \frac{\max(H_{9}) + \min(L_{9})}{2}
+        \quad \text{(ligne de conversion, 9 périodes)} \label{eq:tenkan} \\[4pt]
+    \text{Kijun-sen}   &= \frac{\max(H_{26}) + \min(L_{26})}{2}
+        \quad \text{(ligne de base, 26 périodes)} \label{eq:kijun} \\[4pt]
+    \text{Senkou A}    &= \frac{\text{Tenkan} + \text{Kijun}}{2}
+        \quad \text{(décalé de +26 en avant)} \label{eq:senkou_a} \\[4pt]
+    \text{Senkou B}    &= \frac{\max(H_{52}) + \min(L_{52})}{2}
+        \quad \text{(décalé de +26 en avant)} \label{eq:senkou_b} \\[4pt]
+    \text{Chikou}      &= P_t
+        \quad \text{(décalé de $-26$ en arrière)} \label{eq:chikou}
+\end{align}
+
+Le \textit{Kumo} (nuage) est délimité par Senkou A et Senkou B. Sa position par
+rapport au prix donne l'information principale~: prix au-dessus du nuage = tendance
+haussière confirmée~; prix dans le nuage = tendance indéterminée~; prix en dessous
+du nuage = tendance baissière. L'épaisseur du nuage reflète la force du support/résistance.
+
+\textbf{Signal canonique.} La plateforme extrait~: $+1$ si prix $>$ Kumo (au-dessus
+des deux Senkou), $-1$ si prix $<$ Kumo, $0$ dans le nuage.
+
+\subsection{PSAR — Parabolic Stop and Reverse}
+
+Développé par Welles Wilder, le PSAR est un indicateur de suivi de tendance qui
+calcule un point stop évoluant de façon parabolique au fil du temps. Sa particularité~:
+il est toujours soit au-dessus du prix (trend baissier) soit en dessous (trend haussier).
+
+L'algorithme maintient un point $\text{PSAR}(t)$ et un \textit{facteur d'accélération}
+$\alpha(t)$ qui s'incrémente à chaque nouveau sommet (en trend haussier)~:
+
+\begin{align}
+    \text{PSAR}(t) &= \text{PSAR}(t-1) + \alpha(t-1) \cdot \bigl(\text{EP}(t-1) - \text{PSAR}(t-1)\bigr)
+    \label{eq:psar} \\
+    \alpha(t)      &= \min\!\bigl(\alpha(t-1) + \text{step},\; \alpha_{\max}\bigr)
+    \label{eq:psar_af}
+\end{align}
+
+où EP (\textit{Extreme Point}) est le plus haut atteint pendant le trend haussier en
+cours (ou le plus bas en trend baissier), $\text{step}$ est le pas d'incrémentation
+(typiquement 0{,}02) et $\alpha_{\max}$ le plafond (typiquement 0{,}2).
+
+\textbf{Interprétation économique.}
+Le PSAR représente un stop dynamique~: plus la tendance dure, plus le PSAR se
+rapproche du prix, réduisant le risque accepté. Quand le prix touche le PSAR,
+le trend est réputé retourné. C'est un des rares indicateurs qui donne simultanément
+un signal de direction \textit{et} un niveau de stop.
+
+\textbf{Signal canonique.} $+1$ si PSAR $<$ $P_t$ (PSAR sous le prix = trend haussier),
+$-1$ si PSAR $>$ $P_t$.
+
+%% ------------------------------------------------------------------
+\section{Catégorie Momentum — cinq familles}
+\label{sec:at_momentum}
+%% ------------------------------------------------------------------
+
+Ces indicateurs mesurent la vitesse et l'élan du mouvement de prix. Ils répondent à
+la question~: \textit{est-ce que le marché accélère ou ralentit dans sa direction
+actuelle~?} Leur rôle dans la plateforme est de confirmer ou infirmer les signaux
+de tendance~: un signal haussier de tendance confirmé par un momentum fort est bien
+plus fiable qu'un signal isolé.
+
+\subsection{MACD — Moving Average Convergence/Divergence}
+
+Développé par Gerald Appel, le MACD mesure la convergence et la divergence entre deux
+EMA de périodes différentes. Il est l'un des indicateurs de momentum les plus utilisés
+au monde par les traders institutionnels~:
+
+\begin{align}
+    \text{MACD}(t)     &= \text{EMA}_{\text{fast}}(t) - \text{EMA}_{\text{slow}}(t)
+    \label{eq:macd_line} \\[4pt]
+    \text{Signal}(t)   &= \text{EMA}_{\text{signal}}\!\bigl(\text{MACD}(t)\bigr)
+    \label{eq:macd_signal} \\[4pt]
+    \text{Histogramme}(t) &= \text{MACD}(t) - \text{Signal}(t)
+    \label{eq:macd_hist}
+\end{align}
+
+Dans la configuration par défaut~: $\text{fast} = 12$, $\text{slow} = 26$,
+$\text{signal} = 9$. La plateforme optimise ces trois paramètres lors du WFO.
+
+\textbf{Signal canonique.}
+$+1$ si MACD $>$ Signal (l'EMA rapide accélère par rapport à l'EMA lente),
+$-1$ si MACD $<$ Signal.
+
+\textbf{La divergence MACD-prix.}
+Un phénomène particulièrement pertinent~: si le prix monte mais que le MACD forme
+des sommets décroissants, cela révèle un essoufflement du momentum malgré la
+progression du prix. Ces divergences sont des signaux avancés de retournement très
+utilisés dans l'analyse des valeurs du MASI.
+
+\subsection{ROC — Rate of Change}
+
+Le ROC est la forme la plus directe de mesure du momentum~: il mesure le taux de
+variation du prix sur $n$ périodes.
+
+\begin{equation}
+    \text{ROC}_n(t) = \frac{P_t - P_{t-n}}{P_{t-n}} \times 100
+    \label{eq:roc}
+\end{equation}
+
+Un ROC positif et croissant confirme un momentum haussier persistant~; un ROC positif
+mais décroissant indique une tendance haussière qui s'essouffle.
+
+\textbf{Signal canonique.}
+Croisement de la ligne zéro~: $+1$ si ROC $> 0$, $-1$ si ROC $< 0$.
+La plateforme paramétrise $n$ selon l'horizon (5 à 250~jours).
+
+\subsection{TRIX — Triple Exponential Average}
+
+Le TRIX est le taux de variation sur une période d'une EMA triple (EMA appliquée
+trois fois successivement)~:
+
+\begin{align}
+    \text{EMA1}_n(t) &= \text{EMA}_n(P_t) \label{eq:trix1} \\
+    \text{EMA2}_n(t) &= \text{EMA}_n(\text{EMA1}_n(t)) \label{eq:trix2} \\
+    \text{EMA3}_n(t) &= \text{EMA}_n(\text{EMA2}_n(t)) \label{eq:trix3} \\
+    \text{TRIX}_n(t) &= \frac{\text{EMA3}_n(t) - \text{EMA3}_n(t-1)}{\text{EMA3}_n(t-1)} \times 100
+    \label{eq:trix}
+\end{align}
+
+Le triple lissage exponentiel élimine la quasi-totalité des cycles court terme, ne
+conservant que les tendances significatives. Le TRIX oscille autour de zéro~:
+positif = momentum haussier, négatif = baissier.
+
+\textbf{Avantage clé par rapport au ROC.}
+Grâce au triple lissage, le TRIX génère beaucoup moins de faux signaux que le ROC
+en marché volatile. C'est son principal avantage sur le MASI où certains titres peu
+liquides présentent des fluctuations erratiques.
+
+\textbf{Signal canonique.} Croisement de zéro~: $+1$ si TRIX $> 0$, $-1$ si TRIX $< 0$.
+
+\subsection{ADX — Average Directional Index}
+
+L'ADX de Welles Wilder est unique dans cette catégorie~: il mesure la \textit{force}
+d'une tendance, quelle que soit sa direction. Il est calculé à partir des Indicateurs
+Directionnels $+DI$ et $-DI$~:
+
+\begin{align}
+    +DM(t) &= \max(H_t - H_{t-1},\; 0) \quad \text{si } (H_t - H_{t-1}) > (L_{t-1} - L_t) \label{eq:plus_dm} \\
+    -DM(t) &= \max(L_{t-1} - L_t,\; 0) \quad \text{si } (L_{t-1} - L_t) > (H_t - H_{t-1}) \label{eq:minus_dm} \\
+    +DI_n  &= 100 \cdot \frac{\text{Wilder}_n(+DM)}{\text{ATR}_n} \label{eq:plus_di} \\
+    -DI_n  &= 100 \cdot \frac{\text{Wilder}_n(-DM)}{\text{ATR}_n} \label{eq:minus_di} \\
+    \text{ADX}_n(t) &= \text{Wilder}_n\!\left(\frac{|+DI_n - (-DI_n)|}{+DI_n + (-DI_n)} \times 100\right)
+    \label{eq:adx}
+\end{align}
+
+où Wilder$_n$ désigne la moyenne mobile de Wilder (variante de l'EMA avec $\alpha = 1/n$).
+
+\textbf{Interprétation.}
+ADX $< 20$~: pas de tendance significative~; ADX entre 20 et 40~: tendance modérée~;
+ADX $> 40$~: tendance forte. Le signe de la tendance provient de $+DI$ vs $-DI$~:
+$+DI > -DI$ = haussier.
+
+\textbf{Signal canonique.}
+La plateforme combine la force (ADX $>$ seuil paramétrable) et la direction~:
+$+1$ si ADX $>$ seuil \textbf{et} $+DI > -DI$~;
+$-1$ si ADX $>$ seuil \textbf{et} $-DI > +DI$~;
+$0$ si ADX $<$ seuil (pas de tendance suffisante).
+
+\subsection{TSI — True Strength Index}
+
+Développé par William Blau, le TSI est un oscillateur de momentum basé sur un double
+lissage de la variation de prix~:
+
+\begin{align}
+    \Delta P(t)      &= P_t - P_{t-1} \label{eq:tsi_dp} \\
+    \text{TSI}(t)    &= 100 \cdot \frac{\text{EMA}_{s}(\text{EMA}_{l}(\Delta P))}
+                                        {\text{EMA}_{s}(\text{EMA}_{l}(|\Delta P|))}
+    \label{eq:tsi}
+\end{align}
+
+où $l$ est la période longue et $s$ la période courte de lissage. Le double lissage
+au numérateur capte la direction du momentum, tandis que le dénominateur normalise
+par la magnitude absolue des mouvements.
+
+\textbf{Avantage.}
+Le TSI oscille dans $[-100, +100]$ et est moins sensible aux gaps de prix que le ROC
+ou le MACD, ce qui le rend robuste aux annonces de résultats d'entreprises
+(événements fréquents sur le MASI). Son croisement de la ligne zéro est le signal
+de changement de momentum.
+
+\textbf{Signal canonique.} $+1$ si TSI $> 0$, $-1$ si TSI $< 0$.
+
+%% ------------------------------------------------------------------
+\section{Catégorie Oscillation et Mean-Reversion — cinq familles}
+\label{sec:at_oscillation}
+%% ------------------------------------------------------------------
+
+Ces indicateurs sont construits pour osciller dans un intervalle borné. Ils ne
+mesurent pas la direction de la tendance mais l'état de « sur-extension » du prix
+par rapport à un équilibre récent. La logique est inverse de celle des indicateurs
+de tendance~: on \textit{achète} les extrêmes de survente et on \textit{vend} les
+extrêmes de surachat.
+
+\subsection{RSI — Relative Strength Index}
+
+Introduit par Wilder (1978), le RSI est l'oscillateur le plus utilisé au monde. Il
+compare la magnitude des hausses récentes aux baisses récentes sur $n$ périodes~:
+
+\begin{equation}
+    \text{RSI}_n(t) = 100 - \frac{100}{1 + RS_n(t)},
+    \quad RS_n = \frac{\overline{G}_n}{\overline{L}_n}
+    \label{eq:rsi}
+\end{equation}
+
+où $\overline{G}_n$ est la moyenne des variations positives et $\overline{L}_n$
+la moyenne des variations négatives (en valeur absolue) sur les $n$ dernières périodes.
+Le RSI oscille entre 0 et 100.
+
+\textbf{Interprétation économique.}
+Un RSI $> 70$ signifie que les hausses ont dominé de façon disproportionnée~: le
+titre est en zone de surachat, les vendeurs commencent à l'emporter. Inversement,
+RSI $< 30$ indique une survente~: le titre a baissé de façon excessive et un rebond
+est probable. Ces seuils sont paramétrables dans la plateforme.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\linewidth]{generated/ch2_rsi_atw.png}
+\caption{Exemple de RSI 14 périodes sur l'historique local disponible~: zones de
+surachat ($>70$) et de survente ($<30$). Source~: fichier de données local,
+calculs de l'auteur.}
+\label{fig:ch2_fig3_rsi}
+\end{figure}
+
+\subsection{Stochastique — Stochastic Oscillator}
+
+Développé par George Lane, l'oscillateur stochastique mesure la position du prix de
+clôture par rapport au range (haut/bas) des $n$ dernières périodes. Le raisonnement~:
+en tendance haussière, les cours ont tendance à clôturer près des hauts~; en tendance
+baissière, près des bas.
+
+\begin{align}
+    \%K_n(t) &= \frac{P_t - L_n(t)}{H_n(t) - L_n(t)} \times 100 \label{eq:stoch_k} \\[4pt]
+    \%D_n(t) &= \text{SMA}_d\!\bigl(\%K_n\bigr)(t) \label{eq:stoch_d}
+\end{align}
+
+où $H_n = \max(P_{t-n+1}, \ldots, P_t)$, $L_n = \min(P_{t-n+1}, \ldots, P_t)$,
+et $\%D$ est une moyenne mobile de $\%K$ sur $d$ périodes (ligne signal).
+
+\textbf{Signal canonique.}
+$-1$ si $\%K > 80$ (surachat)~; $+1$ si $\%K < 20$ (survente). La plateforme
+paramétrise $n$ (période K) et $d$ (période D).
+
+\subsection{CCI — Commodity Channel Index}
+
+Le CCI de Donald Lambert mesure l'écart du prix typique par rapport à sa moyenne
+mobile, normalisé par la déviation absolue moyenne~:
+
+\begin{equation}
+    \text{CCI}_n(t) = \frac{P^{\text{typ}}_t - \text{SMA}_n(P^{\text{typ}})}{0{,}015 \cdot \text{MAD}_n(t)}
+    \label{eq:cci}
+\end{equation}
+
+où $P^{\text{typ}}_t = (H_t + L_t + P_t) / 3$ est le prix typique,
+$\text{MAD}_n$ la déviation absolue moyenne sur $n$ périodes, et $0{,}015$ un facteur
+de calibrage pour que 70--80~\% des valeurs tombent dans $[-100, +100]$.
+
+\textbf{Interprétation.}
+CCI $> +100$~: le prix dépasse significativement sa moyenne récente, état de surachat.
+CCI $< -100$~: état de survente. La force du CCI réside dans sa réactivité~: en
+utilisant la déviation absolue (plus robuste aux outliers que l'écart-type), il
+s'adapte automatiquement à la volatilité du titre.
+
+\textbf{Signal canonique.} $-1$ si CCI $> +100$~; $+1$ si CCI $< -100$~; $0$ entre.
+
+\subsection{MFI — Money Flow Index}
+
+Le MFI est souvent qualifié de « RSI pondéré par le volume ». Il intègre le volume
+dans l'analyse de l'état de surachat/survente, ce qui lui permet de distinguer une
+hausse soutenue par des flux réels d'une hausse spéculative~:
+
+\begin{align}
+    P^{\text{typ}}_t &= \frac{H_t + L_t + P_t}{3} \label{eq:mfi_typ} \\[4pt]
+    MF_t &= P^{\text{typ}}_t \times V_t \label{eq:mfi_mf} \\[4pt]
+    MFR_n &= \frac{\sum_{i : P^{\text{typ}}_i \geq P^{\text{typ}}_{i-1}} MF_i}
+                  {\sum_{i : P^{\text{typ}}_i < P^{\text{typ}}_{i-1}} MF_i}
+    \quad \text{sur } n \text{ jours} \label{eq:mfi_mfr} \\[4pt]
+    \text{MFI}_n(t) &= 100 - \frac{100}{1 + MFR_n}
+    \label{eq:mfi}
+\end{align}
+
+\textbf{Signal canonique.}
+$-1$ si MFI $> 80$ (flux acheteur excessif)~;
+$+1$ si MFI $< 20$ (flux vendeur excessif).
+
+\textbf{Pertinence MASI.}
+Le MFI est particulièrement utile sur les titres à volume variable du MASI~: une
+survente sur volume important (MFI très bas) est un signal bien plus fiable qu'une
+survente sur volume anémique, car elle témoigne d'une vraie pression vendeuse
+institutionnelle plutôt que d'un simple absence d'acheteurs.
+
+\subsection{UO — Ultimate Oscillator}
+
+Développé par Larry Williams, l'Ultimate Oscillator est conçu pour corriger un défaut
+des oscillateurs mono-période~: la sensibilité au choix de la période. Il combine
+trois oscillateurs sur trois périodes différentes avec une pondération décroissante~:
+
+\begin{align}
+    \text{BP}(t)  &= P_t - \min(L_t, P_{t-1}) \label{eq:uo_bp} \\[4pt]
+    \text{TR}(t)  &= \max(H_t, P_{t-1}) - \min(L_t, P_{t-1}) \label{eq:uo_tr} \\[4pt]
+    A_{p}         &= \frac{\sum_{i=t-p+1}^{t} \text{BP}(i)}{\sum_{i=t-p+1}^{t} \text{TR}(i)}
+    \quad \text{pour } p \in \{p_1, p_2, p_3\} \label{eq:uo_avg} \\[4pt]
+    \text{UO}(t)  &= 100 \cdot \frac{4 A_{p_1} + 2 A_{p_2} + A_{p_3}}{4 + 2 + 1}
+    \label{eq:uo}
+\end{align}
+
+où $p_1 < p_2 < p_3$ (typiquement 7, 14, 28). La pondération 4:2:1 favorise les
+périodes courtes (plus réactives) sans ignorer le contexte long terme.
+
+\textbf{Signal canonique.}
+Surachat~: UO $> 70$~; survente~: UO $< 30$. La logique de divergence est
+particulièrement efficace avec l'UO (signal classique de Williams).
+
+%% ------------------------------------------------------------------
+\section{Catégorie Volume — cinq familles}
+\label{sec:at_volume}
+%% ------------------------------------------------------------------
+
+Les indicateurs de volume répondent à la question fondamentale~: \textit{le mouvement
+de prix est-il soutenu par une conviction réelle des participants~?} Un prix qui monte
+sur un volume croissant est soutenu par de réels flux acheteurs~; un prix qui monte
+sur un volume décroissant trahit une perte de conviction.
+
+Sur le MASI, cette dimension est d'autant plus critique que la liquidité est
+concentrée sur une vingtaine de valeurs. Pour les titres peu liquides, un faible volume
+peut générer des mouvements de prix violents mais non représentatifs de l'état du marché.
+
+\subsection{OBV — On-Balance Volume}
+
+L'OBV de Joe Granville est le plus ancien indicateur de volume. C'est un compteur
+cumulatif qui additionne le volume des séances haussières et soustrait celui des
+séances baissières~:
+
+\begin{equation}
+    \text{OBV}(t) = \text{OBV}(t-1) +
+    \begin{cases}
+        +V_t & \text{si } P_t > P_{t-1} \\
+        -V_t & \text{si } P_t < P_{t-1} \\
+        0    & \text{si } P_t = P_{t-1}
+    \end{cases}
+    \label{eq:obv}
+\end{equation}
+
+\textbf{Interprétation économique.}
+Si l'OBV monte tandis que le prix stagne ou baisse légèrement, cela signifie que du
+volume s'accumule discrètement en phase d'achat~: un mouvement haussier est en préparation
+(accumulation). La plateforme dérive le signal de la pente de l'OBV lissée par une
+EMA, ce qui filtre le bruit séance-par-séance.
+
+\textbf{Signal canonique.} $+1$ si pente EMA(OBV) $> 0$~; $-1$ sinon.
+
+\subsection{CMF — Chaikin Money Flow}
+
+Le CMF de Marc Chaikin est une version normalisée et fenêtrée de la ligne
+Accumulation/Distribution. Il mesure sur $n$ jours la proportion de flux de capital
+qui entre dans le titre par rapport aux sorties~:
+
+\begin{align}
+    \text{CLV}(t) &= \frac{(P_t - L_t) - (H_t - P_t)}{H_t - L_t}
+        \in [-1, +1] \label{eq:clv} \\[4pt]
+    \text{CMF}_n(t) &= \frac{\displaystyle\sum_{i=t-n+1}^{t} \text{CLV}(i) \cdot V_i}
+                             {\displaystyle\sum_{i=t-n+1}^{t} V_i}
+    \label{eq:cmf}
+\end{align}
+
+Le CLV (\textit{Close Location Value}) indique où le prix a clôturé dans le range
+de la séance~: $+1$ si au plus haut, $-1$ si au plus bas. Pondéré par le volume et
+moyenné sur $n$ jours, il donne une mesure de la pression directionnelle du marché.
+
+\textbf{Signal canonique.} $+1$ si CMF $> 0$ (flux acheteur dominant)~; $-1$ si CMF $< 0$.
+Un seuil de $\pm 0{,}05$ est généralement appliqué pour filtrer le bruit.
+
+\subsection{AD — Accumulation/Distribution Line}
+
+La ligne A/D est la version cumulative du CLV~: elle intègre sur toute la durée
+disponible la pression directionnelle pondérée par le volume.
+
+\begin{equation}
+    \text{AD}(t) = \text{AD}(t-1) + \text{CLV}(t) \times V_t
+    \label{eq:ad}
+\end{equation}
+
+La valeur absolue de l'A/D n'est pas interprétable~; c'est sa \textit{tendance} qui
+importe. La plateforme lisse l'A/D par une EMA et extrait le signal de la pente.
+
+\textbf{Interprétation clé.}
+La divergence A/D-prix est l'un des signaux les plus forts de l'analyse par le volume~:
+si le prix monte mais que la ligne A/D plafonne ou descend, cela révèle que les
+institutionnels sont en train de \textit{distribuer} (vendre) discrètement pendant que
+le prix monte sur des flux de détail. Sur le MASI, ce phénomène est observé régulièrement
+avant des corrections de titres de grande capitalisation.
+
+\textbf{Signal canonique.} $+1$ si pente EMA(AD) $> 0$~; $-1$ sinon.
+
+\subsection{VWAP — Volume Weighted Average Price}
+
+Le VWAP est la référence de prix institutionnelle universelle. Il représente le prix
+moyen auquel le titre a été réellement échangé, pondéré par les volumes~:
+
+\begin{equation}
+    \text{VWAP}_n(t) = \frac{\displaystyle\sum_{i=t-n+1}^{t} P^{\text{typ}}_i \cdot V_i}
+                             {\displaystyle\sum_{i=t-n+1}^{t} V_i}
+    \label{eq:vwap}
+\end{equation}
+
+Sur données journalières, la plateforme calcule un VWAP glissant sur $n$ jours. Un prix
+au-dessus du VWAP indique que les acheteurs récents ont payé en moyenne plus cher que
+le prix d'équilibre~: situation haussière.
+
+\textbf{Pertinence MASI.}
+Le VWAP est particulièrement significatif sur les valeurs à forte liquidité (IAM, ATW,
+BCP) où les institutionnels exécutent systématiquement leurs ordres autour de ce
+niveau. Il est utilisé comme benchmark d'exécution par les desks de trading, ce qui
+en fait un niveau de support/résistance dynamique naturel.
+
+\textbf{Signal canonique.} $+1$ si $P_t > \text{VWAP}_n(t) \cdot (1 + \varepsilon)$~;
+$-1$ si $P_t < \text{VWAP}_n(t) \cdot (1 - \varepsilon)$, où $\varepsilon$ est un seuil
+de déviation paramétrable (typiquement 0{,}5~\% à 2~\%).
+
+\subsection{FI — Force Index (Indice de Force d'Elder)}
+
+Le Force Index d'Alexander Elder mesure la force réelle derrière chaque mouvement de
+prix en combinant direction, amplitude et volume~:
+
+\begin{equation}
+    \text{FI}(t) = (P_t - P_{t-1}) \times V_t
+    \label{eq:fi}
+\end{equation}
+
+La plateforme lisse le FI par une EMA de période $n$ pour filtrer le bruit~:
+$\text{FI}_n(t) = \text{EMA}_n(\text{FI})$. Un FI positif et croissant indique que
+les achats exercent une force croissante~; un FI négatif indique une pression vendeuse.
+
+\textbf{Interprétation.}
+Contrairement à l'OBV ou au CMF qui traitent chaque séance de façon binaire (haussière
+ou baissière), le FI intègre l'\textit{amplitude} du mouvement~: une hausse de 3~\% sur
+fort volume exerce une force bien supérieure à une hausse de 0{,}1~\% sur le même volume.
+C'est particulièrement utile sur le MASI pour filtrer les mouvements techniques mineurs
+des mouvements à forte conviction.
+
+\textbf{Signal canonique.} $+1$ si EMA(FI) $> 0$~; $-1$ si EMA(FI) $< 0$.
+
+%% ------------------------------------------------------------------
+\section{Tableau récapitulatif des vingt familles}
+\label{sec:at_tableau}
+%% ------------------------------------------------------------------
+
+Le Tableau~\ref{tab:20_familles} récapitule l'ensemble des vingt familles, leur
+catégorie, le signal canonique et la période de préchauffage (\textit{warmup})
+minimale avant que le signal soit calculable.
+
+\begin{longtable}{p{2.5cm} p{2cm} p{5cm} p{1.5cm}}
+\caption{Récapitulatif des 20 familles d'indicateurs de la plateforme}
+\label{tab:20_familles} \\
+\toprule
+\textbf{Famille} & \textbf{Catégorie} & \textbf{Règle de signal ($-1$/$0$/$+1$)} & \textbf{Warmup} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Famille} & \textbf{Catégorie} & \textbf{Règle de signal ($-1$/$0$/$+1$)} & \textbf{Warmup} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+
+SMA              & Tendance  & $+1$ si $P_t >$ SMA$_n$                        & $n$ \\
+EMA              & Tendance  & $+1$ si $P_t >$ EMA$_n$                        & $n$ \\
+EMA Cross        & Tendance  & $+1$ si EMA$_{\text{fast}} >$ EMA$_{\text{slow}}$ & $n_{\text{slow}}$ \\
+Ichimoku         & Tendance  & $+1$ si prix $>$ Kumo                          & $n_{\text{senkou\_b}}$ \\
+PSAR             & Tendance  & $+1$ si PSAR $< P_t$                           & 2 \\
+\midrule
+MACD             & Momentum  & $+1$ si MACD $>$ Signal                        & slow + signal \\
+ROC              & Momentum  & $+1$ si ROC $> 0$                              & $n$ \\
+TRIX             & Momentum  & $+1$ si TRIX $> 0$                             & $3n$ \\
+ADX              & Momentum  & $+1$ si ADX $>$ seuil \& $+DI > -DI$          & $2n$ \\
+TSI              & Momentum  & $+1$ si TSI $> 0$                              & $l + s$ \\
+\midrule
+RSI              & Oscillation & $+1$ si RSI $< 30$, $-1$ si RSI $> 70$      & $n$ \\
+Stochastique     & Oscillation & $+1$ si \%K $< 20$, $-1$ si \%K $> 80$     & $n_K + n_D$ \\
+CCI              & Oscillation & $+1$ si CCI $< -100$, $-1$ si CCI $> +100$ & $n$ \\
+MFI              & Oscillation & $+1$ si MFI $< 20$, $-1$ si MFI $> 80$     & $n$ \\
+UO               & Oscillation & $+1$ si UO $< 30$, $-1$ si UO $> 70$       & $p_3$ \\
+\midrule
+OBV              & Volume    & $+1$ si pente EMA(OBV) $> 0$                  & $n$ \\
+CMF              & Volume    & $+1$ si CMF $> 0$                              & $n$ \\
+AD               & Volume    & $+1$ si pente EMA(A/D) $> 0$                  & $n$ \\
+VWAP             & Volume    & $+1$ si $P_t > \text{VWAP}_n \cdot (1+\varepsilon)$ & $n$ \\
+FI               & Volume    & $+1$ si EMA(FI) $> 0$                         & $n$ \\
+
+\end{longtable}
+
+%% ------------------------------------------------------------------
+\section{Limites de l'AT naïve — pont vers le Signal Engine}
+\label{sec:at_limites}
+%% ------------------------------------------------------------------
+
+L'analyse technique fournit un vocabulaire riche pour décrire la dynamique des prix.
+Cependant, utilisée naïvement — c'est-à-dire par ajustement visuel des paramètres et
+lecture subjective de graphes — elle présente des défauts structurels.
+
+\subsection{Paramètres libres et overfitting}
+
+Chaque indicateur possède des paramètres libres. Un analyste peut toujours trouver
+\textit{a posteriori} une combinaison de paramètres produisant d'excellents résultats
+sur l'historique. C'est ce que Pardo~\cite{pardo2008} appelle la \textit{fitting
+exercise}~:
+
+\begin{quote}
+\textit{``In-sample backtest is not a backtest — it is a fitting exercise.
+The only meaningful measure of a strategy's robustness is its out-of-sample performance.''}
+\hfill — Pardo (2008, p.~64)
+\end{quote}
+
+\subsection{Tests multiples et faux positifs}
+
+Pour un univers MASI large, la plateforme peut tester 20 familles × 30 valeurs de
+paramètres par horizon × plusieurs dizaines de titres, soit des dizaines de milliers
+de configurations. Sous un seuil de significativité $\alpha = 5\,\%$,
+on s'attend statistiquement à~:
+
+\begin{equation}
+    \mathbb{E}\bigl[\text{faux positifs}\bigr] = \alpha \cdot k
+    \approx 0{,}05 \times 56\,000 = 2\,800 \text{ indicateurs « significatifs »}
+    \label{eq:faux_positifs_at}
+\end{equation}
+
+par pur hasard~\cite{bailey2014}. Ce résultat justifie intégralement l'évaluation
+hors-échantillon systématique du Signal Engine.
+
+\subsection{Sensibilité au régime de marché}
+
+Un indicateur de tendance (SMA, PSAR) performe en marché directionnel mais génère
+des pertes en marché range. Inversement, un oscillateur (RSI, Stochastique) détecte
+bien les retournements mais sur-réagit en tendance forte. Aucun indicateur isolé
+n'est robuste à tous les régimes.
+
+\subsection{Synthèse~: de l'AT naïve au Signal Engine}
+
+\begin{table}[H]
+\centering
+\caption{Problèmes de l'AT naïve et réponses du Signal Engine (Chapitre~\ref{ch:signaux})}
+\label{tab:at_vs_signalengine}
+\begin{tabularx}{\linewidth}{p{4.5cm} X}
+\toprule
+\textbf{Problème AT naïve} & \textbf{Réponse Signal Engine} \\
+\midrule
+Paramètres optimisés in-sample   & Évaluation par sous-périodes indépendantes (couche~B) \\
+Tests multiples / faux positifs  & Score multi-composante + floor absolu (couches~C/D) \\
+Sensibilité au régime            & Fenêtres multi-régimes + score de stabilité (couche~C) \\
+Redondance (corrélation)         & Clustering de Pearson, seuil 0{,}85 (couche~E) \\
+Signal unique fragile            & Ensemble pondéré par fiabilité (couche~G) \\
+Opacité du raisonnement          & Drill-down complet par famille (dashboard, chapitre~\ref{ch:dashboard}) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\medskip
+
+\noindent Ce chapitre a posé le vocabulaire et la formalisation mathématique des vingt
+familles d'indicateurs. Le Chapitre~\ref{ch:signaux} présente la couche de traitement
+qui transforme ces familles en un signal d'ensemble robuste et validé hors échantillon.

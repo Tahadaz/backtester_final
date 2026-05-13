@@ -5,6 +5,7 @@ import { useMemo, useState } from "react"
 import { ArrowRight, ChevronDown, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react"
 import type {
   DashboardBreadth,
+  DashboardCustomIndexComponent,
   DashboardCustomIndexDefinition,
   DashboardDisplayMode,
   DashboardPortfolioEdge,
@@ -39,6 +40,12 @@ import {
 } from "./best-signal-cells"
 import { SignalBadge } from "./signal-badge"
 import { buildDashboardIndexPayload, normalizeDashboardIndexName } from "./index-tab-utils.mjs"
+import {
+  buildPortfolioWeightRows,
+  portfolioRowsBySymbol,
+  stockPriceForWeight,
+  summarizeWeightRows,
+} from "./sector-portfolio-utils.mjs"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -60,8 +67,8 @@ interface IndexTabProps {
   horizonDays: number
   edgeEnabled?: boolean
   visibleFamilies?: Partial<Record<FamilyKey, boolean>>
-  onCreate?: (payload: { name: string; symbols: string[] }) => Promise<void>
-  onUpdate?: (id: string, payload: { name: string; symbols: string[] }) => Promise<void>
+  onCreate?: (payload: { name: string; components: DashboardCustomIndexComponent[] }) => Promise<void>
+  onUpdate?: (id: string, payload: { name: string; components: DashboardCustomIndexComponent[] }) => Promise<void>
   onDelete?: (id: string) => Promise<void>
 }
 
@@ -77,6 +84,11 @@ interface IndexMember {
   symbol: string
   display_name: string | null
   stock: DashboardStock | null
+  shares: number | null
+  price: number | null
+  marketValue: number
+  weightFraction: number
+  weightPct: number
   scores: {
     signal_engine: IndexMemberSourceScore
     wfo: IndexMemberSourceScore | null
@@ -100,10 +112,15 @@ interface ComputedIndex {
   }
   bestStats: ReturnType<typeof summarizeBestSignals>
   technicalStats: ReturnType<typeof summarizeTechnicalSignals>
+  weightSummary: ReturnType<typeof summarizeWeightRows> | null
   portfolioEdge: DashboardPortfolioEdge | null
   members: IndexMember[]
+  totalMarketValue: number
+  isWeightedComplete: boolean
   editable: boolean
 }
+
+type PortfolioWeightRow = ReturnType<typeof buildPortfolioWeightRows>["rows"][number]
 
 const MASI_KEY = "__masi__"
 type SignalView = NonNullable<IndexTabProps["signalView"]>
@@ -128,6 +145,72 @@ function average(values: number[]): number | null {
 
 function round2(value: number): number {
   return Math.round(value * 100) / 100
+}
+
+function formatWeightPct(value: number | null | undefined, digits = 1) {
+  if (value == null || !Number.isFinite(value)) return "--"
+  return `${value.toLocaleString("fr-FR", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })}%`
+}
+
+function formatMoneyCompact(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return "--"
+  return `${Math.round(value).toLocaleString("fr-FR")} MAD`
+}
+
+function shareInputMessage(symbols: string[], shareInputs: Record<string, string>, missingPrices: string[]) {
+  if (symbols.length === 0) return "Selectionnez au moins un composant."
+  const missingShares = symbols.filter((symbol) => {
+    const value = Number(String(shareInputs[symbol] ?? "").replace(",", "."))
+    return !Number.isInteger(value) || value <= 0
+  })
+  if (missingShares.length > 0) return `Actions entieres requises: ${missingShares.join(", ")}.`
+  if (missingPrices.length > 0) return `Prix indisponible: ${missingPrices.join(", ")}.`
+  return null
+}
+
+function normalizeComponentShares(definition: DashboardCustomIndexDefinition): Record<string, number> {
+  const out: Record<string, number> = {}
+  const raw = definition.component_shares ?? {}
+  for (const [symbolRaw, sharesRaw] of Object.entries(raw)) {
+    const symbol = String(symbolRaw ?? "").trim().toUpperCase()
+    const shares = Number(sharesRaw)
+    if (!symbol || !Number.isInteger(shares) || shares <= 0) continue
+    out[symbol] = shares
+  }
+  for (const component of definition.components ?? []) {
+    const symbol = String(component.symbol ?? "").trim().toUpperCase()
+    const shares = Number(component.shares)
+    if (!symbol || !Number.isInteger(shares) || shares <= 0) continue
+    out[symbol] = shares
+  }
+  return out
+}
+
+function weightedAverageMemberValue(
+  members: IndexMember[],
+  getValue: (member: IndexMember) => number | null | undefined,
+  useWeights: boolean,
+): number | null {
+  if (!useWeights) {
+    return average(
+      members
+        .map((member) => getValue(member))
+        .filter((value): value is number => typeof value === "number"),
+    )
+  }
+
+  let weightedSum = 0
+  let totalWeight = 0
+  for (const member of members) {
+    const value = getValue(member)
+    if (typeof value !== "number" || !Number.isFinite(value) || member.weightFraction <= 0) continue
+    weightedSum += value * member.weightFraction
+    totalWeight += member.weightFraction
+  }
+  return totalWeight > 0 ? weightedSum / totalWeight : null
 }
 
 function breadthFromLabels(labels: Array<string | null>): DashboardBreadth {
@@ -158,20 +241,21 @@ function breadthFromLabels(labels: Array<string | null>): DashboardBreadth {
 function computeScoreBlock(
   members: IndexMember[],
   source: "signal_engine" | "wfo",
+  useWeights = false,
 ): IndexScoreBlock | null {
-  const aggregateValues = members
-    .map((member) => member.scores[source]?.aggregate_score_pct)
-    .filter((value): value is number => typeof value === "number")
-
-  const aggregateScore = average(aggregateValues)
+  const aggregateScore = weightedAverageMemberValue(
+    members,
+    (member) => member.scores[source]?.aggregate_score_pct,
+    useWeights,
+  )
   const perFamily: Record<string, FamilyScore> = {}
 
   for (const family of FAMILY_ORDER) {
-    const familyValues = members
-      .map((member) => member.scores[source]?.per_family[family]?.score_pct)
-      .filter((value): value is number => typeof value === "number")
-
-    const familyAvg = average(familyValues)
+    const familyAvg = weightedAverageMemberValue(
+      members,
+      (member) => member.scores[source]?.per_family[family]?.score_pct,
+      useWeights,
+    )
     if (familyAvg == null) continue
 
     perFamily[family] = {
@@ -187,6 +271,15 @@ function computeScoreBlock(
     aggregate_score_pct: aggregateScore == null ? null : round2(aggregateScore),
     per_family: perFamily,
     breadth: breadthFromLabels(labels),
+  }
+}
+
+function emptyIndexScoreBlock(total: number): IndexScoreBlock {
+  return {
+    aggregate_signal_label: null,
+    aggregate_score_pct: null,
+    per_family: {},
+    breadth: { achat: 0, neutre: 0, vente: 0, indisponible: total },
   }
 }
 
@@ -211,17 +304,13 @@ function resolveSePerFamily(item: SignalEngineScores, signalView: SignalView): R
 function evidenceHref(
   stock: DashboardStock,
   horizon: Horizon,
-  signalView: SignalView,
-  scoreSource: DashboardScoreSource,
 ) {
   const signal = bestSignalForDisplay(stock)
-  const fallbackView = scoreSource === "wfo" ? "expanded_ta_simple" : signalView
   return signalEvidenceUrl({
     symbol: stock.symbol,
     horizon,
-    view: signal?.variant ?? fallbackView,
-    source: signal?.source ?? "auto",
-    evidenceVariant: signal?.variant,
+    view: signal?.variant ?? "expanded_ta_simple",
+    source: "wfo",
   })
 }
 
@@ -288,6 +377,15 @@ function BreadthBar({
 }
 
 function renderIndexHeaderSignal(index: ComputedIndex, displayMode: DashboardDisplayMode) {
+  if (index.editable && !index.isWeightedComplete) {
+    return (
+      <div className="space-y-1 text-right">
+        <div className="text-[11px] font-semibold text-amber-700">Poids incomplets</div>
+        <div className="dashboard-mono text-[10px] text-muted-foreground">actions/prix requis</div>
+      </div>
+    )
+  }
+
   if (displayMode === "technical_directions") {
     return (
       <div className="space-y-1 text-right">
@@ -322,6 +420,14 @@ function IndexSignalOverview({
   const portfolioEdge = index.portfolioEdge
   const technicalSignal = index.technicalStats.topSignal
   const isTechnicalMode = displayMode === "technical_directions"
+
+  if (index.editable && !index.isWeightedComplete) {
+    return (
+      <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+        Renseignez un nombre entier d'actions et un prix disponible pour chaque composant afin de calculer les poids et les scores ponderes.
+      </div>
+    )
+  }
 
   return (
     <div className={cn("grid gap-2", !isTechnicalMode && edgeEnabled ? "md:grid-cols-5" : "md:grid-cols-3")}>
@@ -403,10 +509,12 @@ export function IndexTab({
   const [createName, setCreateName] = useState("")
   const [createSearch, setCreateSearch] = useState("")
   const [createSymbols, setCreateSymbols] = useState<string[]>([])
+  const [createShareInputs, setCreateShareInputs] = useState<Record<string, string>>({})
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState("")
   const [editSearch, setEditSearch] = useState("")
   const [editSymbols, setEditSymbols] = useState<string[]>([])
+  const [editShareInputs, setEditShareInputs] = useState<Record<string, string>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const isTechnicalMode = displayMode === "technical_directions"
 
@@ -414,10 +522,14 @@ export function IndexTab({
   const editNameTrimmed = normalizeDashboardIndexName(editName)
   const createNameInvalid = showCreate && createNameTrimmed.length === 0
   const editNameInvalid = Boolean(editingId) && editNameTrimmed.length === 0
-  const createPayload = buildDashboardIndexPayload(createName, createSymbols)
-  const editPayload = buildDashboardIndexPayload(editName, editSymbols)
-  const canSubmitCreate = Boolean(onCreate) && !isSubmitting && createPayload !== null
-  const canSubmitEdit = Boolean(editingId) && Boolean(onUpdate) && !isSubmitting && editPayload !== null
+  const createPayload = buildDashboardIndexPayload(
+    createName,
+    createSymbols.map((symbol) => ({ symbol, shares: createShareInputs[symbol] })),
+  )
+  const editPayload = buildDashboardIndexPayload(
+    editName,
+    editSymbols.map((symbol) => ({ symbol, shares: editShareInputs[symbol] })),
+  )
   const shownFamilies = useMemo(
     () => isTechnicalMode ? FAMILY_ORDER.filter((family) => visibleFamilies?.[family] !== false) : [],
     [isTechnicalMode, visibleFamilies],
@@ -445,26 +557,60 @@ export function IndexTab({
     [stocks],
   )
 
+  const createMissingPriceSymbols = useMemo(
+    () => createSymbols.filter((symbol) => {
+      const stock = stockBySymbol.get(symbol)
+      const price = stock ? stockPriceForWeight(stock) : null
+      return price == null || price <= 0
+    }),
+    [createSymbols, stockBySymbol],
+  )
+  const editMissingPriceSymbols = useMemo(
+    () => editSymbols.filter((symbol) => {
+      const stock = stockBySymbol.get(symbol)
+      const price = stock ? stockPriceForWeight(stock) : null
+      return price == null || price <= 0
+    }),
+    [editSymbols, stockBySymbol],
+  )
+  const createShareMessage = shareInputMessage(createSymbols, createShareInputs, createMissingPriceSymbols)
+  const editShareMessage = shareInputMessage(editSymbols, editShareInputs, editMissingPriceSymbols)
+  const canSubmitCreate = Boolean(onCreate) && !isSubmitting && createPayload !== null && createShareMessage === null
+  const canSubmitEdit = Boolean(editingId) && Boolean(onUpdate) && !isSubmitting && editPayload !== null && editShareMessage === null
+
   const computedIndices = useMemo<ComputedIndex[]>(() => {
-    const makeMember = (stock: DashboardStock | undefined, symbolFallback?: string): IndexMember => ({
-      symbol: stock?.symbol ?? symbolFallback ?? "",
-      display_name: stock?.display_name ?? null,
-      stock: stock ?? null,
-      scores: {
-        signal_engine: {
-          signal_label: stock ? resolveSeAggregateLabel(stock.scores.signal_engine, signalView) : null,
-          aggregate_score_pct: stock ? resolveSeAggregateScore(stock.scores.signal_engine, signalView) : null,
-          per_family: stock ? resolveSePerFamily(stock.scores.signal_engine, signalView) : {},
+    const makeMember = (
+      stock: DashboardStock | undefined,
+      symbolFallback?: string,
+      shares: number | null = null,
+    ): IndexMember => {
+      const price = stock ? stockPriceForWeight(stock) : null
+      const marketValue = shares != null && shares > 0 && price != null && price > 0 ? shares * price : 0
+      return {
+        symbol: stock?.symbol ?? symbolFallback ?? "",
+        display_name: stock?.display_name ?? null,
+        stock: stock ?? null,
+        shares,
+        price,
+        marketValue,
+        weightFraction: 0,
+        weightPct: 0,
+        scores: {
+          signal_engine: {
+            signal_label: stock ? resolveSeAggregateLabel(stock.scores.signal_engine, signalView) : null,
+            aggregate_score_pct: stock ? resolveSeAggregateScore(stock.scores.signal_engine, signalView) : null,
+            per_family: stock ? resolveSePerFamily(stock.scores.signal_engine, signalView) : {},
+          },
+          wfo: stock?.scores.wfo
+            ? {
+                signal_label: stock.scores.wfo.aggregate_signal_label,
+                aggregate_score_pct: stock.scores.wfo.aggregate_score_pct,
+                per_family: stock.scores.wfo.per_family,
+              }
+            : null,
         },
-        wfo: stock?.scores.wfo
-          ? {
-              signal_label: stock.scores.wfo.aggregate_signal_label,
-              aggregate_score_pct: stock.scores.wfo.aggregate_score_pct,
-              per_family: stock.scores.wfo.per_family,
-            }
-          : null,
-      },
-    })
+      }
+    }
 
     const masiMembers = stocks.map((stock) => makeMember(stock))
 
@@ -474,27 +620,43 @@ export function IndexTab({
       stock_count: stocks.length,
       scores: {
         signal_engine:
-          computeScoreBlock(masiMembers, "signal_engine") ?? {
-            aggregate_signal_label: null,
-            aggregate_score_pct: null,
-            per_family: {},
-            breadth: { achat: 0, neutre: 0, vente: 0, indisponible: stocks.length },
-          },
+          computeScoreBlock(masiMembers, "signal_engine") ?? emptyIndexScoreBlock(stocks.length),
         wfo: computeScoreBlock(masiMembers, "wfo"),
       },
       bestStats: summarizeBestSignals(stocks),
       technicalStats: summarizeTechnicalSignals(stocks),
+      weightSummary: null,
       portfolioEdge: baseIndex.portfolio_edge ?? null,
       members: masiMembers,
+      totalMarketValue: 0,
+      isWeightedComplete: true,
       editable: false,
     }
 
     const custom = customDefinitions.map((definition) => {
       const symbols = normalizeSymbols(definition.symbols)
-      const members = symbols.map((symbol) => makeMember(stockBySymbol.get(symbol), symbol))
+      const componentShares = normalizeComponentShares(definition)
+      const rawMembers = symbols.map((symbol) => makeMember(stockBySymbol.get(symbol), symbol, componentShares[symbol] ?? null))
+      const totalMarketValue = rawMembers.reduce((sum, member) => sum + member.marketValue, 0)
+      const isWeightedComplete =
+        Boolean(definition.is_weighted_complete) &&
+        symbols.length > 0 &&
+        rawMembers.every((member) => member.shares != null && member.shares > 0 && member.price != null && member.price > 0) &&
+        totalMarketValue > 0
+      const members = rawMembers.map((member) => {
+        const weightFraction = isWeightedComplete && totalMarketValue > 0 ? member.marketValue / totalMarketValue : 0
+        return {
+          ...member,
+          weightFraction,
+          weightPct: weightFraction * 100,
+        }
+      })
       const memberStocks = members
         .map((member) => member.stock)
         .filter((stock): stock is DashboardStock => Boolean(stock))
+      const weightRows = isWeightedComplete
+        ? buildPortfolioWeightRows(memberStocks, componentShares, { displayMode }).rows
+        : []
 
       return {
         id: definition.id,
@@ -502,24 +664,24 @@ export function IndexTab({
         stock_count: symbols.length,
         scores: {
           signal_engine:
-            computeScoreBlock(members, "signal_engine") ?? {
-              aggregate_signal_label: null,
-              aggregate_score_pct: null,
-              per_family: {},
-              breadth: { achat: 0, neutre: 0, vente: 0, indisponible: symbols.length },
-            },
-          wfo: computeScoreBlock(members, "wfo"),
+            isWeightedComplete
+              ? computeScoreBlock(members, "signal_engine", true) ?? emptyIndexScoreBlock(symbols.length)
+              : emptyIndexScoreBlock(symbols.length),
+          wfo: isWeightedComplete ? computeScoreBlock(members, "wfo", true) : null,
         },
         bestStats: summarizeBestSignals(memberStocks),
         technicalStats: summarizeTechnicalSignals(memberStocks),
-        portfolioEdge: definition.portfolio_edge ?? null,
+        weightSummary: isWeightedComplete ? summarizeWeightRows(weightRows) : null,
+        portfolioEdge: isWeightedComplete ? definition.portfolio_edge ?? null : null,
         members,
+        totalMarketValue,
+        isWeightedComplete,
         editable: true,
       } satisfies ComputedIndex
     })
 
     return [base, ...custom]
-  }, [baseIndex.name, customDefinitions, signalView, stockBySymbol, stocks])
+  }, [baseIndex.name, baseIndex.portfolio_edge, customDefinitions, displayMode, signalView, stockBySymbol, stocks])
 
   function symbolOptions(query: string) {
     const normalized = query.trim().toLowerCase()
@@ -531,12 +693,108 @@ export function IndexTab({
     )
   }
 
-  function toggleSymbol(symbols: string[], symbol: string, setSymbols: (next: string[]) => void) {
+  function toggleSymbol(
+    symbols: string[],
+    symbol: string,
+    setSymbols: (next: string[]) => void,
+    setShareInputs: (updater: (previous: Record<string, string>) => Record<string, string>) => void,
+  ) {
     if (symbols.includes(symbol)) {
       setSymbols(symbols.filter((item) => item !== symbol))
+      setShareInputs((previous) => {
+        const next = { ...previous }
+        delete next[symbol]
+        return next
+      })
       return
     }
     setSymbols([...symbols, symbol].sort())
+    setShareInputs((previous) => ({ ...previous, [symbol]: previous[symbol] ?? "" }))
+  }
+
+  function componentPreviewRows(symbols: string[], shareInputs: Record<string, string>): Record<string, PortfolioWeightRow> {
+    const selectedStocks = symbols
+      .map((symbol) => stockBySymbol.get(symbol))
+      .filter((stock): stock is DashboardStock => Boolean(stock))
+    return portfolioRowsBySymbol(buildPortfolioWeightRows(selectedStocks, shareInputs, { displayMode }).rows) as Record<string, PortfolioWeightRow>
+  }
+
+  function renderComponentShareEditor({
+    symbols,
+    shareInputs,
+    validationMessage,
+    onShareChange,
+  }: {
+    symbols: string[]
+    shareInputs: Record<string, string>
+    validationMessage: string | null
+    onShareChange: (symbol: string, value: string) => void
+  }) {
+    if (symbols.length === 0) {
+      return (
+        <div className="rounded-md border border-dashed px-3 py-3 text-sm text-muted-foreground">
+          Aucun composant selectionne.
+        </div>
+      )
+    }
+
+    const previewRows = componentPreviewRows(symbols, shareInputs)
+    const totalMarketValue = Object.values(previewRows).reduce((sum, row) => sum + (Number(row.marketValue) || 0), 0)
+
+    return (
+      <div className="space-y-2">
+        <div className="overflow-x-auto rounded-md border">
+          <Table className="min-w-[680px] text-[12px]">
+            <TableHeader>
+              <TableRow className="border-b border-border bg-bg2 hover:bg-bg2">
+                <TableHead className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Ticker</TableHead>
+                <TableHead className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Nom</TableHead>
+                <TableHead className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Actions</TableHead>
+                <TableHead className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Prix</TableHead>
+                <TableHead className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Poids</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {[...symbols].sort().map((symbol) => {
+                const stock = stockBySymbol.get(symbol)
+                const preview = previewRows[symbol]
+                const price = stock ? stockPriceForWeight(stock) : null
+                return (
+                  <TableRow key={`component-share-${symbol}`} className="border-b border-border/70 hover:bg-bg2">
+                    <TableCell className="dashboard-mono px-3 py-2.5 font-semibold">{symbol}</TableCell>
+                    <TableCell className="max-w-[220px] px-3 py-2.5">
+                      <div className="truncate text-[12px] font-medium">{stock?.display_name ?? "-"}</div>
+                    </TableCell>
+                    <TableCell className="px-3 py-2.5 text-right">
+                      <Input
+                        className="ml-auto h-8 w-24 text-right"
+                        inputMode="numeric"
+                        min={1}
+                        step={1}
+                        type="number"
+                        value={shareInputs[symbol] ?? ""}
+                        onChange={(event) => onShareChange(symbol, event.target.value)}
+                      />
+                    </TableCell>
+                    <TableCell className="dashboard-mono px-3 py-2.5 text-right text-[11px]">{formatMoneyCompact(price)}</TableCell>
+                    <TableCell className="dashboard-mono px-3 py-2.5 text-right text-[11px]">
+                      <div>{formatWeightPct(preview?.weightPct)}</div>
+                      <div className="text-[10px] text-muted-foreground">{formatMoneyCompact(preview?.marketValue)}</div>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+          <span className={validationMessage ? "text-destructive" : "text-muted-foreground"}>
+            {validationMessage ?? "Composants prets pour le calcul des poids."}
+          </span>
+          <span className="dashboard-mono text-muted-foreground">Valeur totale {formatMoneyCompact(totalMarketValue)}</span>
+        </div>
+      </div>
+    )
   }
 
   async function submitCreate() {
@@ -547,6 +805,7 @@ export function IndexTab({
       setCreateName("")
       setCreateSearch("")
       setCreateSymbols([])
+      setCreateShareInputs({})
       setShowCreate(false)
     } finally {
       setIsSubmitting(false)
@@ -558,6 +817,11 @@ export function IndexTab({
     setEditName(index.name)
     setEditSearch("")
     setEditSymbols(index.members.map((member) => member.symbol))
+    setEditShareInputs(
+      Object.fromEntries(
+        index.members.map((member) => [member.symbol, member.shares != null ? String(member.shares) : ""]),
+      ),
+    )
   }
 
   async function submitEdit() {
@@ -569,6 +833,7 @@ export function IndexTab({
       setEditName("")
       setEditSearch("")
       setEditSymbols([])
+      setEditShareInputs({})
     } finally {
       setIsSubmitting(false)
     }
@@ -601,7 +866,7 @@ export function IndexTab({
               <div>
                 <CardTitle className="text-base">Indices personnalises</CardTitle>
                 <p className="text-sm text-muted-foreground">
-                  Creez des indices a partir d'une liste manuelle d'actions.
+                  Creez des indices a partir d'une liste manuelle d'actions et de quantites.
                 </p>
               </div>
               <Button
@@ -637,13 +902,21 @@ export function IndexTab({
                     <input
                       type="checkbox"
                       checked={createSymbols.includes(stock.symbol)}
-                      onChange={() => toggleSymbol(createSymbols, stock.symbol, setCreateSymbols)}
+                      onChange={() => toggleSymbol(createSymbols, stock.symbol, setCreateSymbols, setCreateShareInputs)}
                     />
                     <span className="font-mono">{stock.symbol}</span>
                     <span className="text-muted-foreground">{stock.display_name ?? "-"}</span>
                   </label>
                 ))}
               </div>
+              {renderComponentShareEditor({
+                symbols: createSymbols,
+                shareInputs: createShareInputs,
+                validationMessage: createShareMessage,
+                onShareChange: (symbol, value) => {
+                  setCreateShareInputs((previous) => ({ ...previous, [symbol]: value }))
+                },
+              })}
               <div className="flex items-center gap-2">
                 <Button
                   type="button"
@@ -662,6 +935,7 @@ export function IndexTab({
                     setCreateName("")
                     setCreateSearch("")
                     setCreateSymbols([])
+                    setCreateShareInputs({})
                   }}
                 >
                   Annuler
@@ -686,7 +960,8 @@ export function IndexTab({
           if (isTechnicalMode && left.stock && right.stock) return compareTechnicalSignalStocks(left.stock, right.stock)
           return compareIndexMembers(left, right)
         })
-        const memberColumnCount = 2 + shownFamilies.length + 3 + (!isTechnicalMode && edgeEnabled ? 2 : 0) + 1
+        const showComponentWeights = index.editable
+        const memberColumnCount = 2 + (showComponentWeights ? 3 : 0) + shownFamilies.length + 3 + (!isTechnicalMode && edgeEnabled ? 2 : 0) + 1
         return (
           <Collapsible key={index.id} open={isOpen}>
             <Card className="dashboard-panel">
@@ -764,13 +1039,21 @@ export function IndexTab({
                           <input
                             type="checkbox"
                             checked={editSymbols.includes(stock.symbol)}
-                            onChange={() => toggleSymbol(editSymbols, stock.symbol, setEditSymbols)}
+                            onChange={() => toggleSymbol(editSymbols, stock.symbol, setEditSymbols, setEditShareInputs)}
                           />
                           <span className="font-mono">{stock.symbol}</span>
                           <span className="text-muted-foreground">{stock.display_name ?? "-"}</span>
                         </label>
                       ))}
                     </div>
+                    {renderComponentShareEditor({
+                      symbols: editSymbols,
+                      shareInputs: editShareInputs,
+                      validationMessage: editShareMessage,
+                      onShareChange: (symbol, value) => {
+                        setEditShareInputs((previous) => ({ ...previous, [symbol]: value }))
+                      },
+                    })}
                     <div className="flex items-center gap-2">
                       <Button
                         type="button"
@@ -789,6 +1072,7 @@ export function IndexTab({
                           setEditName("")
                           setEditSearch("")
                           setEditSymbols([])
+                          setEditShareInputs({})
                         }}
                       >
                         Annuler
@@ -858,11 +1142,18 @@ export function IndexTab({
                 {isOpen && (
                   <CardContent className="pt-0">
                     <div className="rounded-md border">
-                      <Table className="min-w-[1080px] text-[12px]">
+                      <Table className={cn(showComponentWeights ? "min-w-[1280px]" : "min-w-[1080px]", "text-[12px]")}>
                         <TableHeader>
                           <TableRow className="border-b border-border bg-bg2 hover:bg-bg2">
                             <TableHead className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Ticker</TableHead>
                             <TableHead className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Nom</TableHead>
+                            {showComponentWeights ? (
+                              <>
+                                <TableHead className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Actions</TableHead>
+                                <TableHead className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Prix</TableHead>
+                                <TableHead className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Poids</TableHead>
+                              </>
+                            ) : null}
                             {shownFamilies.map((family) => (
                               <TableHead key={`${index.id}-member-${family}`} className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                                 {FAMILY_SHORT_LABELS[family]}
@@ -900,7 +1191,7 @@ export function IndexTab({
                               const href = member.stock
                                 ? isTechnicalMode
                                   ? technicalHref(member.stock, horizon)
-                                  : evidenceHref(member.stock, horizon, signalView, scoreSource)
+                                  : evidenceHref(member.stock, horizon)
                                 : null
 
                               return (
@@ -923,6 +1214,16 @@ export function IndexTab({
                                       <div className="text-[12px] font-medium text-muted-foreground">{member.display_name ?? "-"}</div>
                                     )}
                                   </TableCell>
+                                  {showComponentWeights ? (
+                                    <>
+                                      <TableCell className="dashboard-mono px-3 py-2.5 text-right text-[11px]">{member.shares ?? "--"}</TableCell>
+                                      <TableCell className="dashboard-mono px-3 py-2.5 text-right text-[11px]">{formatMoneyCompact(member.price)}</TableCell>
+                                      <TableCell className="dashboard-mono px-3 py-2.5 text-right text-[11px]">
+                                        <div>{formatWeightPct(index.isWeightedComplete ? member.weightPct : null)}</div>
+                                        <div className="text-[10px] text-muted-foreground">{formatMoneyCompact(member.marketValue)}</div>
+                                      </TableCell>
+                                    </>
+                                  ) : null}
                                   {shownFamilies.map((family) => (
                                     <TableCell key={`${index.id}-${member.symbol}-${family}`} className="px-3 py-2.5">
                                       {isTechnicalMode ? (

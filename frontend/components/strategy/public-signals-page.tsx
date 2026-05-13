@@ -274,9 +274,10 @@ export function PublicSignalsPage() {
   const requestedSymbol = (searchParams.get("symbol") ?? "").toUpperCase()
   const requestedHorizon = parseHorizon(searchParams.get("horizon"))
   const requestedView = parseSignalView(searchParams.get("view"))
+  const viewParam = searchParams.get("view")
   const requestedEvidenceVariant = evidenceVariantFromQuery(
-    searchParams.get("evidence_variant"),
-    searchParams.get("view"),
+    viewParam ?? searchParams.get("evidence_variant"),
+    viewParam,
     searchParams.get("variant"),
   )
   const requestedSelectedVariantId = selectedSignalVariantIdFromQuery(searchParams.get("variant"))

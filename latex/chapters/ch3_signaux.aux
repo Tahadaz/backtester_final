@@ -1,0 +1,231 @@
+\relax 
+\providecommand\zref@newlabel[2]{}
+\providecommand\hyper@newdestlabel[2]{}
+\@writefile{toc}{\contentsline {chapter}{\numberline {3}Moteur de Signaux Personnalisé}{34}{chapter.148}\protected@file@percent }
+\@writefile{lof}{\addvspace {10\p@ }}
+\@writefile{lot}{\addvspace {10\p@ }}
+\newlabel{ch:signaux}{{3}{34}{Moteur de Signaux Personnalisé}{chapter.148}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {3.1}Philosophie~: Un Signal n'est Pas une Stratégie}{34}{section.149}\protected@file@percent }
+\newlabel{sec:philosophie_signal}{{3.1}{34}{Philosophie~: Un Signal n'est Pas une Stratégie}{section.149}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1.1}La distinction fondamentale}{34}{subsection.150}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {3.1}{\ignorespaces \xpg@aux {}{french}\ignorespaces Signal versus Stratégie~: distinction architecturale fondamentale}}{34}{table.151}\protected@file@percent }
+\newlabel{tab:signal_vs_strategie}{{3.1}{34}{\texorpdfstring {\xpg@aux {\xpg@current@opts }{\languagename }}{}\ignorespaces Signal versus Stratégie~: distinction architecturale fondamentale}{table.151}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1.2}Les cinq piliers initiaux}{35}{subsection.152}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3.2}Le Problème des Tests Multiples}{35}{section.158}\protected@file@percent }
+\newlabel{sec:tests_multiples}{{3.2}{35}{Le Problème des Tests Multiples}{section.158}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2.1}Formalisation}{35}{subsection.159}\protected@file@percent }
+\newlabel{eq:faux_pos_ch2}{{3.1}{35}{Formalisation}{equation.160}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2.2}Le fondement information-théorique}{35}{subsection.161}\protected@file@percent }
+\newlabel{eq:info_mutuelle}{{3.2}{35}{Le fondement information-théorique}{equation.162}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2.3}Le coût de friction}{36}{subsection.163}\protected@file@percent }
+\newlabel{eq:edge_minimal}{{3.3}{36}{Le coût de friction}{equation.164}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {3.3}Vue d'Ensemble~: Le Pipeline en 7 Couches}{36}{section.165}\protected@file@percent }
+\newlabel{sec:pipeline_vue}{{3.3}{36}{Vue d'Ensemble~: Le Pipeline en 7 Couches}{section.165}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {3.1}{\ignorespaces \xpg@aux {}{french}\ignorespaces Le pipeline Signal Engine en 7 couches (Layers A→G). Source~: documentation locale du moteur de signaux~\blx@tocontentsinit {0}\cite {repo_signal_docs}.}}{36}{figure.166}\protected@file@percent }
+\newlabel{fig:pipeline_ag}{{3.1}{36}{\texorpdfstring {\xpg@aux {\xpg@current@opts }{\languagename }}{}\ignorespaces Le pipeline Signal Engine en 7 couches (Layers A→G). Source~: documentation locale du moteur de signaux~\cite {repo_signal_docs}}{figure.166}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {3.2}{\ignorespaces \xpg@aux {}{french}\ignorespaces Défenses anti-overfitting par couche du pipeline}}{37}{table.167}\protected@file@percent }
+\newlabel{tab:pipeline_defenses}{{3.2}{37}{\texorpdfstring {\xpg@aux {\xpg@current@opts }{\languagename }}{}\ignorespaces Défenses anti-overfitting par couche du pipeline}{table.167}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {3.4}Layer A --- L'Univers des Candidats}{37}{section.168}\protected@file@percent }
+\newlabel{sec:layer_a}{{3.4}{37}{Layer A --- L'Univers des Candidats}{section.168}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.4.1}Pourquoi une grille structurée~?}{37}{subsection.169}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.4.2}Les 20 familles d'indicateurs}{37}{subsection.170}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {3.3}{\ignorespaces \xpg@aux {}{french}\ignorespaces Les 20 familles d'indicateurs du Signal Engine}}{38}{table.171}\protected@file@percent }
+\newlabel{tab:20familles}{{3.3}{38}{\texorpdfstring {\xpg@aux {\xpg@current@opts }{\languagename }}{}\ignorespaces Les 20 familles d'indicateurs du Signal Engine}{table.171}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.4.3}Les horizons temporels}{38}{subsection.172}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {3.4}{\ignorespaces \xpg@aux {}{french}\ignorespaces Grille de paramètres de la famille SMA par horizon (30 valeurs chacun)}}{39}{table.173}\protected@file@percent }
+\newlabel{tab:sma_grid}{{3.4}{39}{\texorpdfstring {\xpg@aux {\xpg@current@opts }{\languagename }}{}\ignorespaces Grille de paramètres de la famille SMA par horizon (30 valeurs chacun)}{table.173}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.4.4}Implémentation~: pattern registre décorateur}{39}{subsection.174}\protected@file@percent }
+\newlabel{lst:register_family}{{3.1}{39}{Pattern d'enregistrement des familles d'indicateurs (Layer A)}{lstlisting.175}{}}
+\@writefile{lol}{\contentsline {lstlisting}{\numberline {3.1}Pattern d'enregistrement des familles d'indicateurs (Layer A)}{39}{lstlisting.175}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3.5}Layer B --- Validation par Sous-Périodes}{39}{section.190}\protected@file@percent }
+\newlabel{sec:layer_b}{{3.5}{39}{Layer B --- Validation par Sous-Périodes}{section.190}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.5.1}Le contrat signal}{39}{subsection.191}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.5.2}Les fenêtres de sous-périodes indépendantes}{40}{subsection.196}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {3.2}{\ignorespaces \xpg@aux {}{french}\ignorespaces Fenêtres de sous-périodes pour l'évaluation de la stabilité (Layer B). Chaque variante est évaluée avec ses paramètres fixes sur $n$ fenêtres indépendantes.}}{40}{figure.197}\protected@file@percent }
+\newlabel{fig:oos_windows}{{3.2}{40}{\texorpdfstring {\xpg@aux {\xpg@current@opts }{\languagename }}{}\ignorespaces Fenêtres de sous-périodes pour l'évaluation de la stabilité (Layer B). Chaque variante est évaluée avec ses paramètres fixes sur $n$ fenêtres indépendantes}{figure.197}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.5.3}Métriques calculées par sous-période}{40}{subsection.198}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3.6}Layer C --- Score de Robustesse Multi-composante}{41}{section.199}\protected@file@percent }
+\newlabel{sec:layer_c}{{3.6}{41}{Layer C --- Score de Robustesse Multi-composante}{section.199}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.6.1}Le gate de viabilité}{41}{subsection.200}\protected@file@percent }
+\newlabel{eq:viability_gate}{{3.4}{41}{Le gate de viabilité}{equation.201}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.6.2}Le score de fiabilité composite}{41}{subsection.202}\protected@file@percent }
+\newlabel{eq:reliability}{{3.5}{41}{Le score de fiabilité composite}{equation.203}{}}
+\newlabel{eq:sharpe_score}{{3.6}{41}{Le score de fiabilité composite}{equation.204}{}}
+\newlabel{eq:stability_score}{{3.7}{41}{Le score de fiabilité composite}{equation.205}{}}
+\newlabel{eq:consistency_score}{{3.8}{41}{Le score de fiabilité composite}{equation.206}{}}
+\newlabel{eq:drawdown_score}{{3.9}{42}{Le score de fiabilité composite}{equation.207}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.6.3}Justification des poids}{42}{subsection.208}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3.7}Layers D et E --- Filtrage et Réduction de Redondance}{42}{section.209}\protected@file@percent }
+\newlabel{sec:layers_de}{{3.7}{42}{Layers D et E --- Filtrage et Réduction de Redondance}{section.209}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.7.1}Layer D — Filtre de Survie}{42}{subsection.210}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.7.2}Layer E — Réduction de Redondance}{43}{subsection.214}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {3.3}{\ignorespaces \xpg@aux {}{french}\ignorespaces Principe de réduction de redondance par corrélation~: les variantes trop corrélées sont remplacées par quelques représentants. Source~: couche~E du Signal Engine~\blx@tocontentsinit {0}\cite {repo_signal_docs}.}}{43}{figure.220}\protected@file@percent }
+\newlabel{fig:correlation_heatmap}{{3.3}{43}{\texorpdfstring {\xpg@aux {\xpg@current@opts }{\languagename }}{}\ignorespaces Principe de réduction de redondance par corrélation~: les variantes trop corrélées sont remplacées par quelques représentants. Source~: couche~E du Signal Engine~\cite {repo_signal_docs}}{figure.220}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {3.8}Layers F et G --- Signal Courant et Ensemble}{44}{section.221}\protected@file@percent }
+\newlabel{sec:layers_fg}{{3.8}{44}{Layers F et G --- Signal Courant et Ensemble}{section.221}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.8.1}Layer F — Signal Courant par Représentant}{44}{subsection.222}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {3.5}{\ignorespaces \xpg@aux {}{french}\ignorespaces Labels de signal par catégorie selon le score d'ensemble (mêmes seuils que la couche G)}}{44}{table.227}\protected@file@percent }
+\newlabel{tab:labels_signal}{{3.5}{44}{\texorpdfstring {\xpg@aux {\xpg@current@opts }{\languagename }}{}\ignorespaces Labels de signal par catégorie selon le score d'ensemble (mêmes seuils que la couche G)}{table.227}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.8.2}Layer G — Combinaison Pondérée (Ensemble)}{44}{subsection.228}\protected@file@percent }
+\newlabel{sec:signaux_ensemble}{{3.8.2}{44}{Layer G — Combinaison Pondérée (Ensemble)}{subsection.228}{}}
+\newlabel{eq:ensemble}{{3.10}{44}{Layer G — Combinaison Pondérée (Ensemble)}{equation.229}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {3.6}{\ignorespaces \xpg@aux {}{french}\ignorespaces Exemple de calcul du score ensemble pour la famille Tendance sur IAM (données illustratives)}}{45}{table.230}\protected@file@percent }
+\newlabel{tab:ensemble_exemple}{{3.6}{45}{\texorpdfstring {\xpg@aux {\xpg@current@opts }{\languagename }}{}\ignorespaces Exemple de calcul du score ensemble pour la famille Tendance sur IAM (données illustratives)}{table.230}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {3.9}Limites et Perspectives du Moteur de Signaux}{45}{section.231}\protected@file@percent }
+\newlabel{sec:limites_signaux}{{3.9}{45}{Limites et Perspectives du Moteur de Signaux}{section.231}{}}
+\@setckpt{chapters/ch3_signaux}{
+\setcounter{page}{47}
+\setcounter{equation}{10}
+\setcounter{enumi}{3}
+\setcounter{enumii}{0}
+\setcounter{enumiii}{0}
+\setcounter{enumiv}{0}
+\setcounter{footnote}{0}
+\setcounter{mpfootnote}{0}
+\setcounter{part}{0}
+\setcounter{chapter}{3}
+\setcounter{section}{9}
+\setcounter{subsection}{0}
+\setcounter{subsubsection}{0}
+\setcounter{paragraph}{0}
+\setcounter{subparagraph}{0}
+\setcounter{figure}{3}
+\setcounter{table}{6}
+\setcounter{footdir@label}{0}
+\setcounter{tmpA}{0}
+\setcounter{tmpB}{0}
+\setcounter{tmpC}{0}
+\setcounter{tmpD}{0}
+\setcounter{tmpE}{0}
+\setcounter{tmpF}{0}
+\setcounter{Hijriday}{0}
+\setcounter{Hijrimonth}{0}
+\setcounter{Hijriyear}{0}
+\setcounter{float@type}{8}
+\setcounter{LT@tables}{2}
+\setcounter{LT@chunks}{4}
+\setcounter{parentequation}{0}
+\setcounter{lofdepth}{1}
+\setcounter{lotdepth}{1}
+\setcounter{lstnumber}{15}
+\setcounter{section@level}{0}
+\setcounter{Item}{46}
+\setcounter{Hfootnote}{0}
+\setcounter{Hy@AnnotLevel}{0}
+\setcounter{bookmark@seq@number}{101}
+\setcounter{tabx@nest}{0}
+\setcounter{listtotal}{0}
+\setcounter{listcount}{0}
+\setcounter{liststart}{0}
+\setcounter{liststop}{0}
+\setcounter{citecount}{0}
+\setcounter{citetotal}{0}
+\setcounter{multicitecount}{0}
+\setcounter{multicitetotal}{0}
+\setcounter{instcount}{99}
+\setcounter{maxnames}{3}
+\setcounter{minnames}{1}
+\setcounter{maxitems}{3}
+\setcounter{minitems}{1}
+\setcounter{citecounter}{0}
+\setcounter{maxcitecounter}{0}
+\setcounter{savedcitecounter}{0}
+\setcounter{uniquelist}{0}
+\setcounter{uniquename}{0}
+\setcounter{refsection}{0}
+\setcounter{refsegment}{0}
+\setcounter{maxextratitle}{0}
+\setcounter{maxextratitleyear}{0}
+\setcounter{maxextraname}{6}
+\setcounter{maxextradate}{0}
+\setcounter{maxextraalpha}{0}
+\setcounter{abbrvpenalty}{50}
+\setcounter{highnamepenalty}{50}
+\setcounter{lownamepenalty}{25}
+\setcounter{maxparens}{3}
+\setcounter{parenlevel}{0}
+\setcounter{blx@maxsection}{0}
+\setcounter{mincomprange}{10}
+\setcounter{maxcomprange}{100000}
+\setcounter{mincompwidth}{1}
+\setcounter{afterword}{0}
+\setcounter{savedafterword}{0}
+\setcounter{annotator}{0}
+\setcounter{savedannotator}{0}
+\setcounter{author}{0}
+\setcounter{savedauthor}{0}
+\setcounter{bookauthor}{0}
+\setcounter{savedbookauthor}{0}
+\setcounter{commentator}{0}
+\setcounter{savedcommentator}{0}
+\setcounter{editor}{0}
+\setcounter{savededitor}{0}
+\setcounter{editora}{0}
+\setcounter{savededitora}{0}
+\setcounter{editorb}{0}
+\setcounter{savededitorb}{0}
+\setcounter{editorc}{0}
+\setcounter{savededitorc}{0}
+\setcounter{foreword}{0}
+\setcounter{savedforeword}{0}
+\setcounter{holder}{0}
+\setcounter{savedholder}{0}
+\setcounter{introduction}{0}
+\setcounter{savedintroduction}{0}
+\setcounter{namea}{0}
+\setcounter{savednamea}{0}
+\setcounter{nameb}{0}
+\setcounter{savednameb}{0}
+\setcounter{namec}{0}
+\setcounter{savednamec}{0}
+\setcounter{translator}{0}
+\setcounter{savedtranslator}{0}
+\setcounter{shortauthor}{0}
+\setcounter{savedshortauthor}{0}
+\setcounter{shorteditor}{0}
+\setcounter{savedshorteditor}{0}
+\setcounter{labelname}{0}
+\setcounter{savedlabelname}{0}
+\setcounter{institution}{0}
+\setcounter{savedinstitution}{0}
+\setcounter{lista}{0}
+\setcounter{savedlista}{0}
+\setcounter{listb}{0}
+\setcounter{savedlistb}{0}
+\setcounter{listc}{0}
+\setcounter{savedlistc}{0}
+\setcounter{listd}{0}
+\setcounter{savedlistd}{0}
+\setcounter{liste}{0}
+\setcounter{savedliste}{0}
+\setcounter{listf}{0}
+\setcounter{savedlistf}{0}
+\setcounter{location}{0}
+\setcounter{savedlocation}{0}
+\setcounter{organization}{0}
+\setcounter{savedorganization}{0}
+\setcounter{origlocation}{0}
+\setcounter{savedoriglocation}{0}
+\setcounter{origpublisher}{0}
+\setcounter{savedorigpublisher}{0}
+\setcounter{publisher}{0}
+\setcounter{savedpublisher}{0}
+\setcounter{language}{0}
+\setcounter{savedlanguage}{0}
+\setcounter{origlanguage}{0}
+\setcounter{savedoriglanguage}{0}
+\setcounter{pageref}{0}
+\setcounter{savedpageref}{0}
+\setcounter{textcitecount}{0}
+\setcounter{textcitetotal}{0}
+\setcounter{textcitemaxnames}{0}
+\setcounter{biburlbigbreakpenalty}{100}
+\setcounter{biburlbreakpenalty}{200}
+\setcounter{biburlnumpenalty}{9000}
+\setcounter{biburlucpenalty}{8000}
+\setcounter{biburllcpenalty}{7000}
+\setcounter{smartand}{1}
+\setcounter{bbx:relatedcount}{0}
+\setcounter{bbx:relatedtotal}{0}
+\setcounter{lstlisting}{1}
+}

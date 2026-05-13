@@ -1,0 +1,35 @@
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {1.1}{\ignorespaces \xpg@aux {}{french}\ignorespaces Exemples de valeurs représentatives de l'univers actions marocain. Sources~: Bourse de Casablanca~\blx@tocontentsinit {0}\cite {bourse_casablanca_masi,bourse_casablanca_indices} et observations internes du stage~\blx@tocontentsinit {0}\cite {rapport_s1}.}}{7}{table.22}%
+\contentsline {table}{\numberline {1.2}{\ignorespaces \xpg@aux {}{french}\ignorespaces Matrice comparative des principales familles de plateformes d'analyse technique. Sources~: analyse comparative interne~\blx@tocontentsinit {0}\cite {rapport_s1}, TradingView~\blx@tocontentsinit {0}\cite {tradingview_web} et Investing.com~\blx@tocontentsinit {0}\cite {investing_web}.}}{12}{table.38}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {2.1}{Récapitulatif des 20 familles d'indicateurs de la plateforme}}{31}{table.2.1}%
+\contentsline {table}{\numberline {2.2}{\ignorespaces \xpg@aux {}{french}\ignorespaces Problèmes de l'AT naïve et réponses du Signal Engine (Chapitre~\ref {ch:signaux})}}{33}{table.147}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {3.1}{\ignorespaces \xpg@aux {}{french}\ignorespaces Signal versus Stratégie~: distinction architecturale fondamentale}}{34}{table.151}%
+\contentsline {table}{\numberline {3.2}{\ignorespaces \xpg@aux {}{french}\ignorespaces Défenses anti-overfitting par couche du pipeline}}{37}{table.167}%
+\contentsline {table}{\numberline {3.3}{\ignorespaces \xpg@aux {}{french}\ignorespaces Les 20 familles d'indicateurs du Signal Engine}}{38}{table.171}%
+\contentsline {table}{\numberline {3.4}{\ignorespaces \xpg@aux {}{french}\ignorespaces Grille de paramètres de la famille SMA par horizon (30 valeurs chacun)}}{39}{table.173}%
+\contentsline {table}{\numberline {3.5}{\ignorespaces \xpg@aux {}{french}\ignorespaces Labels de signal par catégorie selon le score d'ensemble (mêmes seuils que la couche G)}}{44}{table.227}%
+\contentsline {table}{\numberline {3.6}{\ignorespaces \xpg@aux {}{french}\ignorespaces Exemple de calcul du score ensemble pour la famille Tendance sur IAM (données illustratives)}}{45}{table.230}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {4.1}{\ignorespaces \xpg@aux {}{french}\ignorespaces Exemple d'effet de la pénalité $\sqrt {N}$ du PROM}}{50}{table.257}%
+\contentsline {table}{\numberline {4.2}{\ignorespaces \xpg@aux {}{french}\ignorespaces Système de notation WFO — Grade de robustesse par catégorie}}{53}{table.278}%
+\contentsline {table}{\numberline {4.3}{\ignorespaces \xpg@aux {}{french}\ignorespaces Classification du signal global WFO en recommandations opérationnelles}}{54}{table.285}%
+\contentsline {table}{\numberline {4.4}{\ignorespaces \xpg@aux {}{french}\ignorespaces Comparaison Signal Engine A→G vs Moteur WFO des Signaux}}{55}{table.288}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {5.1}{\ignorespaces \xpg@aux {}{french}\ignorespaces Les quatre stations déployées de la plateforme}}{56}{table.292}%
+\contentsline {table}{\numberline {5.2}{\ignorespaces \xpg@aux {}{french}\ignorespaces Composants de la stack et leurs rôles}}{58}{table.296}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {6.1}{\ignorespaces \xpg@aux {}{french}\ignorespaces Correspondance entre les axes du besoin et les sections du dashboard}}{66}{table.323}%
+\contentsline {table}{\numberline {6.2}{\ignorespaces \xpg@aux {}{french}\ignorespaces Labels de signal par catégorie selon le score d'ensemble}}{67}{table.327}%
+\contentsline {table}{\numberline {6.3}{\ignorespaces \xpg@aux {}{french}\ignorespaces Exemple de table supports/résistances pour IAM (exemple de restitution opérationnelle)}}{70}{table.338}%
+\contentsline {table}{\numberline {6.4}{\ignorespaces \xpg@aux {}{french}\ignorespaces Colonnes du leaderboard WFO}}{71}{table.343}%
+\contentsline {table}{\numberline {6.5}{\ignorespaces \xpg@aux {}{french}\ignorespaces Performance WFO par régime de marché~: IAM SMA moyen terme (scénario de lecture)}}{74}{table.357}%
+\contentsline {table}{\numberline {6.6}{\ignorespaces \xpg@aux {}{french}\ignorespaces Exemple de leaderboard~: stratégies validées par WFO (scénario de lecture)}}{74}{table.359}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {7.1}{\ignorespaces \xpg@aux {}{french}\ignorespaces Exemple de Matrice de Capacité Prédictive (Rendements forward annualisés)}}{78}{table.376}%
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\addvspace {10\p@ }

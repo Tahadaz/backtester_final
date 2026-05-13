@@ -29,6 +29,8 @@ export type SignalCandidateRef = {
   bucket?: string | null
   direction?: string | null
   signal_label?: string | null
+  edge_score?: number | null
+  edge_score_components?: Record<string, number>
   score?: number | null
   action_expected_return_net?: number | null
   action_expected_return_net_ci_lower?: number | null
@@ -360,6 +362,14 @@ export function normalizeSignalCandidateRef(raw: unknown): SignalCandidateRef | 
     bucket: optionalString(raw.bucket),
     direction: optionalString(raw.direction),
     signal_label: optionalString(raw.signal_label),
+    edge_score: optionalNumber(raw.edge_score),
+    edge_score_components: isRecord(raw.edge_score_components)
+      ? Object.fromEntries(
+          Object.entries(raw.edge_score_components)
+            .map(([key, value]) => [key, optionalNumber(value)])
+            .filter((entry): entry is [string, number] => entry[1] != null),
+        )
+      : {},
     score: optionalNumber(raw.score),
     action_expected_return_net: optionalNumber(raw.action_expected_return_net),
     action_expected_return_net_ci_lower: optionalNumber(raw.action_expected_return_net_ci_lower),

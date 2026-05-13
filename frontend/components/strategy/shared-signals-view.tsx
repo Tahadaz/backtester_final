@@ -17,7 +17,6 @@ type SharedSignalsViewProps = {
   variant: ExpandedSignalsPageView
   topbarContent?: ReactNode
   defaultTab?: "technique" | "evidence" | "indicateurs" | "wfo" | "backtest"
-  evidenceVariant?: string
   evidenceSource?: "auto" | "signal_engine" | "wfo"
   selectedVariantId?: string | null
 }
@@ -66,7 +65,6 @@ export function SharedSignalsView({
   variant,
   topbarContent,
   defaultTab,
-  evidenceVariant = variant,
   evidenceSource = "auto",
   selectedVariantId = null,
 }: SharedSignalsViewProps) {
@@ -101,7 +99,7 @@ export function SharedSignalsView({
           <SignalEvidenceTab
             symbol={selectedSymbol}
             horizon={horizon}
-            variant={evidenceVariant}
+            variant={variant}
             source={evidenceSource}
             selectedVariantId={selectedVariantId}
             cooldownBars={cooldownBars}

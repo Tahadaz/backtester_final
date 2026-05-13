@@ -222,6 +222,21 @@ def test_signal_candidate_rows_keep_eligible_candidates_first(monkeypatch: pytes
     assert rows[1]["exclusion_reason"] == "Below ADV20 liquidity gate."
 
 
+def test_signal_candidate_sort_by_edge_score_prefers_edge_score_metric() -> None:
+    rows = [
+        {"symbol": "LOW", "eligible": True, "edge_score": 25.0, "score": 0.05},
+        {"symbol": "HIGH", "eligible": True, "edge_score": 80.0, "score": 0.01},
+        {"symbol": "FALLBACK", "eligible": True, "score": 0.07},
+    ]
+
+    sorted_rows = strategy_router._sort_signal_candidate_rows(
+        rows,
+        SignalCandidateRequest(horizon="short", sort_by="edge_score", sort_dir="desc"),
+    )
+
+    assert [row["symbol"] for row in sorted_rows] == ["HIGH", "LOW", "FALLBACK"]
+
+
 def test_universe_uses_market_data_store_when_stock_master_is_empty(
     client_and_session,
     monkeypatch: pytest.MonkeyPatch,

@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { Component, useCallback, useEffect, useMemo, useState, type ErrorInfo, type ReactNode } from "react"
 import type {
   AvailabilityCalendar,
   MarketCatalogRow,
@@ -32,7 +32,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Check, ChevronLeft, ChevronRight, Pencil, Plus, Trash2, X } from "lucide-react"
+import { AlertTriangle, Check, ChevronLeft, ChevronRight, Pencil, Plus, Trash2, X } from "lucide-react"
 import { toast } from "sonner"
 
 type CalendarDay = AvailabilityCalendar["days"][number]
@@ -613,6 +613,111 @@ function DataQualityReport({ calendar, onFocusDates }: { calendar: AvailabilityC
   )
 }
 
+function detailErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Erreur inconnue"
+}
+
+function DetailErrorFallback({ error, onClose }: { error: Error; onClose: () => void }) {
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto bg-slate-100/60 px-6 py-6">
+      <div className="mx-auto max-w-3xl rounded-2xl border border-red-200 bg-white p-6">
+        <div className="flex items-start gap-3">
+          <div className="rounded-full bg-red-50 p-2 text-red-600">
+            <AlertTriangle className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-sm font-semibold text-red-950">Detail indisponible</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Le panneau a rencontre une erreur pendant le rendu. Fermez ce panneau puis
+              reessayez un autre titre.
+            </p>
+            <pre className="mt-3 max-h-40 overflow-auto rounded-md bg-red-50 p-3 text-xs text-red-900">
+              {error.message}
+            </pre>
+            <Button type="button" className="mt-4" onClick={onClose}>
+              Fermer le panneau
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+class DetailErrorBoundary extends Component<
+  { children: ReactNode; resetKey: string; onClose: () => void },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null }
+
+  static getDerivedStateFromError(error: Error) {
+    return { error }
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("Stock detail panel crashed", error, info)
+  }
+
+  componentDidUpdate(prevProps: { resetKey: string }) {
+    if (prevProps.resetKey !== this.props.resetKey && this.state.error) {
+      this.setState({ error: null })
+    }
+  }
+
+  render() {
+    if (this.state.error) {
+      return <DetailErrorFallback error={this.state.error} onClose={this.props.onClose} />
+    }
+    return this.props.children
+  }
+}
+
+function DetailSectionError({ title, error }: { title: string; error: unknown }) {
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+      <div className="font-medium">{title}</div>
+      <div className="mt-1 text-xs text-amber-800">{detailErrorMessage(error)}</div>
+    </div>
+  )
+}
+
+function StockDetailHeader({ row }: { row: MarketCatalogRow }) {
+  return (
+    <div className="shrink-0 border-b bg-slate-50/80 px-6 py-5">
+      <SheetHeader className="gap-3 p-0 text-left">
+        <div className="flex flex-wrap items-center gap-3">
+          <SheetTitle className="text-2xl font-semibold tracking-tight">
+            {row.symbol}
+          </SheetTitle>
+          {row.is_tracked && <Badge variant="outline">Tracked</Badge>}
+          {row.source_provider && (
+            <Badge variant="secondary" className="capitalize">
+              {row.source_provider}
+            </Badge>
+          )}
+        </div>
+        <SheetDescription className="max-w-3xl text-sm">
+          Historique complet OHLCV avec chandelier, volume et calendrier de disponibilite
+          des seances.
+        </SheetDescription>
+      </SheetHeader>
+
+      <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+          <div>
+            <span className="font-medium text-slate-900">Derniere barre:</span>{" "}
+            {row.data_as_of ?? row.end_ts?.slice(0, 10) ?? "-"}
+          </div>
+          <div>
+            <span className="font-medium text-slate-900">Historique:</span>{" "}
+            {row.row_count?.toLocaleString() ?? "-"}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function QuickFacts({ row, history }: { row: MarketCatalogRow; history?: OhlcvHistory }) {
   return (
     <div className="rounded-2xl border bg-slate-50/70 p-4">
@@ -639,25 +744,37 @@ function QuickFacts({ row, history }: { row: MarketCatalogRow; history?: OhlcvHi
   )
 }
 
-export function StockDetailPanel({
+function StockDetailBody({
   row,
   open,
-  onClose,
   onSaved,
 }: {
-  row: MarketCatalogRow | null
+  row: MarketCatalogRow
   open: boolean
-  onClose: () => void
   onSaved: () => void
 }) {
-  const symbol = row?.symbol ?? null
-  const { data: preview, isLoading: previewLoading, mutate: mutatePreview } = useStockOhlcvPreview(open ? symbol : null, {
+  const symbol = row.symbol
+  const requestSymbol = open && row.has_canonical_data ? symbol : null
+  const {
+    data: preview,
+    error: previewError,
+    isLoading: previewLoading,
+    mutate: mutatePreview,
+  } = useStockOhlcvPreview(requestSymbol, {
     limit: 10,
   })
-  const { data: history, isLoading: historyLoading, mutate: mutateHistory } = useStockOhlcvHistory(open ? symbol : null)
-  const { data: calendar, isLoading: calendarLoading, mutate: mutateCalendar } = useStockAvailabilityCalendar(
-    open ? symbol : null
-  )
+  const {
+    data: history,
+    error: historyError,
+    isLoading: historyLoading,
+    mutate: mutateHistory,
+  } = useStockOhlcvHistory(requestSymbol)
+  const {
+    data: calendar,
+    error: calendarError,
+    isLoading: calendarLoading,
+    mutate: mutateCalendar,
+  } = useStockAvailabilityCalendar(requestSymbol)
 
   const [editMode, setEditMode] = useState(false)
   const [editRow, setEditRow] = useState<Record<string, string> | null>(null)
@@ -679,7 +796,6 @@ export function StockDetailPanel({
   type Bar = { date: string; open?: number | null; high?: number | null; low?: number | null; close?: number | null; volume?: number | null }
   const displayBars: Bar[] = useMemo(() => {
     if (!focusDates) return preview?.bars.slice(0, 10) ?? []
-    const focusSet = new Set(focusDates)
     const histBars = history?.bars ?? []
     // Build date→index map for neighbor lookup
     const dateIdx = new Map(histBars.map((b, i) => [b.date.slice(0, 10), i]))
@@ -711,51 +827,38 @@ export function StockDetailPanel({
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null)
 
   useEffect(() => {
+    setEditMode(false)
+    setEditRow(null)
+    setAddingRow(false)
+    setNewRow({ date: "", open: "", high: "", low: "", close: "", volume: "" })
+    setFocusDates(null)
+    setSelectedMonth(null)
+  }, [open, symbol])
+
+  useEffect(() => {
     if (!calendar) return
     const defaultMonth = calendar.default_month?.slice(0, 7)
     const lastMonth = calendar.last_date?.slice(0, 7)
     setSelectedMonth(defaultMonth ?? lastMonth ?? null)
   }, [calendar?.symbol, calendar?.default_month, calendar?.last_date])
 
+  if (!row.has_canonical_data) {
+    return (
+      <div className="min-h-0 flex-1 overflow-y-auto bg-slate-100/60 px-6 py-6">
+        <div className="mx-auto max-w-[1500px] space-y-6">
+          <QuickFacts row={row} />
+          <div className="rounded-2xl border bg-white p-5">
+            <p className="text-sm text-muted-foreground">
+              Aucune donnee canonique disponible pour ce titre.
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <Sheet open={open} onOpenChange={(value) => !value && onClose()}>
-      <SheetContent side="right" className="w-full max-w-5xl gap-0 overflow-hidden p-0">
-        {row && (
-          <>
-            <div className="shrink-0 border-b bg-slate-50/80 px-6 py-5">
-              <SheetHeader className="gap-3 p-0 text-left">
-                <div className="flex flex-wrap items-center gap-3">
-                  <SheetTitle className="text-2xl font-semibold tracking-tight">
-                    {row.symbol}
-                  </SheetTitle>
-                  {row.is_tracked && <Badge variant="outline">Tracked</Badge>}
-                  {row.source_provider && (
-                    <Badge variant="secondary" className="capitalize">
-                      {row.source_provider}
-                    </Badge>
-                  )}
-                </div>
-                <SheetDescription className="max-w-3xl text-sm">
-                  Historique complet OHLCV avec chandelier, volume et calendrier de disponibilite
-                  des seances.
-                </SheetDescription>
-              </SheetHeader>
-
-              <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-                  <div>
-                    <span className="font-medium text-slate-900">Derniere barre:</span>{" "}
-                    {history?.data_as_of ?? row.end_ts?.slice(0, 10) ?? "-"}
-                  </div>
-                  <div>
-                    <span className="font-medium text-slate-900">Historique:</span>{" "}
-                    {history?.row_count?.toLocaleString() ?? row.row_count?.toLocaleString() ?? "-"}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-y-auto bg-slate-100/60 px-6 py-6">
+    <div className="min-h-0 flex-1 overflow-y-auto bg-slate-100/60 px-6 py-6">
               <div className="mx-auto max-w-[1500px] space-y-6">
                 <QuickFacts row={row} history={history} />
 
@@ -768,6 +871,8 @@ export function StockDetailPanel({
                   </div>
                   {historyLoading ? (
                     <Skeleton className="h-[520px] w-full" />
+                  ) : historyError ? (
+                    <DetailSectionError title="Impossible de charger l'historique OHLCV" error={historyError} />
                   ) : history && history.bars.length > 0 ? (
                     <OhlcvHistoryChart history={history} />
                   ) : (
@@ -777,6 +882,10 @@ export function StockDetailPanel({
 
                 {calendarLoading ? (
                   <Skeleton className="h-[680px] w-full rounded-2xl" />
+                ) : calendarError ? (
+                  <div className="rounded-2xl border bg-white p-5">
+                    <DetailSectionError title="Impossible de charger le calendrier" error={calendarError} />
+                  </div>
                 ) : calendar && selectedMonth ? (
                   <div className="space-y-4">
                     <YearStripOverview
@@ -840,6 +949,8 @@ export function StockDetailPanel({
                         <Skeleton key={i} className="h-8 w-full" />
                       ))}
                     </div>
+                  ) : previewError ? (
+                    <DetailSectionError title="Impossible de charger les dernieres barres" error={previewError} />
                   ) : displayBars.length > 0 ? (
                     <>
                     <Table>
@@ -1040,6 +1151,31 @@ export function StockDetailPanel({
                 </div>
               </div>
             </div>
+  )
+}
+
+export function StockDetailPanel({
+  row,
+  open,
+  onClose,
+  onSaved,
+}: {
+  row: MarketCatalogRow | null
+  open: boolean
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const resetKey = open && row ? row.symbol : "closed"
+
+  return (
+    <Sheet open={open} onOpenChange={(value) => !value && onClose()}>
+      <SheetContent side="right" className="w-full max-w-5xl gap-0 overflow-hidden p-0">
+        {row && (
+          <>
+            <StockDetailHeader row={row} />
+            <DetailErrorBoundary resetKey={resetKey} onClose={onClose}>
+              <StockDetailBody key={resetKey} row={row} open={open} onSaved={onSaved} />
+            </DetailErrorBoundary>
           </>
         )}
       </SheetContent>

@@ -396,6 +396,7 @@ services:
       AUTH_REQUIRED: ${AUTH_REQUIRED:-false}
       AUTH_TRUST_HOST: "true"
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3001}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-stg.tdazine@bmcek.co.ma}
       DASHBOARD_PUBLIC_ONLY: ${DASHBOARD_PUBLIC_ONLY:-true}
     depends_on:
       quant_api:

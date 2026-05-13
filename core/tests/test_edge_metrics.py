@@ -15,6 +15,7 @@ from core.quant_core.research.edge import (
     build_edge_payload,
     compute_canonical_expectancy,
     compute_edge_ratio,
+    compute_edge_score,
     compute_profit_factor,
     direction_for_bucket,
     strategy_return,
@@ -141,6 +142,90 @@ def test_direction_for_bucket():
 # ---------------------------------------------------------------------------
 # Orchestrator — happy path & gate failure modes
 # ---------------------------------------------------------------------------
+
+def test_edge_score_rewards_strong_gate_satisfaction():
+    score, components = compute_edge_score(
+        bucket="strong_buy",
+        direction="long",
+        n=90,
+        action_expected_return_net=0.04,
+        action_expected_return_net_ci_lower=0.02,
+        hit_ci_lower=0.62,
+        mc_luck_pvalue_net_adj=0.005,
+        label_shuffle_pvalue_net_adj=0.01,
+        freshness_n=12,
+        freshness_min_n=10,
+        freshness_action_expected_return_net=0.02,
+        freshness_hit_rate=0.60,
+    )
+
+    assert score is not None
+    assert score >= 90.0
+    assert components["sample_n"] == 100.0
+    assert components["bootstrap_er"] > 75.0
+    assert components["mc_luck"] > 90.0
+
+
+def test_edge_score_gives_partial_credit_when_bootstrap_lower_bound_is_negative():
+    score, components = compute_edge_score(
+        bucket="buy",
+        direction="long",
+        n=60,
+        action_expected_return_net=0.03,
+        action_expected_return_net_ci_lower=-0.01,
+        hit_ci_lower=0.54,
+        mc_luck_pvalue_net_adj=0.04,
+        label_shuffle_pvalue_net_adj=0.04,
+        freshness_n=10,
+        freshness_min_n=10,
+        freshness_action_expected_return_net=0.01,
+        freshness_hit_rate=0.55,
+    )
+
+    assert score is not None
+    assert score > 50.0
+    assert components["bootstrap_er"] == pytest.approx(45.0)
+
+
+def test_edge_score_caps_non_positive_net_expectancy():
+    score, components = compute_edge_score(
+        bucket="strong_sell",
+        direction="short",
+        n=90,
+        action_expected_return_net=-0.001,
+        action_expected_return_net_ci_lower=0.02,
+        hit_ci_lower=0.65,
+        mc_luck_pvalue_net_adj=0.001,
+        label_shuffle_pvalue_net_adj=0.001,
+        freshness_n=12,
+        freshness_min_n=10,
+        freshness_action_expected_return_net=0.02,
+        freshness_hit_rate=0.60,
+    )
+
+    assert score == 5.0
+    assert components["bootstrap_er"] == 0.0
+
+
+def test_edge_score_is_null_for_hold_bucket():
+    score, components = compute_edge_score(
+        bucket="hold",
+        direction="none",
+        n=90,
+        action_expected_return_net=0.04,
+        action_expected_return_net_ci_lower=0.02,
+        hit_ci_lower=0.62,
+        mc_luck_pvalue_net_adj=0.005,
+        label_shuffle_pvalue_net_adj=0.01,
+        freshness_n=12,
+        freshness_min_n=10,
+        freshness_action_expected_return_net=0.02,
+        freshness_hit_rate=0.60,
+    )
+
+    assert score is None
+    assert components == {}
+
 
 def _strong_buy_fixture(n_total: int = 200, edge_size: float = 0.02, noise: float = 0.001, seed: int = 1):
     """Build (score_series, prices, oos_sample, today_bucket).

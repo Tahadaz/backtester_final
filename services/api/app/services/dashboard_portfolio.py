@@ -130,12 +130,11 @@ def _proof_url(
     side_policy: str,
     variant: str | None = None,
 ) -> str:
+    view = variant or "expanded_ta_simple"
     url = (
         f"/signals?symbol={symbol}&horizon={horizon}"
-        f"&view=expanded&source={source}&side={side_policy}&tab=evidence"
+        f"&view={view}&source={source}&side={side_policy}&tab=evidence"
     )
-    if variant:
-        url = f"{url}&variant={variant}"
     return url
 
 
@@ -157,9 +156,10 @@ def _normalize_position(position: DashboardManualPosition) -> DashboardManualPos
     return position.model_copy(update={"symbol": position.symbol.strip().upper()})
 
 
-def list_dashboard_positions(db: Session) -> DashboardPortfolioPositionsResponse:
+def list_dashboard_positions(db: Session, *, owner_user_id: str) -> DashboardPortfolioPositionsResponse:
     rows = (
         db.query(models.DeskPortfolioPosition)
+        .filter(models.DeskPortfolioPosition.owner_user_id == owner_user_id)
         .filter(models.DeskPortfolioPosition.status == "active")
         .order_by(models.DeskPortfolioPosition.symbol.asc())
         .all()
@@ -172,13 +172,19 @@ def list_dashboard_positions(db: Session) -> DashboardPortfolioPositionsResponse
 def replace_dashboard_positions(
     db: Session,
     body: DashboardPortfolioPositionsRequest,
+    *,
+    owner_user_id: str,
 ) -> DashboardPortfolioPositionsResponse:
     incoming = {
         (pos.symbol.strip().upper(), pos.side): _normalize_position(pos)
         for pos in body.positions
         if pos.symbol.strip() and pos.quantity > 0.0
     }
-    existing_rows = db.query(models.DeskPortfolioPosition).all()
+    existing_rows = (
+        db.query(models.DeskPortfolioPosition)
+        .filter(models.DeskPortfolioPosition.owner_user_id == owner_user_id)
+        .all()
+    )
     existing = {(row.symbol.upper(), row.side): row for row in existing_rows}
 
     for key, row in existing.items():
@@ -189,7 +195,7 @@ def replace_dashboard_positions(
     for key, pos in incoming.items():
         row = existing.get(key)
         if row is None:
-            row = models.DeskPortfolioPosition(symbol=pos.symbol, side=pos.side)
+            row = models.DeskPortfolioPosition(owner_user_id=owner_user_id, symbol=pos.symbol, side=pos.side)
             db.add(row)
         row.status = "active"
         row.quantity = float(pos.quantity)
@@ -201,7 +207,7 @@ def replace_dashboard_positions(
         row.notes = pos.notes
 
     db.commit()
-    return list_dashboard_positions(db)
+    return list_dashboard_positions(db, owner_user_id=owner_user_id)
 
 
 def _edge_for_symbol(
@@ -239,7 +245,7 @@ def _selected_edge_for_symbol(
         best = _build_best_signal_payload(db, symbol, horizon)
         if not best:
             return None, "auto", None
-        selected_source = str(best.get("source") or "signal_engine")
+        selected_source = "wfo"
         selected_variant = str(best.get("variant") or "") or None
 
     edge = _edge_for_symbol(
@@ -256,9 +262,11 @@ def _selected_edge_for_symbol(
 def _manual_positions_for_blotter(
     db: Session,
     body: DashboardDailyBlotterRequest,
+    *,
+    owner_user_id: str | None = None,
 ) -> dict[str, DashboardManualPosition]:
     if body.positions is None:
-        positions = list_dashboard_positions(db).positions
+        positions = list_dashboard_positions(db, owner_user_id=owner_user_id).positions if owner_user_id else []
     else:
         positions = body.positions
     out: dict[str, DashboardManualPosition] = {}
@@ -366,8 +374,9 @@ def build_dashboard_daily_blotter(
     body: DashboardDailyBlotterRequest,
     *,
     cost_bps: float,
+    owner_user_id: str | None = None,
 ) -> DashboardDailyBlotterResponse:
-    positions = _manual_positions_for_blotter(db, body)
+    positions = _manual_positions_for_blotter(db, body, owner_user_id=owner_user_id)
     requested_symbols = [symbol.strip().upper() for symbol in body.symbols if symbol.strip()]
     symbols = list(dict.fromkeys([*requested_symbols, *positions.keys()]))
     if not symbols:

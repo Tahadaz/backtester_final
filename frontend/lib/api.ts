@@ -385,6 +385,8 @@ export const EdgeMetricsSchema = z.object({
   label_shuffle_pvalue_net_adj: z.number().nullable().optional(),
   proven_edge_gross: z.boolean(),
   proven_edge_net: z.boolean(),
+  edge_score: z.number().nullable().optional(),
+  edge_score_components: z.record(z.number()).default({}),
   gates: EdgeGatesSchema,
   cost_bps_per_side: z.number(),
   methodology_version: z.string(),
@@ -2353,6 +2355,53 @@ export const BloombergSeriesPreviewSchema = z.object({
 })
 export type BloombergSeriesPreview = z.infer<typeof BloombergSeriesPreviewSchema>
 
+export const BloombergBridgeStatusSchema = z.object({
+  bridge_id: z.string(),
+  status: z.string(),
+  capabilities_json: z.record(z.unknown()).default({}),
+  preflight_json: z.record(z.unknown()).default({}),
+  active_job_id: z.string().nullable().optional(),
+  error_message: z.string().nullable().optional(),
+  last_seen_at: z.string(),
+  created_at: z.string(),
+  updated_at: z.string().nullable().optional(),
+  is_stale: z.boolean().default(false),
+})
+export type BloombergBridgeStatus = z.infer<typeof BloombergBridgeStatusSchema>
+
+export const BloombergJobSchema = z.object({
+  id: z.string(),
+  job_type: z.string(),
+  status: z.string(),
+  requested_by: z.string().nullable().optional(),
+  bridge_id: z.string().nullable().optional(),
+  spec_json: z.record(z.unknown()).default({}),
+  progress_json: z.record(z.unknown()).default({}),
+  result_json: z.record(z.unknown()).default({}),
+  error_message: z.string().nullable().optional(),
+  lease_expires_at: z.string().nullable().optional(),
+  started_at: z.string().nullable().optional(),
+  completed_at: z.string().nullable().optional(),
+  created_at: z.string(),
+  updated_at: z.string().nullable().optional(),
+})
+export type BloombergJob = z.infer<typeof BloombergJobSchema>
+
+export type BloombergJobCreateInput = {
+  job_type: "preflight" | "discovery" | "backfill" | "refresh"
+  universe: "masi" | "selected" | "custom" | "bonds"
+  mode: "discovery_only" | "discover_then_backfill" | "backfill_missing" | "refresh_latest"
+  frequency: "daily" | "hourly" | "minute"
+  symbols?: string[]
+  securities?: string[]
+  fields?: string[]
+  start_date?: string | null
+  end_date?: string | null
+  apply_to_market_data?: boolean
+  options?: Record<string, unknown>
+  requested_by?: string | null
+}
+
 export async function listBloombergBatches(params?: {
   limit?: number
   offset?: number
@@ -2379,6 +2428,40 @@ export async function listBloombergSeries(params?: {
   const q = qs.toString()
   const rows = await request<unknown[]>(`/bloomberg/series${q ? `?${q}` : ""}`)
   return z.array(BloombergSeriesSchema).parse(rows)
+}
+
+export async function listBloombergBridges(): Promise<BloombergBridgeStatus[]> {
+  const rows = await request<unknown[]>("/bloomberg/bridges")
+  return z.array(BloombergBridgeStatusSchema).parse(rows)
+}
+
+export async function listBloombergJobs(params?: {
+  status?: string
+  limit?: number
+  offset?: number
+}): Promise<BloombergJob[]> {
+  const qs = new URLSearchParams()
+  if (params?.status) qs.set("status", params.status)
+  if (params?.limit !== undefined) qs.set("limit", String(params.limit))
+  if (params?.offset !== undefined) qs.set("offset", String(params.offset))
+  const q = qs.toString()
+  const rows = await request<unknown[]>(`/bloomberg/jobs${q ? `?${q}` : ""}`)
+  return z.array(BloombergJobSchema).parse(rows)
+}
+
+export async function createBloombergJob(body: BloombergJobCreateInput): Promise<BloombergJob> {
+  const row = await request<unknown>("/bloomberg/jobs", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+  return BloombergJobSchema.parse(row)
+}
+
+export async function cancelBloombergJob(jobId: string): Promise<BloombergJob> {
+  const row = await request<unknown>(`/bloomberg/jobs/${encodeURIComponent(jobId)}/cancel`, {
+    method: "POST",
+  })
+  return BloombergJobSchema.parse(row)
 }
 
 export async function getBloombergSeriesPreview(
@@ -3269,6 +3352,8 @@ export const SignalCandidateSchema = z.object({
   bucket: z.string().nullable().optional(),
   direction: z.string().nullable().optional(),
   signal_label: z.string().nullable().optional(),
+  edge_score: z.number().nullable().optional(),
+  edge_score_components: z.record(z.number()).default({}),
   score: z.number().nullable().optional(),
   action_expected_return_net: z.number().nullable().optional(),
   action_expected_return_net_ci_lower: z.number().nullable().optional(),
@@ -3636,10 +3721,19 @@ export const DashboardPortfolioEdgeSchema = z.object({
 })
 export type DashboardPortfolioEdge = z.infer<typeof DashboardPortfolioEdgeSchema>
 
+export const DashboardCustomIndexComponentSchema = z.object({
+  symbol: z.string(),
+  shares: z.number().int().positive(),
+})
+export type DashboardCustomIndexComponent = z.infer<typeof DashboardCustomIndexComponentSchema>
+
 export const DashboardCustomIndexSchema = z.object({
   id: z.string(),
   name: z.string(),
   symbols: z.array(z.string()).default([]),
+  component_shares: z.record(z.string(), z.number().int().positive()).default({}),
+  components: z.array(DashboardCustomIndexComponentSchema).default([]),
+  is_weighted_complete: z.boolean().default(false),
   created_at: z.string(),
   updated_at: z.string(),
   portfolio_edge: DashboardPortfolioEdgeSchema.nullable().optional(),
@@ -4148,7 +4242,8 @@ export async function fetchDashboardIndices(args?: {
 
 export async function createDashboardIndex(body: {
   name: string
-  symbols: string[]
+  symbols?: string[]
+  components?: DashboardCustomIndexComponent[]
 }): Promise<DashboardCustomIndex> {
   const raw = await request<unknown>("/dashboard/indices", {
     method: "POST",
@@ -4161,7 +4256,8 @@ export async function updateDashboardIndex(
   id: string,
   body: {
     name: string
-    symbols: string[]
+    symbols?: string[]
+    components?: DashboardCustomIndexComponent[]
   },
 ): Promise<DashboardCustomIndex> {
   const raw = await request<unknown>(`/dashboard/indices/${id}`, {

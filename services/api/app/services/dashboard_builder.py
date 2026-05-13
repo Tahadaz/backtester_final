@@ -19,7 +19,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from core.quant_core.signal_engine.domain import signal_type_label as _core_signal_type_label
-from core.quant_core.signal_engine.modes import ALL_SIGNAL_MODE_NAMES, resolve_signal_mode
+from core.quant_core.signal_engine.modes import ALL_SIGNAL_MODE_NAMES, resolve_signal_mode, signal_mode_read_names
 from .market_universe import (
     dashboard_group_label,
     is_masi_dashboard_member,
@@ -43,7 +43,7 @@ HORIZONS: dict[str, str] = {
     "quarterly": "Trimestriel",
 }
 
-DASHBOARD_PAYLOAD_VERSION = "2026-05-12-wfo-trade-opportunities-v1"
+DASHBOARD_PAYLOAD_VERSION = "2026-05-13-net-edge-score-v1"
 
 EDGE_SIGNAL_MODES: tuple[str, ...] = ALL_SIGNAL_MODE_NAMES
 EDGE_CANDIDATE_COUNT = len(EDGE_SIGNAL_MODES)
@@ -112,8 +112,14 @@ SIGNAL_MODE_CATEGORY_FAMILIES: dict[str, dict[str, list[str]]] = {
     },
 }
 
-FACTOR_X_TA_SIMPLE_VARIANTS: tuple[str, ...] = ("expanded_factor_x_ta_simple", "factor_x_ta")
-FACTOR_X_TA_SIMPLE_VARIANT_SQL = "'expanded_factor_x_ta_simple', 'factor_x_ta'"
+def _sql_literal_list(values: tuple[str, ...]) -> str:
+    return ", ".join(f"'{value}'" for value in values)
+
+
+EXPANDED_TA_SIMPLE_VARIANTS: tuple[str, ...] = signal_mode_read_names("expanded_ta_simple")
+EXPANDED_TA_SIMPLE_VARIANT_SQL = _sql_literal_list(EXPANDED_TA_SIMPLE_VARIANTS)
+FACTOR_X_TA_SIMPLE_VARIANTS: tuple[str, ...] = signal_mode_read_names("expanded_factor_x_ta_simple")
+FACTOR_X_TA_SIMPLE_VARIANT_SQL = _sql_literal_list(FACTOR_X_TA_SIMPLE_VARIANTS)
 
 
 # ---------------------------------------------------------------------------
@@ -635,6 +641,7 @@ def _apply_wfo_all_oos_proof_to_edge(
             _freshness_summary,
             _strategy_returns_array,
             bootstrap_mean_ci,
+            compute_edge_score,
             edge_recency_policy,
         )
         from core.quant_core.research.oos_index import oos_sample_for
@@ -829,6 +836,28 @@ def _apply_wfo_all_oos_proof_to_edge(
                 out["proven_edge_gross"] = False
             if not gates["freshness_net"]:
                 out["proven_edge_net"] = False
+        mc_pvalue = out.get("mc_luck_pvalue_net_adj")
+        if mc_pvalue is None:
+            mc_pvalue = out.get("mc_luck_pvalue_net")
+        label_pvalue = out.get("label_shuffle_pvalue_net_adj")
+        if label_pvalue is None:
+            label_pvalue = out.get("label_shuffle_pvalue_net")
+        edge_score, edge_score_components = compute_edge_score(
+            bucket=bucket,
+            direction=direction,
+            n=n,
+            action_expected_return_net=out.get("action_expected_return_net"),
+            action_expected_return_net_ci_lower=out.get("action_expected_return_net_ci_lower"),
+            hit_ci_lower=out.get("hit_ci_lower"),
+            mc_luck_pvalue_net_adj=mc_pvalue,
+            label_shuffle_pvalue_net_adj=label_pvalue,
+            freshness_n=int(out.get("freshness_n") or 0),
+            freshness_min_n=int(out.get("freshness_min_n") or recency_policy.freshness_min_n),
+            freshness_action_expected_return_net=out.get("freshness_action_expected_return_net"),
+            freshness_hit_rate=out.get("freshness_hit_rate"),
+        )
+        out["edge_score"] = edge_score
+        out["edge_score_components"] = edge_score_components
         return out
     except Exception:
         logger.exception(
@@ -854,7 +883,7 @@ def _signal_method_label(source: str, variant: str) -> str:
     return f"{axis} - {universe} {conditioning} {complexity}"
 
 
-def _best_signal_rank(edge: dict[str, Any]) -> tuple[int, float, float] | None:
+def _best_signal_rank(edge: dict[str, Any]) -> tuple[int, float, float, float] | None:
     direction = str(edge.get("direction") or "none")
     if not _is_actionable_edge_bucket(edge.get("bucket"), direction):
         return None
@@ -875,8 +904,10 @@ def _best_signal_rank(edge: dict[str, Any]) -> tuple[int, float, float] | None:
     if lower is None:
         lower = _safe_float(edge.get("expected_return_net_ci_lower"))
     penalized = lower if lower is not None else expected * 0.5
+    edge_score = _safe_float(edge.get("edge_score"))
+    rank_score = edge_score if edge_score is not None else penalized
     proven = bool(edge.get("proven_edge_net"))
-    return (2 if proven else 1, penalized, expected)
+    return (2 if proven else 1, rank_score, penalized, expected)
 
 
 def _build_best_signal_payload(db: Session, symbol: str, horizon: str) -> dict[str, Any] | None:
@@ -888,7 +919,7 @@ def _build_best_signal_payload(db: Session, symbol: str, horizon: str) -> dict[s
         return None
 
     cost_bps = float(settings.EDGE_COST_BPS_PER_SIDE)
-    best: tuple[tuple[int, float, float], dict[str, Any]] | None = None
+    best: tuple[tuple[int, float, float, float], dict[str, Any]] | None = None
     for source in ("wfo",):
         for variant in EDGE_SIGNAL_MODES:
             try:
@@ -964,7 +995,9 @@ def _build_best_signal_payload(db: Session, symbol: str, horizon: str) -> dict[s
                 "label_shuffle_pvalue_net_adj": edge.get("label_shuffle_pvalue_net_adj"),
                 "proven_edge_gross": edge.get("proven_edge_gross"),
                 "proven_edge_net": edge.get("proven_edge_net"),
-                "score": rank[1],
+                "edge_score": edge.get("edge_score"),
+                "edge_score_components": edge.get("edge_score_components") if isinstance(edge.get("edge_score_components"), dict) else {},
+                "score": rank[2],
             }
             if best is None or rank > best[0]:
                 best = (rank, payload)
@@ -1229,15 +1262,20 @@ def build_dashboard_payload(db: Session, horizon: str, *, include_edge: bool = F
     market_stats_by_symbol = _load_dashboard_market_stats(db, symbols)
 
     se_rows = db.execute(
-        text("""
+        text(f"""
         SELECT symbol, aggregate_score_pct, expanded_aggregate_score_pct, signal_label,
-               per_family_json, technical_levels_json, support_resistance_json
+               per_family_json, technical_levels_json, support_resistance_json, variant
         FROM signal_engine_global_result
-        WHERE horizon = :horizon AND variant = 'expanded' AND status = 'succeeded'
+        WHERE horizon = :horizon
+          AND variant IN ({EXPANDED_TA_SIMPLE_VARIANT_SQL})
+          AND status = 'succeeded'
+        ORDER BY CASE WHEN variant = 'expanded_ta_simple' THEN 0 ELSE 1 END
         """),
         {"horizon": horizon},
     ).fetchall()
-    se_by_symbol = {row[0]: row for row in se_rows}
+    se_by_symbol: dict[str, Any] = {}
+    for row in se_rows:
+        se_by_symbol.setdefault(str(row[0]), row)
 
     fx_global_rows = db.execute(
         text(f"""
@@ -1276,33 +1314,40 @@ def build_dashboard_payload(db: Session, horizon: str, *, include_edge: bool = F
         fx_family_by_symbol[str(row[0])].append(row)
 
     wfo_rows = db.execute(
-        text("""
+        text(f"""
         SELECT symbol, status, global_score_pct, signal_label,
                weight_tendance, weight_momentum, weight_oscillation, weight_volume,
                sr_support_level, sr_resistance_level,
                sr_support_method, sr_resistance_method,
-               best_category, consensus_wfe_pct, consensus_robustness
+               best_category, consensus_wfe_pct, consensus_robustness, variant
         FROM wfo_global_signal
-        WHERE horizon = :horizon AND variant = 'expanded'
+        WHERE horizon = :horizon
+          AND variant IN ({EXPANDED_TA_SIMPLE_VARIANT_SQL})
+        ORDER BY CASE WHEN variant = 'expanded_ta_simple' THEN 0 ELSE 1 END
         """),
         {"horizon": horizon},
     ).fetchall()
-    wfo_global_by_symbol = {row[0]: row for row in wfo_rows}
+    wfo_global_by_symbol: dict[str, Any] = {}
+    for row in wfo_rows:
+        wfo_global_by_symbol.setdefault(str(row[0]), row)
 
     wfo_summary_rows = db.execute(
-        text("""
-        SELECT symbol, category, score_pct, signal_label
+        text(f"""
+        SELECT symbol, category, score_pct, signal_label, variant
         FROM wfo_signal_summary
-        WHERE horizon = :horizon AND variant = 'expanded' AND status = 'succeeded'
+        WHERE horizon = :horizon
+          AND variant IN ({EXPANDED_TA_SIMPLE_VARIANT_SQL})
+          AND status = 'succeeded'
+        ORDER BY CASE WHEN variant = 'expanded_ta_simple' THEN 0 ELSE 1 END
         """),
         {"horizon": horizon},
     ).fetchall()
     wfo_summary_by_symbol: dict[str, dict[str, Any]] = {}
     for row in wfo_summary_rows:
-        sym, cat, score, label = row
-        wfo_summary_by_symbol.setdefault(sym, {})[cat] = {
+        sym, cat, score, label, _variant = row
+        wfo_summary_by_symbol.setdefault(str(sym), {}).setdefault(str(cat), {
             "score_pct": _round(score), "label": label
-        }
+        })
 
     technical_se_rows = db.execute(
         text("""
@@ -1792,10 +1837,11 @@ def derive_upstream_rev(db: Session, horizon: str) -> dict[str, Any]:
         {"horizon": horizon},
     ).scalar()
     wfo_run_row = db.execute(
-        text("""
+        text(f"""
         SELECT MAX(id::text)
         FROM wfo_global_signal
-        WHERE horizon = :horizon AND variant = 'expanded'
+        WHERE horizon = :horizon
+          AND variant IN ({EXPANDED_TA_SIMPLE_VARIANT_SQL})
         """),
         {"horizon": horizon},
     ).scalar()

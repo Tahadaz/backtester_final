@@ -1,11 +1,12 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import useSWR from "swr"
 import { AlertCircle, BookOpen, Download, ExternalLink, Eye, EyeOff, Filter, LayoutDashboard, RefreshCw, Save, Search, X, Zap } from "lucide-react"
 import { useDashboardData } from "@/hooks/use-dashboard"
 import { useDashboardIndices } from "@/hooks/use-dashboard-indices"
+import { useDashboardPreferences } from "@/hooks/use-dashboard-preferences"
 import { useMarketCatalog } from "@/hooks/use-api"
 import {
   createDashboardIndex,
@@ -16,11 +17,22 @@ import {
   saveDashboardPortfolioPositions,
   updateDashboardIndex,
   type DashboardDailyBlotterResponse,
+  type DashboardCustomIndexComponent,
   type DashboardManualPosition,
   type DashboardPortfolioTicketResponse,
   type EdgeMetrics,
 } from "@/lib/api"
 import type { DashboardDisplayMode, DashboardScoreSource, DashboardStock, DashboardView, Horizon } from "@/lib/dashboard-types"
+import {
+  DEFAULT_DASHBOARD_PREFERENCES,
+  DEFAULT_DASHBOARD_VISIBLE_FAMILIES,
+  type DashboardAssetTab as AssetTab,
+  type DashboardEdgeMode as EdgeMode,
+  type DashboardFamilyColumn as FamilyColumn,
+  type DashboardPreferences,
+  type DashboardRegionTab as RegionTab,
+  type DashboardViewMode as ViewMode,
+} from "@/lib/dashboard-preferences"
 import { resolveHorizonPreset } from "@/lib/horizon"
 import { signalEvidenceUrl } from "@/lib/signal-evidence-url"
 import { IndexTab } from "@/components/dashboard-v1/index-tab"
@@ -39,11 +51,6 @@ import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { formatPercent } from "@/lib/format"
 import { cn } from "@/lib/utils"
-
-type ViewMode = "masi" | "complet"
-type AssetTab = "all" | "equity" | "commodity" | "forex" | "bond" | "crypto"
-type RegionTab = "all" | "masi" | "us" | "european" | "asian"
-type FamilyColumn = "tendance" | "momentum" | "oscillation" | "volume"
 
 const isPublicDashboardOnly = process.env.NEXT_PUBLIC_DASHBOARD_PUBLIC_ONLY === "true"
 const edgeEnabled = process.env.NEXT_PUBLIC_EDGE_ENABLED !== "false"
@@ -85,8 +92,6 @@ const FAMILY_COLUMN_OPTIONS: { value: FamilyColumn; label: string }[] = [
   { value: "oscillation", label: "Osc." },
   { value: "volume", label: "Vol." },
 ]
-
-type EdgeMode = "gross" | "net"
 
 function median(values: number[]) {
   if (!values.length) return null
@@ -194,9 +199,8 @@ function TopActionableSignals({
             const evidenceHref = signalEvidenceUrl({
               symbol: stock.symbol,
               horizon,
-              view: signal.variant,
-              source: signal.source,
-              evidenceVariant: signal.variant,
+              view: signal.variant ?? "expanded_ta_simple",
+              source: "wfo",
               tab: "evidence",
             })
 
@@ -434,25 +438,22 @@ function downloadBlotterCsv(blotter: DashboardDailyBlotterResponse | null) {
 }
 
 export default function DashboardV1Page() {
-  const [viewMode, setViewMode] = useState<ViewMode>("masi")
-  const [assetTab, setAssetTab] = useState<AssetTab>("all")
-  const [regionTab, setRegionTab] = useState<RegionTab>("all")
-  const [horizon, setHorizon] = useState<Horizon>("monthly")
-  const [view, setView] = useState<DashboardView>("stocks")
-  const [showFilters, setShowFilters] = useState(true)
-  const [showTopActionableSignals, setShowTopActionableSignals] = useState(true)
-  const [liquidityFilter, setLiquidityFilter] = useState(false)
-  const [dashboardMode, setDashboardMode] = useState<DashboardDisplayMode>("trade_opportunities")
+  const [viewMode, setViewMode] = useState<ViewMode>(DEFAULT_DASHBOARD_PREFERENCES.viewMode)
+  const [assetTab, setAssetTab] = useState<AssetTab>(DEFAULT_DASHBOARD_PREFERENCES.assetTab)
+  const [regionTab, setRegionTab] = useState<RegionTab>(DEFAULT_DASHBOARD_PREFERENCES.regionTab)
+  const [horizon, setHorizon] = useState<Horizon>(DEFAULT_DASHBOARD_PREFERENCES.horizon)
+  const [view, setView] = useState<DashboardView>(DEFAULT_DASHBOARD_PREFERENCES.view)
+  const [showFilters, setShowFilters] = useState(DEFAULT_DASHBOARD_PREFERENCES.showFilters)
+  const [showTopActionableSignals, setShowTopActionableSignals] = useState(DEFAULT_DASHBOARD_PREFERENCES.showTopActionableSignals)
+  const [liquidityFilter, setLiquidityFilter] = useState(DEFAULT_DASHBOARD_PREFERENCES.liquidityFilter)
+  const [dashboardMode, setDashboardMode] = useState<DashboardDisplayMode>(DEFAULT_DASHBOARD_PREFERENCES.dashboardMode)
   const signalView: "expanded" = "expanded"
   const scoreSource: DashboardScoreSource = dashboardMode === "trade_opportunities" ? "wfo" : "signal_engine"
   const [visibleFamilies, setVisibleFamilies] = useState<Record<FamilyColumn, boolean>>({
-    tendance: true,
-    momentum: true,
-    oscillation: true,
-    volume: true,
+    ...DEFAULT_DASHBOARD_VISIBLE_FAMILIES,
   })
-  const [edgeOnly, setEdgeOnly] = useState(false)
-  const [edgeMode, setEdgeMode] = useState<EdgeMode>("net")
+  const [edgeOnly, setEdgeOnly] = useState(DEFAULT_DASHBOARD_PREFERENCES.edgeOnly)
+  const [edgeMode, setEdgeMode] = useState<EdgeMode>(DEFAULT_DASHBOARD_PREFERENCES.edgeMode)
   const [search, setSearch] = useState("")
   const [sectorFilter, setSectorFilter] = useState<string>("all")
   const [basketOnly, setBasketOnly] = useState(false)
@@ -475,19 +476,71 @@ export default function DashboardV1Page() {
   const [sectorSharesError, setSectorSharesError] = useState<string | null>(null)
   const [dashboardIndexActionError, setDashboardIndexActionError] = useState<string | null>(null)
 
+  const dashboardPreferences = useMemo<DashboardPreferences>(
+    () => ({
+      showTopActionableSignals,
+      showFilters,
+      viewMode,
+      assetTab,
+      regionTab,
+      horizon,
+      view,
+      liquidityFilter,
+      dashboardMode,
+      visibleFamilies,
+      edgeOnly,
+      edgeMode,
+    }),
+    [
+      showTopActionableSignals,
+      showFilters,
+      viewMode,
+      assetTab,
+      regionTab,
+      horizon,
+      view,
+      liquidityFilter,
+      dashboardMode,
+      visibleFamilies,
+      edgeOnly,
+      edgeMode,
+    ],
+  )
+
+  const applyDashboardPreferences = useCallback((next: DashboardPreferences) => {
+    setShowTopActionableSignals(next.showTopActionableSignals)
+    setShowFilters(next.showFilters)
+    setViewMode(next.viewMode)
+    setAssetTab(next.assetTab)
+    setRegionTab(next.regionTab)
+    setHorizon(next.horizon)
+    setView(next.view)
+    setLiquidityFilter(next.liquidityFilter)
+    setDashboardMode(next.dashboardMode)
+    setVisibleFamilies({ ...next.visibleFamilies })
+    setEdgeOnly(next.edgeOnly)
+    setEdgeMode(next.edgeMode)
+  }, [])
+
+  useDashboardPreferences(!isPublicDashboardOnly, dashboardPreferences, applyDashboardPreferences)
+
   const { data, error, isLoading, mutate } = useDashboardData(horizon)
   const {
     data: dashboardIndices,
     error: dashboardIndicesError,
     mutate: mutateDashboardIndices,
-  } = useDashboardIndices(viewMode === "masi" && view === "index", horizon)
+  } = useDashboardIndices(!isPublicDashboardOnly && viewMode === "masi" && view === "index", horizon)
   const { data: catalogData } = useMarketCatalog()
   const {
     data: savedPositionsData,
     mutate: mutatePortfolioPositions,
-  } = useSWR<DashboardManualPosition[]>("dashboard-portfolio-positions", fetchDashboardPortfolioPositions, {
-    revalidateOnFocus: false,
-  })
+  } = useSWR<DashboardManualPosition[]>(
+    isPublicDashboardOnly ? null : "dashboard-portfolio-positions",
+    fetchDashboardPortfolioPositions,
+    {
+      revalidateOnFocus: false,
+    },
+  )
   const savedPositions = savedPositionsData ?? EMPTY_DASHBOARD_POSITIONS
 
   useEffect(() => {
@@ -578,10 +631,10 @@ export default function DashboardV1Page() {
     }
   }
 
-  const createCustomDashboardIndex = (payload: { name: string; symbols: string[] }) =>
+  const createCustomDashboardIndex = (payload: { name: string; components: DashboardCustomIndexComponent[] }) =>
     runDashboardIndexAction(() => createDashboardIndex(payload))
 
-  const updateCustomDashboardIndex = (id: string, payload: { name: string; symbols: string[] }) =>
+  const updateCustomDashboardIndex = (id: string, payload: { name: string; components: DashboardCustomIndexComponent[] }) =>
     runDashboardIndexAction(() => updateDashboardIndex(id, payload))
 
   const deleteCustomDashboardIndex = (id: string) =>
@@ -1197,7 +1250,7 @@ export default function DashboardV1Page() {
           ) : view === "index" ? (
             <IndexTab
               baseIndex={data.index}
-              stocks={visibleMasiStocks}
+              stocks={masiStocks}
               customDefinitions={customIndexDefinitions}
               readOnly={isPublicDashboardOnly}
               actionError={dashboardIndexErrorMessage}

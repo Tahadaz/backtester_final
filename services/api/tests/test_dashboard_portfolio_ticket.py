@@ -493,7 +493,7 @@ def test_dashboard_portfolio_ticket_normalizes_score_to_edge_direction(monkeypat
     assert "score_edge_direction_mismatch" in response.rows[0].warnings
 
 
-def test_dashboard_portfolio_ticket_auto_uses_best_signal_source_variant(monkeypatch) -> None:
+def test_dashboard_portfolio_ticket_auto_forces_wfo_best_signal_variant(monkeypatch) -> None:
     seen: dict[str, object] = {}
     monkeypatch.setattr(
         svc,
@@ -507,7 +507,7 @@ def test_dashboard_portfolio_ticket_auto_uses_best_signal_source_variant(monkeyp
     monkeypatch.setattr(
         svc,
         "_build_best_signal_payload",
-        lambda *_args, **_kwargs: {"source": "wfo", "variant": "expanded_factor_x_ta_simple"},
+        lambda *_args, **_kwargs: {"source": "signal_engine", "variant": "expanded_factor_x_ta_simple"},
     )
     monkeypatch.setattr(svc, "load_ohlcv_for_symbol", lambda *_args, **_kwargs: _bars())
     monkeypatch.setattr(svc, "compute_hrp_weights", lambda *_args, **_kwargs: {"AAA": 1.0})
@@ -547,7 +547,8 @@ def test_dashboard_portfolio_ticket_auto_uses_best_signal_source_variant(monkeyp
     assert seen["consensus"] == 35.0
     assert response.summary.source == "auto"
     assert "source=wfo" in response.rows[0].proof_url
-    assert "variant=expanded_factor_x_ta_simple" in response.rows[0].proof_url
+    assert "view=expanded_factor_x_ta_simple" in response.rows[0].proof_url
+    assert "variant=expanded_factor_x_ta_simple" not in response.rows[0].proof_url
 
 
 def test_dashboard_portfolio_ticket_api_contract(monkeypatch) -> None:

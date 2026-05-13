@@ -2406,6 +2406,8 @@ def _edge_metrics_to_out(m: "EdgeMetrics") -> "EdgeMetricsOut":
         label_shuffle_pvalue_net_adj=m.label_shuffle_pvalue_net_adj,
         proven_edge_gross=m.proven_edge_gross,
         proven_edge_net=m.proven_edge_net,
+        edge_score=m.edge_score,
+        edge_score_components=dict(m.edge_score_components or {}),
         gates=EdgeGatesOut(
             mc_gross=m.gates.mc_gross,
             mc_net=m.gates.mc_net,

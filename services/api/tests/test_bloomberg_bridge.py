@@ -49,6 +49,9 @@ class _FakeS3:
 @pytest.fixture()
 def client_and_storage(monkeypatch):
     monkeypatch.setattr(settings, "BLOOMBERG_BRIDGE_API_KEY", "secret")
+    monkeypatch.setattr(settings, "API_KEY", "")
+    monkeypatch.setattr(settings, "ADMIN_API_KEY", "")
+    monkeypatch.setattr(settings, "INTERNAL_JWT_SECRET", "")
 
     engine = create_engine(
         "sqlite+pysqlite://",
@@ -58,6 +61,9 @@ def client_and_storage(monkeypatch):
     SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
     models.BloombergIngestBatch.__table__.create(engine)
     models.BloombergSeries.__table__.create(engine)
+    models.BloombergJob.__table__.create(engine)
+    models.BloombergBridgeStatus.__table__.create(engine)
+    models.BloombergJobEvent.__table__.create(engine)
 
     objects: dict[str, bytes] = {}
     monkeypatch.setattr(
@@ -164,3 +170,64 @@ def test_bridge_upload_stores_raw_batch_and_indexes_series(client_and_storage) -
     series_download = client.get(f"/bloomberg/series/{series[0]['id']}/download")
     assert series_download.status_code == 200
     assert series_download.content
+
+
+def test_bloomberg_job_can_be_queued_claimed_and_completed(client_and_storage) -> None:
+    client, _objects = client_and_storage
+
+    created = client.post(
+        "/bloomberg/jobs",
+        json={
+            "job_type": "preflight",
+            "universe": "selected",
+            "mode": "discovery_only",
+            "frequency": "daily",
+            "symbols": ["ATW"],
+            "fields": ["PX_LAST"],
+        },
+    )
+    assert created.status_code == 201
+    job_id = created.json()["id"]
+    assert created.json()["status"] == "queued"
+    assert created.json()["spec_json"]["securities"] == ["ATW MA Equity"]
+
+    heartbeat = client.post(
+        "/bridge/bloomberg/heartbeat",
+        headers={"X-Bloomberg-Bridge-Key": "secret"},
+        json={
+            "bridge_id": "bank-terminal-01",
+            "status": "online",
+            "capabilities": {"xbbg": True},
+            "preflight": {"ok": True},
+        },
+    )
+    assert heartbeat.status_code == 200
+
+    claim = client.get(
+        "/bridge/bloomberg/jobs/next?bridge_id=bank-terminal-01",
+        headers={"X-Bloomberg-Bridge-Key": "secret"},
+    )
+    assert claim.status_code == 200
+    assert claim.json()["job"]["id"] == job_id
+    assert claim.json()["job"]["status"] == "leased"
+
+    completed = client.post(
+        f"/bridge/bloomberg/jobs/{job_id}/status",
+        headers={
+            "X-Bloomberg-Bridge-Key": "secret",
+            "X-Bloomberg-Bridge-Id": "bank-terminal-01",
+        },
+        json={
+            "status": "succeeded",
+            "progress": {"stage": "completed"},
+            "result": {"ok": True},
+            "message": "done",
+        },
+    )
+    assert completed.status_code == 200
+    assert completed.json()["status"] == "succeeded"
+    assert completed.json()["result_json"]["ok"] is True
+
+    events = client.get(f"/bloomberg/jobs/{job_id}/events")
+    assert events.status_code == 200
+    assert [event["status"] for event in events.json()] == ["queued", "leased", "succeeded"]

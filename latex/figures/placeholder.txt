@@ -1,0 +1,47 @@
+Ce dossier contiendra toutes les figures du rapport.
+
+Convention de nommage (structure 6 chapitres après ajout Ch.2 Analyse Technique) :
+
+  -- Chapitre 1 — Contexte --
+  ch1_fig1_cycle_ordre.png         → Figure 1.1 — Cycle d'ordre
+  ch1_fig2_besoin_desk.png         → Figure 1.2 — 3 axes du besoin (vitesse/traçabilité/action)
+  ch1_fig3_metastrategie.png       → Figure 1.3 — Chaîne de production 4 stations
+
+  -- Chapitre 2 — Analyse Technique et Indicateurs --
+  ch2_fig1_taxonomie.png           → Figure 2.1 — Arbre taxonomique 4 catégories × 20 familles
+  ch2_fig2_sma.png                 → Figure 2.2 — SMA 20/50/200 sur IAM avec crossovers annotés
+  ch2_fig3_rsi.png                 → Figure 2.3 — RSI 14 sur ATW avec zones surachat/survente
+
+  -- Chapitre 3 — Signal Engine A→G --
+  ch3_fig1_pipeline_ag.png         → Figure 3.1 — Pipeline A→G avec comptages typiques
+  ch3_fig2_oos_windows.png         → Figure 3.2 — Fenêtres IS/OOS glissantes Layer B
+  ch3_fig3_correlation_heatmap.png → Figure 3.3 — Heatmap corrélation avant/après Layer E
+
+  -- Chapitre 4 — Moteur WFO --
+  ch4_fig1_wfo_pipeline.png        → Figure 4.1 — Pipeline WFO complet (9 étapes)
+  ch4_fig2_wfe_barplot.png         → Figure 4.2 — WFE barplot MASI
+  ch4_fig3_montecarlo.png          → Figure 4.3 — Distribution Monte Carlo bootstrap
+
+  -- Chapitre 5 — Architecture de la Plateforme --
+  ch5_fig1_architecture.png        → Figure 5.1 — Schéma architecture stack complète
+  ch5_fig2_screenshot_data.png     → Figure 5.2 — Screenshot page Données
+  ch5_fig3_screenshot_signals.png  → Figure 5.3 — Screenshot page Signaux
+  ch5_fig4_screenshot_variant.png  → Figure 5.4 — Screenshot détail variante
+  ch5_fig5_screenshot_strategy.png → Figure 5.5 — Screenshot page Stratégie
+  ch5_fig6_screenshot_backtest.png → Figure 5.6 — Screenshot page Backtest
+
+  -- Chapitre 6 — Dashboard --
+  ch6_fig1_dashboard_mockup.png    → Figure 6.1 — Mockup dashboard annoté (3 sections)
+  ch6_fig2_gauge.png               → Figure 6.2 — Gauge principale + sub-gauges familles
+  ch6_fig3_leaderboard.png         → Figure 6.3 — Leaderboard WFO multi-horizon
+  ch6_fig4_detail_iam.png          → Figure 6.4 — Vue détaillée IAM
+  ch6_fig5_equity_curve.png        → Figure 6.5 — Equity curve IS/OOS IAM
+  ch6_fig6_wfe_bars.png            → Figure 6.6 — WFE par fenêtre IAM
+  ch6_fig7_heatmap_wfe.png         → Figure 6.7 — Heatmap WFE portefeuille MASI
+
+  -- Pages de garde --
+  logo_emi.png                     → Logo EMI (page de garde)
+  logo_bmce.png                    → Logo BMCE Capital (page de garde)
+
+Formats acceptés : PNG (recommandé), PDF, JPEG.
+Résolution minimale recommandée : 300 dpi pour impression A4.

@@ -124,6 +124,39 @@ def test_snapshot_mode_rejects_unusable_stale_snapshot_without_live_edge_fallbac
     mock_builder.assert_not_called()
 
 
+def test_snapshot_mode_rejects_legacy_best_signal_score_shape(monkeypatch) -> None:
+    client = _build_app(monkeypatch, "snapshot")
+    stale_payload = {
+        key: value
+        for key, value in {
+            **_SAMPLE_PAYLOAD,
+            "stocks": [
+                {
+                    "symbol": "ATW",
+                    "best_technical_signal": None,
+                    "best_signal": {"score": -0.004, "n": 60},
+                }
+            ],
+        }.items()
+        if key != "payload_version"
+    }
+    with (
+        patch(
+            "services.api.app.routers.dashboard_data._latest_snapshot",
+            return_value=(stale_payload, _UPSTREAM_REV, _COMPUTED_AT, _AS_OF),
+        ),
+        patch(
+            "services.api.app.routers.dashboard_data.build_dashboard_payload",
+            return_value=_SAMPLE_PAYLOAD,
+        ) as mock_builder,
+    ):
+        resp = client.get("/dashboard/data/weekly")
+
+    assert resp.status_code == 503
+    assert "backfill" in resp.json()["detail"].lower()
+    mock_builder.assert_not_called()
+
+
 def test_snapshot_mode_returns_computed_at_header(monkeypatch) -> None:
     client = _build_app(monkeypatch, "snapshot")
     with patch(
@@ -331,6 +364,32 @@ def test_best_signal_rank_rejects_non_actionable_buckets() -> None:
     assert _best_signal_rank({**base_edge, "bucket": "strong_buy", "direction": "long"}) is not None
 
 
+def test_best_signal_rank_prefers_edge_score_over_raw_return() -> None:
+    from services.api.app.services.dashboard_builder import _best_signal_rank
+
+    base_edge = {
+        "bucket": "strong_buy",
+        "direction": "long",
+        "n": 60,
+        "gates": {"n": True},
+        "proven_edge_net": False,
+    }
+    high_return_weak_proof = {
+        **base_edge,
+        "action_expected_return_net": 0.05,
+        "action_expected_return_net_ci_lower": 0.04,
+        "edge_score": 40.0,
+    }
+    lower_return_stronger_proof = {
+        **base_edge,
+        "action_expected_return_net": 0.02,
+        "action_expected_return_net_ci_lower": 0.01,
+        "edge_score": 80.0,
+    }
+
+    assert _best_signal_rank(lower_return_stronger_proof) > _best_signal_rank(high_return_weak_proof)
+
+
 def test_best_signal_payload_uses_wfo_only(monkeypatch) -> None:
     from services.api.app.routers import analytics
     from services.api.app.services import dashboard_builder as builder
@@ -362,6 +421,8 @@ def test_best_signal_payload_uses_wfo_only(monkeypatch) -> None:
             "hit_ci_upper": 0.68,
             "proven_edge_net": True,
             "proven_edge_gross": True,
+            "edge_score": 84.0,
+            "edge_score_components": {"bootstrap_er": 80.0},
             "fwd_horizon_bars": 21,
             "return_calc_method": "open_to_open",
         })
@@ -374,6 +435,8 @@ def test_best_signal_payload_uses_wfo_only(monkeypatch) -> None:
 
     assert best is not None
     assert best["source"] == "wfo"
+    assert best["edge_score"] == 84.0
+    assert best["edge_score_components"]["bootstrap_er"] == 80.0
     assert calls
     assert {source for source, _variant in calls} == {"wfo"}
 
@@ -549,6 +612,187 @@ def test_avg_cats_aggregates_correctly() -> None:
     result = _avg_cats(cat_dict, EXPANDED_CATEGORY_FAMILIES)
     assert result["tendance"]["score_pct"] == 70.0
     assert result["tendance"]["label"] == "Très haussier"  # "tendance" is a trend type
+
+
+def test_dashboard_payload_reads_canonical_expanded_rows(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from services.api.app.services import dashboard_builder as builder
+
+    class Result:
+        def __init__(self, rows=None):
+            self.rows = rows or []
+
+        def fetchall(self):
+            return self.rows
+
+    class FakeDb:
+        def __init__(self):
+            self.sqls: list[str] = []
+
+        def execute(self, statement, params=None):
+            sql = str(statement)
+            self.sqls.append(sql)
+            if "FROM signal_engine_global_result" in sql and "technical_levels_json" in sql:
+                return Result([
+                    (
+                        "AAA",
+                        11.0,
+                        77.0,
+                        "Achat",
+                        {"sma": {"score_pct": 11.0}, "ema": {"score_pct": 77.0}},
+                        {"pivot": 10.0},
+                        {"support": 9.5},
+                        "expanded_ta_simple",
+                    )
+                ])
+            if "FROM wfo_global_signal" in sql and "best_category" in sql:
+                return Result([
+                    (
+                        "AAA",
+                        "succeeded",
+                        66.0,
+                        "Achat",
+                        0.25,
+                        0.25,
+                        0.25,
+                        0.25,
+                        9.5,
+                        12.0,
+                        "swing_low",
+                        "swing_high",
+                        "tendance",
+                        72.0,
+                        0.81,
+                        "expanded_ta_simple",
+                    )
+                ])
+            if "FROM wfo_signal_summary" in sql and "variant IN" in sql:
+                return Result([
+                    ("AAA", "tendance", 66.0, "Achat", "expanded_ta_simple"),
+                ])
+            return Result([])
+
+    monkeypatch.setattr(
+        builder,
+        "list_signal_universe",
+        lambda _db: [
+            SimpleNamespace(
+                symbol="AAA",
+                display_name="AAA",
+                sector="Banques",
+                asset_type="equity",
+                market_region="masi",
+                asset_class="equity",
+            )
+        ],
+    )
+    monkeypatch.setattr(builder, "_load_dashboard_market_stats", lambda *_args, **_kwargs: {})
+
+    payload = builder.build_dashboard_payload(FakeDb(), "weekly", include_edge=False)
+
+    stock = payload["stocks"][0]
+    assert stock["scores"]["signal_engine"]["expanded_aggregate_score_pct"] == 77.0
+    assert stock["scores"]["wfo"]["aggregate_score_pct"] == 66.0
+    assert stock["scores"]["wfo"]["per_family"]["tendance"]["score_pct"] == 66.0
+
+
+def test_dashboard_payload_prefers_canonical_expanded_rows(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from services.api.app.services import dashboard_builder as builder
+
+    class Result:
+        def __init__(self, rows=None):
+            self.rows = rows or []
+
+        def fetchall(self):
+            return self.rows
+
+    class FakeDb:
+        def __init__(self):
+            self.sqls: list[str] = []
+
+        def execute(self, statement, params=None):
+            sql = str(statement)
+            self.sqls.append(sql)
+            if "FROM signal_engine_global_result" in sql and "technical_levels_json" in sql:
+                return Result([
+                    ("AAA", 10.0, 80.0, "Achat", {}, None, None, "expanded_ta_simple"),
+                    ("AAA", 10.0, 20.0, "Neutre", {}, None, None, "expanded"),
+                ])
+            if "FROM wfo_global_signal" in sql and "best_category" in sql:
+                return Result([
+                    (
+                        "AAA",
+                        "succeeded",
+                        70.0,
+                        "Achat",
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        "tendance",
+                        None,
+                        None,
+                        "expanded_ta_simple",
+                    ),
+                    (
+                        "AAA",
+                        "succeeded",
+                        30.0,
+                        "Vente",
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        "momentum",
+                        None,
+                        None,
+                        "expanded",
+                    ),
+                ])
+            if "FROM wfo_signal_summary" in sql and "variant IN" in sql:
+                return Result([
+                    ("AAA", "tendance", 70.0, "Achat", "expanded_ta_simple"),
+                    ("AAA", "tendance", 30.0, "Vente", "expanded"),
+                ])
+            return Result([])
+
+    fake_db = FakeDb()
+    monkeypatch.setattr(
+        builder,
+        "list_signal_universe",
+        lambda _db: [
+            SimpleNamespace(
+                symbol="AAA",
+                display_name="AAA",
+                sector="Banques",
+                asset_type="equity",
+                market_region="masi",
+                asset_class="equity",
+            )
+        ],
+    )
+    monkeypatch.setattr(builder, "_load_dashboard_market_stats", lambda *_args, **_kwargs: {})
+
+    payload = builder.build_dashboard_payload(fake_db, "weekly", include_edge=False)
+
+    stock = payload["stocks"][0]
+    assert stock["scores"]["signal_engine"]["expanded_aggregate_score_pct"] == 80.0
+    assert stock["scores"]["wfo"]["aggregate_score_pct"] == 70.0
+    assert stock["scores"]["wfo"]["per_family"]["tendance"]["score_pct"] == 70.0
+    aggregate_sql = "\n".join(fake_db.sqls)
+    assert "variant IN ('expanded_ta_simple', 'expanded')" in aggregate_sql
+    assert "ORDER BY CASE WHEN variant = 'expanded_ta_simple' THEN 0 ELSE 1 END" in aggregate_sql
 
 
 def test_market_stats_query_prefers_latest_daily_row() -> None:

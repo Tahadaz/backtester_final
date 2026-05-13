@@ -1,0 +1,266 @@
+% !TEX program = xelatex
+% !TEX TS-program = xelatex
+% !BIB program = biber
+%% ============================================================
+%%  Mémoire de PFE — Taha Dazine — EMI / Département MIS
+%%  Compilez avec XeLaTeX pour le support Unicode et arabe.
+%%  Commande : xelatex -interaction=nonstopmode main.tex
+%%             (deux passes pour la table des matières)
+%% ============================================================
+
+\documentclass[12pt, a4paper, oneside]{report}
+
+%% --- Encodage & langues ----------------------------------
+\usepackage{fontspec}           % XeLaTeX : sélection de polices Unicode
+\usepackage{polyglossia}
+\setmainlanguage{french}
+\setotherlanguage{english}
+\setotherlanguage{arabic}
+\newfontfamily\arabicfont[Script=Arabic, Scale=1.1]{Arial}
+% Si Arial n'est pas disponible, remplacez par : Amiri, Scheherazade New, ou tout autre font arabe installée
+
+%% --- Mise en page ----------------------------------------
+\usepackage[
+    top=2.5cm, bottom=2.5cm,
+    left=2.5cm, right=2.5cm
+]{geometry}
+
+\usepackage{setspace}
+\onehalfspacing                 % Interlignage 1,5 (lisibilité et longueur cible)
+
+%% --- Typographie -----------------------------------------
+\usepackage{microtype}
+\usepackage{lmodern}            % Police vectorielle propre en fallback
+
+%% --- Couleurs & graphiques -------------------------------
+\usepackage[dvipsnames, table]{xcolor}
+\usepackage{graphicx}
+\graphicspath{{figures/}}       % Tous les \includegraphics cherchent dans figures/
+\usepackage{float}              % Option [H] pour fixer les flottants
+
+%% --- Tableaux --------------------------------------------
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{longtable}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}   % Colonne extensible avec retours propres
+\ExplSyntaxOn
+\cs_if_exist:NF \tbl_save_outer_table_cols:
+  { \cs_new_protected:Npn \tbl_save_outer_table_cols: {} }
+\cs_if_exist:NF \tbl_restore_outer_table_cols:
+  { \cs_new_protected:Npn \tbl_restore_outer_table_cols: {} }
+\ExplSyntaxOff
+
+%% --- Mathématiques ---------------------------------------
+\usepackage{amsmath}
+\usepackage{amssymb}
+\numberwithin{equation}{chapter}  % Numérotation des équations par chapitre
+
+%% --- Numérotation figures/tableaux par chapitre ----------
+\usepackage{chngcntr}
+\numberwithin{figure}{chapter}
+\numberwithin{table}{chapter}
+
+%% --- En-têtes et pieds de page ---------------------------
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\setlength{\headheight}{26pt}
+\fancyhead[L]{\small\leftmark}
+\fancyhead[R]{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\fancypagestyle{plain}{%
+    \fancyhf{}
+    \fancyhead[R]{\small\thepage}
+    \renewcommand{\headrulewidth}{0pt}
+}
+
+%% --- Chapitres : style personnalisé ----------------------
+\usepackage{titlesec}
+\titleformat{\chapter}[display]
+    {\normalfont\huge\bfseries\color{NavyBlue}}
+    {\chaptertitlename\ \thechapter}{16pt}{\Huge}
+\titlespacing*{\chapter}{0pt}{0pt}{20pt}
+
+%% --- Table des matières / listes -------------------------
+\usepackage{tocloft}
+\setlength{\cftbeforetoctitleskip}{0pt}
+
+%% --- Codes source ----------------------------------------
+\usepackage{listings}
+\lstset{
+    basicstyle=\ttfamily\footnotesize,
+    breaklines=true,
+    frame=single,
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    keywordstyle=\color{NavyBlue}\bfseries,
+    commentstyle=\color{OliveGreen}\itshape,
+    stringstyle=\color{BrickRed},
+    language=Python,
+    xleftmargin=1.5em,
+    framexleftmargin=1.5em,
+}
+
+%% --- Hyperliens ------------------------------------------
+\usepackage[
+    colorlinks=true,
+    linkcolor=NavyBlue,
+    citecolor=NavyBlue,
+    urlcolor=NavyBlue,
+    hypertexnames=false,
+    pdftitle={Plateforme Quantitative de Backtesting et de Signaux --- Rapport PFE},
+    pdfauthor={Taha Dazine},
+    pdfkeywords={backtesting, walk-forward analysis, signal engine, MASI, trading algorithmique}
+]{hyperref}
+
+%% --- Bibliographie ---------------------------------------
+\usepackage[
+    backend=biber,
+    style=numeric,
+    language=french,
+    autolang=none,
+    defernumbers=true,
+    sorting=none,           % Classement par ordre d'apparition dans le texte
+    maxnames=3,
+    minnames=1
+]{biblatex}
+\addbibresource{biblio.bib}
+\DeclareLanguageMapping{arabic}{french}
+\DefineBibliographyExtras{arabic}{%
+  \protected\def\mkbibordinal#1{#1\textsuperscript{e}}%
+  \protected\def\mkbibdatelong#1#2#3{%
+    \iffieldundef{#3}{}{\stripzeros{\thefield{#3}}\space}%
+    \iffieldundef{#2}{}{\mkbibmonth{\thefield{#2}}\space}%
+    \iffieldundef{#1}{}{\thefield{#1}}}%
+  \protected\def\mkbibdateshort#1#2#3{%
+    \iffieldundef{#3}{}{\mkdayzeros{\thefield{#3}}/}%
+    \iffieldundef{#2}{}{\mkmonthzeros{\thefield{#2}}/}%
+    \iffieldundef{#1}{}{\thefield{#1}}}}
+\DefineBibliographyStrings{arabic}{%
+  and       = {{et}{et}},
+  andothers = {{et\addabbrvspace al\adddot}{et\addabbrvspace al\adddot}},
+  edition   = {{\'edition}{\'ed\adddot}},
+  in        = {{dans}{dans}},
+  pages     = {{pages}{p\adddot}},
+  urlseen   = {{visit\'e le}{visit\'e le}}}
+\setlength{\emergencystretch}{3em}
+\setcounter{biburlnumpenalty}{9000}
+\setcounter{biburlucpenalty}{8000}
+\setcounter{biburllcpenalty}{7000}
+\hfuzz=20pt
+\hbadness=10000
+
+%% --- Commandes utilitaires -------------------------------
+\newcommand{\og}{«}
+\newcommand{\fg}{»}
+
+%% ============================================================
+%%  DÉBUT DU DOCUMENT
+%% ============================================================
+\begin{document}
+
+%% ---- PAGES PRÉLIMINAIRES (numérotation romaine) ----------
+\pagenumbering{roman}
+
+\include{frontmatter/garde}
+\include{frontmatter/dedicace}
+\include{frontmatter/remerciements}
+\include{frontmatter/resume}
+\include{frontmatter/abstract}
+\include{frontmatter/molakhas}
+\selectlanguage{french}
+\newpage\thispagestyle{empty}\mbox{}   % Page vide après le résumé arabe (règle EMI)
+\include{frontmatter/abreviations}
+
+%% ---- LISTES AUTOMATIQUES --------------------------------
+\tableofcontents
+\listoffigures
+\addcontentsline{toc}{chapter}{Liste des figures}
+\listoftables
+\addcontentsline{toc}{chapter}{Liste des tableaux}
+
+%% ---- CORPS DU RAPPORT (numérotation arabe) --------------
+\cleardoublepage
+\pagenumbering{arabic}
+
+\include{chapters/intro}
+\include{chapters/ch1_contexte}
+\include{chapters/ch2_at}
+\include{chapters/ch3_signaux}
+\include{chapters/ch4_wfo}
+\include{chapters/ch5_architecture}
+\include{chapters/ch6_dashboard}
+\include{chapters/ch7_analytics}
+\include{chapters/conclusion}
+
+%% ---- BIBLIOGRAPHIE & WEBOGRAPHIE ------------------------
+\selectlanguage{english}
+\nocite{bourse_casablanca,bmce_capital_web,fastapi_docs,nextjs_docs,numba_docs,tradingview_web,investing_web}
+\printbibliography[
+    heading=bibintoc,
+    title={Bibliographie},
+    nottype=online
+]
+\printbibliography[
+    heading=bibintoc,
+    title={Webographie},
+    type=online
+]
+\selectlanguage{french}
+
+%% ---- ANNEXES --------------------------------------------
+\appendix
+\renewcommand{\chaptername}{Annexe}
+
+\chapter{Extraits de code source}
+\label{ann:code}
+Voir le dépôt Git du projet pour le code complet. Les extraits suivants illustrent les
+algorithmes centraux décrits dans le rapport.
+
+\chapter{Schéma PostgreSQL}
+\label{ann:bdd}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\linewidth]{generated/ann_erd.png}
+\caption{Modèle de données simplifié de la plateforme. Source~: synthèse du
+modèle SQLAlchemy local.}
+\label{fig:ann_erd}
+\end{figure}
+
+\chapter{Calendrier des jours fériés — Bourse de Casablanca 2023--2026}
+\label{ann:holidays}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\linewidth]{generated/ann_holidays.png}
+\caption{Synthèse du calendrier local des jours fériés utilisé par la pipeline de données.
+Source~: fichier local des jours fériés de la Bourse de Casablanca.}
+\label{fig:ann_holidays}
+\end{figure}
+
+\chapter{Détails mathématiques : PROM et Deflated Sharpe Ratio}
+\label{ann:maths}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\linewidth]{generated/ann_math.png}
+\caption{Rôle du PROM et du Deflated Sharpe Ratio dans la validation robuste.
+Sources~: Pardo~\cite{pardo2008} et Bailey \& López de Prado~\cite{bailey2012}.}
+\label{fig:ann_math}
+\end{figure}
+
+\chapter{Vues additionnelles du dashboard}
+\label{ann:screenshots}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\linewidth]{generated/ann_screenshots.png}
+\caption{Synthèse des surfaces produit de la plateforme. Source~: architecture locale
+documentée dans le dossier \texttt{docs}.}
+\label{fig:ann_screenshots}
+\end{figure}
+
+\end{document}

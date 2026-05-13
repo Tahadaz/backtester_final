@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react"
 import {
   useBloombergBatches,
+  useBloombergBridges,
+  useBloombergJobs,
   useBloombergSeries,
   useMarketCatalog,
   useTrackedStocks,
@@ -16,8 +18,17 @@ import {
   refreshSingleStock,
   enqueueAllMacroIngest,
   enqueueMacroIngest,
+  createBloombergJob,
 } from "@/lib/api"
-import type { BloombergBatch, BloombergSeries, MarketCatalogRow, MasiTicker } from "@/lib/api"
+import type {
+  BloombergBatch,
+  BloombergBridgeStatus,
+  BloombergJob,
+  BloombergJobCreateInput,
+  BloombergSeries,
+  MarketCatalogRow,
+  MasiTicker,
+} from "@/lib/api"
 import { PublicDataPage } from "@/components/data/public-data-page"
 import { StockDetailPanel } from "@/components/data/stock-detail-panel"
 import { ExcelUploadDialog } from "@/components/data/excel-upload-dialog"
@@ -27,8 +38,18 @@ import { CategoryEditDialog } from "@/components/data/category-edit-dialog"
 import { AddFactorDialog } from "@/components/data/add-factor-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Table,
   TableBody,
@@ -62,9 +83,12 @@ import {
   Package,
   Pencil,
   Plus,
+  Play,
   RefreshCw,
   Search,
+  ShieldCheck,
   TrendingUp,
+  Wifi,
   type LucideIcon,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -139,6 +163,19 @@ function dateOnly(value: string | null | undefined) {
   return value ? value.slice(0, 10) : null
 }
 
+function parseListInput(value: string) {
+  return value
+    .split(/[\n,;]/g)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function asText(value: unknown) {
+  if (value == null) return "-"
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value)
+  return "-"
+}
+
 function getCategoryLabel(tab: CategoryTab | string | null | undefined) {
   switch (tab) {
     case "equity":
@@ -211,7 +248,18 @@ function PrivateDataPage() {
   const {
     data: bloombergSeries,
     error: bloombergSeriesError,
+    mutate: mutateBloombergSeries,
   } = useBloombergSeries()
+  const {
+    data: bloombergBridges,
+    error: bloombergBridgesError,
+    mutate: mutateBloombergBridges,
+  } = useBloombergBridges()
+  const {
+    data: bloombergJobs,
+    error: bloombergJobsError,
+    mutate: mutateBloombergJobs,
+  } = useBloombergJobs()
 
   const [categoryTab, setCategoryTab] = useState<CategoryTab>("equity")
   const [subcategoryTab, setSubcategoryTab] = useState<SubcategoryTab>("all")
@@ -558,8 +606,16 @@ function PrivateDataPage() {
       {categoryTab === "bloomberg" ? (
         <BloombergBridgePanel
           batches={bloombergBatches}
+          bridges={bloombergBridges}
+          jobs={bloombergJobs}
           series={bloombergSeries}
-          error={bloombergBatchesError ?? bloombergSeriesError}
+          masiTickers={visibleMasiTickers}
+          onJobCreated={() => {
+            mutateBloombergJobs()
+            mutateBloombergBridges()
+            mutateBloombergSeries()
+          }}
+          error={bloombergBatchesError ?? bloombergSeriesError ?? bloombergBridgesError ?? bloombergJobsError}
         />
       ) : (
         <>
@@ -917,18 +973,83 @@ function PrivateDataPage() {
 
 function BloombergBridgePanel({
   batches,
+  bridges,
+  jobs,
   series,
+  masiTickers,
+  onJobCreated,
   error,
 }: {
   batches: BloombergBatch[] | undefined
+  bridges: BloombergBridgeStatus[] | undefined
+  jobs: BloombergJob[] | undefined
   series: BloombergSeries[] | undefined
+  masiTickers: MasiTicker[]
+  onJobCreated: () => void
   error: unknown
 }) {
+  const [jobType, setJobType] = useState<BloombergJobCreateInput["job_type"]>("discovery")
+  const [universe, setUniverse] = useState<BloombergJobCreateInput["universe"]>("masi")
+  const [frequency, setFrequency] = useState<BloombergJobCreateInput["frequency"]>("daily")
+  const [mode, setMode] = useState<BloombergJobCreateInput["mode"]>("discovery_only")
+  const [symbolsText, setSymbolsText] = useState("")
+  const [fieldsText, setFieldsText] = useState("PX_LAST\nVOLUME")
+  const [startDate, setStartDate] = useState("2010-01-01")
+  const [endDate, setEndDate] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const totalRows = (batches ?? []).reduce((sum, batch) => sum + batch.row_count, 0)
   const latestBatch = (batches ?? [])[0]
   const latestDate = latestBatch ? dateOnly(latestBatch.created_at) : null
   const uniqueSecurities = new Set((series ?? []).map((row) => row.security)).size
   const uniqueFields = new Set((series ?? []).map((row) => row.field)).size
+  const onlineBridge = (bridges ?? []).find((bridge) => !bridge.is_stale && bridge.status !== "offline")
+  const activeJobs = (jobs ?? []).filter((job) => ["queued", "leased", "running"].includes(job.status))
+  const masiSymbols = masiTickers.map((ticker) => ticker.symbol).filter(Boolean)
+
+  async function submitBloombergJob(override?: Partial<BloombergJobCreateInput>) {
+    const selectedSymbols =
+      universe === "masi"
+        ? []
+        : parseListInput(symbolsText).map((symbol) => symbol.toUpperCase())
+    const fields = parseListInput(fieldsText).map((field) => field.toUpperCase())
+    const payload: BloombergJobCreateInput = {
+      job_type: override?.job_type ?? jobType,
+      universe: override?.universe ?? universe,
+      mode: override?.mode ?? mode,
+      frequency: override?.frequency ?? frequency,
+      symbols: override?.symbols ?? selectedSymbols,
+      fields: override?.fields ?? fields,
+      start_date: override?.start_date ?? (startDate || null),
+      end_date: override?.end_date ?? (endDate || null),
+      apply_to_market_data: false,
+      options: {
+        requested_from: "data_page",
+      },
+    }
+    setIsSubmitting(true)
+    try {
+      const job = await createBloombergJob(payload)
+      toast.success(`Bloomberg job queued: ${job.job_type}`)
+      onJobCreated()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Bloomberg job failed")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  function runPreflight() {
+    submitBloombergJob({
+      job_type: "preflight",
+      universe: "selected",
+      mode: "discovery_only",
+      frequency: "daily",
+      symbols: masiSymbols.includes("ATW") ? ["ATW"] : masiSymbols.slice(0, 1),
+      fields: ["PX_LAST"],
+      start_date: null,
+      end_date: null,
+    })
+  }
 
   if (error) {
     return (
@@ -945,6 +1066,131 @@ function BloombergBridgePanel({
 
   return (
     <div className="space-y-4">
+      <Card className="claude-card">
+        <CardHeader className="px-5 pb-3 pt-4">
+          <CardTitle className="flex items-center justify-between gap-3 text-sm font-semibold">
+            <span className="flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4" />
+              Bloomberg control
+            </span>
+            <Badge variant={onlineBridge ? "default" : "outline"} className="gap-1 text-[10px]">
+              <Wifi className="h-3 w-3" />
+              {onlineBridge ? `${onlineBridge.bridge_id}` : "Bridge offline"}
+            </Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4 px-5 pb-5">
+          <div className="grid gap-3 md:grid-cols-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Job</Label>
+              <Select value={jobType} onValueChange={(value) => setJobType(value as BloombergJobCreateInput["job_type"])}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="discovery">Discovery</SelectItem>
+                  <SelectItem value="backfill">Backfill</SelectItem>
+                  <SelectItem value="refresh">Refresh latest</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Universe</Label>
+              <Select value={universe} onValueChange={(value) => setUniverse(value as BloombergJobCreateInput["universe"])}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="masi">MASI all</SelectItem>
+                  <SelectItem value="selected">Selected stocks</SelectItem>
+                  <SelectItem value="custom">Custom tickers</SelectItem>
+                  <SelectItem value="bonds">Bonds</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Frequency</Label>
+              <Select value={frequency} onValueChange={(value) => setFrequency(value as BloombergJobCreateInput["frequency"])}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="daily">Daily</SelectItem>
+                  <SelectItem value="hourly">Hourly</SelectItem>
+                  <SelectItem value="minute">1 minute</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Mode</Label>
+              <Select value={mode} onValueChange={(value) => setMode(value as BloombergJobCreateInput["mode"])}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="discover_then_backfill">Discover then backfill</SelectItem>
+                  <SelectItem value="discovery_only">Discovery only</SelectItem>
+                  <SelectItem value="backfill_missing">Backfill missing</SelectItem>
+                  <SelectItem value="refresh_latest">Refresh latest</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-[1fr_1fr_160px_160px]">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Symbols</Label>
+              <Textarea
+                value={symbolsText}
+                onChange={(event) => setSymbolsText(event.target.value)}
+                placeholder={universe === "masi" ? `${formatCount(masiSymbols.length)} MASI symbols` : "ATW, BCP, IAM"}
+                disabled={universe === "masi"}
+                className="min-h-20 font-mono text-xs"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Fields</Label>
+              <Textarea
+                value={fieldsText}
+                onChange={(event) => setFieldsText(event.target.value)}
+                className="min-h-20 font-mono text-xs"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Start</Label>
+              <Input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">End</Label>
+              <Input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={runPreflight} disabled={isSubmitting}>
+                <ShieldCheck className="h-4 w-4" />
+                Preflight
+              </Button>
+              <Button type="button" size="sm" onClick={() => submitBloombergJob()} disabled={isSubmitting}>
+                <Play className="h-4 w-4" />
+                Queue job
+              </Button>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <Badge variant="outline" className="text-[10px]">
+                {formatCount(activeJobs.length)} active
+              </Badge>
+              {jobs?.[0] && (
+                <span className="font-mono">
+                  last {jobs[0].job_type}/{jobs[0].status}
+                </span>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="claude-stat primary">
           <div className="lbl">Batches</div>
@@ -966,6 +1212,115 @@ function BloombergBridgePanel({
           <div className="val">{formatCount(totalRows)}</div>
           <div className="sub">uploads stockes</div>
         </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card className="claude-card">
+          <CardHeader className="px-5 pb-3 pt-4">
+            <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+              <Wifi className="h-4 w-4" />
+              Bridges
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="!p-0">
+            {!bridges ? (
+              <div className="space-y-2 p-5">
+                {[...Array(3)].map((_, i) => (
+                  <Skeleton key={i} className="h-10 w-full" />
+                ))}
+              </div>
+            ) : bridges.length === 0 ? (
+              <div className="flex h-28 items-center justify-center text-sm text-muted-foreground">
+                Aucun bridge connecte.
+              </div>
+            ) : (
+              <Table className="claude-table">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Bridge</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Last seen</TableHead>
+                    <TableHead className="text-right">Bloomberg</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {bridges.slice(0, 6).map((bridge) => (
+                    <TableRow key={bridge.bridge_id}>
+                      <TableCell className="font-mono text-xs font-semibold">{bridge.bridge_id}</TableCell>
+                      <TableCell>
+                        <Badge variant={bridge.is_stale ? "outline" : "default"} className="text-[10px]">
+                          {bridge.is_stale ? "stale" : bridge.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right text-xs text-muted-foreground">
+                        {dateOnly(bridge.last_seen_at) ?? "-"}
+                      </TableCell>
+                      <TableCell className="text-right text-xs">
+                        {asText(bridge.capabilities_json.xbbg)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="claude-card">
+          <CardHeader className="px-5 pb-3 pt-4">
+            <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+              <RefreshCw className="h-4 w-4" />
+              Jobs
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="!p-0">
+            {!jobs ? (
+              <div className="space-y-2 p-5">
+                {[...Array(3)].map((_, i) => (
+                  <Skeleton key={i} className="h-10 w-full" />
+                ))}
+              </div>
+            ) : jobs.length === 0 ? (
+              <div className="flex h-28 items-center justify-center text-sm text-muted-foreground">
+                Aucun job Bloomberg.
+              </div>
+            ) : (
+              <Table className="claude-table">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Stage</TableHead>
+                    <TableHead className="text-right">Created</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {jobs.slice(0, 8).map((job) => (
+                    <TableRow key={job.id}>
+                      <TableCell>
+                        <div className="font-mono text-xs font-semibold">{job.job_type}</div>
+                        <div className="font-mono text-[10px] text-muted-foreground">
+                          {asText(job.spec_json.frequency)}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={job.status === "failed" ? "destructive" : "outline"} className="text-[10px]">
+                          {job.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {asText(job.progress_json.stage)}
+                      </TableCell>
+                      <TableCell className="text-right text-xs text-muted-foreground">
+                        {dateOnly(job.created_at) ?? "-"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">

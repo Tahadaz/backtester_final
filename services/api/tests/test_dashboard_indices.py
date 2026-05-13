@@ -18,6 +18,10 @@ from services.api.app.db import get_db
 from services.api.app.routers import dashboard_indices as dashboard_indices_router
 
 
+USER_A = {"x-app-user-id": "user-a", "x-app-user-email": "a@example.com"}
+USER_B = {"x-app-user-id": "user-b", "x-app-user-email": "b@example.com"}
+
+
 @compiles(JSONB, "sqlite")
 def _compile_jsonb_sqlite(_type, _compiler, **_kw):  # pragma: no cover - sqlite harness
     return "JSON"
@@ -56,12 +60,13 @@ def client_and_session():
 def test_dashboard_indices_crud_flow(client_and_session) -> None:
     client, _SessionLocal = client_and_session
 
-    listed_initial = client.get("/dashboard/indices")
+    listed_initial = client.get("/dashboard/indices", headers=USER_A)
     assert listed_initial.status_code == 200
     assert listed_initial.json() == []
 
     created = client.post(
         "/dashboard/indices",
+        headers=USER_A,
         json={
             "name": "Banques Leaders",
             "symbols": [" bcp ", "ATW", "bcp"],
@@ -71,10 +76,14 @@ def test_dashboard_indices_crud_flow(client_and_session) -> None:
     payload = created.json()
     assert payload["name"] == "Banques Leaders"
     assert payload["symbols"] == ["BCP", "ATW"]
+    assert payload["component_shares"] == {}
+    assert payload["components"] == []
+    assert payload["is_weighted_complete"] is False
     created_id = payload["id"]
 
     duplicate = client.post(
         "/dashboard/indices",
+        headers=USER_A,
         json={
             "name": "banques leaders",
             "symbols": ["IAM"],
@@ -82,28 +91,60 @@ def test_dashboard_indices_crud_flow(client_and_session) -> None:
     )
     assert duplicate.status_code == 409
 
+    same_name_other_user = client.post(
+        "/dashboard/indices",
+        headers=USER_B,
+        json={
+            "name": "banques leaders",
+            "symbols": ["IAM"],
+        },
+    )
+    assert same_name_other_user.status_code == 201
+
     updated = client.put(
         f"/dashboard/indices/{created_id}",
+        headers=USER_A,
         json={
             "name": "Top Banques",
-            "symbols": ["att", " atw ", "IAM", "IAM"],
+            "components": [
+                {"symbol": "att", "shares": 10},
+                {"symbol": " atw ", "shares": 5},
+                {"symbol": "IAM", "shares": 2},
+            ],
         },
     )
     assert updated.status_code == 200
     updated_payload = updated.json()
     assert updated_payload["name"] == "Top Banques"
     assert updated_payload["symbols"] == ["ATT", "ATW", "IAM"]
+    assert updated_payload["component_shares"] == {"ATT": 10, "ATW": 5, "IAM": 2}
+    assert updated_payload["components"] == [
+        {"symbol": "ATT", "shares": 10},
+        {"symbol": "ATW", "shares": 5},
+        {"symbol": "IAM", "shares": 2},
+    ]
+    assert updated_payload["is_weighted_complete"] is True
 
-    listed_after_update = client.get("/dashboard/indices")
+    other_user_update = client.put(
+        f"/dashboard/indices/{created_id}",
+        headers=USER_B,
+        json={"name": "Stolen", "components": [{"symbol": "IAM", "shares": 1}]},
+    )
+    assert other_user_update.status_code == 404
+
+    listed_after_update = client.get("/dashboard/indices", headers=USER_A)
     assert listed_after_update.status_code == 200
     rows = listed_after_update.json()
     assert len(rows) == 1
     assert rows[0]["id"] == created_id
 
-    deleted = client.delete(f"/dashboard/indices/{created_id}")
+    other_user_delete = client.delete(f"/dashboard/indices/{created_id}", headers=USER_B)
+    assert other_user_delete.status_code == 404
+
+    deleted = client.delete(f"/dashboard/indices/{created_id}", headers=USER_A)
     assert deleted.status_code == 204
 
-    listed_final = client.get("/dashboard/indices")
+    listed_final = client.get("/dashboard/indices", headers=USER_A)
     assert listed_final.status_code == 200
     assert listed_final.json() == []
 
@@ -113,6 +154,7 @@ def test_dashboard_indices_reject_empty_symbols(client_and_session) -> None:
 
     created = client.post(
         "/dashboard/indices",
+        headers=USER_A,
         json={
             "name": "Indice Vide",
             "symbols": [" ", ""],
@@ -121,11 +163,49 @@ def test_dashboard_indices_reject_empty_symbols(client_and_session) -> None:
     assert created.status_code == 422
 
 
+def test_dashboard_indices_reject_invalid_components(client_and_session) -> None:
+    client, _SessionLocal = client_and_session
+
+    duplicate = client.post(
+        "/dashboard/indices",
+        headers=USER_A,
+        json={
+            "name": "Doublon",
+            "components": [
+                {"symbol": "IAM", "shares": 10},
+                {"symbol": " iam ", "shares": 5},
+            ],
+        },
+    )
+    assert duplicate.status_code == 422
+
+    zero_shares = client.post(
+        "/dashboard/indices",
+        headers=USER_A,
+        json={"name": "Zero", "components": [{"symbol": "IAM", "shares": 0}]},
+    )
+    assert zero_shares.status_code == 422
+
+    fractional_shares = client.post(
+        "/dashboard/indices",
+        headers=USER_A,
+        json={"name": "Fraction", "components": [{"symbol": "IAM", "shares": 1.5}]},
+    )
+    assert fractional_shares.status_code == 422
+
+
 def test_dashboard_indices_can_include_portfolio_edge(client_and_session, monkeypatch) -> None:
     client, _SessionLocal = client_and_session
     created = client.post(
         "/dashboard/indices",
-        json={"name": "Indice Test", "symbols": ["AAA", "BBB"]},
+        headers=USER_A,
+        json={
+            "name": "Indice Test",
+            "components": [
+                {"symbol": "AAA", "shares": 8},
+                {"symbol": "BBB", "shares": 4},
+            ],
+        },
     )
     assert created.status_code == 201
 
@@ -151,7 +231,7 @@ def test_dashboard_indices_can_include_portfolio_edge(client_and_session, monkey
         fake_edge,
     )
 
-    listed = client.get("/dashboard/indices?include_edge=true&horizon=medium")
+    listed = client.get("/dashboard/indices?include_edge=true&horizon=medium", headers=USER_A)
     assert listed.status_code == 200
     rows = listed.json()
     assert rows[0]["portfolio_edge"]["n"] == 42

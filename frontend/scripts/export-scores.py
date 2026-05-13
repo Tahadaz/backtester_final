@@ -941,23 +941,46 @@ def load_custom_index_definitions(db) -> list[dict]:
     """Load persisted custom index definitions (if table exists)."""
     from sqlalchemy import text
 
+    has_component_shares = True
     try:
         rows = db.execute(
             text(
                 """
-                SELECT id::text AS id, name, symbols
+                SELECT id::text AS id, name, symbols, component_shares
                 FROM dashboard_custom_index
                 ORDER BY updated_at DESC, name ASC
                 """
             )
         ).fetchall()
     except Exception:
-        logger.info("dashboard_custom_index table not found or unavailable; exporting without custom indices")
-        return []
+        db.rollback()
+        has_component_shares = False
+        try:
+            rows = db.execute(
+                text(
+                    """
+                    SELECT id::text AS id, name, symbols
+                    FROM dashboard_custom_index
+                    ORDER BY updated_at DESC, name ASC
+                    """
+                )
+            ).fetchall()
+        except Exception:
+            db.rollback()
+            logger.info("dashboard_custom_index table not found or unavailable; exporting without custom indices")
+            return []
 
     definitions: list[dict] = []
     for row in rows:
         raw_symbols = row[2] if isinstance(row[2], list) else []
+        raw_component_shares = row[3] if has_component_shares and len(row) > 3 else {}
+        if isinstance(raw_component_shares, str):
+            try:
+                raw_component_shares = json.loads(raw_component_shares)
+            except json.JSONDecodeError:
+                raw_component_shares = {}
+        if not isinstance(raw_component_shares, dict):
+            raw_component_shares = {}
         seen: set[str] = set()
         symbols: list[str] = []
         for raw in raw_symbols:
@@ -968,11 +991,31 @@ def load_custom_index_definitions(db) -> list[dict]:
             symbols.append(token)
         if not symbols:
             continue
+        component_shares: dict[str, int] = {}
+        for raw_symbol, raw_shares in raw_component_shares.items():
+            symbol = str(raw_symbol or "").strip().upper()
+            if symbol not in seen:
+                continue
+            try:
+                shares = int(raw_shares)
+            except (TypeError, ValueError):
+                continue
+            if shares <= 0:
+                continue
+            component_shares[symbol] = shares
+        components = [
+            {"symbol": symbol, "shares": component_shares[symbol]}
+            for symbol in symbols
+            if symbol in component_shares
+        ]
         definitions.append(
             {
                 "id": str(row[0]),
                 "name": str(row[1]).strip(),
                 "symbols": symbols,
+                "component_shares": component_shares,
+                "components": components,
+                "is_weighted_complete": bool(symbols) and all(symbol in component_shares for symbol in symbols),
             }
         )
 

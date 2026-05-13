@@ -1,0 +1,1068 @@
+% $ biblatex auxiliary file $
+% $ biblatex bbl format version 3.3 $
+% Do not modify the above lines!
+%
+% This is an auxiliary file used by the 'biblatex' package.
+% This file may safely be deleted. It will be recreated by
+% biber as required.
+%
+\begingroup
+\makeatletter
+\@ifundefined{ver@biblatex.sty}
+  {\@latex@error
+     {Missing 'biblatex' package}
+     {The bibliography requires the 'biblatex' package.}
+      \aftergroup\endinput}
+  {}
+\endgroup
+
+
+\refsection{0}
+  \datalist[entry]{none/global//global/global/global}
+    \entry{lopezdeprado2018}{book}{}{}
+      \name{author}{1}{}{%
+        {{hash=9a324b3e027531fed3766b6ed67a9ac8}{%
+           family={López\bibnamedelimb de\bibnamedelima Prado},
+           familyi={L\bibinitperiod\bibinitdelim d\bibinitperiod\bibinitdelim P\bibinitperiod},
+           given={Marcos},
+           giveni={M\bibinitperiod}}}%
+      }
+      \list{location}{1}{%
+        {Hoboken, New Jersey}%
+      }
+      \list{publisher}{1}{%
+        {John Wiley \& Sons}%
+      }
+      \strng{namehash}{9a324b3e027531fed3766b6ed67a9ac8}
+      \strng{fullhash}{9a324b3e027531fed3766b6ed67a9ac8}
+      \strng{fullhashraw}{9a324b3e027531fed3766b6ed67a9ac8}
+      \strng{bibnamehash}{9a324b3e027531fed3766b6ed67a9ac8}
+      \strng{authorbibnamehash}{9a324b3e027531fed3766b6ed67a9ac8}
+      \strng{authornamehash}{9a324b3e027531fed3766b6ed67a9ac8}
+      \strng{authorfullhash}{9a324b3e027531fed3766b6ed67a9ac8}
+      \strng{authorfullhashraw}{9a324b3e027531fed3766b6ed67a9ac8}
+      \field{extraname}{1}
+      \field{sortinit}{2}
+      \field{sortinithash}{8b555b3791beccb63322c22f3320aa9a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{edition}{1}
+      \field{isbn}{978-1-119-48208-6}
+      \field{title}{Advances in Financial Machine Learning}
+      \field{year}{2018}
+    \endentry
+    \entry{pardo2008}{book}{}{}
+      \name{author}{1}{}{%
+        {{hash=1e7afd38d1c450ae88e5248404333347}{%
+           family={Pardo},
+           familyi={P\bibinitperiod},
+           given={Robert},
+           giveni={R\bibinitperiod}}}%
+      }
+      \list{location}{1}{%
+        {Hoboken, New Jersey}%
+      }
+      \list{publisher}{1}{%
+        {John Wiley \& Sons}%
+      }
+      \strng{namehash}{1e7afd38d1c450ae88e5248404333347}
+      \strng{fullhash}{1e7afd38d1c450ae88e5248404333347}
+      \strng{fullhashraw}{1e7afd38d1c450ae88e5248404333347}
+      \strng{bibnamehash}{1e7afd38d1c450ae88e5248404333347}
+      \strng{authorbibnamehash}{1e7afd38d1c450ae88e5248404333347}
+      \strng{authornamehash}{1e7afd38d1c450ae88e5248404333347}
+      \strng{authorfullhash}{1e7afd38d1c450ae88e5248404333347}
+      \strng{authorfullhashraw}{1e7afd38d1c450ae88e5248404333347}
+      \field{sortinit}{2}
+      \field{sortinithash}{8b555b3791beccb63322c22f3320aa9a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{edition}{2}
+      \field{isbn}{978-0-470-12801-5}
+      \field{title}{The Evaluation and Optimization of Trading Strategies}
+      \field{year}{2008}
+    \endentry
+    \entry{bankofafrica_profile}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=246fd2bebd8a49979a1dba054560cda2}{%
+           family={{BANK OF AFRICA}},
+           familyi={B\bibinitperiod}}}%
+      }
+      \strng{namehash}{246fd2bebd8a49979a1dba054560cda2}
+      \strng{fullhash}{246fd2bebd8a49979a1dba054560cda2}
+      \strng{fullhashraw}{246fd2bebd8a49979a1dba054560cda2}
+      \strng{bibnamehash}{246fd2bebd8a49979a1dba054560cda2}
+      \strng{authorbibnamehash}{246fd2bebd8a49979a1dba054560cda2}
+      \strng{authornamehash}{246fd2bebd8a49979a1dba054560cda2}
+      \strng{authorfullhash}{246fd2bebd8a49979a1dba054560cda2}
+      \strng{authorfullhashraw}{246fd2bebd8a49979a1dba054560cda2}
+      \field{extraname}{1}
+      \field{sortinit}{2}
+      \field{sortinithash}{8b555b3791beccb63322c22f3320aa9a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{BANK OF AFRICA Group Profile}
+      \field{urlday}{9}
+      \field{urlmonth}{5}
+      \field{urlyear}{2026}
+      \field{urldateera}{ce}
+      \verb{urlraw}
+      \verb https://www.ir-bankofafrica.ma/index.php/en/group/about/bank-africa-group-profile
+      \endverb
+      \verb{url}
+      \verb https://www.ir-bankofafrica.ma/index.php/en/group/about/bank-africa-group-profile
+      \endverb
+    \endentry
+    \entry{bankofafrica_bmcecapital}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=246fd2bebd8a49979a1dba054560cda2}{%
+           family={{BANK OF AFRICA}},
+           familyi={B\bibinitperiod}}}%
+      }
+      \strng{namehash}{246fd2bebd8a49979a1dba054560cda2}
+      \strng{fullhash}{246fd2bebd8a49979a1dba054560cda2}
+      \strng{fullhashraw}{246fd2bebd8a49979a1dba054560cda2}
+      \strng{bibnamehash}{246fd2bebd8a49979a1dba054560cda2}
+      \strng{authorbibnamehash}{246fd2bebd8a49979a1dba054560cda2}
+      \strng{authornamehash}{246fd2bebd8a49979a1dba054560cda2}
+      \strng{authorfullhash}{246fd2bebd8a49979a1dba054560cda2}
+      \strng{authorfullhashraw}{246fd2bebd8a49979a1dba054560cda2}
+      \field{extraname}{2}
+      \field{sortinit}{2}
+      \field{sortinithash}{8b555b3791beccb63322c22f3320aa9a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Moroccan Subsidiaries -- BMCE Capital}
+      \field{urlday}{9}
+      \field{urlmonth}{5}
+      \field{urlyear}{2026}
+      \field{urldateera}{ce}
+      \verb{urlraw}
+      \verb https://www.ir-bankofafrica.ma/en/group/market-presence/moroccan-subsidiaries
+      \endverb
+      \verb{url}
+      \verb https://www.ir-bankofafrica.ma/en/group/market-presence/moroccan-subsidiaries
+      \endverb
+    \endentry
+    \entry{bmce_capital_bourse_web}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=d6f836994ee839a75c067ccb65beb0ad}{%
+           family={{BMCE Capital}},
+           familyi={B\bibinitperiod}}}%
+      }
+      \strng{namehash}{d6f836994ee839a75c067ccb65beb0ad}
+      \strng{fullhash}{d6f836994ee839a75c067ccb65beb0ad}
+      \strng{fullhashraw}{d6f836994ee839a75c067ccb65beb0ad}
+      \strng{bibnamehash}{d6f836994ee839a75c067ccb65beb0ad}
+      \strng{authorbibnamehash}{d6f836994ee839a75c067ccb65beb0ad}
+      \strng{authornamehash}{d6f836994ee839a75c067ccb65beb0ad}
+      \strng{authorfullhash}{d6f836994ee839a75c067ccb65beb0ad}
+      \strng{authorfullhashraw}{d6f836994ee839a75c067ccb65beb0ad}
+      \field{extraname}{1}
+      \field{sortinit}{3}
+      \field{sortinithash}{ad6fe7482ffbd7b9f99c9e8b5dccd3d7}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{BMCE Capital Bourse}
+      \field{urlday}{9}
+      \field{urlmonth}{5}
+      \field{urlyear}{2026}
+      \field{urldateera}{ce}
+      \verb{urlraw}
+      \verb https://www.bmcecapital.com/en/our-expert-entities/bmce-capital-bourse
+      \endverb
+      \verb{url}
+      \verb https://www.bmcecapital.com/en/our-expert-entities/bmce-capital-bourse
+      \endverb
+    \endentry
+    \entry{ammc_missions}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=3fa89119064ae3dbf503abe78cfa9a66}{%
+           family={{Autorite Marocaine du Marche des Capitaux}},
+           familyi={A\bibinitperiod}}}%
+      }
+      \strng{namehash}{3fa89119064ae3dbf503abe78cfa9a66}
+      \strng{fullhash}{3fa89119064ae3dbf503abe78cfa9a66}
+      \strng{fullhashraw}{3fa89119064ae3dbf503abe78cfa9a66}
+      \strng{bibnamehash}{3fa89119064ae3dbf503abe78cfa9a66}
+      \strng{authorbibnamehash}{3fa89119064ae3dbf503abe78cfa9a66}
+      \strng{authornamehash}{3fa89119064ae3dbf503abe78cfa9a66}
+      \strng{authorfullhash}{3fa89119064ae3dbf503abe78cfa9a66}
+      \strng{authorfullhashraw}{3fa89119064ae3dbf503abe78cfa9a66}
+      \field{extraname}{1}
+      \field{sortinit}{3}
+      \field{sortinithash}{ad6fe7482ffbd7b9f99c9e8b5dccd3d7}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Missions de l'AMMC}
+      \field{urlday}{9}
+      \field{urlmonth}{5}
+      \field{urlyear}{2026}
+      \field{urldateera}{ce}
+      \verb{urlraw}
+      \verb https://www.ammc.ma/en/node/90
+      \endverb
+      \verb{url}
+      \verb https://www.ammc.ma/en/node/90
+      \endverb
+    \endentry
+    \entry{ammc_bourse_casablanca}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=3fa89119064ae3dbf503abe78cfa9a66}{%
+           family={{Autorite Marocaine du Marche des Capitaux}},
+           familyi={A\bibinitperiod}}}%
+      }
+      \strng{namehash}{3fa89119064ae3dbf503abe78cfa9a66}
+      \strng{fullhash}{3fa89119064ae3dbf503abe78cfa9a66}
+      \strng{fullhashraw}{3fa89119064ae3dbf503abe78cfa9a66}
+      \strng{bibnamehash}{3fa89119064ae3dbf503abe78cfa9a66}
+      \strng{authorbibnamehash}{3fa89119064ae3dbf503abe78cfa9a66}
+      \strng{authornamehash}{3fa89119064ae3dbf503abe78cfa9a66}
+      \strng{authorfullhash}{3fa89119064ae3dbf503abe78cfa9a66}
+      \strng{authorfullhashraw}{3fa89119064ae3dbf503abe78cfa9a66}
+      \field{extraname}{2}
+      \field{sortinit}{3}
+      \field{sortinithash}{ad6fe7482ffbd7b9f99c9e8b5dccd3d7}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Societe Gestionnaire de la Bourse : Bourse de Casablanca}
+      \field{urlday}{9}
+      \field{urlmonth}{5}
+      \field{urlyear}{2026}
+      \field{urldateera}{ce}
+      \verb{urlraw}
+      \verb https://www.ammc.ma/fr/espace-epargnants/societe-gestionnaire-de-la-bourse-bourse-de-casablanca
+      \endverb
+      \verb{url}
+      \verb https://www.ammc.ma/fr/espace-epargnants/societe-gestionnaire-de-la-bourse-bourse-de-casablanca
+      \endverb
+    \endentry
+    \entry{bourse_casablanca_masi}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=156fdc9bac63e1fdd5fc8b90e439618a}{%
+           family={{Bourse de Casablanca}},
+           familyi={B\bibinitperiod}}}%
+      }
+      \strng{namehash}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \strng{fullhash}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \strng{fullhashraw}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \strng{bibnamehash}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \strng{authorbibnamehash}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \strng{authornamehash}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \strng{authorfullhash}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \strng{authorfullhashraw}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \field{extraname}{1}
+      \field{sortinit}{3}
+      \field{sortinithash}{ad6fe7482ffbd7b9f99c9e8b5dccd3d7}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Fiche indice MASI}
+      \field{urlday}{9}
+      \field{urlmonth}{5}
+      \field{urlyear}{2026}
+      \field{urldateera}{ce}
+      \verb{urlraw}
+      \verb https://www.casablanca-bourse.com/fr/live-market/indices/MASI
+      \endverb
+      \verb{url}
+      \verb https://www.casablanca-bourse.com/fr/live-market/indices/MASI
+      \endverb
+    \endentry
+    \entry{bourse_casablanca_indices}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=156fdc9bac63e1fdd5fc8b90e439618a}{%
+           family={{Bourse de Casablanca}},
+           familyi={B\bibinitperiod}}}%
+      }
+      \strng{namehash}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \strng{fullhash}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \strng{fullhashraw}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \strng{bibnamehash}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \strng{authorbibnamehash}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \strng{authornamehash}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \strng{authorfullhash}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \strng{authorfullhashraw}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \field{extraname}{2}
+      \field{sortinit}{3}
+      \field{sortinithash}{ad6fe7482ffbd7b9f99c9e8b5dccd3d7}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Les indices du marche cash}
+      \field{urlday}{9}
+      \field{urlmonth}{5}
+      \field{urlyear}{2026}
+      \field{urldateera}{ce}
+      \verb{urlraw}
+      \verb https://www.casablanca-bourse.com/fr/marche-du-cache/indices
+      \endverb
+      \verb{url}
+      \verb https://www.casablanca-bourse.com/fr/marche-du-cache/indices
+      \endverb
+    \endentry
+    \entry{rapport_s1}{misc}{}{}
+      \name{author}{1}{}{%
+        {{hash=33955e4f28eb66548e722e0b2d18dbc9}{%
+           family={Dazine},
+           familyi={D\bibinitperiod},
+           given={Taha},
+           giveni={T\bibinitperiod}}}%
+      }
+      \strng{namehash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{fullhash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{fullhashraw}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{bibnamehash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{authorbibnamehash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{authornamehash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{authorfullhash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{authorfullhashraw}{33955e4f28eb66548e722e0b2d18dbc9}
+      \field{extraname}{1}
+      \field{sortinit}{4}
+      \field{sortinithash}{9381316451d1b9788675a07e972a12a7}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{note}{Rapport interne de stage, BMCE Capital, Casablanca}
+      \field{title}{Rapport hebdomadaire -- Semaine~1~: MASI, acteurs du marché, indicateurs et benchmark}
+      \field{year}{2026}
+    \endentry
+    \entry{bourse_casablanca_horaires}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=156fdc9bac63e1fdd5fc8b90e439618a}{%
+           family={{Bourse de Casablanca}},
+           familyi={B\bibinitperiod}}}%
+      }
+      \strng{namehash}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \strng{fullhash}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \strng{fullhashraw}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \strng{bibnamehash}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \strng{authorbibnamehash}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \strng{authornamehash}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \strng{authorfullhash}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \strng{authorfullhashraw}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \field{extraname}{3}
+      \field{sortinit}{4}
+      \field{sortinithash}{9381316451d1b9788675a07e972a12a7}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Les horaires de cotation}
+      \field{urlday}{13}
+      \field{urlmonth}{5}
+      \field{urlyear}{2026}
+      \field{urldateera}{ce}
+      \verb{urlraw}
+      \verb https://www.casablanca-bourse.com/fr/les-horaires-de-cotation
+      \endverb
+      \verb{url}
+      \verb https://www.casablanca-bourse.com/fr/les-horaires-de-cotation
+      \endverb
+    \endentry
+    \entry{ammc_modalites_seance}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=3fa89119064ae3dbf503abe78cfa9a66}{%
+           family={{Autorite Marocaine du Marche des Capitaux}},
+           familyi={A\bibinitperiod}}}%
+      }
+      \strng{namehash}{3fa89119064ae3dbf503abe78cfa9a66}
+      \strng{fullhash}{3fa89119064ae3dbf503abe78cfa9a66}
+      \strng{fullhashraw}{3fa89119064ae3dbf503abe78cfa9a66}
+      \strng{bibnamehash}{3fa89119064ae3dbf503abe78cfa9a66}
+      \strng{authorbibnamehash}{3fa89119064ae3dbf503abe78cfa9a66}
+      \strng{authornamehash}{3fa89119064ae3dbf503abe78cfa9a66}
+      \strng{authorfullhash}{3fa89119064ae3dbf503abe78cfa9a66}
+      \strng{authorfullhashraw}{3fa89119064ae3dbf503abe78cfa9a66}
+      \field{extraname}{3}
+      \field{sortinit}{4}
+      \field{sortinithash}{9381316451d1b9788675a07e972a12a7}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Modalites pratiques d'une seance boursiere}
+      \field{urlday}{9}
+      \field{urlmonth}{5}
+      \field{urlyear}{2026}
+      \field{urldateera}{ce}
+      \verb{urlraw}
+      \verb https://v8.ammc.ma/fr/espace-epargnants/modalites-pratiques-dune-seance-boursiere
+      \endverb
+      \verb{url}
+      \verb https://v8.ammc.ma/fr/espace-epargnants/modalites-pratiques-dune-seance-boursiere
+      \endverb
+    \endentry
+    \entry{repo_app_map}{misc}{}{}
+      \name{author}{1}{}{%
+        {{hash=f0efe80592fff868c23e5bccd6e0d20c}{%
+           family={{Depot du projet}},
+           familyi={D\bibinitperiod}}}%
+      }
+      \strng{namehash}{f0efe80592fff868c23e5bccd6e0d20c}
+      \strng{fullhash}{f0efe80592fff868c23e5bccd6e0d20c}
+      \strng{fullhashraw}{f0efe80592fff868c23e5bccd6e0d20c}
+      \strng{bibnamehash}{f0efe80592fff868c23e5bccd6e0d20c}
+      \strng{authorbibnamehash}{f0efe80592fff868c23e5bccd6e0d20c}
+      \strng{authornamehash}{f0efe80592fff868c23e5bccd6e0d20c}
+      \strng{authorfullhash}{f0efe80592fff868c23e5bccd6e0d20c}
+      \strng{authorfullhashraw}{f0efe80592fff868c23e5bccd6e0d20c}
+      \field{extraname}{1}
+      \field{sortinit}{4}
+      \field{sortinithash}{9381316451d1b9788675a07e972a12a7}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{note}{Documentation technique locale, fichier docs/APP\_MAP.md, consulte le 2026-05-09}
+      \field{title}{Application Map}
+      \field{year}{2026}
+    \endentry
+    \entry{repo_dashboard_docs}{misc}{}{}
+      \name{author}{1}{}{%
+        {{hash=f0efe80592fff868c23e5bccd6e0d20c}{%
+           family={{Depot du projet}},
+           familyi={D\bibinitperiod}}}%
+      }
+      \strng{namehash}{f0efe80592fff868c23e5bccd6e0d20c}
+      \strng{fullhash}{f0efe80592fff868c23e5bccd6e0d20c}
+      \strng{fullhashraw}{f0efe80592fff868c23e5bccd6e0d20c}
+      \strng{bibnamehash}{f0efe80592fff868c23e5bccd6e0d20c}
+      \strng{authorbibnamehash}{f0efe80592fff868c23e5bccd6e0d20c}
+      \strng{authornamehash}{f0efe80592fff868c23e5bccd6e0d20c}
+      \strng{authorfullhash}{f0efe80592fff868c23e5bccd6e0d20c}
+      \strng{authorfullhashraw}{f0efe80592fff868c23e5bccd6e0d20c}
+      \field{extraname}{2}
+      \field{sortinit}{4}
+      \field{sortinithash}{9381316451d1b9788675a07e972a12a7}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{note}{Documentation technique locale, dossier docs/dashboard-layer/, consulte le 2026-05-09}
+      \field{title}{Dashboard Layer -- Documentation}
+      \field{year}{2026}
+    \endentry
+    \entry{repo_analytics_docs}{misc}{}{}
+      \name{author}{1}{}{%
+        {{hash=f0efe80592fff868c23e5bccd6e0d20c}{%
+           family={{Depot du projet}},
+           familyi={D\bibinitperiod}}}%
+      }
+      \strng{namehash}{f0efe80592fff868c23e5bccd6e0d20c}
+      \strng{fullhash}{f0efe80592fff868c23e5bccd6e0d20c}
+      \strng{fullhashraw}{f0efe80592fff868c23e5bccd6e0d20c}
+      \strng{bibnamehash}{f0efe80592fff868c23e5bccd6e0d20c}
+      \strng{authorbibnamehash}{f0efe80592fff868c23e5bccd6e0d20c}
+      \strng{authornamehash}{f0efe80592fff868c23e5bccd6e0d20c}
+      \strng{authorfullhash}{f0efe80592fff868c23e5bccd6e0d20c}
+      \strng{authorfullhashraw}{f0efe80592fff868c23e5bccd6e0d20c}
+      \field{extraname}{3}
+      \field{sortinit}{4}
+      \field{sortinithash}{9381316451d1b9788675a07e972a12a7}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{note}{Documentation technique locale, dossier docs/analytics-layer/, consulte le 2026-05-09}
+      \field{title}{Analytics Layer -- Document Index}
+      \field{year}{2026}
+    \endentry
+    \entry{maroclear_annual_report_2018}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=b6bbca4331d3f8149de25423f7b9d04a}{%
+           family={{Maroclear}},
+           familyi={M\bibinitperiod}}}%
+      }
+      \strng{namehash}{b6bbca4331d3f8149de25423f7b9d04a}
+      \strng{fullhash}{b6bbca4331d3f8149de25423f7b9d04a}
+      \strng{fullhashraw}{b6bbca4331d3f8149de25423f7b9d04a}
+      \strng{bibnamehash}{b6bbca4331d3f8149de25423f7b9d04a}
+      \strng{authorbibnamehash}{b6bbca4331d3f8149de25423f7b9d04a}
+      \strng{authornamehash}{b6bbca4331d3f8149de25423f7b9d04a}
+      \strng{authorfullhash}{b6bbca4331d3f8149de25423f7b9d04a}
+      \strng{authorfullhashraw}{b6bbca4331d3f8149de25423f7b9d04a}
+      \field{sortinit}{4}
+      \field{sortinithash}{9381316451d1b9788675a07e972a12a7}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Annual Report 2018}
+      \field{urlday}{9}
+      \field{urlmonth}{5}
+      \field{urlyear}{2026}
+      \field{urldateera}{ce}
+      \verb{urlraw}
+      \verb https://www.maroclear.com/web/sites/default/files/2020-01/Annual%20Report%202018.pdf
+      \endverb
+      \verb{url}
+      \verb https://www.maroclear.com/web/sites/default/files/2020-01/Annual%20Report%202018.pdf
+      \endverb
+    \endentry
+    \entry{harvey2016}{article}{}{}
+      \name{author}{3}{}{%
+        {{hash=0bf0f19775c07a4b41c994dde24f6ecc}{%
+           family={Harvey},
+           familyi={H\bibinitperiod},
+           given={Campbell\bibnamedelima R.},
+           giveni={C\bibinitperiod\bibinitdelim R\bibinitperiod}}}%
+        {{hash=92f7474e36f4f2b59a14e85c0e738e40}{%
+           family={Liu},
+           familyi={L\bibinitperiod},
+           given={Yan},
+           giveni={Y\bibinitperiod}}}%
+        {{hash=93416728ec04ad5ad956024abd6b9bcd}{%
+           family={Zhu},
+           familyi={Z\bibinitperiod},
+           given={Heqing},
+           giveni={H\bibinitperiod}}}%
+      }
+      \strng{namehash}{ace062c2fd09919e801bc85ac70fb6c5}
+      \strng{fullhash}{ace062c2fd09919e801bc85ac70fb6c5}
+      \strng{fullhashraw}{ace062c2fd09919e801bc85ac70fb6c5}
+      \strng{bibnamehash}{ace062c2fd09919e801bc85ac70fb6c5}
+      \strng{authorbibnamehash}{ace062c2fd09919e801bc85ac70fb6c5}
+      \strng{authornamehash}{ace062c2fd09919e801bc85ac70fb6c5}
+      \strng{authorfullhash}{ace062c2fd09919e801bc85ac70fb6c5}
+      \strng{authorfullhashraw}{ace062c2fd09919e801bc85ac70fb6c5}
+      \field{sortinit}{5}
+      \field{sortinithash}{20e9b4b0b173788c5dace24730f47d8c}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{The Review of Financial Studies}
+      \field{number}{1}
+      \field{title}{\ldots and the Cross-Section of Expected Returns}
+      \field{volume}{29}
+      \field{year}{2016}
+      \field{pages}{5\bibrangedash 68}
+      \range{pages}{64}
+      \verb{doi}
+      \verb 10.1093/rfs/hhv059
+      \endverb
+    \endentry
+    \entry{rapport_s3}{misc}{}{}
+      \name{author}{1}{}{%
+        {{hash=33955e4f28eb66548e722e0b2d18dbc9}{%
+           family={Dazine},
+           familyi={D\bibinitperiod},
+           given={Taha},
+           giveni={T\bibinitperiod}}}%
+      }
+      \strng{namehash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{fullhash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{fullhashraw}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{bibnamehash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{authorbibnamehash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{authornamehash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{authorfullhash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{authorfullhashraw}{33955e4f28eb66548e722e0b2d18dbc9}
+      \field{extraname}{2}
+      \field{sortinit}{5}
+      \field{sortinithash}{20e9b4b0b173788c5dace24730f47d8c}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{note}{Rapport interne de stage, BMCE Capital, Casablanca}
+      \field{title}{Rapport hebdomadaire -- Semaine~3~: Premiers résultats SMA et problèmes d'overfitting}
+      \field{year}{2026}
+    \endentry
+    \entry{tradingview_web}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=90ef912570ab5b29602b174ca86b23e0}{%
+           family={{TradingView, Inc.}},
+           familyi={T\bibinitperiod}}}%
+      }
+      \strng{namehash}{90ef912570ab5b29602b174ca86b23e0}
+      \strng{fullhash}{90ef912570ab5b29602b174ca86b23e0}
+      \strng{fullhashraw}{90ef912570ab5b29602b174ca86b23e0}
+      \strng{bibnamehash}{90ef912570ab5b29602b174ca86b23e0}
+      \strng{authorbibnamehash}{90ef912570ab5b29602b174ca86b23e0}
+      \strng{authornamehash}{90ef912570ab5b29602b174ca86b23e0}
+      \strng{authorfullhash}{90ef912570ab5b29602b174ca86b23e0}
+      \strng{authorfullhashraw}{90ef912570ab5b29602b174ca86b23e0}
+      \field{sortinit}{5}
+      \field{sortinithash}{20e9b4b0b173788c5dace24730f47d8c}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{TradingView~: Financial Markets Charting and Analysis Platform}
+      \field{urlday}{1}
+      \field{urlmonth}{11}
+      \field{urlyear}{2025}
+      \field{urldateera}{ce}
+      \verb{urlraw}
+      \verb https://www.tradingview.com
+      \endverb
+      \verb{url}
+      \verb https://www.tradingview.com
+      \endverb
+    \endentry
+    \entry{investing_web}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=0f2b7b4fb3e9eab3113d643596b65196}{%
+           family={{Fusion Media Limited}},
+           familyi={F\bibinitperiod}}}%
+      }
+      \strng{namehash}{0f2b7b4fb3e9eab3113d643596b65196}
+      \strng{fullhash}{0f2b7b4fb3e9eab3113d643596b65196}
+      \strng{fullhashraw}{0f2b7b4fb3e9eab3113d643596b65196}
+      \strng{bibnamehash}{0f2b7b4fb3e9eab3113d643596b65196}
+      \strng{authorbibnamehash}{0f2b7b4fb3e9eab3113d643596b65196}
+      \strng{authornamehash}{0f2b7b4fb3e9eab3113d643596b65196}
+      \strng{authorfullhash}{0f2b7b4fb3e9eab3113d643596b65196}
+      \strng{authorfullhashraw}{0f2b7b4fb3e9eab3113d643596b65196}
+      \field{sortinit}{5}
+      \field{sortinithash}{20e9b4b0b173788c5dace24730f47d8c}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Investing.com~: Financial Markets Data and Analysis}
+      \field{urlday}{1}
+      \field{urlmonth}{11}
+      \field{urlyear}{2025}
+      \field{urldateera}{ce}
+      \verb{urlraw}
+      \verb https://www.investing.com
+      \endverb
+      \verb{url}
+      \verb https://www.investing.com
+      \endverb
+    \endentry
+    \entry{murphy1999}{book}{}{}
+      \name{author}{1}{}{%
+        {{hash=6057c95fca1e19549d2c6728b7292ee2}{%
+           family={Murphy},
+           familyi={M\bibinitperiod},
+           given={John\bibnamedelima J.},
+           giveni={J\bibinitperiod\bibinitdelim J\bibinitperiod}}}%
+      }
+      \list{location}{1}{%
+        {New York}%
+      }
+      \list{publisher}{1}{%
+        {New York Institute of Finance}%
+      }
+      \strng{namehash}{6057c95fca1e19549d2c6728b7292ee2}
+      \strng{fullhash}{6057c95fca1e19549d2c6728b7292ee2}
+      \strng{fullhashraw}{6057c95fca1e19549d2c6728b7292ee2}
+      \strng{bibnamehash}{6057c95fca1e19549d2c6728b7292ee2}
+      \strng{authorbibnamehash}{6057c95fca1e19549d2c6728b7292ee2}
+      \strng{authornamehash}{6057c95fca1e19549d2c6728b7292ee2}
+      \strng{authorfullhash}{6057c95fca1e19549d2c6728b7292ee2}
+      \strng{authorfullhashraw}{6057c95fca1e19549d2c6728b7292ee2}
+      \field{sortinit}{6}
+      \field{sortinithash}{b33bc299efb3c36abec520a4c896a66d}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{edition}{2}
+      \field{isbn}{978-0-7352-0066-1}
+      \field{title}{Technical Analysis of the Financial Markets}
+      \field{year}{1999}
+    \endentry
+    \entry{repo_signal_docs}{misc}{}{}
+      \name{author}{1}{}{%
+        {{hash=f0efe80592fff868c23e5bccd6e0d20c}{%
+           family={{Depot du projet}},
+           familyi={D\bibinitperiod}}}%
+      }
+      \strng{namehash}{f0efe80592fff868c23e5bccd6e0d20c}
+      \strng{fullhash}{f0efe80592fff868c23e5bccd6e0d20c}
+      \strng{fullhashraw}{f0efe80592fff868c23e5bccd6e0d20c}
+      \strng{bibnamehash}{f0efe80592fff868c23e5bccd6e0d20c}
+      \strng{authorbibnamehash}{f0efe80592fff868c23e5bccd6e0d20c}
+      \strng{authornamehash}{f0efe80592fff868c23e5bccd6e0d20c}
+      \strng{authorfullhash}{f0efe80592fff868c23e5bccd6e0d20c}
+      \strng{authorfullhashraw}{f0efe80592fff868c23e5bccd6e0d20c}
+      \field{extraname}{4}
+      \field{sortinit}{7}
+      \field{sortinithash}{108d0be1b1bee9773a1173443802c0a3}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{note}{Documentation technique locale, dossier docs/signal-generation/, consulte le 2026-05-09}
+      \field{title}{Signal Generation Layer -- Architecture Documentation}
+      \field{year}{2026}
+    \endentry
+    \entry{bailey2014}{article}{}{}
+      \name{author}{4}{}{%
+        {{hash=dfd392c230fed420a844e8b2f567a39c}{%
+           family={Bailey},
+           familyi={B\bibinitperiod},
+           given={David\bibnamedelima H.},
+           giveni={D\bibinitperiod\bibinitdelim H\bibinitperiod}}}%
+        {{hash=55a718488fd513ab72b005964e3e21f5}{%
+           family={Borwein},
+           familyi={B\bibinitperiod},
+           given={Jonathan\bibnamedelima M.},
+           giveni={J\bibinitperiod\bibinitdelim M\bibinitperiod}}}%
+        {{hash=9a324b3e027531fed3766b6ed67a9ac8}{%
+           family={López\bibnamedelimb de\bibnamedelima Prado},
+           familyi={L\bibinitperiod\bibinitdelim d\bibinitperiod\bibinitdelim P\bibinitperiod},
+           given={Marcos},
+           giveni={M\bibinitperiod}}}%
+        {{hash=b37563e5aedeffdf138ca591a0728083}{%
+           family={Zhu},
+           familyi={Z\bibinitperiod},
+           given={Qiji\bibnamedelima Jim},
+           giveni={Q\bibinitperiod\bibinitdelim J\bibinitperiod}}}%
+      }
+      \strng{namehash}{c82df7523744e1a1e200b000a9b53a09}
+      \strng{fullhash}{1bb62be9d8d346d97342681c999b4413}
+      \strng{fullhashraw}{1bb62be9d8d346d97342681c999b4413}
+      \strng{bibnamehash}{c82df7523744e1a1e200b000a9b53a09}
+      \strng{authorbibnamehash}{c82df7523744e1a1e200b000a9b53a09}
+      \strng{authornamehash}{c82df7523744e1a1e200b000a9b53a09}
+      \strng{authorfullhash}{1bb62be9d8d346d97342681c999b4413}
+      \strng{authorfullhashraw}{1bb62be9d8d346d97342681c999b4413}
+      \field{sortinit}{7}
+      \field{sortinithash}{108d0be1b1bee9773a1173443802c0a3}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Notices of the American Mathematical Society}
+      \field{number}{5}
+      \field{title}{Pseudo-Mathematics and Financial Charlatanism~: The Effects of Backtest Overfitting on Out-of-Sample Performance}
+      \field{volume}{61}
+      \field{year}{2014}
+      \field{pages}{458\bibrangedash 471}
+      \range{pages}{14}
+      \verb{doi}
+      \verb 10.1090/noti1105
+      \endverb
+    \endentry
+    \entry{markowitz1952}{article}{}{}
+      \name{author}{1}{}{%
+        {{hash=bdfa1c8585b5a4ae901315043a00f2f2}{%
+           family={Markowitz},
+           familyi={M\bibinitperiod},
+           given={Harry},
+           giveni={H\bibinitperiod}}}%
+      }
+      \strng{namehash}{bdfa1c8585b5a4ae901315043a00f2f2}
+      \strng{fullhash}{bdfa1c8585b5a4ae901315043a00f2f2}
+      \strng{fullhashraw}{bdfa1c8585b5a4ae901315043a00f2f2}
+      \strng{bibnamehash}{bdfa1c8585b5a4ae901315043a00f2f2}
+      \strng{authorbibnamehash}{bdfa1c8585b5a4ae901315043a00f2f2}
+      \strng{authornamehash}{bdfa1c8585b5a4ae901315043a00f2f2}
+      \strng{authorfullhash}{bdfa1c8585b5a4ae901315043a00f2f2}
+      \strng{authorfullhashraw}{bdfa1c8585b5a4ae901315043a00f2f2}
+      \field{sortinit}{8}
+      \field{sortinithash}{a231b008ebf0ecbe0b4d96dcc159445f}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{The Journal of Finance}
+      \field{number}{1}
+      \field{title}{Portfolio Selection}
+      \field{volume}{7}
+      \field{year}{1952}
+      \field{pages}{77\bibrangedash 91}
+      \range{pages}{15}
+      \verb{doi}
+      \verb 10.2307/2975974
+      \endverb
+    \endentry
+    \entry{bailey2012}{article}{}{}
+      \name{author}{2}{}{%
+        {{hash=dfd392c230fed420a844e8b2f567a39c}{%
+           family={Bailey},
+           familyi={B\bibinitperiod},
+           given={David\bibnamedelima H.},
+           giveni={D\bibinitperiod\bibinitdelim H\bibinitperiod}}}%
+        {{hash=9a324b3e027531fed3766b6ed67a9ac8}{%
+           family={López\bibnamedelimb de\bibnamedelima Prado},
+           familyi={L\bibinitperiod\bibinitdelim d\bibinitperiod\bibinitdelim P\bibinitperiod},
+           given={Marcos},
+           giveni={M\bibinitperiod}}}%
+      }
+      \strng{namehash}{b4530fd66aecd99ab6a940e43b44acba}
+      \strng{fullhash}{b4530fd66aecd99ab6a940e43b44acba}
+      \strng{fullhashraw}{b4530fd66aecd99ab6a940e43b44acba}
+      \strng{bibnamehash}{b4530fd66aecd99ab6a940e43b44acba}
+      \strng{authorbibnamehash}{b4530fd66aecd99ab6a940e43b44acba}
+      \strng{authornamehash}{b4530fd66aecd99ab6a940e43b44acba}
+      \strng{authorfullhash}{b4530fd66aecd99ab6a940e43b44acba}
+      \strng{authorfullhashraw}{b4530fd66aecd99ab6a940e43b44acba}
+      \field{sortinit}{8}
+      \field{sortinithash}{a231b008ebf0ecbe0b4d96dcc159445f}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Journal of Risk}
+      \field{number}{2}
+      \field{title}{The Sharpe Ratio Efficient Frontier}
+      \field{volume}{15}
+      \field{year}{2012}
+      \field{pages}{3\bibrangedash 44}
+      \range{pages}{42}
+    \endentry
+    \entry{rapport_s5}{misc}{}{}
+      \name{author}{1}{}{%
+        {{hash=33955e4f28eb66548e722e0b2d18dbc9}{%
+           family={Dazine},
+           familyi={D\bibinitperiod},
+           given={Taha},
+           giveni={T\bibinitperiod}}}%
+      }
+      \strng{namehash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{fullhash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{fullhashraw}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{bibnamehash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{authorbibnamehash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{authornamehash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{authorfullhash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{authorfullhashraw}{33955e4f28eb66548e722e0b2d18dbc9}
+      \field{extraname}{3}
+      \field{sortinit}{9}
+      \field{sortinithash}{0a5ebc79d83c96b6579069544c73c7d4}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{note}{Rapport interne de stage, BMCE Capital, Casablanca}
+      \field{title}{Rapport hebdomadaire -- Semaine~5~: Migration production et cadre hypothèses-mesures-stratégies}
+      \field{year}{2026}
+    \endentry
+    \entry{rapport_point_hebdo}{misc}{}{}
+      \name{author}{1}{}{%
+        {{hash=33955e4f28eb66548e722e0b2d18dbc9}{%
+           family={Dazine},
+           familyi={D\bibinitperiod},
+           given={Taha},
+           giveni={T\bibinitperiod}}}%
+      }
+      \strng{namehash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{fullhash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{fullhashraw}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{bibnamehash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{authorbibnamehash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{authornamehash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{authorfullhash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{authorfullhashraw}{33955e4f28eb66548e722e0b2d18dbc9}
+      \field{extraname}{4}
+      \field{sortinit}{9}
+      \field{sortinithash}{0a5ebc79d83c96b6579069544c73c7d4}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{note}{Présentation interne confidentielle, BMCE Capital, Casablanca, semaine du 17--20 février 2026}
+      \field{title}{Point hebdomadaire -- Plateforme de backtesting \& cadre de recherche (analyse technique)}
+      \field{year}{2026}
+    \endentry
+    \entry{rapport_s4}{misc}{}{}
+      \name{author}{1}{}{%
+        {{hash=33955e4f28eb66548e722e0b2d18dbc9}{%
+           family={Dazine},
+           familyi={D\bibinitperiod},
+           given={Taha},
+           giveni={T\bibinitperiod}}}%
+      }
+      \strng{namehash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{fullhash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{fullhashraw}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{bibnamehash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{authorbibnamehash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{authornamehash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{authorfullhash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{authorfullhashraw}{33955e4f28eb66548e722e0b2d18dbc9}
+      \field{extraname}{5}
+      \field{sortinit}{1}
+      \field{sortinithash}{4f6aaa89bab872aa0999fec09ff8e98a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{note}{Rapport interne de stage, BMCE Capital, Casablanca}
+      \field{title}{Rapport hebdomadaire -- Semaine~4~: Automatisation reporting et hypothèse régime bull 2023}
+      \field{year}{2026}
+    \endentry
+    \entry{lopezdeprado2020}{book}{}{}
+      \name{author}{1}{}{%
+        {{hash=9a324b3e027531fed3766b6ed67a9ac8}{%
+           family={López\bibnamedelimb de\bibnamedelima Prado},
+           familyi={L\bibinitperiod\bibinitdelim d\bibinitperiod\bibinitdelim P\bibinitperiod},
+           given={Marcos},
+           giveni={M\bibinitperiod}}}%
+      }
+      \list{location}{1}{%
+        {Cambridge}%
+      }
+      \list{publisher}{1}{%
+        {Cambridge University Press}%
+      }
+      \strng{namehash}{9a324b3e027531fed3766b6ed67a9ac8}
+      \strng{fullhash}{9a324b3e027531fed3766b6ed67a9ac8}
+      \strng{fullhashraw}{9a324b3e027531fed3766b6ed67a9ac8}
+      \strng{bibnamehash}{9a324b3e027531fed3766b6ed67a9ac8}
+      \strng{authorbibnamehash}{9a324b3e027531fed3766b6ed67a9ac8}
+      \strng{authornamehash}{9a324b3e027531fed3766b6ed67a9ac8}
+      \strng{authorfullhash}{9a324b3e027531fed3766b6ed67a9ac8}
+      \strng{authorfullhashraw}{9a324b3e027531fed3766b6ed67a9ac8}
+      \field{extraname}{2}
+      \field{sortinit}{1}
+      \field{sortinithash}{4f6aaa89bab872aa0999fec09ff8e98a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Machine Learning for Asset Managers}
+      \field{year}{2020}
+    \endentry
+    \entry{rapport_s9}{misc}{}{}
+      \name{author}{1}{}{%
+        {{hash=33955e4f28eb66548e722e0b2d18dbc9}{%
+           family={Dazine},
+           familyi={D\bibinitperiod},
+           given={Taha},
+           giveni={T\bibinitperiod}}}%
+      }
+      \strng{namehash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{fullhash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{fullhashraw}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{bibnamehash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{authorbibnamehash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{authornamehash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{authorfullhash}{33955e4f28eb66548e722e0b2d18dbc9}
+      \strng{authorfullhashraw}{33955e4f28eb66548e722e0b2d18dbc9}
+      \field{extraname}{6}
+      \field{sortinit}{1}
+      \field{sortinithash}{4f6aaa89bab872aa0999fec09ff8e98a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{note}{Rapport interne de stage, BMCE Capital, Casablanca}
+      \field{title}{Rapport hebdomadaire -- Semaine~9~: Pages Stratégie et Backtest WFO, pricer futures}
+      \field{year}{2026}
+    \endentry
+    \entry{bourse_casablanca}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=156fdc9bac63e1fdd5fc8b90e439618a}{%
+           family={{Bourse de Casablanca}},
+           familyi={B\bibinitperiod}}}%
+      }
+      \strng{namehash}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \strng{fullhash}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \strng{fullhashraw}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \strng{bibnamehash}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \strng{authorbibnamehash}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \strng{authornamehash}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \strng{authorfullhash}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \strng{authorfullhashraw}{156fdc9bac63e1fdd5fc8b90e439618a}
+      \field{extraname}{4}
+      \field{sortinit}{1}
+      \field{sortinithash}{4f6aaa89bab872aa0999fec09ff8e98a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Site officiel de la Bourse de Casablanca}
+      \field{urlday}{1}
+      \field{urlmonth}{4}
+      \field{urlyear}{2026}
+      \field{urldateera}{ce}
+      \true{nocite}
+      \verb{urlraw}
+      \verb https://www.casablanca-bourse.com
+      \endverb
+      \verb{url}
+      \verb https://www.casablanca-bourse.com
+      \endverb
+    \endentry
+    \entry{bmce_capital_web}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=d6f836994ee839a75c067ccb65beb0ad}{%
+           family={{BMCE Capital}},
+           familyi={B\bibinitperiod}}}%
+      }
+      \strng{namehash}{d6f836994ee839a75c067ccb65beb0ad}
+      \strng{fullhash}{d6f836994ee839a75c067ccb65beb0ad}
+      \strng{fullhashraw}{d6f836994ee839a75c067ccb65beb0ad}
+      \strng{bibnamehash}{d6f836994ee839a75c067ccb65beb0ad}
+      \strng{authorbibnamehash}{d6f836994ee839a75c067ccb65beb0ad}
+      \strng{authornamehash}{d6f836994ee839a75c067ccb65beb0ad}
+      \strng{authorfullhash}{d6f836994ee839a75c067ccb65beb0ad}
+      \strng{authorfullhashraw}{d6f836994ee839a75c067ccb65beb0ad}
+      \field{extraname}{2}
+      \field{sortinit}{1}
+      \field{sortinithash}{4f6aaa89bab872aa0999fec09ff8e98a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Site institutionnel BMCE Capital}
+      \field{urlday}{1}
+      \field{urlmonth}{4}
+      \field{urlyear}{2026}
+      \field{urldateera}{ce}
+      \true{nocite}
+      \verb{urlraw}
+      \verb https://www.bmcecapital.com
+      \endverb
+      \verb{url}
+      \verb https://www.bmcecapital.com
+      \endverb
+    \endentry
+    \entry{fastapi_docs}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=2d61c8cda4f251748dafa49ba85a21f7}{%
+           family={{Sebastián Ramírez et al.}},
+           familyi={S\bibinitperiod}}}%
+      }
+      \strng{namehash}{2d61c8cda4f251748dafa49ba85a21f7}
+      \strng{fullhash}{2d61c8cda4f251748dafa49ba85a21f7}
+      \strng{fullhashraw}{2d61c8cda4f251748dafa49ba85a21f7}
+      \strng{bibnamehash}{2d61c8cda4f251748dafa49ba85a21f7}
+      \strng{authorbibnamehash}{2d61c8cda4f251748dafa49ba85a21f7}
+      \strng{authornamehash}{2d61c8cda4f251748dafa49ba85a21f7}
+      \strng{authorfullhash}{2d61c8cda4f251748dafa49ba85a21f7}
+      \strng{authorfullhashraw}{2d61c8cda4f251748dafa49ba85a21f7}
+      \field{sortinit}{1}
+      \field{sortinithash}{4f6aaa89bab872aa0999fec09ff8e98a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{FastAPI Documentation}
+      \field{urlday}{1}
+      \field{urlmonth}{4}
+      \field{urlyear}{2026}
+      \field{urldateera}{ce}
+      \true{nocite}
+      \verb{urlraw}
+      \verb https://fastapi.tiangolo.com
+      \endverb
+      \verb{url}
+      \verb https://fastapi.tiangolo.com
+      \endverb
+    \endentry
+    \entry{nextjs_docs}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=b611823488786b851b24fb05d8ab927d}{%
+           family={{Vercel, Inc.}},
+           familyi={V\bibinitperiod}}}%
+      }
+      \strng{namehash}{b611823488786b851b24fb05d8ab927d}
+      \strng{fullhash}{b611823488786b851b24fb05d8ab927d}
+      \strng{fullhashraw}{b611823488786b851b24fb05d8ab927d}
+      \strng{bibnamehash}{b611823488786b851b24fb05d8ab927d}
+      \strng{authorbibnamehash}{b611823488786b851b24fb05d8ab927d}
+      \strng{authornamehash}{b611823488786b851b24fb05d8ab927d}
+      \strng{authorfullhash}{b611823488786b851b24fb05d8ab927d}
+      \strng{authorfullhashraw}{b611823488786b851b24fb05d8ab927d}
+      \field{sortinit}{1}
+      \field{sortinithash}{4f6aaa89bab872aa0999fec09ff8e98a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Next.js Documentation}
+      \field{urlday}{1}
+      \field{urlmonth}{4}
+      \field{urlyear}{2026}
+      \field{urldateera}{ce}
+      \true{nocite}
+      \verb{urlraw}
+      \verb https://nextjs.org/docs
+      \endverb
+      \verb{url}
+      \verb https://nextjs.org/docs
+      \endverb
+    \endentry
+    \entry{numba_docs}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=3a7fd1ecc00f008e40e894c0655a0455}{%
+           family={{Anaconda, Inc. et al.}},
+           familyi={A\bibinitperiod}}}%
+      }
+      \strng{namehash}{3a7fd1ecc00f008e40e894c0655a0455}
+      \strng{fullhash}{3a7fd1ecc00f008e40e894c0655a0455}
+      \strng{fullhashraw}{3a7fd1ecc00f008e40e894c0655a0455}
+      \strng{bibnamehash}{3a7fd1ecc00f008e40e894c0655a0455}
+      \strng{authorbibnamehash}{3a7fd1ecc00f008e40e894c0655a0455}
+      \strng{authornamehash}{3a7fd1ecc00f008e40e894c0655a0455}
+      \strng{authorfullhash}{3a7fd1ecc00f008e40e894c0655a0455}
+      \strng{authorfullhashraw}{3a7fd1ecc00f008e40e894c0655a0455}
+      \field{sortinit}{1}
+      \field{sortinithash}{4f6aaa89bab872aa0999fec09ff8e98a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Numba~: A High Performance Python Compiler}
+      \field{urlday}{1}
+      \field{urlmonth}{4}
+      \field{urlyear}{2026}
+      \field{urldateera}{ce}
+      \true{nocite}
+      \verb{urlraw}
+      \verb https://numba.readthedocs.io
+      \endverb
+      \verb{url}
+      \verb https://numba.readthedocs.io
+      \endverb
+    \endentry
+  \enddatalist
+\endrefsection
+\endinput
+

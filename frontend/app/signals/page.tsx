@@ -69,13 +69,15 @@ function PrivateSignalsPage() {
 
   const view = useMemo<SignalsPageView>(
     () => {
-      return signalModeFromQuery(viewFromQuery) ?? "expanded_ta_simple"
+      return (
+        signalModeFromQuery(viewFromQuery) ??
+        signalModeFromQuery(searchParams.get("evidence_variant")) ??
+        signalModeFromQuery(searchParams.get("variant")) ??
+        "expanded_ta_simple"
+      )
     },
-    [viewFromQuery],
+    [searchParams, viewFromQuery],
   )
-  const evidenceVariant = signalModeFromQuery(searchParams.get("evidence_variant"))
-    ?? signalModeFromQuery(searchParams.get("variant"))
-    ?? view
   const defaultTab = validTabs.has(tabFromQuery as SignalsTab) ? (tabFromQuery as SignalsTab) : undefined
   const evidenceSource = sourceAliases[sourceFromQuery] ?? "auto"
 
@@ -95,7 +97,8 @@ function PrivateSignalsPage() {
     if (nextView === view) return
     const nextParams = new URLSearchParams(searchParams.toString())
     nextParams.set("view", nextView)
-    nextParams.set("evidence_variant", nextView)
+    nextParams.delete("evidence_variant")
+    nextParams.delete("variant")
     const query = nextParams.toString()
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
   }
@@ -115,7 +118,6 @@ function PrivateSignalsPage() {
             onHorizonChange={setHorizon}
             topbarContent={topbarContent}
             variant={view}
-            evidenceVariant={evidenceVariant}
             defaultTab={defaultTab}
             evidenceSource={evidenceSource}
             selectedVariantId={selectedVariantId}
@@ -128,7 +130,6 @@ function PrivateSignalsPage() {
             onHorizonChange={setHorizon}
             topbarContent={topbarContent}
             variant={view as ExpandedSignalsPageView}
-            evidenceVariant={evidenceVariant}
             defaultTab={defaultTab}
             evidenceSource={evidenceSource}
             selectedVariantId={selectedVariantId}

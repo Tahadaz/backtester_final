@@ -1,0 +1,437 @@
+%% ============================================================
+%%  Chapitre 4 — Moteur WFO des Signaux
+%%  (Walk-Forward Optimization par catégorie d'indicateurs)
+%% ============================================================
+\chapter{Moteur WFO des signaux}
+\label{ch:wfo}
+
+%% ============================================================
+\section{Motivation — Pourquoi un Moteur WFO Distinct du Signal Engine~?}
+\label{sec:wfo_motivation}
+
+Le Signal Engine A→G (Chapitre~\ref{ch:signaux}) évalue la robustesse temporelle
+d'une variante par validation sur des sous-périodes \emph{avec des paramètres fixes}.
+Cette approche convient pour construire un catalogue de signaux fiables, mais elle
+présente une limitation structurelle~: les paramètres optimaux d'un indicateur
+ne sont pas stationnaires dans le temps.
+
+Le \textbf{Moteur WFO des Signaux} résout ce problème en appliquant la logique de
+Walk-Forward Analysis (WFA) de Pardo~\cite{pardo2008} à la \emph{sélection d'indicateurs}
+elle-même. Pour chaque catégorie (Tendance, Momentum, Oscillation, Volume) et chaque
+horizon (court, moyen, long), le moteur~:
+
+\begin{enumerate}
+    \item Optimise les paramètres d'indicateur sur une fenêtre In-Sample (IS) en
+    maximisant une fonction objectif robuste (PROM)~;
+    \item Teste les paramètres sélectionnés sur la fenêtre Out-Of-Sample (OOS) suivante~;
+    \item Répète ce cycle sur plusieurs fenêtres glissantes~;
+    \item À partir de la dernière fenêtre, sélectionne un ensemble décorrélé de
+    représentants pondérés par leur PROM lissé~;
+    \item Calcule le signal courant et les métriques de robustesse WFO.
+\end{enumerate}
+
+Ce moteur est \textbf{distinct} du moteur de Backtest WFO classique (qui, lui, optimise
+une \emph{stratégie complète} avec gestion des risques et tailles de position). Le
+Moteur WFO des Signaux opère exclusivement à l'étape de sélection d'indicateurs
+(Station~2).
+
+%% ============================================================
+\section{Architecture du Pipeline WFO des Signaux}
+\label{sec:wfo_architecture}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\linewidth]{generated/ch4_wfo_pipeline.png}
+\caption{Pipeline WFO des signaux~: optimisation in-sample, application out-of-sample,
+agrégation des fenêtres et production d'un score courant. Sources~: Pardo~\cite{pardo2008}
+et implémentation locale du moteur WFO.}
+\label{fig:ch4_wfo_pipeline}
+\end{figure}
+
+\subsection{Grille de candidats par catégorie}
+
+La grille de candidats est construite en unissant toutes les familles de la
+catégorie sur les 30~valeurs de paramètres définies en Layer~A
+(Chapitre~\ref{ch:signaux}). Pour la catégorie \texttt{tendance}~:
+
+\begin{equation}
+\text{Pool}_{\text{tendance}} = \text{SMA} \cup \text{EMA} \cup \text{EMA-Cross}
+\cup \text{Ichimoku} \cup \text{PSAR}
+\label{eq:pool_tendance}
+\end{equation}
+
+Chaque famille contribue typiquement 30 variantes par horizon, donnant un pool de
+100~à~200 candidats selon la catégorie.
+
+\subsection{Politique de fenêtres stricte (\textit{strict\_fold\_driven})}
+
+Le moteur utilise une politique de sélection automatique des fenêtres conçue pour
+maximiser le nombre de folds OOS tout en respectant les contraintes de l'horizon~:
+
+\begin{itemize}
+    \item \textbf{Bande de train}~: pour chaque horizon, l'étendue des fenêtres
+    d'entraînement est bornée~: court [168, 336] barres, moyen [378, 630] barres,
+    long [672, 1\,008] barres~;
+    \item \textbf{Ratio IS/OOS}~: 25~à~35~\% (ancrages 0.25, 0.30, 0.35)~;
+    \item \textbf{Minimum de folds}~: au moins 5 fenêtres OOS sont requises par défaut~;
+    \item \textbf{Fallback progressif}~: si le minimum n'est pas atteignable, le seuil
+    est abaissé progressivement jusqu'à un plancher de 3 folds.
+\end{itemize}
+
+Parmi toutes les configurations candidates, la meilleure est sélectionnée selon~:
+
+\begin{equation}
+\text{best} = \arg\min \Bigl(-\text{WFE},\; -\text{robustness\_ratio},\;
+\text{dominance},\; \text{distance\_anchor},\; -\text{total\_oos\_pnl}\Bigr)
+\label{eq:config_ranking}
+\end{equation}
+
+%% ============================================================
+\section{Évaluation Par Fenêtre~: La Fonction Objectif PROM}
+\label{sec:prom}
+
+\subsection{Origine et Principe}
+
+Le \textbf{PROM} (Pessimistic Return on Margin) est la fonction objectif de
+rédérence de Pardo~\cite{pardo2008} pour comparer des stratégies de trading lors
+d'une Walk-Forward Analysis. L'idée centrale est la suivante~:
+
+\begin{quote}
+\textit{Le profit net brut récompense autant une stratégie qui réalise
+100 petits trades rentables qu'une stratégie qui réalise un seul trade
+exceptionnel. Le PROM, lui, les distingue~: il pénalise la seconde car
+sa performance est non-répétable et statistiquement fragile.}
+\end{quote}
+
+Le PROM est dit «~pessimiste~» car il applique une pénalité croissante au
+fur et à mesure que le nombre de trades gagnants (resp. perdants) est faible~:
+avec peu de trades, la performance observée peut être due au hasard, et le
+PROM en réduit proactivement l'estimation.
+
+\subsection{Formule Implémentée}
+
+Pour une liste de retours de trades $\{r_1, \ldots, r_N\}$, on sépare
+gains et pertes~:
+\begin{align}
+\mathcal{W} &= \{r_i \mid r_i > 0\}, \quad N_W = |\mathcal{W}| \label{eq:prom_wins}\\
+\mathcal{L} &= \{r_i \mid r_i \leq 0\}, \quad N_L = |\mathcal{L}| \label{eq:prom_losses}
+\end{align}
+
+Les gains ajustés et les pertes ajustées sont calculés avec une pénalité
+en racine carrée sur le nombre de trades~:
+
+\begin{align}
+\overline{W}_{\text{adj}} &= \bar{w} \cdot \bigl(N_W - \sqrt{N_W}\bigr)
+\label{eq:prom_adj_wins}\\
+\overline{L}_{\text{adj}} &= \bar{l} \cdot \bigl(N_L + \sqrt{N_L}\bigr)
+\label{eq:prom_adj_losses}
+\end{align}
+
+où $\bar{w} = \text{moyenne}(\mathcal{W})$ et $\bar{l} = \text{moyenne}(|\mathcal{L}|)$.
+Le PROM normalisé par le capital $K$ (ou le gross profit simulé) est~:
+
+\begin{equation}
+\boxed{\text{PROM} = \frac{\overline{W}_{\text{adj}} - \overline{L}_{\text{adj}}}{K}}
+\label{eq:prom}
+\end{equation}
+
+\subsection{Lecture et Interprétation}
+
+La pénalité $\sqrt{N}$ a une signification statistique directe~: elle reflète
+l'incertitude sur la moyenne d'un échantillon de taille $N$ (proportionnelle à
+$1/\sqrt{N}$). En pratique~:
+
+\begin{itemize}
+    \item \textbf{PROM $\gg 0$}~: la variante génère des profits réguliers,
+    robustes au nombre de trades. C'est le signal à retenir.
+    \item \textbf{PROM $\approx 0$}~: la variante est à l'équilibre~;
+    ses rendements ne justifient pas le risque transactionnel.
+    \item \textbf{PROM $< 0$}~: la variante perd de l'argent sur la fenêtre IS.
+    Elle est écartée lors de la sélection des représentants.
+    \item \textbf{PROM élevé avec peu de trades}~: le PROM est
+    automatiquement pénalisé~; une stratégie avec $N_W = 4$ trades gagnants
+    se voit appliquer un coefficient $4 - \sqrt{4} = 2$ au lieu de~$4$,
+    soit une réduction de 50~\% de son gain apparent.
+\end{itemize}
+
+\begin{table}[H]
+\centering
+\caption{Exemple d'effet de la pénalité $\sqrt{N}$ du PROM}
+\label{tab:prom_exemple}
+\begin{tabularx}{\linewidth}{@{}lYYYY@{}}
+\toprule
+\textbf{Variante} & $N_W$ & $\bar{w}$ & $\overline{W}_{\text{adj}}$
+& \textbf{Interprétation} \\
+\midrule
+SMA(50) — 40 trades & 30 & 1.2\,\% & $1.2\% \times (30 - 5.5) = 29.4\%$
+& Robuste (grand $N$) \\
+SMA(200) — 6 trades & 5 & 2.1\,\% & $2.1\% \times (5 - 2.2) = 5.9\%$
+& Pénalisé (petit $N$) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Dans l'implémentation, pour chaque variante $v$ et chaque fenêtre IS,
+la liste des trades est extraite à partir du tableau de signal journalier
+(positions longues/flat), et le PROM est calculé sur les retours trade-par-trade
+net des coûts de transaction. Un lissage par voisinage (\textit{neighbor-averaging})
+est ensuite appliqué au PROM brut pour réduire la sensibilité aux pics isolés
+lors du classement final.
+
+\subsection{Coût de transaction}
+
+Un modèle de coût réaliste est intégré dans l'évaluation~: un coût bilatéral
+de 10~points de base (bps) par aller-retour est appliqué par défaut, calibré
+sur les conditions du marché marocain. Ce coût est soustrait des rendements
+journaliers~:
+
+\begin{equation}
+r_t^{\text{net}} = s_{t-1} \cdot \frac{P_t - P_{t-1}}{P_{t-1}} -
+\left|s_t - s_{t-1}\right| \cdot \frac{c}{10\,000}
+\label{eq:cost_model}
+\end{equation}
+
+où $s_t \in \{-1, 0, +1\}$ est le signal au temps $t$ et $c$ le coût en bps.
+
+%% ============================================================
+\section{Construction de l'Ensemble Représentant}
+\label{sec:wfo_ensemble}
+
+À la fin du cycle de walk-forward, les variantes sont classées par leur PROM
+lissé sur la dernière fenêtre IS. La sélection de l'ensemble suit un algorithme
+glouton décorrélant~:
+
+\begin{enumerate}
+    \item Trier les variantes par PROM lissé décroissant~;
+    \item Sélectionner la variante de tête comme premier représentant~;
+    \item Pour chaque variante suivante~: calculer la corrélation de Pearson avec
+    tous les représentants déjà sélectionnés sur les 252 dernières barres~;
+    \item Accepter si $\max_j |r_{ij}| \leq 0.85$, rejeter sinon~;
+    \item Arrêter dès que \texttt{max\_reps} représentants sont atteints.
+\end{enumerate}
+
+Les représentants sélectionnés sont pondérés proportionnellement à leur PROM lissé
+(plancher à $0.01$ pour éviter les poids nuls), et leurs signaux courants sont
+calculés sur la dernière barre disponible~:
+
+\begin{equation}
+\text{score\_pct} = 100 \times \frac{\displaystyle\sum_{i} s_i \cdot \text{PROM}_i}
+{\displaystyle\sum_{i} \text{PROM}_i}
+\quad \in [-100,\; +100]
+\label{eq:wfo_score}
+\end{equation}
+
+%% ============================================================
+\section{Métriques de Robustesse et Système de Notation}
+\label{sec:wfo_scoring}
+
+\subsection{Les quatre métriques fondamentales}
+
+Pour chaque couple (symbole, horizon, catégorie), le moteur produit quatre métriques
+agrégées sur l'ensemble des fenêtres OOS~:
+
+\begin{description}
+    \item[\textbf{Walk-Forward Efficiency (WFE)}] — Ratio du rendement OOS annualisé
+    sur le rendement IS annualisé. Mesure la capacité du système à généraliser
+    hors-échantillon. Un WFE $\geq 50\,\%$ est le seuil minimal de Pardo~\cite{pardo2008}~:
+
+    \begin{equation}
+    \text{WFE} = \frac{\bar{r}_{\text{OOS}}}{\bar{r}_{\text{IS}}}
+    \label{eq:wfe}
+    \end{equation}
+
+    \item[\textbf{Robustness Ratio}] — Fraction des fenêtres OOS avec un rendement
+    positif~:
+
+    \begin{equation}
+    \text{robustness\_ratio} = \frac{\#\{k : r_k^{\text{OOS}} > 0\}}
+    {N_{\text{fenêtres}}}
+    \label{eq:robustness_ratio}
+    \end{equation}
+
+    \item[\textbf{Sharpe OOS moyen}] — Moyenne des ratios de Sharpe annualisés
+    calculés sur chaque fenêtre OOS séparément.
+
+    \item[\textbf{Pire drawdown}] — Minimum des rendements OOS par fenêtre~;
+    mesure du risque en scénario adverse.
+\end{description}
+
+\subsection{Le Score Composite (0–100)}
+
+Ces quatre métriques sont combinées en un score composite pour le classement
+inter-catégories~:
+
+\begin{equation}
+\text{Composite} = 100 \times \Bigl(
+0.40 \cdot \tilde{\text{WFE}} +
+0.30 \cdot \tilde{\text{Rob}} +
+0.20 \cdot \tilde{\text{Sharpe}} +
+0.10 \cdot \tilde{\text{DD}}
+\Bigr)
+\label{eq:composite}
+\end{equation}
+
+où chaque composante est normalisée dans $[0, 1]$~:
+
+\begin{align}
+\tilde{\text{WFE}}    &= \text{clamp}(\text{WFE},\; 0,\; 1) \label{eq:norm_wfe} \\
+\tilde{\text{Rob}}    &= \text{clamp}(\text{robustness\_ratio},\; 0,\; 1) \label{eq:norm_rob} \\
+\tilde{\text{Sharpe}} &= \text{clamp}(\bar{S}_{\text{OOS}} / 2.0,\; 0,\; 1) \label{eq:norm_sharpe} \\
+\tilde{\text{DD}}     &= \text{clamp}(1 - |\text{worst\_dd}|,\; 0,\; 1) \label{eq:norm_dd}
+\end{align}
+
+\subsection{Le Grade de Robustesse (A–F)}
+\label{sec:wfo_grade}
+
+Le grade de robustesse est la synthèse binaire des deux métriques les plus importantes
+(WFE et robustness\_ratio). Il constitue l'indicateur principal affiché dans le
+tableau de bord~:
+
+\begin{table}[H]
+\centering
+\caption{Système de notation WFO — Grade de robustesse par catégorie}
+\label{tab:wfo_grades}
+\begin{tabularx}{\linewidth}{@{}cYYY@{}}
+\toprule
+\textbf{Grade} & \textbf{Condition WFE} & \textbf{Condition Robustesse} & \textbf{Interprétation} \\
+\midrule
+\textbf{A} & $\geq 65\,\%$ & \textbf{ET} $\geq 75\,\%$ & Signal très robuste, déployable \\
+\textbf{B} & $\geq 55\,\%$ & \textbf{ET} $\geq 60\,\%$ & Signal robuste, fiable \\
+\textbf{C} & $\geq 50\,\%$ & \textbf{ET} $\geq 50\,\%$ & Signal acceptable (seuil Pardo) \\
+\textbf{D} & $\geq 40\,\%$ & \textbf{OU} $\geq 40\,\%$ & Signal fragile, vigilance requise \\
+\textbf{F} & $< 40\,\%$ & \textbf{ET} $< 40\,\%$ & Signal non viable, à ignorer \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Règle opérationnelle~:} seules les catégories de grade A, B ou C sont
+comptabilisées dans le calcul du consensus global (le champ
+\texttt{categories\_viable} du résultat global).
+
+%% ============================================================
+\section{Signal Global et Modulation S/R}
+\label{sec:wfo_global}
+
+\subsection{Consensus pondéré par le score composite}
+
+Les signaux des quatre catégories sont agrégés en un score global pondéré~:
+
+\begin{equation}
+\text{score\_global} = \sum_{\text{cat} \in \text{Succ.}}
+\frac{\text{composite\_cat}}{\sum_j \text{composite}_j} \cdot \text{score\_cat}
+\label{eq:wfo_global_score}
+\end{equation}
+
+Cette pondération par le score composite garantit que les catégories avec un WFE
+élevé et une robustesse forte ont plus de poids dans le signal final.
+
+\subsection{Modulation par les niveaux S/R}
+
+Le score brut est ensuite modulé par la proximité du prix aux niveaux de
+support et de résistance calculés algorithmiquement (méthode \textit{swing levels}
+primaire, pivot points en fallback)~:
+
+\begin{equation}
+\text{score\_final} = \text{clamp}\bigl(\text{score\_brut} \times m_{\text{S/R}},\; -100,\; +100\bigr)
+\label{eq:sr_modulation}
+\end{equation}
+
+où le modificateur $m_{\text{S/R}} \in [0.5,\; 1.5]$ amplifie (+15\,\%) le signal
+quand il est confirmé par les niveaux, et l'atténue (--15\,\%) quand il les contredit~:
+
+\begin{itemize}
+    \item \textbf{Boost $\times 1.15$}~: signal haussier + prix proche d'un support
+    (le support confirme l'achat) ou signal baissier + prix proche d'une résistance~;
+    \item \textbf{Atténuation $\times 0.85$}~: signal haussier + prix proche d'une
+    résistance (risque de blocage) ou signal baissier + prix proche d'un support.
+\end{itemize}
+
+\subsection{Tableau des recommandations}
+
+\begin{table}[H]
+\centering
+\caption{Classification du signal global WFO en recommandations opérationnelles}
+\label{tab:wfo_labels}
+\begin{tabularx}{\linewidth}{@{}lYY@{}}
+\toprule
+\textbf{Plage du score global} & \textbf{Label} & \textbf{Recommandation} \\
+\midrule
+$> +50$ & Très haussier & \texttt{achat\_fort} \\
+$+15$ à $+50$ & Haussier & \texttt{achat} \\
+$-15$ à $+15$ & Neutre & \texttt{neutre} \\
+$-50$ à $-15$ & Baissier & \texttt{vente} \\
+$< -50$ & Très baissier & \texttt{vente\_forte} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Ces seuils sont identiques à ceux du Signal Engine A→G (Layer~G,
+équation~\eqref{eq:ensemble}), garantissant une homogénéité d'affichage
+dans le tableau de bord.
+
+%% ============================================================
+\section{Rafraîchissement Automatique et Architecture Asynchrone}
+\label{sec:wfo_refresh}
+
+Le Moteur WFO des Signaux est computationnellement intensif~: un calcul complet
+(4 catégories × 3 horizons) sur l'ensemble de l'univers MASI suivi prend plusieurs heures.
+L'architecture asynchrone distingue deux modes~:
+
+\begin{description}
+    \item[\textbf{Calcul complet} (\texttt{run\_wfo\_for\_symbol\_horizon})]
+    Reconstruit l'ensemble du pipeline WFO pour toutes les catégories
+    d'un symbole × horizon. Déclenché une fois par semaine via le batch
+    \textit{hebdomadaire} (stratégie \textit{weekly-stale}), ou manuellement
+    depuis l'interface.
+
+    \item[\textbf{Rafraîchissement léger} (\texttt{refresh\_wfo\_for\_symbol\_horizon})]
+    Re-calcule uniquement les signaux courants des représentants déjà persistés
+    (sans re-optimiser les fenêtres WFO). Déclenché automatiquement après chaque
+    mise à jour des données de marché (18h00, après clôture). Ce mode permet de
+    maintenir les signaux à jour quotidiennement à coût nul.
+\end{description}
+
+Les résultats sont persistés dans la base de données (\texttt{WfoSignalSummary}
+par catégorie, \texttt{WfoGlobalSignal} pour le consensus) et accessibles via
+l'API FastAPI, permettant au tableau de bord de les afficher sans recalcul.
+
+%% ============================================================
+\section{Relation avec le Signal Engine A→G}
+\label{sec:wfo_vs_se}
+
+Les deux moteurs sont \textbf{complémentaires}, non concurrents~:
+
+\begin{table}[H]
+\centering
+\caption{Comparaison Signal Engine A→G vs Moteur WFO des Signaux}
+\label{tab:se_vs_wfo}
+\begin{tabularx}{\linewidth}{@{}lYY@{}}
+\toprule
+\textbf{Caractéristique} & \textbf{Signal Engine A→G} & \textbf{Moteur WFO des Signaux} \\
+\midrule
+Optimisation des paramètres & Non (grille fixe) & Oui (PROM IS, fenêtres glissantes) \\
+Fenêtres d'évaluation & Sous-périodes fixes & Walk-Forward adaptatif \\
+Poids des représentants & Reliability score (Sharpe, stabilité) & PROM lissé \\
+Granularité & Par famille d'indicateurs & Par catégorie (4 familles agrégées) \\
+Fréquence de calcul & À la demande & Hebdomadaire (complet) + quotidien (léger) \\
+Score de robustesse & Reliability score $\in [0, 1]$ & Grade A–F + Composite $\in [0, 100]$ \\
+Signal global & Score par famille → consensus G & Score par catégorie → consensus S/R \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Le tableau de bord propose les deux vues en parallèle~: l'onglet \textbf{Signal Engine}
+donne la profondeur analytique (drill-down par variante, score de stabilité
+multi-composante), tandis que l'onglet \textbf{WFO} donne la perspective de
+robustesse WFA (grade A–F, ratio OOS/IS, modulation S/R).
+
+\section*{Conclusion du chapitre}
+
+Ce chapitre a présenté le Moteur WFO des Signaux, un mécanisme qui applique la
+rigueur de la Walk-Forward Analysis de Pardo non pas à une stratégie complète,
+mais à la \emph{sélection dynamique d'indicateurs} par catégorie. Ses contributions
+distinctives sont le score composite multi-métriques (WFE, robustness\_ratio,
+Sharpe OOS, drawdown), le système de notation A–F directement actionnable, la
+modulation par les niveaux S/R, et l'architecture asynchrone permettant une mise
+à jour quotidienne sans recalcul complet. Le chapitre suivant présente l'architecture
+technique qui héberge et orchestre ces deux moteurs.

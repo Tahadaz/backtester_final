@@ -68,6 +68,8 @@ class SignalCandidateOut(BaseModel):
     bucket: str | None = None
     direction: str | None = None
     signal_label: str | None = None
+    edge_score: float | None = None
+    edge_score_components: dict[str, float] = Field(default_factory=dict)
     score: float | None = None
     action_expected_return_net: float | None = None
     action_expected_return_net_ci_lower: float | None = None

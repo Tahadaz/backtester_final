@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from ..auth import rate_limit_trigger, require_admin, require_auth
+from ..auth import AppUser, optional_app_user, rate_limit_trigger, require_admin, require_app_user, require_auth
 from ..config import settings
 from ..db import get_db
 from ..freshness import set_freshness
@@ -109,7 +109,26 @@ def _dashboard_snapshot_has_current_shape(payload: Any) -> bool:
     if not isinstance(stocks, list):
         return False
     return all(
-        not isinstance(stock, dict) or "best_technical_signal" in stock
+        not isinstance(stock, dict)
+        or (
+            "best_technical_signal" in stock
+            and (
+                not isinstance(stock.get("best_signal"), dict)
+                or "edge_score" in stock["best_signal"]
+            )
+        )
+        for stock in stocks
+    )
+
+
+def _snapshot_has_legacy_best_signal(payload_dict: dict[str, Any]) -> bool:
+    stocks = payload_dict.get("stocks")
+    if not isinstance(stocks, list):
+        return False
+    return any(
+        isinstance(stock, dict)
+        and isinstance(stock.get("best_signal"), dict)
+        and "edge_score" not in stock["best_signal"]
         for stock in stocks
     )
 
@@ -120,7 +139,7 @@ def _dashboard_snapshot_can_merge_live_technical(payload: Any) -> bool:
     if payload_dict is None:
         return False
     stocks = payload_dict.get("stocks")
-    return isinstance(stocks, list)
+    return isinstance(stocks, list) and not _snapshot_has_legacy_best_signal(payload_dict)
 
 
 def _merge_live_technical_signals(snapshot_payload: dict[str, Any], live_payload: dict[str, Any]) -> dict[str, Any]:
@@ -187,25 +206,29 @@ def get_dashboard_portfolio_ticket(
 
 @router.get("/portfolio/positions", response_model=DashboardPortfolioPositionsResponse)
 def get_dashboard_portfolio_positions(
+    user: AppUser = Depends(require_app_user),
+    _auth: None = Depends(require_auth),
     db: Session = Depends(get_db),
 ) -> DashboardPortfolioPositionsResponse:
     """Return the manually maintained desk portfolio state used by the blotter."""
-    return list_dashboard_positions(db)
+    return list_dashboard_positions(db, owner_user_id=user.id)
 
 
 @router.put("/portfolio/positions", response_model=DashboardPortfolioPositionsResponse)
 def put_dashboard_portfolio_positions(
     body: DashboardPortfolioPositionsRequest,
+    user: AppUser = Depends(require_app_user),
     _auth: None = Depends(require_auth),
     db: Session = Depends(get_db),
 ) -> DashboardPortfolioPositionsResponse:
     """Replace active manual positions for portfolio follow-up."""
-    return replace_dashboard_positions(db, body)
+    return replace_dashboard_positions(db, body, owner_user_id=user.id)
 
 
 @router.post("/daily-blotter", response_model=DashboardDailyBlotterResponse)
 def get_dashboard_daily_blotter(
     body: DashboardDailyBlotterRequest,
+    user: AppUser | None = Depends(optional_app_user),
     db: Session = Depends(get_db),
 ) -> DashboardDailyBlotterResponse:
     """Build the next-session desk blotter from selected symbols and positions."""
@@ -213,6 +236,7 @@ def get_dashboard_daily_blotter(
         db,
         body,
         cost_bps=float(settings.EDGE_COST_BPS_PER_SIDE),
+        owner_user_id=user.id if user is not None else None,
     )
 
 

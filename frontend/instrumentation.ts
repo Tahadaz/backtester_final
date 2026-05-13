@@ -45,6 +45,12 @@ export async function register() {
         expires    TIMESTAMPTZ NOT NULL,
         PRIMARY KEY (identifier, token)
       );
+
+      CREATE TABLE IF NOT EXISTS "userPreferences" (
+        "userId"    TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        dashboard   JSONB NOT NULL DEFAULT '{}'::jsonb,
+        "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
     `)
   } finally {
     await pool.end()

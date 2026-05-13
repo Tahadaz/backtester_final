@@ -67,6 +67,8 @@ import type {
   FactorSelectionActiveRow,
   FactorSelectionStage1Row,
   BloombergBatch,
+  BloombergBridgeStatus,
+  BloombergJob,
   BloombergSeries,
 } from "@/lib/api"
 import {
@@ -124,6 +126,8 @@ import {
   getFactorSelectionActive,
   getFactorSelectionStage1Cache,
   listBloombergBatches,
+  listBloombergBridges,
+  listBloombergJobs,
   listBloombergSeries,
 } from "@/lib/api"
 import type {
@@ -409,6 +413,22 @@ export function useBloombergSeries() {
     "/bloomberg/series?limit=200",
     () => listBloombergSeries({ limit: 200 }),
     { refreshInterval: 30000, revalidateOnFocus: true }
+  )
+}
+
+export function useBloombergBridges() {
+  return useSWR<BloombergBridgeStatus[]>(
+    "/bloomberg/bridges",
+    () => listBloombergBridges(),
+    { refreshInterval: 10000, revalidateOnFocus: true }
+  )
+}
+
+export function useBloombergJobs() {
+  return useSWR<BloombergJob[]>(
+    "/bloomberg/jobs?limit=25",
+    () => listBloombergJobs({ limit: 25 }),
+    { refreshInterval: 5000, revalidateOnFocus: true }
   )
 }
 

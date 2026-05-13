@@ -1,0 +1,511 @@
+%% ============================================================
+%%  Chapitre 1 -- Contexte, problématique et état de l'art
+%% ============================================================
+\chapter{Contexte, Problématique et État de l'Art}
+\label{ch:contexte}
+
+Ce chapitre situe le projet dans son environnement industriel et scientifique. Il
+présente d'abord l'organisme d'accueil et le marché actions marocain, puis formalise
+les deux problèmes qui motivent la plateforme développée~: la possibilité d'améliorer
+la préparation des décisions avant l'ouverture du marché, et le risque statistique
+d'un sur-apprentissage lors de l'évaluation de stratégies techniques. Le chapitre introduit
+enfin les limites des solutions existantes, le cadre théorique retenu et le périmètre
+du projet.
+
+\section{Présentation de l'organisme d'accueil -- BMCE Capital}
+\label{sec:bmce}
+
+\subsection{Le Groupe BANK OF AFRICA}
+
+BMCE Capital s'inscrit dans l'écosystème du Groupe \textbf{BANK OF AFRICA -- BMCE}.
+Selon la présentation institutionnelle du groupe, BANK OF AFRICA est un groupe
+bancaire panafricain multi-métiers, présent dans plusieurs régions et organisé autour
+de la banque commerciale, de la banque d'investissement et de services financiers
+spécialisés~\cite{bankofafrica_profile}. BMCE Capital constitue le pôle de banque
+d'affaires du groupe au Maroc~\cite{bankofafrica_bmcecapital}.
+
+\subsection{BMCE Capital et le périmètre du projet}
+
+La documentation institutionnelle de BANK OF AFRICA présente BMCE Capital comme une
+filiale créée en 1998 et organisée autour de métiers complémentaires couvrant notamment
+le conseil financier, la gestion d'actifs, l'intermédiation boursière, la recherche,
+les marchés de capitaux et les services post-marché~\cite{bankofafrica_bmcecapital}.
+Dans le cadre de ce projet, quatre entités sont particulièrement pertinentes~:
+
+\begin{itemize}
+    \item \textbf{BMCE Capital Markets}~: activités de marché et suivi des instruments
+    financiers traités par la salle des marchés~;
+    \item \textbf{BMCE Capital Bourse}~: société de bourse chargée de l'intermédiation
+    et de l'accès au marché central de la Bourse de Casablanca~\cite{bmce_capital_bourse_web}~;
+    \item \textbf{BMCE Capital Research}~: production d'analyses économiques et
+    financières utiles à l'interprétation des mouvements de marché~;
+    \item \textbf{BMCE Capital Gestion}~: gestion d'actifs, dont les besoins de suivi
+    de marché rejoignent certaines contraintes de décision et de reporting.
+\end{itemize}
+
+Le projet a été mené dans le contexte de la salle des marchés, au contact du périmètre
+des actions cotées. La plateforme proposée ne constitue pas un moteur d'exécution
+d'ordres. Elle se positionne en amont de l'exécution, comme un outil d'aide à la lecture
+du marché, à la préparation de scénarios et à la justification des signaux présentés au
+sein de la salle des marchés.
+
+\subsection{Cadre réglementaire}
+
+BMCE Capital opère dans le cadre du marché des capitaux marocain, supervisé par
+l'Autorité Marocaine du Marché des Capitaux (AMMC). Les missions de l'AMMC couvrent
+notamment la protection de l'épargne investie en instruments financiers, la contribution
+à la régulation du marché et le contrôle de l'information des investisseurs et des
+intervenants~\cite{ammc_missions}. La Bourse de Casablanca, société gestionnaire du
+marché, est responsable du fonctionnement régulier des transactions boursières et agit
+dans un cadre approuvé par les autorités compétentes~\cite{ammc_bourse_casablanca}.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\linewidth]{generated/ch1_bmce_organigramme.png}
+\caption{Positionnement de BMCE Capital dans l'écosystème BANK OF AFRICA.
+Sources~: BANK OF AFRICA~\cite{bankofafrica_profile,bankofafrica_bmcecapital}
+et BMCE Capital~\cite{bmce_capital_bourse_web}.}
+\label{fig:bmce_organigramme}
+\end{figure}
+
+La figure~\ref{fig:bmce_organigramme} met en évidence le positionnement du projet~:
+il ne couvre pas l'ensemble de la chaîne bancaire, mais un besoin spécifique situé à
+l'intersection des marchés actions, de la recherche quantitative et de la décision
+opérationnelle.
+
+%% ============================================================
+\section{Le marché actions marocain et l'univers MASI}
+\label{sec:masi}
+
+\subsection{La Bourse de Casablanca}
+
+La Bourse de Casablanca est la principale infrastructure de négociation des valeurs
+mobilières cotées au Maroc. L'AMMC rappelle que la société gestionnaire de la Bourse
+de Casablanca assure la gestion et le développement de la place, organise les
+transactions sur un marché centralisé gouverné par les ordres, et veille à la conformité
+des négociations et du dénouement des opérations~\cite{ammc_bourse_casablanca}.
+
+Cette organisation a une conséquence directe pour le projet~: la qualité d'un signal
+ne peut pas être évaluée uniquement par sa performance théorique. Elle dépend aussi de
+contraintes de marché concrètes~: liquidité, modalités de négociation, coûts,
+disponibilité des données et capacité à expliquer la décision avant son éventuelle
+transmission au marché.
+
+\subsection{Le MASI comme univers de référence}
+
+Le \textbf{MASI} (\textit{Moroccan All Shares Index}) est l'indice de référence du
+marché actions marocain. La Bourse de Casablanca publie la fiche de l'indice MASI et
+la liste de ses indices cash sur son site officiel~\cite{bourse_casablanca_masi,bourse_casablanca_indices}.
+Dans ce rapport, le MASI sert d'univers naturel d'analyse, avec une attention particulière
+portée aux valeurs dont l'historique, la liquidité et la qualité des données permettent
+une évaluation robuste.
+
+Le comportement des valeurs marocaines est influencé par plusieurs dimensions~: poids
+des grandes capitalisations, concentration sectorielle, liquidité parfois hétérogène,
+publications financières, conditions macroéconomiques et flux institutionnels. Le
+tableau~\ref{tab:grandes_cap} ne vise donc pas à figer un classement de capitalisation,
+mais à illustrer quelques valeurs représentatives fréquemment suivies dans l'univers
+actions marocain.
+
+\begin{table}[H]
+\centering
+\caption{Exemples de valeurs représentatives de l'univers actions marocain.
+Sources~: Bourse de Casablanca~\cite{bourse_casablanca_masi,bourse_casablanca_indices}
+et observations internes du stage~\cite{rapport_s1}.}
+\label{tab:grandes_cap}
+\begin{tabularx}{\linewidth}{@{}lYY@{}}
+\toprule
+\textbf{Valeur} & \textbf{Secteur} & \textbf{Rôle dans l'analyse} \\
+\midrule
+Maroc Telecom (IAM)         & Télécommunications & Valeur liquide, souvent utilisée comme cas d'étude \\
+Attijariwafa Bank           & Banque             & Grande valeur financière et indicateur sectoriel \\
+BCP                         & Banque             & Titre bancaire institutionnellement suivi \\
+Bank of Africa              & Banque             & Valeur bancaire liée à un groupe panafricain \\
+LafargeHolcim Maroc         & Ciment             & Proxy du secteur construction et matériaux \\
+Cosumar                     & Agroalimentaire    & Valeur défensive à profil industriel spécifique \\
+HPS                         & Technologies       & Valeur de croissance et profil de volatilité distinct \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Cycle d'un ordre, ouverture et positionnement de la plateforme}
+
+Le cycle d'un ordre boursier suit une chaîne d'acteurs réglementée. La plateforme
+développée intervient avant cette chaîne, au moment où l'équipe prépare une lecture
+du marché et décide si une valeur mérite d'être suivie, renforcée, réduite ou évitée.
+Elle ne remplace ni les systèmes internes de gestion d'ordres, ni les contrôles de
+risque, ni les règles de la Bourse de Casablanca.
+
+Un point opérationnel important est la période qui précède l'ouverture effective du
+marché. Dans le langage courant, elle peut être appelée \og période avant ouverture \fg{}.
+Dans les documents de la Bourse de Casablanca, elle correspond à une séquence organisée
+où les ordres sont recueillis, puis utilisés pour déterminer un prix d'ouverture. Pour
+les valeurs du groupe central concerné, la Bourse indique, au moment de la rédaction,
+une phase officielle de détermination du cours d'ouverture de 09h00 à 09h30 + T0
+~\cite{bourse_casablanca_horaires}. L'idée importante est simple~: avant que les échanges
+ne commencent réellement, le marché rassemble les intentions d'achat et de vente afin
+de calculer un premier prix d'équilibre. L'AMMC précise que les ordres saisis avant
+l'ouverture sont exécutés à ce prix d'ouverture, selon les prix demandés et les quantités
+disponibles~\cite{ammc_modalites_seance}.
+
+Le projet se concentre donc sur la \textbf{préparation de cette phase d'ouverture}.
+La plateforme exploite les données disponibles après la séance précédente, calcule les
+signaux, reconstruit les preuves statistiques et restitue une synthèse avant la séance
+suivante. Le livrable ne dit pas \og envoyer tel ordre automatiquement \fg{}; il aide
+plutôt l'équipe à répondre à des questions simples avant l'ouverture~: quelles valeurs
+surveiller, quelle orientation ressort des indicateurs, quelles preuves soutiennent cette
+lecture, quels seuils de prix sont importants et quelle exposition indicative resterait
+cohérente avec le risque.
+
+\begin{description}
+    \item[\textbf{Préparation de la décision.}]
+    L'équipe observe les valeurs suivies, les signaux techniques, les changements de
+    régime et les seuils de prix importants. C'est à ce niveau que l'interface de
+    synthèse, les pages de signaux, la page d'analyse statistique et l'aide à la
+    construction d'un portefeuille apportent une lecture structurée
+    ~\cite{repo_app_map,repo_dashboard_docs,repo_analytics_docs}.
+
+    \item[\textbf{Saisie et contrôles internes.}]
+    Si une décision doit être matérialisée, elle passe par les systèmes de gestion
+    d'ordres et les contrôles de risque et de conformité propres à l'établissement.
+
+    \item[\textbf{Transmission au marché.}]
+    Les sociétés de bourse membres transmettent les ordres vers le système de cotation
+    électronique de la Bourse de Casablanca, dans le respect des règles de priorité et
+    d'allocation.
+
+    \item[\textbf{Exécution et confirmation.}]
+    Selon les caractéristiques de la valeur, l'échange est réalisé selon les modalités
+    prévues par la Bourse. Après exécution, l'avis d'opéré confirme les caractéristiques
+    de la transaction.
+
+    \item[\textbf{Dénouement post-marché.}]
+    Le règlement-livraison est ensuite traité par les infrastructures post-marché. Les
+    rapports annuels de Maroclear décrivent un cycle de règlement-livraison de type
+    T+3 pour le marché boursier marocain~\cite{maroclear_annual_report_2018}.
+\end{description}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{schema_trade.png}
+\caption{Schéma simplifié du chemin d'un ordre et des traitements après transaction sur le marché marocain.
+Source~: synthèse interne du fonctionnement de marché, complétée par les références
+AMMC, Bourse de Casablanca et Maroclear~\cite{ammc_modalites_seance,bourse_casablanca_horaires,maroclear_annual_report_2018}.}
+\label{fig:cycle_ordre}
+\end{figure}
+
+La figure~\ref{fig:cycle_ordre} clarifie le positionnement du livrable~: l'enjeu du
+projet n'est pas d'automatiser l'exécution, mais d'améliorer la préparation de la
+décision avant la transmission éventuelle d'un ordre. Cette distinction est importante
+dans un contexte institutionnel, où la traçabilité et l'explication de la décision
+comptent autant que le signal numérique.
+
+%% ============================================================
+\section{Problématique opérationnelle~: identifier les opportunités sous contrainte}
+\label{sec:pb1}
+
+\subsection{Constat issu de la salle des marchés}
+
+L'immersion dans le contexte de la salle des marchés n'a pas fait apparaître un
+dysfonctionnement du processus existant. Elle a plutôt mis en évidence une possibilité
+d'amélioration~: ajouter une couche quantitative qui prépare la lecture du marché avant
+l'ouverture, sans se substituer au jugement de l'équipe ni aux outils institutionnels
+déjà en place~\cite{rapport_s1}.
+
+Cette amélioration possible concerne trois dimensions principales~:
+
+\begin{itemize}
+    \item \textbf{Temps de synthèse}~: avant l'ouverture, l'équipe doit identifier
+    rapidement les valeurs à surveiller et les signaux qui méritent une vérification.
+    \item \textbf{Explicabilité}~: un score isolé ne suffit pas~; il faut voir les
+    familles d'indicateurs, les niveaux techniques et les résultats de validation qui
+    soutiennent ou contredisent le signal.
+    \item \textbf{Comparabilité}~: les titres doivent pouvoir être comparés avec une
+    grille commune afin de prioriser l'attention sans transformer l'interface en moteur
+    de décision automatique.
+\end{itemize}
+
+\subsection{Besoin fonctionnel}
+
+Le besoin peut se formuler comme une exigence d'aide à la préparation~: passer d'une
+lecture séquentielle des valeurs à une synthèse pré-calculée, argumentée et comparable
+entre titres. L'interface doit donc produire une vue lisible avant l'ouverture, mais
+aussi donner accès au détail des preuves quantitatives utilisées pour construire le
+signal.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\linewidth]{generated/ch1_besoin_desk.png}
+\caption{Axes d'amélioration opérationnelle pour la préparation de la séance.
+Source~: synthèse des observations internes du stage~\cite{rapport_s1}.}
+\label{fig:besoin_desk}
+\end{figure}
+
+La figure~\ref{fig:besoin_desk} résume cette exigence en trois axes~: prioriser,
+expliquer et préparer. Ces axes structurent directement les choix de conception du
+tableau de bord final présenté au chapitre~\ref{ch:dashboard}.
+
+%% ============================================================
+\section{Problématique scientifique~: limiter le sur-apprentissage}
+\label{sec:pb2}
+
+\subsection{Sur-apprentissage et tests multiples}
+
+La seconde problématique est statistique. Pour un lecteur familier avec l'apprentissage
+automatique, une stratégie de marché peut être vue comme un modèle très simple~: elle
+transforme des variables d'entrée, par exemple des moyennes mobiles, un RSI ou un
+signal de volume, en une décision possible. Ses paramètres jouent le rôle
+d'hyperparamètres~: longueur d'une fenêtre, seuil d'achat, seuil de vente, horizon de
+prédiction ou règle de sortie. Le rendement futur joue alors le rôle de variable cible.
+
+Le danger apparaît lorsque l'on teste beaucoup de combinaisons sur le même historique.
+En data science, cela revient à regarder trop souvent le même jeu de validation jusqu'à
+trouver une configuration qui semble bonne. Une stratégie peut alors sembler performante
+non pas parce qu'elle capture une régularité exploitable, mais parce qu'elle a été choisie
+après un grand nombre de tests. Si $k$ configurations sont évaluées sur le même historique,
+le nombre attendu de faux positifs sous un seuil de significativité $\alpha$ est donné
+par l'équation~\ref{eq:faux_positifs}.
+
+\begin{equation}
+E[\text{Faux Positifs}] = \alpha \cdot k
+\label{eq:faux_positifs}
+\end{equation}
+
+Ainsi, avec $k = 1000$ configurations et $\alpha = 5\,\%$, environ 50 configurations
+peuvent paraître significatives par hasard. Le point essentiel est donc le suivant~:
+un bon test historique ne prouve pas à lui seul qu'un signal est utile. Il peut simplement
+montrer qu'une combinaison de paramètres a bien collé au passé. Harvey, Liu et
+Zhu~\cite{harvey2016} montrent que ce problème est central dans l'évaluation des
+facteurs financiers, où la multiplication des hypothèses testées impose une discipline
+de validation stricte.
+
+\subsection{Biais classiques des tests historiques}
+
+En plus des tests multiples, plusieurs biais doivent être contrôlés dans un moteur de
+test historique financier~:
+
+\begin{itemize}
+    \item \textbf{Biais de validation}~: une période utilisée pour choisir les paramètres
+    ne doit pas servir ensuite à juger leur performance comme si elle était inconnue.
+    \item \textbf{Biais de survie}~: l'évaluation ne doit pas ignorer les titres retirés
+    ou les historiques incomplets lorsque ces exclusions modifient artificiellement les
+    résultats.
+    \item \textbf{Utilisation d'information future}~: le calcul d'un signal ne doit
+    utiliser aucune information qui n'était pas disponible à la date de décision.
+    \item \textbf{Contraintes pratiques}~: un signal statistiquement intéressant peut
+    perdre son intérêt lorsque les coûts, la liquidité et les contraintes d'exécution
+    sont pris en compte.
+\end{itemize}
+
+Ces risques justifient l'utilisation d'une validation hors-échantillon et d'une logique
+Walk-Forward, c'est-à-dire une validation qui respecte l'ordre du temps. L'idée est
+simple~: apprendre sur une période passée, tester sur une période future non utilisée
+pour le choix des paramètres, puis répéter l'expérience en avançant dans le temps.
+
+\subsection{Conséquence pour le projet}
+
+Les premières expérimentations internes sur des indicateurs simples ont confirmé un
+constat classique~: une configuration très performante sur un historique complet peut
+devenir inutilisable lorsqu'elle est confrontée à des fenêtres hors-échantillon, aux coûts
+et à des contraintes de robustesse~\cite{rapport_s3}. Le projet doit donc séparer deux
+niveaux~:
+
+\begin{enumerate}
+    \item \textbf{Générer des signaux}~: produire des candidats lisibles à partir de
+    familles d'indicateurs techniques.
+    \item \textbf{Valider ces signaux}~: mesurer s'ils restent cohérents hors-échantillon,
+    sur plusieurs horizons et dans différentes fenêtres de marché.
+\end{enumerate}
+
+Cette séparation explique l'architecture du livrable~: le moteur de signaux produit une
+lecture candidate, la validation temporelle teste sa stabilité, la page d'analyse
+statistique vérifie la capacité prédictive historique, puis le tableau de bord restitue
+uniquement une information interprétable pour l'équipe.
+
+%% ============================================================
+\section{Étude des solutions existantes}
+\label{sec:existant}
+
+\subsection{Benchmark fonctionnel}
+
+Les plateformes d'analyse technique disponibles apportent des fonctions utiles~:
+visualisation graphique, indicateurs standards, alertes, données de marché et parfois
+outils communautaires. Toutefois, leur usage dans un contexte de salle des marchés marocaine laisse
+apparaître des limites lorsqu'il faut combiner couverture locale, validation
+hors-échantillon et justification quantitative du signal.
+
+\begin{table}[H]
+\centering
+\caption{Matrice comparative des principales familles de plateformes d'analyse technique.
+Sources~: analyse comparative interne~\cite{rapport_s1}, TradingView~\cite{tradingview_web}
+et Investing.com~\cite{investing_web}.}
+\label{tab:benchmark}
+\begin{tabularx}{\linewidth}{@{}lYYYYY@{}}
+\toprule
+\textbf{Plateforme} &
+\textbf{MASI} &
+\textbf{Détail} &
+\textbf{Test} &
+\textbf{Preuve} &
+\textbf{Accord} \\
+\midrule
+TradingView         & Partielle  & Oui      & Non       & Faible  & Non \\
+Investing.com       & Oui        & Non      & Non       & Faible  & Partiel \\
+Bloomberg           & Limitée    & Oui      & Non       & Moyenne & Non \\
+Saxo Bank           & Non        & Moyenne  & Non       & Faible  & Non \\
+Plateformes de courtage & Partielle & Non    & Non       & Nulle   & Non \\
+\textbf{Solution proposée} & \textbf{Univers MASI suivi} & \textbf{Oui} & \textbf{Oui} & \textbf{Élevée} & \textbf{Oui} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Le tableau~\ref{tab:benchmark} montre que la contribution recherchée ne consiste pas
+à reproduire une plateforme de marché généraliste. Elle consiste à produire une couche
+décisionnelle spécialisée, orientée MASI, qui relie signal, preuve statistique et lecture
+opérationnelle.
+
+\subsection{Lacunes retenues}
+
+L'analyse conduit à quatre lacunes principales~:
+
+\begin{enumerate}
+    \item absence d'une couverture réellement adaptée à l'univers MASI suivi~;
+    \item absence d'un test historique sur période future directement intégré à la lecture du signal~;
+    \item faible explicabilité des signaux au niveau des familles d'indicateurs~;
+    \item absence d'un consensus automatique fondé sur des preuves de robustesse.
+\end{enumerate}
+
+Ces lacunes justifient une solution sur mesure, centrée sur la chaîne
+\textit{données -- signaux -- validation -- tableau de bord}.
+
+%% ============================================================
+\section{Cadre théorique retenu}
+\label{sec:cadre}
+
+\subsection{Le paradigme de chaîne de recherche quantitative}
+
+López de Prado~\cite{lopezdeprado2018} défend une vision industrielle de la recherche
+quantitative. L'idée est proche d'une chaîne d'apprentissage automatique en production~:
+collecter des données propres, construire des variables, générer des modèles candidats,
+les valider sur des données non utilisées pour l'apprentissage, puis surveiller leur
+comportement une fois mis à disposition des utilisateurs. La valeur ne vient donc pas
+seulement d'une stratégie isolée, mais d'un processus capable de produire, tester,
+filtrer et surveiller des stratégies de manière répétable.
+
+Cette logique est particulièrement adaptée au projet. Le livrable ne cherche pas une
+formule unique qui serait toujours valable. Il met en place une chaîne où chaque famille
+de signaux doit passer par des étapes explicites~: construction, agrégation, validation
+hors-échantillon, mesure de capacité prédictive et restitution à l'équipe.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\linewidth]{generated/ch1_metastrategie.png}
+\caption{Chaîne de production quantitative retenue pour le projet.
+La plateforme couvre les données, les signaux, la validation temporelle, l'analyse statistique et la restitution.
+Source~: adaptation de~\cite{lopezdeprado2018} au périmètre applicatif courant~\cite{repo_app_map}.}
+\label{fig:metastrategie}
+\end{figure}
+
+La figure~\ref{fig:metastrategie} permet de relier les chapitres du mémoire~: la couche
+données prépare l'historique des prix et des volumes, le moteur de signaux produit des
+candidats, la validation temporelle teste leur robustesse, la page d'analyse statistique
+mesure leur capacité prédictive, et le tableau de bord transforme les résultats en
+support de préparation pour la séance suivante.
+
+\subsection{Validation Walk-Forward}
+
+Pardo~\cite{pardo2008} présente la Walk-Forward Analysis comme une simulation proche
+de l'utilisation réelle d'une stratégie optimisable. Dans la suite du rapport, ce terme
+sera traduit par \textbf{validation temporelle glissante}. Le principe consiste à
+optimiser sur une fenêtre d'apprentissage, puis à tester la configuration retenue sur
+une période future non utilisée pour l'optimisation. Ensuite, la fenêtre avance et
+l'expérience est répétée.
+
+Pour un lecteur non spécialiste des marchés financiers, la comparaison la plus simple est la
+suivante~: cette méthode est une validation croisée adaptée aux séries temporelles.
+On ne mélange pas aléatoirement les observations, car l'ordre chronologique transporte
+de l'information. On respecte donc le temps~: passé pour choisir, futur pour tester.
+Cette logique répond directement au risque de sur-apprentissage identifié dans la
+section~\ref{sec:pb2}.
+
+\subsection{Complémentarité des références}
+
+Le cadre de López de Prado fournit l'architecture générale de la recherche quantitative,
+tandis que Pardo apporte une méthodologie de validation hors-échantillon. Ensemble,
+ces deux références structurent la solution proposée~:
+
+\begin{itemize}
+    \item \textbf{Chaîne reproductible}~: les données, les indicateurs, les scores et
+    les résultats sont calculés par des composants identifiés plutôt que par des analyses
+    ponctuelles.
+    \item \textbf{Validation temporelle}~: les performances sont jugées sur des périodes
+    futures par rapport au moment où les paramètres sont choisis.
+    \item \textbf{Restitution interprétable}~: le tableau de bord expose les raisons du
+    signal, les familles contributrices, les seuils de prix importants et les résultats
+    de validation, plutôt qu'un simple verdict binaire.
+\end{itemize}
+
+%% ============================================================
+\section{Objectifs, périmètre et méthodologie générale}
+\label{sec:objectifs}
+
+\subsection{Objectifs scientifiques}
+
+\begin{enumerate}
+    \item Concevoir une chaîne d'évaluation de signaux techniques défensive contre les
+    tests multiples et le sur-apprentissage.
+    \item Mettre en place une validation temporelle glissante sur données actions marocaines.
+    \item Produire des scores de robustesse fondés sur des métriques complémentaires~:
+    performance, stabilité, cohérence, baisse maximale et capacité prédictive historique.
+\end{enumerate}
+
+\subsection{Objectifs techniques}
+
+\begin{enumerate}
+    \item Développer une plateforme web industrialisable, combinant interface utilisateur,
+    API, tâches de calcul et stockage persistant.
+    \item Automatiser la préparation des données de prix et de volumes, le calcul des familles
+    d'indicateurs et la persistance des résultats.
+    \item Fournir des surfaces de travail complémentaires~: station données, pages de
+    signaux, stratégie, tests historiques, validation temporelle, analyse statistique
+    et tableau de bord décisionnel.
+    \item Produire une aide à la préparation de séance, avec score synthétique,
+    justification par famille de signaux, seuils de prix, proposition indicative de
+    portefeuille et suivi journalier consultatif~\cite{repo_app_map,repo_dashboard_docs}.
+\end{enumerate}
+
+\subsection{Périmètre}
+
+\begin{itemize}
+    \item \textbf{Univers}~: actions de l'univers MASI suivi, Bourse de Casablanca.
+    \item \textbf{Fréquence}~: données journalières de prix et de volumes.
+    \item \textbf{Moment d'usage privilégié}~: préparation de la séance suivante, en
+    particulier avant la détermination du prix d'ouverture.
+    \item \textbf{Indicateurs}~: familles d'analyse technique organisées en catégories
+    Tendance, Momentum, Oscillation et Volume.
+    \item \textbf{Hors périmètre}~: négociation intrajournalière, exécution automatique d'ordres,
+    produits dérivés et optimisation de portefeuille multi-actifs.
+\end{itemize}
+
+\subsection{Méthodologie générale}
+
+La démarche retenue suit une logique d'ingénierie scientifique. Le besoin métier est
+d'abord formalisé à partir de l'observation de la salle des marchés. Les données sont ensuite structurées
+dans une couche dédiée, les signaux sont générés et filtrés par familles, puis leur
+robustesse est évaluée hors-échantillon. Les résultats sont enfin confrontés à une
+page d'analyse statistique, qui mesure le comportement historique des scores par horizon,
+puis restitués dans un tableau de bord conçu pour faciliter la préparation de la séance
+et l'explication de la décision. Cette démarche remplace une logique chronologique de
+stage par une lecture méthodologique du projet.
+
+%% ============================================================
+\section*{Conclusion du chapitre}
+
+Ce chapitre a établi le cadre du projet~: une salle des marchés institutionnelle,
+un univers actions marocain aux contraintes spécifiques, un usage privilégié avant
+l'ouverture, une possibilité d'amélioration opérationnelle et un besoin scientifique de
+validation robuste. L'étude des solutions existantes montre qu'une plateforme généraliste
+ne répond pas entièrement à ces exigences. Le cadre théorique retenu, fondé sur la chaîne
+de recherche quantitative et la validation temporelle glissante, justifie l'architecture
+développée dans les chapitres suivants~: analyse technique, moteur de signaux, validation
+temporelle, architecture applicative, tableau de bord et analyse statistique.

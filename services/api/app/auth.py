@@ -1,11 +1,37 @@
 from __future__ import annotations
 
 import hmac
+from dataclasses import dataclass
 from typing import Iterable
 
-from fastapi import Header, HTTPException, Request
+from fastapi import Depends, Header, HTTPException, Request
 
 from .config import settings
+
+
+@dataclass(frozen=True)
+class AppUser:
+    id: str
+    email: str | None = None
+
+
+def optional_app_user(
+    x_app_user_id: str | None = Header(default=None),
+    x_app_user_email: str | None = Header(default=None),
+) -> AppUser | None:
+    user_id = (x_app_user_id or "").strip()
+    if not user_id:
+        return None
+    email = (x_app_user_email or "").strip() or None
+    return AppUser(id=user_id, email=email)
+
+
+def require_app_user(
+    user: AppUser | None = Depends(optional_app_user),
+) -> AppUser:
+    if user is None:
+        raise HTTPException(status_code=401, detail="authenticated user required")
+    return user
 
 
 def _check_jwt(authorization: str | None, *, required_scopes: Iterable[str] | None = None) -> bool:

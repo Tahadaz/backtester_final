@@ -301,6 +301,7 @@ services:
       AUTH_REQUIRED: "true"
       AUTH_TRUST_HOST: "true"
       NEXTAUTH_URL: ${NEXTAUTH_URL:-https://84.8.218.252.sslip.io}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-stg.tdazine@bmcek.co.ma}
       HIDE_WORKSPACE_NAV_ITEMS: "true"
       # Sentry (optional — no-op when unset)
       NEXT_PUBLIC_SENTRY_DSN: ${SENTRY_DSN:-}

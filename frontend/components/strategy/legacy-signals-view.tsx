@@ -17,7 +17,6 @@ type LegacySignalsViewProps = {
   onHorizonChange: (value: string) => void
   topbarContent?: ReactNode
   variant?: LegacySignalsPageView
-  evidenceVariant?: string
   defaultTab?: "technique" | "evidence" | "indicateurs" | "wfo" | "backtest"
   evidenceSource?: "auto" | "signal_engine" | "wfo"
   selectedVariantId?: string | null
@@ -47,7 +46,6 @@ export function LegacySignalsView({
   onHorizonChange,
   topbarContent,
   variant = "legacy_ta_simple",
-  evidenceVariant = variant,
   defaultTab,
   evidenceSource = "auto",
   selectedVariantId = null,
@@ -85,7 +83,7 @@ export function LegacySignalsView({
           <SignalEvidenceTab
             symbol={selectedSymbol}
             horizon={horizon}
-            variant={evidenceVariant}
+            variant={variant}
             source={evidenceSource}
             selectedVariantId={selectedVariantId}
             cooldownBars={cooldownBars}

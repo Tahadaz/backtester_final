@@ -128,6 +128,8 @@ export interface DashboardBestSignal {
   bucket: string | null
   direction: "long" | "short" | "none" | string
   n: number | null
+  edge_score?: number | null
+  edge_score_components?: Record<string, number>
   fwd_horizon_bars?: number | null
   return_calc_method?: string | null
   entry_price_kind?: string | null
@@ -266,10 +268,18 @@ export interface DashboardData {
   custom_index_definitions?: DashboardCustomIndexDefinition[]
 }
 
+export interface DashboardCustomIndexComponent {
+  symbol: string
+  shares: number
+}
+
 export interface DashboardCustomIndexDefinition {
   id: string
   name: string
   symbols: string[]
+  component_shares?: Record<string, number>
+  components?: DashboardCustomIndexComponent[]
+  is_weighted_complete?: boolean
   portfolio_edge?: DashboardPortfolioEdge | null
 }
 

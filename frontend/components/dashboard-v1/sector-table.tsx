@@ -141,17 +141,13 @@ function horizonLabel(horizon: Horizon) {
 function evidenceHref(
   stock: DashboardStock,
   horizon: Horizon,
-  signalView: "legacy" | "expanded" | "factor_x_ta",
-  scoreSource: DashboardScoreSource,
 ) {
   const signal = bestSignalForDisplay(stock)
-  const fallbackView = scoreSource === "wfo" ? "expanded_ta_simple" : signalView
   return signalEvidenceUrl({
     symbol: stock.symbol,
     horizon,
-    view: signal?.variant ?? fallbackView,
-    source: signal?.source ?? "auto",
-    evidenceVariant: signal?.variant,
+    view: signal?.variant ?? "expanded_ta_simple",
+    source: "wfo",
   })
 }
 
@@ -614,7 +610,7 @@ export function SectorTable({
                                 </TableHeader>
                                 <TableBody>
                                   {sortedStocks.map((stock) => {
-                                    const href = isTechnicalMode ? technicalHref(stock, horizon) : evidenceHref(stock, horizon, signalView, scoreSource)
+                                    const href = isTechnicalMode ? technicalHref(stock, horizon) : evidenceHref(stock, horizon)
                                     const signal = bestSignalForDisplay(stock)
                                     const technicalSignal = technicalSignalForDisplay(stock)
                                     const shareSymbol = String(stock.symbol ?? "").trim().toUpperCase()

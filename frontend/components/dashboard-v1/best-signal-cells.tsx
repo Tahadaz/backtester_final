@@ -61,6 +61,19 @@ function edgeTriageRank(signal: DashboardBestSignal | null | undefined) {
   return order[bestSignalTriage(signal)]
 }
 
+export function bestSignalEdgeScore(signal: DashboardBestSignal | null | undefined) {
+  return signal?.edge_score ?? null
+}
+
+function bestSignalSortScore(signal: DashboardBestSignal | null | undefined) {
+  return signal?.edge_score ?? signal?.score ?? null
+}
+
+function formatEdgeScore(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return "--"
+  return value.toFixed(0)
+}
+
 function portfolioTriageRank(edge: DashboardPortfolioEdge | null | undefined) {
   const order: Record<EdgeTriage, number> = { proven: 4, watch: 3, insufficient: 2, hold: 1, missing: 0 }
   return order[portfolioEdgeTriage(edge)]
@@ -73,8 +86,8 @@ export function compareBestSignalStocks(left: DashboardStock, right: DashboardSt
   const triage = edgeTriageRank(rightSignal) - edgeTriageRank(leftSignal)
   if (triage !== 0) return triage
 
-  const rightScore = rightSignal?.score ?? Number.NEGATIVE_INFINITY
-  const leftScore = leftSignal?.score ?? Number.NEGATIVE_INFINITY
+  const rightScore = bestSignalSortScore(rightSignal) ?? Number.NEGATIVE_INFINITY
+  const leftScore = bestSignalSortScore(leftSignal) ?? Number.NEGATIVE_INFINITY
   if (rightScore !== leftScore) return rightScore - leftScore
 
   const rightEr = rightSignal?.action_expected_return_net ?? Number.NEGATIVE_INFINITY
@@ -267,7 +280,7 @@ export function BestSignalMethodCell({
       <div className="flex items-center gap-1.5">
         <EdgeBadge triage={bestSignalTriage(signal)} />
         <span className="dashboard-mono text-[10px] text-muted-foreground">
-          {stockSymbol ? `${stockSymbol} - ` : ""}n={signal.n ?? "--"}
+          {stockSymbol ? `${stockSymbol} - ` : ""}score {formatEdgeScore(bestSignalEdgeScore(signal))} - n={signal.n ?? "--"}
         </span>
       </div>
     </div>

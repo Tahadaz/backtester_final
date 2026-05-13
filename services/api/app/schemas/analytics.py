@@ -331,6 +331,8 @@ class EdgeMetricsOut(BaseModel):
     label_shuffle_pvalue_net_adj: Optional[float] = None
     proven_edge_gross: bool = False
     proven_edge_net: bool = False
+    edge_score: Optional[float] = None
+    edge_score_components: dict[str, float] = Field(default_factory=dict)
     gates: EdgeGatesOut
     cost_bps_per_side: float
     methodology_version: str

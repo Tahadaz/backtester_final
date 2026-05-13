@@ -5,4 +5,5 @@ python -m PyInstaller `
   --name bt-bloomberg-bridge `
   --collect-all pandas `
   --collect-all pyarrow `
+  --collect-all xbbg `
   .\bridge.py

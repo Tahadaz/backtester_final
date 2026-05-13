@@ -2,7 +2,9 @@
 
 ## Approve a pending user signup
 
-Users register with `isActive = false`. Log into the Postgres DB and flip the flag:
+Users register with `isActive = false`. Preferred path: set `ADMIN_EMAILS=stg.tdazine@bmcek.co.ma` in `/etc/bt/env`, recreate the frontend, then open `/admin/users` while signed in as that email and approve the pending request.
+
+SQL fallback: log into the Postgres DB and flip the flag:
 
 ```sql
 -- List pending users
@@ -73,5 +75,6 @@ UPDATE users SET "isActive" = false WHERE email = 'user@example.com';
 | `NEXTAUTH_SECRET` | Random 32-byte hex string. `openssl rand -hex 32` |
 | `NEXTAUTH_URL` | Full URL of the app, e.g. `https://84.8.218.252.sslip.io` |
 | `AUTH_REQUIRED` | `true` on deployed app to require login; local compose defaults to `false`. |
+| `ADMIN_EMAILS` | Comma-separated emails allowed to open `/admin/users` and approve or revoke users. |
 | `DATABASE_URL` | Postgres URL accessible from the frontend container |
 | `INTERNAL_JWT_SECRET` | Random 32-byte hex. Used for API-to-backend JWT once multi-tenancy ships. |

@@ -372,7 +372,9 @@ def _edge_payloads_for_signal_candidate(
                     "triage": "proven" if bool(edge.get("proven_edge_net")) else "watch",
                     "bucket": edge.get("bucket"),
                     "direction": edge.get("direction"),
-                    "score": rank[1],
+                    "edge_score": edge.get("edge_score"),
+                    "edge_score_components": edge.get("edge_score_components") if isinstance(edge.get("edge_score_components"), dict) else {},
+                    "score": rank[2] if len(rank) > 2 else rank[1],
                     "action_expected_return_net": edge.get("action_expected_return_net"),
                     "action_expected_return_net_ci_lower": edge.get("action_expected_return_net_ci_lower"),
                     "action_expected_return_net_ci_upper": edge.get("action_expected_return_net_ci_upper"),
@@ -399,7 +401,7 @@ def _edge_payloads_for_signal_candidate(
 
 def _sort_signal_candidate_rows(rows: list[dict[str, Any]], body: SignalCandidateRequest) -> list[dict[str, Any]]:
     metric_key = {
-        "edge_score": "score",
+        "edge_score": "edge_score",
         "expected_return": "action_expected_return_net",
         "hit_rate": "hit_rate",
         "adv20": "adv20",
@@ -411,6 +413,8 @@ def _sort_signal_candidate_rows(rows: list[dict[str, Any]], body: SignalCandidat
         if metric_key == "symbol":
             return str(row.get("symbol") or "")
         metric = _candidate_float(row.get(metric_key))
+        if metric is None and metric_key == "edge_score":
+            metric = _candidate_float(row.get("score"))
         if metric is None:
             return -float("inf") if reverse else float("inf")
         return metric

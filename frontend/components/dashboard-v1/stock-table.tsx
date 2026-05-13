@@ -217,6 +217,19 @@ function formatScorePct(value: number | null | undefined) {
   return `${sign}${value.toFixed(1)}`
 }
 
+function bestSignalEdgeScore(signal: DashboardBestSignal | null | undefined) {
+  return signal?.edge_score ?? null
+}
+
+function bestSignalSortScore(signal: DashboardBestSignal | null | undefined) {
+  return signal?.edge_score ?? signal?.score ?? null
+}
+
+function formatEdgeScore(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return "--"
+  return value.toFixed(0)
+}
+
 function EdgeBadge({ triage }: { triage: EdgeTriage }) {
   if (triage === "insufficient")
     return <span className="text-[11px] font-semibold text-muted-foreground">&lt;30 OOS</span>
@@ -357,11 +370,11 @@ export function StockTable({
         leftValue = left.adv ?? null
         rightValue = right.adv ?? null
       } else if (sortKey === "signal") {
-        leftValue = isTechnicalMode ? technicalSignalForDisplay(left)?.score_pct ?? null : bestSignalForDisplay(left)?.score ?? null
-        rightValue = isTechnicalMode ? technicalSignalForDisplay(right)?.score_pct ?? null : bestSignalForDisplay(right)?.score ?? null
+        leftValue = isTechnicalMode ? technicalSignalForDisplay(left)?.score_pct ?? null : bestSignalSortScore(bestSignalForDisplay(left))
+        rightValue = isTechnicalMode ? technicalSignalForDisplay(right)?.score_pct ?? null : bestSignalSortScore(bestSignalForDisplay(right))
       } else if (sortKey === "best_signal") {
-        leftValue = bestSignalForDisplay(left)?.score ?? null
-        rightValue = bestSignalForDisplay(right)?.score ?? null
+        leftValue = bestSignalSortScore(bestSignalForDisplay(left))
+        rightValue = bestSignalSortScore(bestSignalForDisplay(right))
       } else if (sortKey === "technical_signal") {
         leftValue = technicalSignalForDisplay(left)?.abs_score_pct ?? null
         rightValue = technicalSignalForDisplay(right)?.abs_score_pct ?? null
@@ -372,9 +385,8 @@ export function StockTable({
         leftValue = bestSignalForDisplay(left)?.hit_rate ?? null
         rightValue = bestSignalForDisplay(right)?.hit_rate ?? null
       } else if (sortKey === "edge") {
-        const order: Record<EdgeTriage, number> = { proven: 4, watch: 3, insufficient: 2, hold: 1, missing: 0 }
-        leftValue = order[bestSignalTriage(bestSignalForDisplay(left))]
-        rightValue = order[bestSignalTriage(bestSignalForDisplay(right))]
+        leftValue = bestSignalSortScore(bestSignalForDisplay(left))
+        rightValue = bestSignalSortScore(bestSignalForDisplay(right))
       } else {
         leftValue = isTechnicalMode
           ? technicalFamilyForDisplay(left, sortKey)?.score_pct ?? null
@@ -555,19 +567,17 @@ export function StockTable({
             const technicalSignal = technicalSignalForDisplay(stock)
             const signalViewQuery = isTechnicalMode
               ? signalViewForVariant(technicalSignal?.variant)
-              : scoreSource === "wfo"
-                ? "expanded"
-                : signalView
+              : "expanded_ta_simple"
             const evidenceVariant = isTechnicalMode ? technicalSignal?.variant : bestSignal?.variant
             const evidenceSource = isTechnicalMode
               ? technicalSignal?.source ?? "auto"
-              : bestSignal?.source ?? "auto"
+              : "wfo"
             const evidenceHref = signalEvidenceUrl({
               symbol: stock.symbol,
               horizon,
               view: evidenceVariant ?? signalViewQuery,
               source: evidenceSource,
-              evidenceVariant,
+              evidenceVariant: isTechnicalMode ? evidenceVariant : undefined,
               tab: isTechnicalMode ? "technique" : "evidence",
             })
             const selected = selectedSymbols?.has(stock.symbol) ?? false
@@ -661,7 +671,12 @@ export function StockTable({
                       )}
                     </TableCell>
                     <TableCell className="px-3 py-2.5">
-                      <EdgeBadge triage={bestSignalTriage(bestSignal)} />
+                      <div className="space-y-0.5">
+                        <EdgeBadge triage={bestSignalTriage(bestSignal)} />
+                        <div className="dashboard-mono text-[10px] text-muted-foreground">
+                          Score {formatEdgeScore(bestSignalEdgeScore(bestSignal))}
+                        </div>
+                      </div>
                     </TableCell>
                   </>
                 ) : null}

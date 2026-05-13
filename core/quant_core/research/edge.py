@@ -18,7 +18,7 @@ from .oos_index import OosSample
 from .score_history import BUCKET_NAMES, _bucket_for, _calculate_forward_returns
 from .stats.hit_rate import wilson_ci
 
-METHODOLOGY_VERSION = "2026-05-12-recency-aware-edge-cap100-v1"
+METHODOLOGY_VERSION = "2026-05-13-net-edge-score-v1"
 DEFAULT_COST_BPS_PER_SIDE = 33.0
 MC_PVALUE_THRESHOLD = 0.05
 LABEL_SHUFFLE_PVALUE_THRESHOLD = 0.05
@@ -150,6 +150,8 @@ class EdgeMetrics:
     label_shuffle_pvalue_net: float | None
     proven_edge_gross: bool
     proven_edge_net: bool
+    edge_score: float | None
+    edge_score_components: dict[str, float]
     gates: EdgeGates
     cost_bps_per_side: float
     methodology_version: str
@@ -582,6 +584,117 @@ def _freshness_summary(
     }
 
 
+def _score_clamp(value: float) -> float:
+    if not np.isfinite(value):
+        return 0.0
+    return float(max(0.0, min(100.0, value)))
+
+
+def _finite_float(value: Any) -> float | None:
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return None
+    return out if np.isfinite(out) else None
+
+
+def _pvalue_component_score(pvalue: float | None, threshold: float) -> float:
+    p = _finite_float(pvalue)
+    if p is None:
+        return 0.0
+    p = max(0.0, min(1.0, p))
+    t = max(float(threshold), 1e-9)
+    if p <= t:
+        return _score_clamp(50.0 + 50.0 * ((t - p) / t))
+    return _score_clamp(50.0 * (1.0 - ((p - t) / max(1.0 - t, 1e-9))))
+
+
+def _centered_threshold_score(value: float | None, *, center: float, span: float) -> float:
+    v = _finite_float(value)
+    if v is None:
+        return 0.0
+    half = max(float(span) / 2.0, 1e-9)
+    return _score_clamp(50.0 + 50.0 * ((v - float(center)) / half))
+
+
+def _bootstrap_expectancy_component_score(
+    mean_net: float | None,
+    lower_net: float | None,
+) -> float:
+    mean = _finite_float(mean_net)
+    if mean is None or mean <= 0.0:
+        return 0.0
+    lower = _finite_float(lower_net)
+    if lower is None:
+        return 50.0
+    if lower >= 0.0:
+        base = abs(mean) if abs(mean) > 1e-12 else max(abs(lower), 1e-12)
+        return _score_clamp(75.0 + 25.0 * min(1.0, lower / base))
+    return _score_clamp(60.0 * (mean / (mean + abs(lower))))
+
+
+def compute_edge_score(
+    *,
+    bucket: str,
+    direction: Direction | str,
+    n: int,
+    action_expected_return_net: float | None,
+    action_expected_return_net_ci_lower: float | None,
+    hit_ci_lower: float | None,
+    mc_luck_pvalue_net_adj: float | None,
+    label_shuffle_pvalue_net_adj: float | None,
+    freshness_n: int,
+    freshness_min_n: int,
+    freshness_action_expected_return_net: float | None,
+    freshness_hit_rate: float | None,
+    n_target: int = N_TARGET,
+) -> tuple[float | None, dict[str, float]]:
+    """Return a net-only 0-100 Edge ranking score plus component scores.
+
+    The score is intentionally separate from `proven_edge_net`: it grades how
+    strongly the current action satisfies the proof dimensions without changing
+    the binary proven-edge methodology.
+    """
+    bucket_key = str(bucket or "").strip().lower()
+    direction_key = str(direction or "").strip().lower()
+    actionable = (
+        (bucket_key in {"buy", "strong_buy"} and direction_key == "long")
+        or (bucket_key in {"sell", "strong_sell"} and direction_key == "short")
+    )
+    if not actionable:
+        return None, {}
+
+    sample_n = _score_clamp(100.0 * max(0, int(n or 0)) / max(1, int(n_target)))
+    bootstrap_er = _bootstrap_expectancy_component_score(
+        action_expected_return_net,
+        action_expected_return_net_ci_lower,
+    )
+    wilson = _centered_threshold_score(hit_ci_lower, center=WILSON_LB_THRESHOLD, span=0.30)
+    mc_luck = _pvalue_component_score(mc_luck_pvalue_net_adj, MC_PVALUE_THRESHOLD)
+    label_shuffle = _pvalue_component_score(label_shuffle_pvalue_net_adj, LABEL_SHUFFLE_PVALUE_THRESHOLD)
+
+    fresh_n = _score_clamp(
+        100.0 * max(0, int(freshness_n or 0)) / max(1, int(freshness_min_n or FRESHNESS_MIN_N))
+    )
+    fresh_er = 100.0 if (_finite_float(freshness_action_expected_return_net) or 0.0) > 0.0 else 0.0
+    fresh_hit = _centered_threshold_score(freshness_hit_rate, center=0.50, span=0.30)
+    freshness = _score_clamp((fresh_n + fresh_er + fresh_hit) / 3.0)
+
+    components = {
+        "sample_n": round(sample_n, 2),
+        "bootstrap_er": round(bootstrap_er, 2),
+        "wilson": round(wilson, 2),
+        "mc_luck": round(mc_luck, 2),
+        "label_shuffle": round(label_shuffle, 2),
+        "freshness": round(freshness, 2),
+    }
+    score = sum(components.values()) / len(components)
+    mean_net = _finite_float(action_expected_return_net)
+    if mean_net is None or mean_net <= 0.0:
+        score = min(score, 5.0)
+    return round(_score_clamp(score), 2), components
+
+
 def compute_canonical_expectancy(strategy_returns: np.ndarray) -> ExpectancyDecomp:
     r = np.asarray(strategy_returns, dtype="float64")
     n = len(r)
@@ -705,6 +818,20 @@ def _empty_metrics(
         freshness_gross=False,
         freshness_net=False,
     )
+    edge_score, edge_score_components = compute_edge_score(
+        bucket=bucket,
+        direction=direction,
+        n=n,
+        action_expected_return_net=None,
+        action_expected_return_net_ci_lower=None,
+        hit_ci_lower=None,
+        mc_luck_pvalue_net_adj=None,
+        label_shuffle_pvalue_net_adj=None,
+        freshness_n=freshness_n,
+        freshness_min_n=freshness_min_n,
+        freshness_action_expected_return_net=freshness_action_expected_return_net,
+        freshness_hit_rate=freshness_hit_rate,
+    )
     return EdgeMetrics(
         symbol=symbol, horizon=horizon, source=source, bucket=bucket,
         direction=direction, n=n,
@@ -738,6 +865,8 @@ def _empty_metrics(
         mc_luck_pvalue_gross=None, mc_luck_pvalue_net=None,
         label_shuffle_pvalue_gross=None, label_shuffle_pvalue_net=None,
         proven_edge_gross=False, proven_edge_net=False,
+        edge_score=edge_score,
+        edge_score_components=edge_score_components,
         gates=gates, cost_bps_per_side=float(cost_bps_per_side),
         methodology_version=METHODOLOGY_VERSION,
         proof_max_lookback_years=proof_max_lookback_years,
@@ -1091,6 +1220,20 @@ def build_edge_payload(
         and gate_n
         and freshness["net_pass"]
     )
+    edge_score, edge_score_components = compute_edge_score(
+        bucket=today_bucket,
+        direction=direction,
+        n=n,
+        action_expected_return_net=er_net,
+        action_expected_return_net_ci_lower=er_net_ci_lower,
+        hit_ci_lower=hit_ci_lower,
+        mc_luck_pvalue_net_adj=mc_luck_pvalue_net_adj,
+        label_shuffle_pvalue_net_adj=label_shuffle_pvalue_net_adj,
+        freshness_n=int(freshness["n"] or 0),
+        freshness_min_n=freshness_min_n,
+        freshness_action_expected_return_net=freshness["net"],
+        freshness_hit_rate=freshness["hit_rate"],
+    )
 
     return EdgeMetrics(
         symbol=symbol,
@@ -1140,6 +1283,8 @@ def build_edge_payload(
         label_shuffle_pvalue_net=float(label_shuffle_pvalue_net) if label_shuffle_pvalue_net is not None else None,
         proven_edge_gross=proven_edge_gross,
         proven_edge_net=proven_edge_net,
+        edge_score=edge_score,
+        edge_score_components=edge_score_components,
         gates=gates,
         cost_bps_per_side=float(cost_bps_per_side),
         methodology_version=METHODOLOGY_VERSION,

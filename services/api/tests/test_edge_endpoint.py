@@ -63,6 +63,8 @@ def test_happy_path(monkeypatch) -> None:
         "label_shuffle_pvalue_net": 0.03,
         "proven_edge_gross": True,
         "proven_edge_net": True,
+        "edge_score": 88.5,
+        "edge_score_components": {"bootstrap_er": 82.0, "mc_luck": 91.0},
         "gates": {"mc_gross": True, "mc_net": True, "label_shuffle_gross": True, "label_shuffle_net": True, "wilson": True, "n": True},
         "cost_bps_per_side": 33.0,
         "methodology_version": "2026-05-07",
@@ -83,6 +85,8 @@ def test_happy_path(monkeypatch) -> None:
     assert res.json()["gates"]["label_shuffle_net"] is True
     assert res.json()["action_expected_return_net"] == 0.0034
     assert res.json()["stock_expected_return"] == 0.01
+    assert res.json()["edge_score"] == 88.5
+    assert res.json()["edge_score_components"]["bootstrap_er"] == 82.0
 
 
 def test_cold_cache_returns_null_with_header(monkeypatch) -> None:

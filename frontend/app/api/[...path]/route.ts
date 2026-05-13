@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { auth } from "@/auth"
 
 // Local `next dev` reaches the API through localhost; containerized setups
 // should continue overriding this via UPSTREAM_API_BASE or API_URL.
@@ -20,6 +21,8 @@ const OFFLINE_EMPTY_GET_PATHS = new Set([
 type RouteParams = { path?: string[] }
 type RouteContext = { params: Promise<RouteParams> | RouteParams }
 
+export const runtime = "nodejs"
+
 function normalizePathParts(path: unknown): string[] {
   if (!Array.isArray(path)) return []
   return path.filter((part): part is string => typeof part === "string")
@@ -31,18 +34,30 @@ function buildTargetUrl(req: NextRequest, pathParts: string[]): string {
   return `${base}${path}${req.nextUrl.search}`
 }
 
-function buildUpstreamHeaders(req: NextRequest): Headers {
+async function currentSessionUser(): Promise<{ id?: string | null; email?: string | null } | null> {
+  try {
+    const session = await auth()
+    return session?.user ?? null
+  } catch {
+    return null
+  }
+}
+
+async function buildUpstreamHeaders(req: NextRequest): Promise<Headers> {
   const headers = new Headers()
   const contentType = req.headers.get("content-type")
   const accept = req.headers.get("accept")
   const authorization = req.headers.get("authorization")
   const cookie = req.headers.get("cookie")
+  const user = await currentSessionUser()
 
   if (contentType) headers.set("content-type", contentType)
   if (accept) headers.set("accept", accept)
   if (authorization) headers.set("authorization", authorization)
   if (cookie) headers.set("cookie", cookie)
   if (API_KEY) headers.set("x-api-key", API_KEY)
+  if (user?.id) headers.set("x-app-user-id", user.id)
+  if (user?.email) headers.set("x-app-user-email", user.email)
   return headers
 }
 
@@ -78,7 +93,7 @@ async function proxy(req: NextRequest, { params }: RouteContext) {
   const target = buildTargetUrl(req, pathParts)
 
   const method = req.method.toUpperCase()
-  const headers = buildUpstreamHeaders(req)
+  const headers = await buildUpstreamHeaders(req)
 
   const init: RequestInit & { duplex?: "half" } = {
     method,

@@ -17,10 +17,18 @@ from sqlalchemy.orm import Session
 from .. import auth, models
 from ..config import settings
 from ..db import get_db
+from ..masi_tickers import all_masi_tickers
 from ..schemas.bloomberg import (
     BloombergBatchCreateOut,
     BloombergBatchOut,
+    BloombergBridgeStatusOut,
     BloombergBridgeManifest,
+    BloombergHeartbeatIn,
+    BloombergJobClaimOut,
+    BloombergJobCreateIn,
+    BloombergJobEventOut,
+    BloombergJobOut,
+    BloombergJobUpdateIn,
     BloombergSeriesOut,
     BloombergSeriesPreviewOut,
 )
@@ -38,10 +46,127 @@ _DATE_COLUMNS = ("date", "datetime", "timestamp", "time")
 _SECURITY_COLUMNS = ("security", "ticker", "symbol", "instrument")
 _FIELD_COLUMNS = ("field", "mnemonic", "bbg_field")
 _VALUE_COLUMNS = ("value", "px", "price", "last", "close")
+_BRIDGE_STALE_AFTER_SECONDS = 90
+_JOB_LEASE_SECONDS = 300
+_ACTIVE_JOB_STATUSES = {"queued", "leased", "running"}
+_TERMINAL_JOB_STATUSES = {"succeeded", "failed", "cancelled", "expired"}
 
 
 def _utcnow() -> dt.datetime:
     return dt.datetime.now(dt.timezone.utc)
+
+
+def _coerce_aware(value: dt.datetime | None) -> dt.datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=dt.timezone.utc)
+    return value
+
+
+def _is_stale(last_seen_at: dt.datetime | None) -> bool:
+    seen = _coerce_aware(last_seen_at)
+    if seen is None:
+        return True
+    return (_utcnow() - seen).total_seconds() > _BRIDGE_STALE_AFTER_SECONDS
+
+
+def _job_out(row: models.BloombergJob) -> BloombergJobOut:
+    return BloombergJobOut.model_validate(row)
+
+
+def _event_out(row: models.BloombergJobEvent) -> BloombergJobEventOut:
+    return BloombergJobEventOut.model_validate(row)
+
+
+def _bridge_status_out(row: models.BloombergBridgeStatus) -> BloombergBridgeStatusOut:
+    return BloombergBridgeStatusOut(
+        bridge_id=row.bridge_id,
+        status=row.status,
+        capabilities_json=row.capabilities_json or {},
+        preflight_json=row.preflight_json or {},
+        active_job_id=row.active_job_id,
+        error_message=row.error_message,
+        last_seen_at=row.last_seen_at,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+        is_stale=_is_stale(row.last_seen_at),
+    )
+
+
+def _append_job_event(
+    db: Session,
+    *,
+    job_id: UUID,
+    bridge_id: str | None,
+    status: str | None,
+    message: str | None,
+    payload: dict[str, Any] | None = None,
+) -> None:
+    db.add(
+        models.BloombergJobEvent(
+            id=uuid4(),
+            job_id=job_id,
+            bridge_id=bridge_id,
+            status=status,
+            message=message,
+            payload_json=payload or {},
+        )
+    )
+
+
+def _symbol_to_bloomberg_candidates(symbol: str) -> list[str]:
+    clean = symbol.strip().upper()
+    if not clean:
+        return []
+    return [f"{clean} MA Equity", f"{clean} MC Equity"]
+
+
+def _build_job_spec(body: BloombergJobCreateIn) -> dict[str, Any]:
+    symbols = list(body.symbols)
+    if body.universe == "masi" and not symbols:
+        symbols = [str(row.get("symbol") or "").strip().upper() for row in all_masi_tickers()]
+        symbols = [symbol for symbol in symbols if symbol]
+
+    security_candidates = [
+        {"symbol": symbol, "candidates": _symbol_to_bloomberg_candidates(symbol)}
+        for symbol in symbols
+        if symbol
+    ]
+    securities = list(body.securities)
+    if not securities:
+        securities = [item["candidates"][0] for item in security_candidates if item["candidates"]]
+
+    fields = body.fields or ["PX_LAST", "VOLUME"]
+    options = {
+        "daily_chunk_days": 365,
+        "hourly_chunk_days": 5,
+        "minute_chunk_days": 1,
+        "probe_days": 5,
+        **(body.options or {}),
+    }
+    return {
+        "schema_version": 1,
+        "job_type": body.job_type,
+        "universe": body.universe,
+        "mode": body.mode,
+        "frequency": body.frequency,
+        "symbols": symbols,
+        "securities": securities,
+        "security_candidates": security_candidates,
+        "fields": fields,
+        "start_date": body.start_date,
+        "end_date": body.end_date,
+        "apply_to_market_data": body.apply_to_market_data,
+        "options": options,
+        "created_at": _utcnow().isoformat(),
+    }
+
+
+def _merge_json(existing: dict[str, Any] | None, incoming: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(existing or {})
+    merged.update(incoming or {})
+    return merged
 
 
 def _json_bytes(payload: dict[str, Any]) -> bytes:
@@ -290,6 +415,181 @@ def bridge_health(
     }
 
 
+@bridge_router.post("/heartbeat", response_model=BloombergBridgeStatusOut)
+def bridge_heartbeat(body: BloombergHeartbeatIn, db: Session = Depends(get_db)) -> BloombergBridgeStatusOut:
+    now = _utcnow()
+    row = (
+        db.query(models.BloombergBridgeStatus)
+        .filter(models.BloombergBridgeStatus.bridge_id == body.bridge_id)
+        .one_or_none()
+    )
+    if row is None:
+        row = models.BloombergBridgeStatus(
+            bridge_id=body.bridge_id,
+            status=body.status,
+            capabilities_json=body.capabilities,
+            preflight_json=body.preflight,
+            active_job_id=body.active_job_id,
+            error_message=body.error_message,
+            last_seen_at=now,
+        )
+        db.add(row)
+    else:
+        row.status = body.status
+        row.capabilities_json = body.capabilities
+        row.preflight_json = body.preflight
+        row.active_job_id = body.active_job_id
+        row.error_message = body.error_message
+        row.last_seen_at = now
+    db.commit()
+    db.refresh(row)
+    return _bridge_status_out(row)
+
+
+def _release_expired_job_leases(db: Session, now: dt.datetime) -> None:
+    expired = (
+        db.query(models.BloombergJob)
+        .filter(
+            models.BloombergJob.status.in_(["leased", "running"]),
+            models.BloombergJob.lease_expires_at.isnot(None),
+            models.BloombergJob.lease_expires_at < now,
+        )
+        .all()
+    )
+    for job in expired:
+        _append_job_event(
+            db,
+            job_id=job.id,
+            bridge_id=job.bridge_id,
+            status="expired",
+            message="Bridge lease expired; job returned to queue",
+            payload={"previous_status": job.status},
+        )
+        job.status = "queued"
+        job.bridge_id = None
+        job.lease_expires_at = None
+
+
+@bridge_router.get("/jobs/next", response_model=BloombergJobClaimOut)
+def claim_next_bloomberg_job(
+    bridge_id: str = Query(..., min_length=1, max_length=128),
+    lease_seconds: int = Query(default=_JOB_LEASE_SECONDS, ge=30, le=3600),
+    db: Session = Depends(get_db),
+) -> BloombergJobClaimOut:
+    now = _utcnow()
+    _release_expired_job_leases(db, now)
+    job = (
+        db.query(models.BloombergJob)
+        .filter(models.BloombergJob.status == "queued")
+        .order_by(models.BloombergJob.created_at.asc())
+        .first()
+    )
+    if job is None:
+        status = (
+            db.query(models.BloombergBridgeStatus)
+            .filter(models.BloombergBridgeStatus.bridge_id == bridge_id)
+            .one_or_none()
+        )
+        if status is not None:
+            status.status = "online"
+            status.active_job_id = None
+            status.last_seen_at = now
+            db.commit()
+        return BloombergJobClaimOut(job=None, server_time=now)
+
+    job.status = "leased"
+    job.bridge_id = bridge_id
+    job.lease_expires_at = now + dt.timedelta(seconds=lease_seconds)
+    job.progress_json = _merge_json(job.progress_json, {"claimed_at": now.isoformat()})
+    _append_job_event(
+        db,
+        job_id=job.id,
+        bridge_id=bridge_id,
+        status="leased",
+        message="Job claimed by Bloomberg bridge",
+        payload={"lease_seconds": lease_seconds},
+    )
+    status = (
+        db.query(models.BloombergBridgeStatus)
+        .filter(models.BloombergBridgeStatus.bridge_id == bridge_id)
+        .one_or_none()
+    )
+    if status is None:
+        status = models.BloombergBridgeStatus(
+            bridge_id=bridge_id,
+            status="busy",
+            active_job_id=job.id,
+            last_seen_at=now,
+        )
+        db.add(status)
+    else:
+        status.status = "busy"
+        status.active_job_id = job.id
+        status.last_seen_at = now
+    db.commit()
+    db.refresh(job)
+    return BloombergJobClaimOut(job=_job_out(job), server_time=now)
+
+
+@bridge_router.post("/jobs/{job_id}/status", response_model=BloombergJobOut)
+def update_bloomberg_job_status(
+    job_id: UUID,
+    body: BloombergJobUpdateIn,
+    x_bloomberg_bridge_id: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> BloombergJobOut:
+    now = _utcnow()
+    job = db.query(models.BloombergJob).filter(models.BloombergJob.id == job_id).one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Bloomberg job not found")
+    bridge_id = x_bloomberg_bridge_id or job.bridge_id
+    if job.bridge_id and bridge_id and job.bridge_id != bridge_id:
+        raise HTTPException(status_code=403, detail="Bloomberg job is leased to another bridge")
+
+    if bridge_id:
+        job.bridge_id = bridge_id
+    if body.status:
+        job.status = body.status
+    if body.progress:
+        job.progress_json = _merge_json(job.progress_json, body.progress)
+    if body.result:
+        job.result_json = _merge_json(job.result_json, body.result)
+    if body.error_message:
+        job.error_message = body.error_message
+    if job.status == "running" and job.started_at is None:
+        job.started_at = now
+    if job.status == "running":
+        job.lease_expires_at = now + dt.timedelta(seconds=_JOB_LEASE_SECONDS)
+    if job.status in _TERMINAL_JOB_STATUSES:
+        job.completed_at = now
+        job.lease_expires_at = None
+
+    _append_job_event(
+        db,
+        job_id=job.id,
+        bridge_id=bridge_id,
+        status=body.status,
+        message=body.message,
+        payload={"progress": body.progress, "result": body.result},
+    )
+    if bridge_id:
+        bridge = (
+            db.query(models.BloombergBridgeStatus)
+            .filter(models.BloombergBridgeStatus.bridge_id == bridge_id)
+            .one_or_none()
+        )
+        if bridge is not None:
+            bridge.last_seen_at = now
+            bridge.active_job_id = None if job.status in _TERMINAL_JOB_STATUSES else job.id
+            bridge.status = "online" if job.status in _TERMINAL_JOB_STATUSES else "busy"
+            if body.error_message:
+                bridge.error_message = body.error_message
+
+    db.commit()
+    db.refresh(job)
+    return _job_out(job)
+
+
 @bridge_router.post("/batches", response_model=BloombergBatchCreateOut, status_code=201)
 def create_bloomberg_batch(
     manifest_json: str = Form(...),
@@ -385,6 +685,128 @@ def create_bloomberg_batch(
 @app_router.get("/health")
 def app_bloomberg_health() -> dict[str, Any]:
     return {"ok": True, "server_time": _utcnow().isoformat()}
+
+
+@app_router.get("/bridges", response_model=list[BloombergBridgeStatusOut])
+def list_bloomberg_bridges(
+    limit: int = Query(default=25, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> list[BloombergBridgeStatusOut]:
+    rows = (
+        db.query(models.BloombergBridgeStatus)
+        .order_by(models.BloombergBridgeStatus.last_seen_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return [_bridge_status_out(row) for row in rows]
+
+
+@app_router.post(
+    "/jobs",
+    response_model=BloombergJobOut,
+    status_code=201,
+    dependencies=[Depends(auth.require_admin), Depends(auth.rate_limit_trigger)],
+)
+def create_bloomberg_job(
+    body: BloombergJobCreateIn,
+    x_requested_by: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> BloombergJobOut:
+    spec = _build_job_spec(body)
+    job = models.BloombergJob(
+        id=uuid4(),
+        job_type=body.job_type,
+        status="queued",
+        requested_by=(body.requested_by or x_requested_by or "app")[:128],
+        spec_json=spec,
+        progress_json={"queued_at": _utcnow().isoformat()},
+        result_json={},
+    )
+    db.add(job)
+    db.flush()
+    _append_job_event(
+        db,
+        job_id=job.id,
+        bridge_id=None,
+        status="queued",
+        message="Bloomberg job queued from app",
+        payload={"spec": spec},
+    )
+    db.commit()
+    db.refresh(job)
+    return _job_out(job)
+
+
+@app_router.get("/jobs", response_model=list[BloombergJobOut])
+def list_bloomberg_jobs(
+    status: str | None = Query(default=None),
+    limit: int = Query(default=25, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+) -> list[BloombergJobOut]:
+    query = db.query(models.BloombergJob)
+    if status:
+        query = query.filter(models.BloombergJob.status == status)
+    rows = (
+        query.order_by(models.BloombergJob.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return [_job_out(row) for row in rows]
+
+
+@app_router.get("/jobs/{job_id}", response_model=BloombergJobOut)
+def get_bloomberg_job(job_id: UUID, db: Session = Depends(get_db)) -> BloombergJobOut:
+    row = db.query(models.BloombergJob).filter(models.BloombergJob.id == job_id).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Bloomberg job not found")
+    return _job_out(row)
+
+
+@app_router.get("/jobs/{job_id}/events", response_model=list[BloombergJobEventOut])
+def list_bloomberg_job_events(
+    job_id: UUID,
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+) -> list[BloombergJobEventOut]:
+    exists = db.query(models.BloombergJob.id).filter(models.BloombergJob.id == job_id).one_or_none()
+    if exists is None:
+        raise HTTPException(status_code=404, detail="Bloomberg job not found")
+    rows = (
+        db.query(models.BloombergJobEvent)
+        .filter(models.BloombergJobEvent.job_id == job_id)
+        .order_by(models.BloombergJobEvent.created_at.asc())
+        .limit(limit)
+        .all()
+    )
+    return [_event_out(row) for row in rows]
+
+
+@app_router.post(
+    "/jobs/{job_id}/cancel",
+    response_model=BloombergJobOut,
+    dependencies=[Depends(auth.require_admin), Depends(auth.rate_limit_trigger)],
+)
+def cancel_bloomberg_job(job_id: UUID, db: Session = Depends(get_db)) -> BloombergJobOut:
+    job = db.query(models.BloombergJob).filter(models.BloombergJob.id == job_id).one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Bloomberg job not found")
+    if job.status in _TERMINAL_JOB_STATUSES:
+        return _job_out(job)
+    job.status = "cancelled"
+    job.completed_at = _utcnow()
+    job.lease_expires_at = None
+    _append_job_event(
+        db,
+        job_id=job.id,
+        bridge_id=job.bridge_id,
+        status="cancelled",
+        message="Bloomberg job cancelled from app",
+    )
+    db.commit()
+    db.refresh(job)
+    return _job_out(job)
 
 
 @app_router.get("/batches", response_model=list[BloombergBatchOut])
