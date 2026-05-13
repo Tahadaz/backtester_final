@@ -130,12 +130,12 @@ function compareScores(left: number | null, right: number | null): number {
 }
 
 function horizonLabel(horizon: Horizon) {
-  if (horizon === "weekly") return "court"
-  if (horizon === "monthly") return "moyen"
-  if (horizon === "quarterly") return "long"
-  if (horizon === "medium") return "moyen"
-  if (horizon === "long") return "long"
-  return "court"
+  if (horizon === "weekly") return "hebdomadaire"
+  if (horizon === "monthly") return "mensuel"
+  if (horizon === "quarterly") return "trimestriel"
+  if (horizon === "medium") return "mensuel"
+  if (horizon === "long") return "trimestriel"
+  return "hebdomadaire"
 }
 
 function evidenceHref(

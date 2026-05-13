@@ -59,9 +59,9 @@ const ADV_THRESHOLD = 1_000_000
 const EMPTY_DASHBOARD_POSITIONS: DashboardManualPosition[] = []
 
 const DASHBOARD_HORIZONS = [
-  { value: "weekly" as const, label: "Court" },
-  { value: "monthly" as const, label: "Moyen" },
-  { value: "quarterly" as const, label: "Long" },
+  { value: "weekly" as const, label: "Hebdomadaire" },
+  { value: "monthly" as const, label: "Mensuel" },
+  { value: "quarterly" as const, label: "Trimestriel" },
 ]
 
 const STOCK_VIEW_OPTIONS = [

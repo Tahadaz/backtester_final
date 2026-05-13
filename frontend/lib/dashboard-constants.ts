@@ -1,7 +1,7 @@
 ﻿export const HORIZONS = [
-  { value: "short" as const, label: "Court terme" },
-  { value: "medium" as const, label: "Moyen terme" },
-  { value: "long" as const, label: "Long terme" },
+  { value: "short" as const, label: "Hebdomadaire" },
+  { value: "medium" as const, label: "Mensuel" },
+  { value: "long" as const, label: "Trimestriel" },
 ] as const
 
 export const VIEWS = [

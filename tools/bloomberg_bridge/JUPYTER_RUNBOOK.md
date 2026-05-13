@@ -35,6 +35,7 @@ Use this when the Bloomberg computer has Jupyter but you do not want to run an E
 11. Run the normalization helper cell.
 12. Run the one-security daily upload cell.
     - Start with `ATW MA Equity`.
+    - Default Bloomberg OHLCV fields are `PX_OPEN`, `PX_HIGH`, `PX_LOW`, `PX_LAST`, and `VOLUME`.
     - Confirm rows are shown before upload.
 13. Probe MASI availability.
     - Edit `MASI_SYMBOLS` if you have a fuller ticker list.

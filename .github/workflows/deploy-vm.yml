@@ -43,6 +43,23 @@ jobs:
               -f infra/docker-compose.gcp.yml \
               up -d --remove-orphans
 
+            # Dashboard snapshot mode serves persisted rows. Rebuild them with
+            # the freshly deployed image so payload-shape changes do not leave
+            # the dashboard returning 503 until the nightly refresh runs.
+            IMAGE_TAG=${{ github.event.workflow_run.head_sha }} \
+              docker compose --env-file /etc/bt/env \
+              -f infra/docker-compose.gcp.yml \
+              run --rm --no-deps quant_worker \
+              python - <<'PY'
+            import sys
+            from services.worker.tasks.dashboard_snapshot import refresh_dashboard_snapshot
+
+            result = refresh_dashboard_snapshot()
+            print(result)
+            if not result or not all(result.values()):
+                sys.exit(1)
+            PY
+
             # Prune old images
             docker image prune -f
 
@@ -74,6 +91,25 @@ jobs:
             done
 
             curl -fsS --max-time 10 --resolve "${DOMAIN}:443:127.0.0.1" "https://${DOMAIN}/login" | grep -q "Connexion"
+            IMAGE_TAG=${{ github.event.workflow_run.head_sha }} \
+              docker compose --env-file /etc/bt/env \
+              -f infra/docker-compose.gcp.yml \
+              exec -T quant_api \
+              python - <<'PY'
+            import os
+            import urllib.request
+
+            api_key = os.environ["API_KEY"]
+            for horizon in ("weekly", "monthly", "quarterly"):
+                req = urllib.request.Request(
+                    f"http://127.0.0.1:8000/dashboard/data/{horizon}",
+                    headers={"X-API-Key": api_key},
+                )
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    if resp.status != 200:
+                        raise RuntimeError(f"{horizon} dashboard returned {resp.status}")
+                    resp.read(1)
+            PY
             IMAGE_TAG=${{ github.event.workflow_run.head_sha }} \
               docker compose --env-file /etc/bt/env \
               -f infra/docker-compose.gcp.yml ps
