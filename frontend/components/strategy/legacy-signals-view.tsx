@@ -19,6 +19,7 @@ type LegacySignalsViewProps = {
   variant?: LegacySignalsPageView
   defaultTab?: "technique" | "evidence" | "indicateurs" | "wfo" | "backtest"
   evidenceSource?: "auto" | "signal_engine" | "wfo"
+  evidenceVariant?: string | null
   selectedVariantId?: string | null
 }
 
@@ -48,6 +49,7 @@ export function LegacySignalsView({
   variant = "legacy_ta_simple",
   defaultTab,
   evidenceSource = "auto",
+  evidenceVariant = null,
   selectedVariantId = null,
 }: LegacySignalsViewProps) {
   const [cooldownBars, setCooldownBars] = useState(0)
@@ -83,7 +85,7 @@ export function LegacySignalsView({
           <SignalEvidenceTab
             symbol={selectedSymbol}
             horizon={horizon}
-            variant={variant}
+            variant={evidenceVariant}
             source={evidenceSource}
             selectedVariantId={selectedVariantId}
             cooldownBars={cooldownBars}

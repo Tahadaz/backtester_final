@@ -19,6 +19,8 @@ import {
   enqueueAllMacroIngest,
   enqueueMacroIngest,
   createBloombergJob,
+  deleteBloombergBatch,
+  deleteBloombergSeries,
 } from "@/lib/api"
 import type {
   BloombergBatch,
@@ -87,6 +89,7 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
+  Trash2,
   TrendingUp,
   Wifi,
   type LucideIcon,
@@ -244,6 +247,7 @@ function PrivateDataPage() {
   const {
     data: bloombergBatches,
     error: bloombergBatchesError,
+    mutate: mutateBloombergBatches,
   } = useBloombergBatches()
   const {
     data: bloombergSeries,
@@ -611,6 +615,7 @@ function PrivateDataPage() {
           series={bloombergSeries}
           masiTickers={visibleMasiTickers}
           onJobCreated={() => {
+            mutateBloombergBatches()
             mutateBloombergJobs()
             mutateBloombergBridges()
             mutateBloombergSeries()
@@ -993,10 +998,11 @@ function BloombergBridgePanel({
   const [frequency, setFrequency] = useState<BloombergJobCreateInput["frequency"]>("daily")
   const [mode, setMode] = useState<BloombergJobCreateInput["mode"]>("discovery_only")
   const [symbolsText, setSymbolsText] = useState("")
-  const [fieldsText, setFieldsText] = useState("PX_LAST\nVOLUME")
+  const [fieldsText, setFieldsText] = useState("PX_OPEN\nPX_HIGH\nPX_LOW\nPX_LAST\nVOLUME")
   const [startDate, setStartDate] = useState("2010-01-01")
   const [endDate, setEndDate] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [deletingBloombergId, setDeletingBloombergId] = useState<string | null>(null)
   const totalRows = (batches ?? []).reduce((sum, batch) => sum + batch.row_count, 0)
   const latestBatch = (batches ?? [])[0]
   const latestDate = latestBatch ? dateOnly(latestBatch.created_at) : null
@@ -1035,6 +1041,38 @@ function BloombergBridgePanel({
       toast.error(err instanceof Error ? err.message : "Bloomberg job failed")
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  async function handleDeleteBatch(batch: BloombergBatch) {
+    const ok = window.confirm(
+      "Delete this Bloomberg batch? If indexed series still reference it, delete those series first.",
+    )
+    if (!ok) return
+    setDeletingBloombergId(`batch:${batch.id}`)
+    try {
+      await deleteBloombergBatch(batch.id)
+      toast.success("Bloomberg batch deleted")
+      onJobCreated()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Bloomberg batch delete failed")
+    } finally {
+      setDeletingBloombergId(null)
+    }
+  }
+
+  async function handleDeleteSeries(row: BloombergSeries) {
+    const ok = window.confirm(`Delete indexed Bloomberg series ${row.security} / ${row.field}?`)
+    if (!ok) return
+    setDeletingBloombergId(`series:${row.id}`)
+    try {
+      await deleteBloombergSeries(row.id)
+      toast.success("Bloomberg series deleted")
+      onJobCreated()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Bloomberg series delete failed")
+    } finally {
+      setDeletingBloombergId(null)
     }
   }
 
@@ -1351,7 +1389,7 @@ function BloombergBridgePanel({
                     <TableHead className="text-right">Lignes</TableHead>
                     <TableHead className="text-right">Series</TableHead>
                     <TableHead className="text-right">Date</TableHead>
-                    <TableHead className="text-right">Fichiers</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1378,7 +1416,7 @@ function BloombergBridgePanel({
                         {dateOnly(batch.created_at) ?? "-"}
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
+                        <div className="flex flex-wrap justify-end gap-1">
                           <Button
                             variant="ghost"
                             size="sm"
@@ -1397,6 +1435,16 @@ function BloombergBridgePanel({
                           >
                             <Download className="h-3.5 w-3.5" />
                             Parquet
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 gap-1 px-2 text-[11px] text-destructive hover:text-destructive"
+                            disabled={deletingBloombergId === `batch:${batch.id}`}
+                            onClick={() => handleDeleteBatch(batch)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Delete
                           </Button>
                         </div>
                       </TableCell>
@@ -1435,7 +1483,7 @@ function BloombergBridgePanel({
                     <TableHead className="text-right">Debut</TableHead>
                     <TableHead className="text-right">Fin</TableHead>
                     <TableHead className="text-right">Points</TableHead>
-                    <TableHead className="text-right">Fichier</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1455,15 +1503,27 @@ function BloombergBridgePanel({
                       </TableCell>
                       <TableCell className="text-right font-mono text-xs">{formatCount(row.row_count)}</TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 gap-1 px-2 text-[11px]"
-                          onClick={() => window.open(`/api/bloomberg/series/${row.id}/download`, "_blank")}
-                        >
-                          <Download className="h-3.5 w-3.5" />
-                          Parquet
-                        </Button>
+                        <div className="flex flex-wrap justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 gap-1 px-2 text-[11px]"
+                            onClick={() => window.open(`/api/bloomberg/series/${row.id}/download`, "_blank")}
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                            Parquet
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 gap-1 px-2 text-[11px] text-destructive hover:text-destructive"
+                            disabled={deletingBloombergId === `series:${row.id}`}
+                            onClick={() => handleDeleteSeries(row)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Delete
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}

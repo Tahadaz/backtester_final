@@ -33,6 +33,7 @@ import {
 } from "@/hooks/use-api"
 import { archiveStrategy, createStrategy, duplicateStrategy, updateStrategy, type StrategyAllocationRow } from "@/lib/api"
 import { applyStarterPresetToStock, cloneStockStrategyConfig, defaultEntryRule, defaultExitRule, defaultIndicatorRowConfig, defaultRuleCondition, defaultStrategyConfigV2, ensureBasketStocks, manualParam, migrateStrategyConfigV2, scoreVariableOptions, type EntryRuleV2, type ExitRuleV2, type FamilyId, type HorizonKey, type RiskConfigV2, type RuleConditionV2, type StrategyConfigV2 } from "@/lib/strategy-v2"
+import { STRATEGY_TEMPLATE_REGISTRY, materializeStrategyTemplate } from "@/lib/strategy-template-registry"
 import { cn } from "@/lib/utils"
 
 const fmtMoney = (v: number | null | undefined) => (v == null || Number.isNaN(v) ? "-" : v.toLocaleString("fr-FR", { maximumFractionDigits: 0 }))
@@ -475,6 +476,29 @@ function StrategyPageContent() {
     markModified()
   }, [horizon, markModified])
   const applyToAll = useCallback(() => { if (!activeSymbol || !stockConfig) return; setConfig((prev) => ({ ...prev, stocks: Object.fromEntries(prev.portfolio.universe.basket.map((symbol) => { const current = cloneStockStrategyConfig(prev.stocks[symbol], horizon); const source = cloneStockStrategyConfig(stockConfig, horizon); source.risk.max_position_pct = current.risk.max_position_pct; source.risk.max_sector_pct = current.risk.max_sector_pct; return [symbol, source] })) })); markModified() }, [activeSymbol, horizon, markModified, stockConfig])
+  const applyTemplateToActive = useCallback((templateId: string) => {
+    if (!activeSymbol) return
+    updateStock(activeSymbol, (stock) => materializeStrategyTemplate(templateId, horizon as HorizonKey, stock) ?? stock)
+    setWorkflowMode("advanced")
+    setActiveStep("entry")
+  }, [activeSymbol, horizon, updateStock])
+  const applyTemplateToAll = useCallback((templateId: string) => {
+    setConfig((prev) => {
+      if (prev.portfolio.universe.basket.length === 0) return prev
+      return {
+        ...prev,
+        stocks: Object.fromEntries(
+          prev.portfolio.universe.basket.map((symbol) => {
+            const current = cloneStockStrategyConfig(prev.stocks[symbol], horizon)
+            return [symbol, materializeStrategyTemplate(templateId, horizon as HorizonKey, current) ?? current]
+          }),
+        ),
+      }
+    })
+    markModified()
+    setWorkflowMode("advanced")
+    setActiveStep("entry")
+  }, [horizon, markModified])
   const setSimpleIndicatorEnabled = useCallback((familyId: FamilyId, enabled: boolean) => {
     if (!activeSymbol) return
     updateStock(activeSymbol, (stock) => {
@@ -801,6 +825,40 @@ function StrategyPageContent() {
                 ))
               )}
             </ul>
+          </div>
+
+          <div className="savd">
+            <div className="ch flex items-center justify-between">
+              <h4>Template Library</h4>
+              <BookOpen className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <div className="space-y-2">
+              {STRATEGY_TEMPLATE_REGISTRY.map((template) => (
+                <div key={template.id} className="rounded-lg border border-line bg-bg2 p-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold">{template.name}</div>
+                      <div className="truncate text-[11px] text-muted-foreground">{template.author}</div>
+                    </div>
+                    <Badge variant="outline" className="shrink-0 text-[10px] capitalize">{template.category.replace("_", " ")}</Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{template.summary}</p>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {template.tags.slice(0, 3).map((tag) => (
+                      <span key={tag} className="rounded-full border bg-background px-2 py-0.5 text-[10px] text-muted-foreground">{tag}</span>
+                    ))}
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-1.5">
+                    <Button type="button" variant="outline" size="sm" onClick={() => applyTemplateToActive(template.id)} disabled={!activeSymbol || !template.isExecutable}>
+                      Active
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => applyTemplateToAll(template.id)} disabled={config.portfolio.universe.basket.length === 0 || !template.isExecutable}>
+                      All
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="flex gap-2">

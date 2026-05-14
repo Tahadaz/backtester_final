@@ -173,6 +173,15 @@ export function EntryRulesTab({ horizon, rules, scoreOptions, preview, errorMess
               </Button>
             </div>
 
+            {rule.rule_expression ? (
+              <div className="rounded-lg border bg-muted/20 px-3 py-2 text-sm">
+                <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Template expression</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {preview?.rules.find((row) => row.id === rule.id)?.conditions.join(" AND ") || "Advanced price and indicator expression"}
+                </div>
+              </div>
+            ) : null}
+
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Conditions</p>
@@ -187,6 +196,7 @@ export function EntryRulesTab({ horizon, rules, scoreOptions, preview, errorMess
                         index === ruleIndex
                           ? {
                               ...item,
+                              rule_expression: null,
                               conditions: [...item.conditions, defaultRuleCondition(item.conditions.length)],
                             }
                           : item,

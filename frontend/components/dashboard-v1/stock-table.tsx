@@ -10,6 +10,7 @@ import type {
   DashboardDisplayMode,
   DashboardScoreSource,
   DashboardStock,
+  DashboardTechnicalDirectionMode,
   Horizon,
 } from "@/lib/dashboard-types"
 import { FAMILY_ORDER } from "@/lib/dashboard-constants"
@@ -25,6 +26,7 @@ type SortDir = "asc" | "desc"
 type SortKey =
   | "symbol"
   | "price"
+  | "performance"
   | "adv"
   | "signal"
   | "best_signal"
@@ -34,6 +36,7 @@ type SortKey =
   | "edge"
   | (typeof FAMILY_ORDER)[number]
 type FamilyKey = (typeof FAMILY_ORDER)[number]
+type PerformancePeriod = "one_day" | "wtd" | "mtd" | "ytd" | "open_to_now"
 
 interface StockTableProps {
   stocks: DashboardStock[]
@@ -42,6 +45,7 @@ interface StockTableProps {
   signalView?: "legacy" | "expanded" | "factor_x_ta"
   scoreSource?: DashboardScoreSource
   displayMode?: DashboardDisplayMode
+  technicalDirectionMode?: DashboardTechnicalDirectionMode
   hideDetails?: boolean
   showTechnicalLevels?: boolean
   edgeEnabled?: boolean
@@ -52,6 +56,8 @@ interface StockTableProps {
   selectedSymbols?: ReadonlySet<string>
   onToggleSelected?: (symbol: string) => void
   onOpenEdge?: (stock: DashboardStock) => void
+  performancePeriod?: PerformancePeriod
+  onPerformancePeriodChange?: (value: PerformancePeriod) => void
 }
 
 function horizonLabel(horizon: Horizon) {
@@ -82,6 +88,32 @@ function priceForDisplay(stock: DashboardStock): number | null {
   return stock.last_price ?? stock.scores.signal_engine.technical_levels?.close_used ?? null
 }
 
+function pctChange(endPrice: number | null | undefined, startPrice: number | null | undefined) {
+  if (endPrice == null || startPrice == null || !Number.isFinite(endPrice) || !Number.isFinite(startPrice) || startPrice === 0) return null
+  return ((endPrice - startPrice) / startPrice) * 100
+}
+
+function selectedPerformancePct(stock: DashboardStock, period: PerformancePeriod) {
+  const quote = stock.live_quote
+  const livePrice = quote?.is_fresh && quote.last_price != null ? quote.last_price : null
+  if (period === "one_day") {
+    return livePrice != null ? pctChange(livePrice, quote?.prev_close ?? stock.prev_close) : stock.performance?.one_day?.pct ?? stock.var1j_pct ?? null
+  }
+  if (period === "open_to_now") {
+    return livePrice != null ? pctChange(livePrice, quote?.open_price) : stock.performance?.open_to_now?.pct ?? null
+  }
+  const official = stock.performance?.[period]
+  return livePrice != null ? pctChange(livePrice, official?.start_price) : official?.pct ?? null
+}
+
+function performanceHeaderLabel(period: PerformancePeriod) {
+  if (period === "one_day") return "Var. 1j"
+  if (period === "wtd") return "WTD"
+  if (period === "mtd") return "MTD"
+  if (period === "ytd") return "YTD"
+  return "Open->Now"
+}
+
 function isActionableBestSignal(signal: DashboardBestSignal | null | undefined): signal is DashboardBestSignal {
   if (!signal) return false
   if (signal.direction === "none" || signal.bucket === "hold") return false
@@ -98,19 +130,22 @@ function bestSignalForDisplay(stock: DashboardStock): DashboardBestSignal | null
   return signal
 }
 
-function technicalSignalForDisplay(stock: DashboardStock): DashboardBestTechnicalSignal | null {
-  const signal = stock.best_technical_signal ?? null
+function technicalSignalForDisplay(
+  stock: DashboardStock,
+  mode: DashboardTechnicalDirectionMode = "best",
+): DashboardBestTechnicalSignal | null {
+  const signal = mode === "classic" ? stock.classic_technical_signal ?? null : stock.best_technical_signal ?? null
   if (!signal) return null
   if (signal.score_pct == null || !Number.isFinite(signal.score_pct)) return null
   return signal
 }
 
-function technicalFamilyForDisplay(stock: DashboardStock, family: string) {
-  return technicalSignalForDisplay(stock)?.per_family?.[family] ?? null
+function technicalFamilyForDisplay(stock: DashboardStock, family: string, mode: DashboardTechnicalDirectionMode) {
+  return technicalSignalForDisplay(stock, mode)?.per_family?.[family] ?? null
 }
 
-function technicalFactorDependencies(stock: DashboardStock, family: string) {
-  return technicalSignalForDisplay(stock)?.factor_dependencies?.[family]
+function technicalFactorDependencies(stock: DashboardStock, family: string, mode: DashboardTechnicalDirectionMode) {
+  return technicalSignalForDisplay(stock, mode)?.factor_dependencies?.[family]
 }
 
 function compareValues(left: number | string | null, right: number | string | null, dir: SortDir) {
@@ -199,6 +234,15 @@ function signalViewForVariant(variant: string | null | undefined): "legacy" | "e
   if (token.includes("factor_x_ta")) return "factor_x_ta"
   if (token.includes("legacy")) return "legacy"
   return "expanded"
+}
+
+function technicalEvidenceView(signal: DashboardBestTechnicalSignal | null, mode: DashboardTechnicalDirectionMode) {
+  if (mode === "classic") return "legacy_ta_simple"
+  return signal ? signalViewForVariant(signal.variant) : "expanded_ta_simple"
+}
+
+function technicalModeShortLabel(mode: DashboardTechnicalDirectionMode) {
+  return mode === "classic" ? "classic" : "best"
 }
 
 function sourceLabel(source: "signal_engine" | "wfo" | string | null | undefined) {
@@ -322,11 +366,14 @@ export function StockTable({
   signalView = "expanded",
   scoreSource = "wfo",
   displayMode = "trade_opportunities",
+  technicalDirectionMode = "best",
   hideDetails = false,
   edgeEnabled = true,
   visibleFamilies,
   selectedSymbols,
   onToggleSelected,
+  performancePeriod = "one_day",
+  onPerformancePeriodChange,
 }: StockTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>("expected_return")
   const [sortDir, setSortDir] = useState<SortDir>("desc")
@@ -366,18 +413,21 @@ export function StockTable({
       } else if (sortKey === "price") {
         leftValue = priceForDisplay(left)
         rightValue = priceForDisplay(right)
+      } else if (sortKey === "performance") {
+        leftValue = selectedPerformancePct(left, performancePeriod)
+        rightValue = selectedPerformancePct(right, performancePeriod)
       } else if (sortKey === "adv") {
         leftValue = left.adv ?? null
         rightValue = right.adv ?? null
       } else if (sortKey === "signal") {
-        leftValue = isTechnicalMode ? technicalSignalForDisplay(left)?.score_pct ?? null : bestSignalSortScore(bestSignalForDisplay(left))
-        rightValue = isTechnicalMode ? technicalSignalForDisplay(right)?.score_pct ?? null : bestSignalSortScore(bestSignalForDisplay(right))
+        leftValue = isTechnicalMode ? technicalSignalForDisplay(left, technicalDirectionMode)?.score_pct ?? null : bestSignalSortScore(bestSignalForDisplay(left))
+        rightValue = isTechnicalMode ? technicalSignalForDisplay(right, technicalDirectionMode)?.score_pct ?? null : bestSignalSortScore(bestSignalForDisplay(right))
       } else if (sortKey === "best_signal") {
         leftValue = bestSignalSortScore(bestSignalForDisplay(left))
         rightValue = bestSignalSortScore(bestSignalForDisplay(right))
       } else if (sortKey === "technical_signal") {
-        leftValue = technicalSignalForDisplay(left)?.abs_score_pct ?? null
-        rightValue = technicalSignalForDisplay(right)?.abs_score_pct ?? null
+        leftValue = technicalSignalForDisplay(left, technicalDirectionMode)?.abs_score_pct ?? null
+        rightValue = technicalSignalForDisplay(right, technicalDirectionMode)?.abs_score_pct ?? null
       } else if (sortKey === "expected_return") {
         leftValue = bestSignalForDisplay(left)?.action_expected_return_net ?? null
         rightValue = bestSignalForDisplay(right)?.action_expected_return_net ?? null
@@ -389,12 +439,12 @@ export function StockTable({
         rightValue = bestSignalSortScore(bestSignalForDisplay(right))
       } else {
         leftValue = isTechnicalMode
-          ? technicalFamilyForDisplay(left, sortKey)?.score_pct ?? null
+          ? technicalFamilyForDisplay(left, sortKey, technicalDirectionMode)?.score_pct ?? null
           : scoreSource === "wfo"
             ? left.scores.wfo?.per_family[sortKey]?.score_pct ?? null
             : resolveSeFamily(left, sortKey, signalView)?.score_pct ?? null
         rightValue = isTechnicalMode
-          ? technicalFamilyForDisplay(right, sortKey)?.score_pct ?? null
+          ? technicalFamilyForDisplay(right, sortKey, technicalDirectionMode)?.score_pct ?? null
           : scoreSource === "wfo"
             ? right.scores.wfo?.per_family[sortKey]?.score_pct ?? null
             : resolveSeFamily(right, sortKey, signalView)?.score_pct ?? null
@@ -404,7 +454,7 @@ export function StockTable({
       if (primary !== 0) return primary
       return left.symbol.localeCompare(right.symbol)
     })
-  }, [stocks, sortKey, sortDir, scoreSource, signalView, isTechnicalMode])
+  }, [stocks, sortKey, sortDir, scoreSource, signalView, isTechnicalMode, technicalDirectionMode, performancePeriod])
 
   function onSort(nextKey: SortKey) {
     if (nextKey === sortKey) {
@@ -432,6 +482,29 @@ export function StockTable({
         ? "min-w-[1040px]"
         : "min-w-[1160px]"
 
+  function evidenceHrefForStock(stock: DashboardStock) {
+    const bestSignal = bestSignalForDisplay(stock)
+    const technicalSignal = technicalSignalForDisplay(stock, technicalDirectionMode)
+    const signalViewQuery = isTechnicalMode
+      ? technicalEvidenceView(technicalSignal, technicalDirectionMode)
+      : "expanded_ta_simple"
+    const evidenceVariant = isTechnicalMode
+      ? technicalDirectionMode !== "classic" ? technicalSignal?.variant : undefined
+      : bestSignal?.variant
+    const evidenceSource = isTechnicalMode
+      ? technicalSignal?.source ?? "auto"
+      : "wfo"
+
+    return signalEvidenceUrl({
+      symbol: stock.symbol,
+      horizon,
+      view: isTechnicalMode ? signalViewQuery : evidenceVariant ?? signalViewQuery,
+      source: evidenceSource,
+      evidenceVariant: isTechnicalMode && technicalDirectionMode !== "classic" ? evidenceVariant : undefined,
+      tab: isTechnicalMode ? "technique" : "evidence",
+    })
+  }
+
   return (
     <div className="dashboard-panel overflow-hidden">
       <div className="flex items-center justify-between gap-3 border-b border-border bg-bg2 px-4 py-3">
@@ -439,6 +512,92 @@ export function StockTable({
         <div className="dashboard-meta">{sorted.length} lignes · triées par retour attendu</div>
       </div>
 
+      <div className="grid gap-2 bg-background p-2 md:hidden">
+        {sorted.map((stock) => {
+          const bestSignal = bestSignalForDisplay(stock)
+          const technicalSignal = technicalSignalForDisplay(stock, technicalDirectionMode)
+          const evidenceHref = evidenceHrefForStock(stock)
+          const selected = selectedSymbols?.has(stock.symbol) ?? false
+
+          return (
+            <article key={`mobile-${stock.symbol}`} className="rounded-lg border border-border bg-card px-3 py-3 shadow-xs">
+              <div className="flex min-w-0 items-start justify-between gap-3">
+                <div className="flex min-w-0 items-start gap-2">
+                  {onToggleSelected ? (
+                    <Checkbox
+                      checked={selected}
+                      onCheckedChange={() => onToggleSelected(stock.symbol)}
+                      aria-label={`Select ${stock.symbol}`}
+                      className="mt-0.5"
+                    />
+                  ) : null}
+                  <div className="min-w-0">
+                    <Link href={evidenceHref} className="dashboard-mono text-[14px] font-bold hover:underline">
+                      {stock.symbol}
+                    </Link>
+                    <div className="truncate text-[12px] text-muted-foreground">{stock.display_name ?? "-"}</div>
+                  </div>
+                </div>
+                <div className={cn("dashboard-mono shrink-0 text-right text-[12px] font-semibold", varToneClass(selectedPerformancePct(stock, performancePeriod)))}>
+                  {formatVarPct(selectedPerformancePct(stock, performancePeriod))}
+                </div>
+              </div>
+
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                {isTechnicalMode ? (
+                  <SignalBadge label={technicalSignal?.signal_label ?? "Indisponible"} />
+                ) : (
+                  <>
+                    <BestSignalBadgeCell signal={bestSignal} />
+                    <EdgeBadge triage={bestSignalTriage(bestSignal)} />
+                  </>
+                )}
+              </div>
+
+              <div className="mt-3 grid grid-cols-3 gap-2 border-t border-border pt-2">
+                <div className="min-w-0">
+                  <div className="text-[9px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
+                    {isTechnicalMode ? "Score" : "E[R]"}
+                  </div>
+                  <div className="dashboard-mono mt-0.5 truncate text-[13px] font-semibold">
+                    {isTechnicalMode
+                      ? formatScorePct(technicalSignal?.score_pct)
+                      : formatPercent(bestSignal?.action_expected_return_net ?? null)}
+                  </div>
+                </div>
+                <div className="min-w-0 text-center">
+                  <div className="text-[9px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
+                    {isTechnicalMode ? "Direction" : "Hit"}
+                  </div>
+                  <div className="dashboard-mono mt-0.5 truncate text-[13px] font-semibold">
+                    {isTechnicalMode
+                      ? technicalSignal?.direction === "long" ? "Long" : technicalSignal?.direction === "short" ? "Short" : "Neutre"
+                      : formatPercent(bestSignal?.hit_rate ?? null)}
+                  </div>
+                </div>
+                <div className="min-w-0 text-right">
+                  <div className="text-[9px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
+                    {isTechnicalMode ? "Prix" : "Hold"}
+                  </div>
+                  <div className="dashboard-mono mt-0.5 truncate text-[13px] font-semibold">
+                    {isTechnicalMode ? formatNumber(priceForDisplay(stock)) : bestSignalHoldingPeriodLabel(bestSignal, horizonDays)}
+                  </div>
+                </div>
+              </div>
+
+              <Link
+                href={evidenceHref}
+                className="mt-3 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-border bg-bg2 text-[12px] font-semibold text-foreground"
+              >
+                Voir detail
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </article>
+          )
+        })}
+      </div>
+
+      <div className="hidden overflow-x-auto md:block">
       <Table className={cn(tableMinWidthClass, "text-[12px]")}>
         <TableHeader>
           <TableRow className="border-b border-border bg-bg2 hover:bg-bg2">
@@ -458,7 +617,28 @@ export function StockTable({
                 <SortIcon columnKey="price" />
               </button>
             </TableHead>
-            <TableHead className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Var. 1j</TableHead>
+            <TableHead className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              <span className="inline-flex items-center justify-end gap-1">
+                <button type="button" className="inline-flex items-center gap-1" onClick={() => onSort("performance")}>
+                  {performanceHeaderLabel(performancePeriod)}
+                  <SortIcon columnKey="performance" />
+                </button>
+                {onPerformancePeriodChange ? (
+                  <select
+                    value={performancePeriod}
+                    onChange={(event) => onPerformancePeriodChange(event.target.value as PerformancePeriod)}
+                    className="h-6 rounded border border-border bg-background px-1 text-[10px] normal-case tracking-normal text-foreground"
+                    aria-label="Performance period"
+                  >
+                    <option value="one_day">1D</option>
+                    <option value="wtd">WTD</option>
+                    <option value="mtd">MTD</option>
+                    <option value="ytd">YTD</option>
+                    <option value="open_to_now">O/N</option>
+                  </select>
+                ) : null}
+              </span>
+            </TableHead>
             <TableHead className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
               <span className="inline-flex items-center justify-end gap-1">
                 <button type="button" className="inline-flex items-center gap-1" onClick={() => onSort("adv")}>
@@ -503,7 +683,7 @@ export function StockTable({
             <TableHead className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
               <span className="inline-flex items-center gap-1">
                 <button type="button" className="inline-flex items-center gap-1" onClick={() => onSort(isTechnicalMode ? "technical_signal" : "signal")}>
-                  {isTechnicalMode ? "Direction best" : "Signal"}
+                  {isTechnicalMode ? `Direction ${technicalModeShortLabel(technicalDirectionMode)}` : "Signal"}
                   <SortIcon columnKey={isTechnicalMode ? "technical_signal" : "signal"} />
                 </button>
                 <GlossaryHelpLink href="/glossary#signal-badge" label="Definition Badge signal" />
@@ -564,20 +744,22 @@ export function StockTable({
         <TableBody>
           {sorted.map((stock) => {
             const bestSignal = bestSignalForDisplay(stock)
-            const technicalSignal = technicalSignalForDisplay(stock)
+            const technicalSignal = technicalSignalForDisplay(stock, technicalDirectionMode)
             const signalViewQuery = isTechnicalMode
-              ? signalViewForVariant(technicalSignal?.variant)
+              ? technicalEvidenceView(technicalSignal, technicalDirectionMode)
               : "expanded_ta_simple"
-            const evidenceVariant = isTechnicalMode ? technicalSignal?.variant : bestSignal?.variant
+            const evidenceVariant = isTechnicalMode
+              ? technicalDirectionMode !== "classic" ? technicalSignal?.variant : undefined
+              : bestSignal?.variant
             const evidenceSource = isTechnicalMode
               ? technicalSignal?.source ?? "auto"
               : "wfo"
             const evidenceHref = signalEvidenceUrl({
               symbol: stock.symbol,
               horizon,
-              view: evidenceVariant ?? signalViewQuery,
+              view: isTechnicalMode ? signalViewQuery : evidenceVariant ?? signalViewQuery,
               source: evidenceSource,
-              evidenceVariant: isTechnicalMode ? evidenceVariant : undefined,
+              evidenceVariant: isTechnicalMode && technicalDirectionMode !== "classic" ? evidenceVariant : undefined,
               tab: isTechnicalMode ? "technique" : "evidence",
             })
             const selected = selectedSymbols?.has(stock.symbol) ?? false
@@ -606,22 +788,25 @@ export function StockTable({
                     <div className="text-[12px] font-medium">{stock.display_name ?? "-"}</div>
                   </Link>
                 </TableCell>
-                <TableCell className="dashboard-mono px-3 py-2.5 text-right text-[11px]">{formatNumber(priceForDisplay(stock))}</TableCell>
-                <TableCell className={cn("dashboard-mono px-3 py-2.5 text-right text-[11px] font-semibold", varToneClass(stock.var1j_pct))}>
-                  {formatVarPct(stock.var1j_pct)}
+                <TableCell className="dashboard-mono px-3 py-2.5 text-right text-[11px]">
+                  <div>{formatNumber(priceForDisplay(stock))}</div>
+                  <div className="text-[9px] text-muted-foreground">{stock.live_quote?.is_fresh ? "Live" : "Close"}</div>
+                </TableCell>
+                <TableCell className={cn("dashboard-mono px-3 py-2.5 text-right text-[11px] font-semibold", varToneClass(selectedPerformancePct(stock, performancePeriod)))}>
+                  {formatVarPct(selectedPerformancePct(stock, performancePeriod))}
                 </TableCell>
                 <TableCell className="dashboard-mono px-3 py-2.5 text-right text-[11px] text-muted-foreground">{formatNumber(stock.adv ?? null, 0)}</TableCell>
                 {isTechnicalMode && !hideDetails && shownFamilies.includes("tendance") ? (
-                  <TableCell className="px-3 py-2.5"><FamilyCell score={technicalFamilyForDisplay(stock, "tendance")} factorDependencies={technicalFactorDependencies(stock, "tendance")} /></TableCell>
+                  <TableCell className="px-3 py-2.5"><FamilyCell score={technicalFamilyForDisplay(stock, "tendance", technicalDirectionMode)} factorDependencies={technicalFactorDependencies(stock, "tendance", technicalDirectionMode)} /></TableCell>
                 ) : null}
                 {isTechnicalMode && !hideDetails && shownFamilies.includes("momentum") ? (
-                  <TableCell className="px-3 py-2.5"><FamilyCell score={technicalFamilyForDisplay(stock, "momentum")} factorDependencies={technicalFactorDependencies(stock, "momentum")} /></TableCell>
+                  <TableCell className="px-3 py-2.5"><FamilyCell score={technicalFamilyForDisplay(stock, "momentum", technicalDirectionMode)} factorDependencies={technicalFactorDependencies(stock, "momentum", technicalDirectionMode)} /></TableCell>
                 ) : null}
                 {isTechnicalMode && !hideDetails && shownFamilies.includes("oscillation") ? (
-                  <TableCell className="px-3 py-2.5"><FamilyCell score={technicalFamilyForDisplay(stock, "oscillation")} factorDependencies={technicalFactorDependencies(stock, "oscillation")} /></TableCell>
+                  <TableCell className="px-3 py-2.5"><FamilyCell score={technicalFamilyForDisplay(stock, "oscillation", technicalDirectionMode)} factorDependencies={technicalFactorDependencies(stock, "oscillation", technicalDirectionMode)} /></TableCell>
                 ) : null}
                 {isTechnicalMode && !hideDetails && shownFamilies.includes("volume") ? (
-                  <TableCell className="px-3 py-2.5"><FamilyCell score={technicalFamilyForDisplay(stock, "volume")} factorDependencies={technicalFactorDependencies(stock, "volume")} /></TableCell>
+                  <TableCell className="px-3 py-2.5"><FamilyCell score={technicalFamilyForDisplay(stock, "volume", technicalDirectionMode)} factorDependencies={technicalFactorDependencies(stock, "volume", technicalDirectionMode)} /></TableCell>
                 ) : null}
                 <TableCell className="px-3 py-2.5">
                   {isTechnicalMode ? <SignalBadge label={technicalSignal?.signal_label ?? "Indisponible"} /> : <BestSignalBadgeCell signal={bestSignal} />}
@@ -634,7 +819,9 @@ export function StockTable({
                           {technicalSignal.label.replace("Signal Engine - ", "Engine ").replace("Factor x TA", "FX").trim()}
                         </div>
                         <div className="dashboard-mono text-[10px] text-muted-foreground">
-                          {sourceLabel(technicalSignal.source)} - {displayVariantLabel(technicalSignal.variant)}
+                          {technicalDirectionMode === "classic"
+                            ? "Fixed classic"
+                            : `${sourceLabel(technicalSignal.source)} - ${displayVariantLabel(technicalSignal.variant)}`}
                         </div>
                       </div>
                     ) : (
@@ -694,6 +881,7 @@ export function StockTable({
           })}
         </TableBody>
       </Table>
+      </div>
     </div>
   )
 }

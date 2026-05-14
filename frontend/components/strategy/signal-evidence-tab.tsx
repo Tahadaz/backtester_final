@@ -12,6 +12,7 @@ import {
 } from "@/lib/api"
 import { formatNumber, formatPercent } from "@/lib/format"
 import { buildSignalEvidenceRangeView } from "@/lib/signal-evidence-range"
+import { signalVariantLabel } from "@/lib/signal-variant-label"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -23,6 +24,7 @@ const EDGE_COST_BPS = 33
 
 type EvidenceSource = "auto" | "signal_engine" | "wfo"
 type EvidenceRangeKey = "all" | "5y" | "3y" | "1y" | "6m" | "3m"
+type ProofLimitKey = "100" | "250" | "500" | "all"
 
 const EVIDENCE_RANGE_OPTIONS: Array<{ key: EvidenceRangeKey; label: string; days: number | null }> = [
   { key: "all", label: "All", days: null },
@@ -33,10 +35,17 @@ const EVIDENCE_RANGE_OPTIONS: Array<{ key: EvidenceRangeKey; label: string; days
   { key: "3m", label: "3M", days: 92 },
 ]
 
+const PROOF_LIMIT_OPTIONS: Array<{ key: ProofLimitKey; label: string }> = [
+  { key: "100", label: "100" },
+  { key: "250", label: "250" },
+  { key: "500", label: "500" },
+  { key: "all", label: "All" },
+]
+
 interface SignalEvidenceTabProps {
   symbol: string
   horizon: string
-  variant: string
+  variant?: string | null
   source?: EvidenceSource
   selectedVariantId?: string | null
   cooldownBars?: number
@@ -66,6 +75,25 @@ function directionLabel(direction: string | null | undefined) {
 
 function isActionableDirection(direction: string | null | undefined) {
   return direction === "long" || direction === "short"
+}
+
+function isOpaqueVariantId(value: string | null | undefined) {
+  return /^sv_[0-9a-f]{8,}$/i.test(String(value ?? "").trim())
+}
+
+function readableContributorLabel(contributor: SignalEvidenceContributor) {
+  const label = signalVariantLabel(contributor).trim()
+  if (label && !isOpaqueVariantId(label)) return label
+  const archetype = contributor.archetype ? contributor.archetype.replaceAll("_", " ") : ""
+  const family = contributor.family ? contributor.family.replaceAll("_", " ") : ""
+  return archetype || family || "Selected indicator"
+}
+
+function readableContributorDetail(contributor: SignalEvidenceContributor) {
+  const archetype = contributor.archetype ? contributor.archetype.replaceAll("_", " ") : ""
+  const family = contributor.family ? contributor.family.replaceAll("_", " ") : ""
+  if (archetype && family && archetype !== family) return `${family} / ${archetype}`
+  return archetype || family || "indicator"
 }
 
 function holdingLabel(edge: SignalEvidence["edge"]) {
@@ -176,6 +204,12 @@ function StitchedWfoEvidenceBacktest({ data }: { data: SignalEvidence }) {
         </div>
       </CardHeader>
       <CardContent className="space-y-4 px-4 py-4">
+        {stitched.warnings.length ? (
+          <div className="rounded-md border border-amber-300 bg-amber-50/80 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-200">
+            {stitched.warnings.join(" ")}
+          </div>
+        ) : null}
+
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <StatCard
             label="Action E[R] net"
@@ -412,9 +446,9 @@ function ContributorRow({ contributor }: { contributor: SignalEvidenceContributo
               <Badge variant="secondary" className="h-5 rounded text-[10px]">Factor x TA</Badge>
             ) : null}
           </div>
-          <div className="mt-2 text-sm font-semibold">{contributor.description}</div>
+          <div className="mt-2 text-sm font-semibold">{readableContributorLabel(contributor)}</div>
           <div className="mt-1 max-w-3xl truncate font-mono text-[10px] text-muted-foreground">
-            {(contributor.archetype || contributor.family || "indicator").replaceAll("_", " ")}
+            {readableContributorDetail(contributor)}
           </div>
         </div>
         <div className="grid min-w-[220px] grid-cols-3 gap-2 text-right">
@@ -485,9 +519,9 @@ function CompactContributorList({ contributors }: { contributors: SignalEvidence
                 </Badge>
               ) : null}
             </div>
-            <div className="mt-1 truncate text-xs font-semibold">{contributor.description}</div>
+            <div className="mt-1 truncate text-xs font-semibold">{readableContributorLabel(contributor)}</div>
             <div className="mt-0.5 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
-              <span className="truncate font-mono">{contributor.variant_id || contributor.archetype || "indicator"}</span>
+              <span className="truncate">{readableContributorDetail(contributor)}</span>
               <span className="font-mono">{weight == null ? "" : formatNumber(weight, 3)}</span>
             </div>
           </div>
@@ -626,7 +660,7 @@ function EvidenceOosPeriods({ data, selectedVariantId }: { data: SignalEvidence;
             </CardTitle>
             <p className="mt-1 text-xs text-muted-foreground">
               WFO / {bucketLabel(edge.bucket)} / {holdingLabel(edge)} / exact bucket
-              {selectedContributor ? ` / selected indicator: ${selectedContributor.description}` : ""}
+              {selectedContributor ? ` / selected indicator: ${readableContributorLabel(selectedContributor)}` : ""}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -683,9 +717,13 @@ function EvidenceOosPeriods({ data, selectedVariantId }: { data: SignalEvidence;
 function SignalEvidenceContent({
   data,
   selectedVariantId,
+  proofLimit,
+  onProofLimitChange,
 }: {
   data: SignalEvidence
   selectedVariantId?: string | null
+  proofLimit: ProofLimitKey
+  onProofLimitChange: (value: ProofLimitKey) => void
 }) {
   const edge = data.edge
 
@@ -703,6 +741,22 @@ function SignalEvidenceContent({
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <div className="flex overflow-hidden rounded-md border border-line">
+                {PROOF_LIMIT_OPTIONS.map((option) => (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => onProofLimitChange(option.key)}
+                    className={`h-6 border-r border-line px-2 text-[11px] font-medium last:border-r-0 ${
+                      proofLimit === option.key
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-background text-muted-foreground hover:bg-muted/40"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
               <Badge variant={edge.proven_edge_net ? "default" : "outline"} className="h-6 rounded-md text-[11px]">
                 {edge.proven_edge_net ? "Proven edge" : edge.n < 30 ? "Insufficient n" : "Watch"}
               </Badge>
@@ -728,7 +782,7 @@ function SignalEvidenceContent({
             <StatCard
               label="OOS proof"
               value={`${fmtDate(data.oos.proof_window_start)} -> ${fmtDate(data.oos.proof_window_end)}`}
-              detail={`n=${data.oos.proof_n ?? edge.n} / ${data.oos.proof_method ?? "same_oos_sample"}`}
+              detail={`n=${data.oos.proof_n ?? edge.n} / ${data.oos.proof_limit === "all" ? "all" : `latest ${data.oos.proof_limit ?? proofLimit}`} / ${data.oos.proof_method ?? "same_oos_sample"}`}
             />
             <StatCard
               label="Holding"
@@ -799,10 +853,10 @@ function SignalEvidenceContent({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle className="flex items-center gap-2 text-sm">
               <Layers3 className="h-4 w-4" />
-              Signal Drivers
+              WFO Signal Components
             </CardTitle>
             <div className="flex items-center gap-2">
-              <Badge variant="outline" className="h-6 rounded-md text-[11px]">{data.contributor_count} indicators</Badge>
+              <Badge variant="outline" className="h-6 rounded-md text-[11px]">{data.contributor_count} components</Badge>
               <Badge variant="outline" className="h-6 rounded-md text-[11px]">{data.factor_condition_count} factor rules</Badge>
             </div>
           </div>
@@ -838,8 +892,9 @@ export function SignalEvidenceTab({
 }: SignalEvidenceTabProps) {
   const requestedVariant = variant || undefined
   const normalizedCooldownBars = Math.max(0, Math.floor(cooldownBars || 0))
+  const [proofLimit, setProofLimit] = useState<ProofLimitKey>("100")
   const { data, error, isLoading } = useSWR(
-    ["signal-evidence", symbol, horizon, source, requestedVariant, normalizedCooldownBars],
+    ["signal-evidence", symbol, horizon, source, requestedVariant, normalizedCooldownBars, proofLimit],
     () =>
       fetchSignalEvidence({
         symbol,
@@ -848,6 +903,7 @@ export function SignalEvidenceTab({
         variant: requestedVariant,
         costBps: EDGE_COST_BPS,
         cooldownBars: normalizedCooldownBars,
+        proofLimit,
       }),
     { revalidateOnFocus: false },
   )
@@ -875,6 +931,8 @@ export function SignalEvidenceTab({
     <SignalEvidenceContent
       data={data}
       selectedVariantId={selectedVariantId}
+      proofLimit={proofLimit}
+      onProofLimitChange={setProofLimit}
     />
   )
 }

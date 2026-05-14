@@ -10,8 +10,8 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'Backtest Platform',
-  description: 'Institutional-grade quant backtesting and strategy optimization platform',
+  title: 'RDT Alpha',
+  description: 'Road to Alpha quantitative signal and strategy platform',
   icons: {
     icon: [
       {

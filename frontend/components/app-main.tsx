@@ -15,8 +15,8 @@ export function AppMain({ children }: { children: ReactNode }) {
     <main
       className={cn(
         isWorkspaceShellPage
-          ? "h-[calc(100vh-3.5rem)] overflow-hidden"
-          : "mx-auto w-full max-w-7xl px-4 py-6",
+          ? "h-[calc(100vh-3.5rem)] overflow-hidden max-md:h-auto max-md:min-h-[calc(100dvh-4.5rem)] max-md:overflow-visible max-md:pb-[calc(4.5rem+env(safe-area-inset-bottom))]"
+          : "mx-auto w-full max-w-7xl px-4 py-6 max-md:px-3 max-md:py-4 max-md:pb-[calc(4.5rem+env(safe-area-inset-bottom))]",
       )}
     >
       {children}

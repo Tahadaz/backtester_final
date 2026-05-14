@@ -1,9 +1,10 @@
 "use client"
 
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import useSWR from "swr"
-import { AlertCircle, BookOpen, Download, ExternalLink, Eye, EyeOff, Filter, LayoutDashboard, RefreshCw, Save, Search, X, Zap } from "lucide-react"
+import { AlertCircle, ArrowLeft, BookOpen, Download, ExternalLink, Eye, EyeOff, Filter, LayoutDashboard, Plus, RefreshCw, Save, Search, X, Zap } from "lucide-react"
 import { useDashboardData } from "@/hooks/use-dashboard"
 import { useDashboardIndices } from "@/hooks/use-dashboard-indices"
 import { useDashboardPreferences } from "@/hooks/use-dashboard-preferences"
@@ -11,18 +12,40 @@ import { useMarketCatalog } from "@/hooks/use-api"
 import {
   createDashboardIndex,
   deleteDashboardIndex,
+  createDashboardPortfolio,
+  createDashboardPortfolioFromHistory,
+  fetchBourseLiveQuotes,
   fetchDashboardDailyBlotter,
+  fetchDashboardNamedPortfolioSummary,
   fetchDashboardPortfolioPositions,
+  fetchDashboardPortfolios,
   fetchEdge,
+  generateDashboardPortfolioHistory,
+  recordDashboardNamedPortfolioTrade,
+  runDashboardPortfolioBacktest,
   saveDashboardPortfolioPositions,
+  updateDashboardPortfolio,
   updateDashboardIndex,
+  type BourseLiveQuote,
   type DashboardDailyBlotterResponse,
   type DashboardCustomIndexComponent,
   type DashboardManualPosition,
+  type DashboardPortfolio,
+  type DashboardPortfolioComponent,
+  type DashboardPortfolioSummary,
   type DashboardPortfolioTicketResponse,
+  type DashboardPortfolioTradeInput,
   type EdgeMetrics,
 } from "@/lib/api"
-import type { DashboardDisplayMode, DashboardScoreSource, DashboardStock, DashboardView, Horizon } from "@/lib/dashboard-types"
+import type {
+  DashboardDisplayMode,
+  DashboardCustomIndexDefinition,
+  DashboardScoreSource,
+  DashboardStock,
+  DashboardTechnicalDirectionMode,
+  DashboardView,
+  Horizon,
+} from "@/lib/dashboard-types"
 import {
   DEFAULT_DASHBOARD_PREFERENCES,
   DEFAULT_DASHBOARD_VISIBLE_FAMILIES,
@@ -35,10 +58,12 @@ import {
 } from "@/lib/dashboard-preferences"
 import { resolveHorizonPreset } from "@/lib/horizon"
 import { signalEvidenceUrl } from "@/lib/signal-evidence-url"
+import { MASI20_FLOATING_SHARE_INDEX } from "@/lib/masi20-flottant-index"
 import { IndexTab } from "@/components/dashboard-v1/index-tab"
 import { SectorTable } from "@/components/dashboard-v1/sector-table"
 import { StockTable } from "@/components/dashboard-v1/stock-table"
-import { displayVariantLabel } from "@/components/dashboard-v1/best-signal-cells"
+import { displayVariantLabel, technicalSignalForDisplay } from "@/components/dashboard-v1/best-signal-cells"
+import { buildPortfolioWeightRows, summarizeWeightRows } from "@/components/dashboard-v1/sector-portfolio-utils.mjs"
 import { SetupStep } from "@/components/dashboard/setup-step"
 import { KpiTile } from "@/components/dashboard/kpi-tile"
 import { EdgePanel } from "@/components/dashboard/edge-panel"
@@ -68,11 +93,19 @@ const STOCK_VIEW_OPTIONS = [
   { value: "stocks" as const, label: "Stocks" },
   { value: "sectors" as const, label: "Sectors" },
   { value: "index" as const, label: "Indices" },
+  { value: "portfolio" as const, label: "Portfolio" },
 ]
+
+type PerformancePeriod = "one_day" | "wtd" | "mtd" | "ytd" | "open_to_now"
 
 const DASHBOARD_MODE_OPTIONS = [
   { value: "trade_opportunities" as const, label: "Trade opportunities" },
   { value: "technical_directions" as const, label: "Technical directions" },
+]
+
+const TECHNICAL_DIRECTION_MODE_OPTIONS = [
+  { value: "best" as const, label: "Best" },
+  { value: "classic" as const, label: "Classic" },
 ]
 
 function evidenceProofHref(raw: string): string {
@@ -117,6 +150,10 @@ function formatDecimal(value: number | null | undefined, digits = 2) {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   })
+}
+
+function technicalModeShortLabel(mode: DashboardTechnicalDirectionMode) {
+  return mode === "classic" ? "classic" : "best"
 }
 
 function clampNumber(value: number, min: number, max: number) {
@@ -447,6 +484,7 @@ export default function DashboardV1Page() {
   const [showTopActionableSignals, setShowTopActionableSignals] = useState(DEFAULT_DASHBOARD_PREFERENCES.showTopActionableSignals)
   const [liquidityFilter, setLiquidityFilter] = useState(DEFAULT_DASHBOARD_PREFERENCES.liquidityFilter)
   const [dashboardMode, setDashboardMode] = useState<DashboardDisplayMode>(DEFAULT_DASHBOARD_PREFERENCES.dashboardMode)
+  const [technicalDirectionMode, setTechnicalDirectionMode] = useState<DashboardTechnicalDirectionMode>(DEFAULT_DASHBOARD_PREFERENCES.technicalDirectionMode)
   const signalView: "expanded" = "expanded"
   const scoreSource: DashboardScoreSource = dashboardMode === "trade_opportunities" ? "wfo" : "signal_engine"
   const [visibleFamilies, setVisibleFamilies] = useState<Record<FamilyColumn, boolean>>({
@@ -454,6 +492,7 @@ export default function DashboardV1Page() {
   })
   const [edgeOnly, setEdgeOnly] = useState(DEFAULT_DASHBOARD_PREFERENCES.edgeOnly)
   const [edgeMode, setEdgeMode] = useState<EdgeMode>(DEFAULT_DASHBOARD_PREFERENCES.edgeMode)
+  const [performancePeriod, setPerformancePeriod] = useState<PerformancePeriod>("one_day")
   const [search, setSearch] = useState("")
   const [sectorFilter, setSectorFilter] = useState<string>("all")
   const [basketOnly, setBasketOnly] = useState(false)
@@ -487,6 +526,7 @@ export default function DashboardV1Page() {
       view,
       liquidityFilter,
       dashboardMode,
+      technicalDirectionMode,
       visibleFamilies,
       edgeOnly,
       edgeMode,
@@ -501,6 +541,7 @@ export default function DashboardV1Page() {
       view,
       liquidityFilter,
       dashboardMode,
+      technicalDirectionMode,
       visibleFamilies,
       edgeOnly,
       edgeMode,
@@ -517,6 +558,7 @@ export default function DashboardV1Page() {
     setView(next.view)
     setLiquidityFilter(next.liquidityFilter)
     setDashboardMode(next.dashboardMode)
+    setTechnicalDirectionMode(next.technicalDirectionMode)
     setVisibleFamilies({ ...next.visibleFamilies })
     setEdgeOnly(next.edgeOnly)
     setEdgeMode(next.edgeMode)
@@ -652,15 +694,56 @@ export default function DashboardV1Page() {
     return out
   }, [catalogData])
 
+  const availableIndexShares = useMemo(() => {
+    const out: Record<string, number> = {}
+    for (const row of catalogData ?? []) {
+      if ((row.asset_class ?? "equity") !== "equity") continue
+      if ((row.asset_type ?? "equity") !== "equity") continue
+      if (row.market_region !== "masi") continue
+      const shares = Number(row.shares_outstanding)
+      if (!Number.isInteger(shares) || shares <= 0) continue
+      out[row.symbol.toUpperCase()] = shares
+    }
+    return out
+  }, [catalogData])
+
+  const liveQuoteSymbols = useMemo(
+    () =>
+      (data?.stocks ?? [])
+        .filter((stock) => {
+          const taxonomy = taxonomyMap[stock.symbol]
+          const assetClass = stock.asset_class ?? taxonomy?.asset_class ?? "equity"
+          const assetType = stock.asset_type ?? taxonomy?.asset_type ?? "equity"
+          const region = stock.market_region ?? taxonomy?.market_region ?? null
+          return assetClass === "equity" && assetType === "equity" && region === "masi"
+        })
+        .map((stock) => stock.symbol),
+    [data?.stocks, taxonomyMap],
+  )
+  const { data: liveQuotesData } = useSWR(
+    liveQuoteSymbols.length ? `bourse-live-${liveQuoteSymbols.join(",")}` : null,
+    () => fetchBourseLiveQuotes(liveQuoteSymbols, { maxAgeSeconds: 60 }),
+    { refreshInterval: 60_000, revalidateOnFocus: false },
+  )
+  const liveQuoteMap = useMemo<Record<string, BourseLiveQuote>>(() => {
+    const entries = (liveQuotesData?.quotes ?? []).map((quote) => [quote.symbol.toUpperCase(), quote] as const)
+    return Object.fromEntries(entries)
+  }, [liveQuotesData])
+
   const allStocks = useMemo(
     () =>
       (data?.stocks ?? []).map((stock) => ({
         ...stock,
+        last_price:
+          liveQuoteMap[stock.symbol]?.is_fresh && liveQuoteMap[stock.symbol]?.last_price != null
+            ? liveQuoteMap[stock.symbol].last_price
+            : stock.last_price,
+        live_quote: liveQuoteMap[stock.symbol] ?? null,
         asset_class: stock.asset_class ?? taxonomyMap[stock.symbol]?.asset_class ?? "equity",
         asset_type: stock.asset_type ?? taxonomyMap[stock.symbol]?.asset_type ?? "equity",
         market_region: stock.market_region ?? taxonomyMap[stock.symbol]?.market_region ?? null,
       })),
-    [data?.stocks, taxonomyMap],
+    [data?.stocks, liveQuoteMap, taxonomyMap],
   )
 
   const masiStocks = useMemo(
@@ -800,7 +883,18 @@ export default function DashboardV1Page() {
     [data?.sectors, visibleSectorCounts],
   )
 
-  const customIndexDefinitions = dashboardIndices ?? data?.custom_index_definitions ?? []
+  const customIndexDefinitions = useMemo<DashboardCustomIndexDefinition[]>(() => {
+    const sourceDefinitions = dashboardIndices ?? data?.custom_index_definitions ?? []
+    const builtInName = MASI20_FLOATING_SHARE_INDEX.name.trim().toLowerCase()
+    const alreadyPresent = sourceDefinitions.some(
+      (definition) =>
+        definition.id === MASI20_FLOATING_SHARE_INDEX.id ||
+        definition.name.trim().toLowerCase() === builtInName,
+    )
+    return alreadyPresent
+      ? sourceDefinitions
+      : [MASI20_FLOATING_SHARE_INDEX, ...sourceDefinitions]
+  }, [dashboardIndices, data?.custom_index_definitions])
   const dashboardIndexErrorMessage =
     dashboardIndexActionError ??
     (dashboardIndicesError instanceof Error ? dashboardIndicesError.message : null)
@@ -818,20 +912,20 @@ export default function DashboardV1Page() {
 
   const completeBullishCount = completStocks.filter((stock) =>
     dashboardMode === "technical_directions"
-      ? stock.best_technical_signal?.direction === "long"
+      ? technicalSignalForDisplay(stock, technicalDirectionMode)?.direction === "long"
       : bestActionableSignal(stock)?.direction === "long",
   ).length
   const completeBearishCount = completStocks.filter((stock) =>
     dashboardMode === "technical_directions"
-      ? stock.best_technical_signal?.direction === "short"
+      ? technicalSignalForDisplay(stock, technicalDirectionMode)?.direction === "short"
       : bestActionableSignal(stock)?.direction === "short",
   ).length
   const completeTechnicalScoreValues = useMemo(
     () =>
       completStocks
-        .map((stock) => stock.best_technical_signal?.abs_score_pct ?? null)
+        .map((stock) => technicalSignalForDisplay(stock, technicalDirectionMode)?.abs_score_pct ?? null)
         .filter((value): value is number => typeof value === "number" && Number.isFinite(value)),
-    [completStocks],
+    [completStocks, technicalDirectionMode],
   )
   const medianCompleteTechnicalScore = median(completeTechnicalScoreValues)
   const completeProvenEdgeCount = useMemo(() => {
@@ -840,12 +934,12 @@ export default function DashboardV1Page() {
 
   const bullishCount = visibleMasiStocks.filter((stock) =>
     dashboardMode === "technical_directions"
-      ? stock.best_technical_signal?.direction === "long"
+      ? technicalSignalForDisplay(stock, technicalDirectionMode)?.direction === "long"
       : bestActionableSignal(stock)?.direction === "long",
   ).length
   const bearishCount = visibleMasiStocks.filter((stock) =>
     dashboardMode === "technical_directions"
-      ? stock.best_technical_signal?.direction === "short"
+      ? technicalSignalForDisplay(stock, technicalDirectionMode)?.direction === "short"
       : bestActionableSignal(stock)?.direction === "short",
   ).length
 
@@ -862,9 +956,9 @@ export default function DashboardV1Page() {
   const technicalScoreValues = useMemo(
     () =>
       visibleMasiStocks
-        .map((stock) => stock.best_technical_signal?.abs_score_pct ?? null)
+        .map((stock) => technicalSignalForDisplay(stock, technicalDirectionMode)?.abs_score_pct ?? null)
         .filter((value): value is number => typeof value === "number" && Number.isFinite(value)),
-    [visibleMasiStocks],
+    [visibleMasiStocks, technicalDirectionMode],
   )
   const medianTechnicalScore = median(technicalScoreValues)
   const optimizedHoldValues = useMemo(
@@ -928,6 +1022,8 @@ export default function DashboardV1Page() {
         max_sector_pct: ticketMaxSectorPct,
         kelly_fraction: ticketKellyPct / 100,
         require_proven_edge: ticketRequireProvenEdge,
+        price_source: "live_if_fresh",
+        max_live_quote_age_seconds: 60,
       }),
     { revalidateOnFocus: false },
   )
@@ -954,8 +1050,8 @@ export default function DashboardV1Page() {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex rounded-md border border-border bg-muted/40 p-0.5">
+        <div className="flex flex-wrap items-center gap-2 max-md:w-full max-md:flex-nowrap max-md:overflow-x-auto max-md:pb-1">
+          <div className="inline-flex shrink-0 rounded-md border border-border bg-muted/40 p-0.5">
             <button
               type="button"
               onClick={() => setViewMode("complet")}
@@ -1028,14 +1124,14 @@ export default function DashboardV1Page() {
       ) : null}
 
       {viewMode === "masi" ? (
-        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-2 xl:grid-cols-4">
           <KpiTile
             label="Univers actif"
             value={visibleMasiStocks.length.toLocaleString("fr-FR")}
             sub={basketOnly ? "titres du panier" : "titres après filtres"}
           />
-          <KpiTile label={dashboardMode === "technical_directions" ? "Directions haussieres" : "Opportunites long"} value={bullishCount.toLocaleString("fr-FR")} tone="positive" sub={dashboardMode === "technical_directions" ? "best technique > +15" : "edge eligible"} />
-          <KpiTile label={dashboardMode === "technical_directions" ? "Directions baissieres" : "Opportunites short"} value={bearishCount.toLocaleString("fr-FR")} tone="negative" sub={dashboardMode === "technical_directions" ? "best technique < -15" : "edge eligible"} />
+          <KpiTile label={dashboardMode === "technical_directions" ? "Directions haussieres" : "Opportunites long"} value={bullishCount.toLocaleString("fr-FR")} tone="positive" sub={dashboardMode === "technical_directions" ? `${technicalModeShortLabel(technicalDirectionMode)} technique > +15` : "edge eligible"} />
+          <KpiTile label={dashboardMode === "technical_directions" ? "Directions baissieres" : "Opportunites short"} value={bearishCount.toLocaleString("fr-FR")} tone="negative" sub={dashboardMode === "technical_directions" ? `${technicalModeShortLabel(technicalDirectionMode)} technique < -15` : "edge eligible"} />
           <KpiTile
             label={dashboardMode === "technical_directions" ? "Score technique median" : "Action E[R] opt. median"}
             value={dashboardMode === "technical_directions" ? (medianTechnicalScore != null ? formatDecimal(medianTechnicalScore, 1) : "--") : (medianEr != null ? formatPercent(medianEr) : "--")}
@@ -1050,10 +1146,10 @@ export default function DashboardV1Page() {
           />
         </div>
       ) : (
-        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-2 xl:grid-cols-4">
           <KpiTile label="Univers total" value={completStocks.length.toLocaleString("fr-FR")} sub={dashboardMode === "technical_directions" ? "directions techniques" : "instruments disponibles"} />
-          <KpiTile label={dashboardMode === "technical_directions" ? "Directions haussieres" : "Opportunites long"} value={completeBullishCount.toLocaleString("fr-FR")} tone="positive" sub={dashboardMode === "technical_directions" ? "best technique > +15" : "edge eligible"} />
-          <KpiTile label={dashboardMode === "technical_directions" ? "Directions baissieres" : "Opportunites short"} value={completeBearishCount.toLocaleString("fr-FR")} tone="negative" sub={dashboardMode === "technical_directions" ? "best technique < -15" : "edge eligible"} />
+          <KpiTile label={dashboardMode === "technical_directions" ? "Directions haussieres" : "Opportunites long"} value={completeBullishCount.toLocaleString("fr-FR")} tone="positive" sub={dashboardMode === "technical_directions" ? `${technicalModeShortLabel(technicalDirectionMode)} technique > +15` : "edge eligible"} />
+          <KpiTile label={dashboardMode === "technical_directions" ? "Directions baissieres" : "Opportunites short"} value={completeBearishCount.toLocaleString("fr-FR")} tone="negative" sub={dashboardMode === "technical_directions" ? `${technicalModeShortLabel(technicalDirectionMode)} technique < -15` : "edge eligible"} />
           <KpiTile
             label={dashboardMode === "technical_directions" ? "Score technique median" : "Edge prouve"}
             value={dashboardMode === "technical_directions" ? (medianCompleteTechnicalScore != null ? formatDecimal(medianCompleteTechnicalScore, 1) : "--") : completeProvenEdgeCount.toLocaleString("fr-FR")}
@@ -1073,7 +1169,35 @@ export default function DashboardV1Page() {
           <div className="grid gap-2 xl:grid-cols-3">
             <SetupStep index={1} title="Horizon de temps" value={horizon} onChange={setHorizon} options={DASHBOARD_HORIZONS} hint="5 j · 21 j · 63 j" />
             <SetupStep index={2} title="Univers d'analyse" value={view} onChange={setView} options={STOCK_VIEW_OPTIONS} hint={`${masiStocks.length} titres MASI`} />
-            <SetupStep index={3} title="Mode dashboard" value={dashboardMode} onChange={setDashboardMode} options={DASHBOARD_MODE_OPTIONS} hint="Edge tradable ou lecture technique" />
+            <SetupStep
+              index={3}
+              title="Mode dashboard"
+              value={dashboardMode}
+              onChange={setDashboardMode}
+              options={DASHBOARD_MODE_OPTIONS}
+              hint="Edge tradable ou lecture technique"
+              inlineAfter={
+                dashboardMode === "technical_directions" ? (
+                  <div className="inline-flex rounded-md border border-border bg-bg2 p-0.5">
+                    {TECHNICAL_DIRECTION_MODE_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setTechnicalDirectionMode(option.value)}
+                        className={cn(
+                          "min-w-0 rounded-[5px] px-2 py-1 text-[11px] font-medium transition",
+                          technicalDirectionMode === option.value
+                            ? "bg-card text-foreground shadow-sm"
+                            : "text-muted-foreground hover:text-foreground",
+                        )}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null
+              }
+            />
           </div>
 
           <div className="dashboard-panel flex flex-col gap-3 px-3 py-3 xl:flex-row xl:items-center xl:justify-between">
@@ -1227,7 +1351,15 @@ export default function DashboardV1Page() {
 
       {data ? (
         viewMode === "masi" ? (
-          view === "sectors" ? (
+          view === "portfolio" ? (
+            <PortfolioTab
+              readOnly={isPublicDashboardOnly}
+              stocks={masiStocks}
+              horizon={horizon}
+              displayMode={dashboardMode}
+              technicalDirectionMode={technicalDirectionMode}
+            />
+          ) : view === "sectors" ? (
             <SectorTable
               sectors={visibleSectors}
               stocks={visibleMasiStocks}
@@ -1236,6 +1368,7 @@ export default function DashboardV1Page() {
               signalView={signalView}
               scoreSource={scoreSource}
               displayMode={dashboardMode}
+              technicalDirectionMode={technicalDirectionMode}
               edgeEnabled={edgeEnabled}
               showTechnicalLevels={false}
               visibleFamilies={visibleFamilies}
@@ -1257,10 +1390,12 @@ export default function DashboardV1Page() {
               scoreSource={scoreSource}
               signalView={signalView}
               displayMode={dashboardMode}
+              technicalDirectionMode={technicalDirectionMode}
               horizon={horizon}
               horizonDays={horizonDays}
               edgeEnabled={edgeEnabled}
               visibleFamilies={visibleFamilies}
+              availableShares={availableIndexShares}
               onCreate={isPublicDashboardOnly ? undefined : createCustomDashboardIndex}
               onUpdate={isPublicDashboardOnly ? undefined : updateCustomDashboardIndex}
               onDelete={isPublicDashboardOnly ? undefined : deleteCustomDashboardIndex}
@@ -1273,6 +1408,7 @@ export default function DashboardV1Page() {
               signalView={signalView}
               scoreSource={scoreSource}
               displayMode={dashboardMode}
+              technicalDirectionMode={technicalDirectionMode}
               hideDetails={false}
               visibleFamilies={visibleFamilies}
               edgeEnabled={edgeEnabled}
@@ -1282,6 +1418,8 @@ export default function DashboardV1Page() {
               selectedSymbols={dashboardMode === "trade_opportunities" ? selectedBasketSet : undefined}
               onToggleSelected={dashboardMode === "trade_opportunities" ? toggleBasketSymbol : undefined}
               onOpenEdge={setSelectedStock}
+              performancePeriod={performancePeriod}
+              onPerformancePeriodChange={setPerformancePeriod}
             />
           )
         ) : (
@@ -1296,12 +1434,15 @@ export default function DashboardV1Page() {
             signalView={signalView}
             scoreSource={scoreSource}
             displayMode={dashboardMode}
+            technicalDirectionMode={technicalDirectionMode}
             edgeEnabled={edgeEnabled}
             edgeMode={edgeMode}
             edgeSource={edgeSource}
             edgeMap={edgeMap}
             visibleFamilies={visibleFamilies}
             onOpenEdge={setSelectedStock}
+            performancePeriod={performancePeriod}
+            onPerformancePeriodChange={setPerformancePeriod}
           />
         )
       ) : null}
@@ -1321,7 +1462,7 @@ export default function DashboardV1Page() {
       ) : null}
 
       <p className="text-[11px] text-muted-foreground">
-        Trade Opportunities sélectionne automatiquement le meilleur edge exploitable. Technical Directions affiche le meilleur signal technique disponible par titre, avec détail Trend / Momentum / Oscillation / Volume. Liquidité = ADV20 (valeur moyenne échangée 20 j).
+        Trade Opportunities sélectionne automatiquement le meilleur edge exploitable. Technical Directions affiche Best ou Classic par titre, avec détail Trend / Momentum / Oscillation / Volume. Liquidité = ADV20 (valeur moyenne échangée 20 j).
       </p>
 
       {edgeEnabled ? (
@@ -1871,6 +2012,557 @@ const REGION_TABS: { value: RegionTab; label: string }[] = [
   { value: "asian", label: "Asie" },
 ]
 
+function isoDateOffset(days: number) {
+  const date = new Date()
+  date.setDate(date.getDate() + days)
+  return date.toISOString().slice(0, 10)
+}
+
+function portfolioDirectionLabel(direction: string) {
+  if (direction === "long") return "Buy"
+  if (direction === "short") return "Sell"
+  return "Neutral"
+}
+
+function portfolioDirectionTone(direction: string) {
+  if (direction === "long") return "dashboard-text-positive"
+  if (direction === "short") return "dashboard-text-negative"
+  return "text-muted-foreground"
+}
+
+function portfolioComponentsFromState(symbols: string[], shares: Record<string, number>): DashboardPortfolioComponent[] {
+  return symbols
+    .map((symbol) => symbol.trim().toUpperCase())
+    .filter(Boolean)
+    .filter((symbol, index, arr) => arr.indexOf(symbol) === index)
+    .map((symbol) => ({ symbol, shares: Math.max(1, Math.floor(Number(shares[symbol] ?? 1))), enabled: true }))
+}
+
+function PortfolioTab({
+  readOnly,
+  stocks,
+  horizon,
+  displayMode,
+  technicalDirectionMode,
+}: {
+  readOnly: boolean
+  stocks: DashboardStock[]
+  horizon: Horizon
+  displayMode: DashboardDisplayMode
+  technicalDirectionMode: DashboardTechnicalDirectionMode
+}) {
+  const router = useRouter()
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [showCreate, setShowCreate] = useState(false)
+  const [createMode, setCreateMode] = useState<"manual" | "history">("manual")
+  const [name, setName] = useState("")
+  const [componentSearch, setComponentSearch] = useState("")
+  const [selectedSymbols, setSelectedSymbols] = useState<string[]>([])
+  const [shareDraft, setShareDraft] = useState<Record<string, number>>({})
+  const [allocationMethod, setAllocationMethod] = useState<"share_quantities" | "hrp">("share_quantities")
+  const [sidePolicy, setSidePolicy] = useState<"long_only" | "long_short">("long_only")
+  const [stopLossPct, setStopLossPct] = useState("")
+  const [takeProfitPct, setTakeProfitPct] = useState("")
+  const [startDate, setStartDate] = useState(isoDateOffset(-7))
+  const [endDate, setEndDate] = useState(isoDateOffset(-1))
+  const [symbol, setSymbol] = useState("")
+  const [action, setAction] = useState<DashboardPortfolioTradeInput["action"]>("BUY")
+  const [quantity, setQuantity] = useState("")
+  const [price, setPrice] = useState("")
+  const [fees, setFees] = useState("0")
+  const [errorText, setErrorText] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  const { data: portfolios = [], error, isLoading, mutate } = useSWR<DashboardPortfolio[]>(
+    readOnly ? null : "dashboard-portfolios",
+    fetchDashboardPortfolios,
+    { refreshInterval: 60_000, revalidateOnFocus: false },
+  )
+  const selected = portfolios.find((portfolio) => portfolio.id === selectedId) ?? null
+  const { data: liveSummary, mutate: mutateSummary } = useSWR<DashboardPortfolioSummary>(
+    selected && !readOnly ? `dashboard-portfolio-summary-${selected.id}` : null,
+    () => fetchDashboardNamedPortfolioSummary(selected!.id, { priceSource: "live_if_fresh", maxLiveQuoteAgeSeconds: 60 }),
+    { refreshInterval: 60_000, revalidateOnFocus: false },
+  )
+  const summary = liveSummary ?? selected?.summary ?? null
+  const positions = summary?.positions ?? []
+  const trades = summary?.trades ?? []
+  const visibleStockChoices = useMemo(() => {
+    const query = componentSearch.trim().toUpperCase()
+    return stocks
+      .filter((stock) => !query || stock.symbol.toUpperCase().includes(query) || String(stock.display_name ?? "").toUpperCase().includes(query))
+      .slice(0, 80)
+  }, [componentSearch, stocks])
+
+  useEffect(() => {
+    if (!selected) return
+    setName(selected.name)
+    setSelectedSymbols(selected.symbols)
+    setShareDraft(selected.component_shares)
+    setAllocationMethod(selected.allocation_method)
+    setSidePolicy(selected.side_policy)
+    setStopLossPct(selected.stop_loss_pct == null ? "" : String(selected.stop_loss_pct))
+    setTakeProfitPct(selected.take_profit_pct == null ? "" : String(selected.take_profit_pct))
+    setStartDate(selected.replay_start_date ?? isoDateOffset(-7))
+    setEndDate(selected.replay_end_date ?? isoDateOffset(-1))
+  }, [selected])
+
+  if (readOnly) {
+    return <div className="dashboard-panel px-4 py-8 text-sm text-muted-foreground">Portfolio management is disabled in public dashboard mode.</div>
+  }
+
+  const resetCreateForm = () => {
+    setName("")
+    setSelectedSymbols([])
+    setShareDraft({})
+    setAllocationMethod("share_quantities")
+    setSidePolicy("long_only")
+    setStopLossPct("")
+    setTakeProfitPct("")
+    setStartDate(isoDateOffset(-7))
+    setEndDate(isoDateOffset(-1))
+    setCreateMode("manual")
+    setComponentSearch("")
+  }
+
+  const toggleSymbol = (rawSymbol: string) => {
+    const nextSymbol = rawSymbol.trim().toUpperCase()
+    if (!nextSymbol) return
+    setSelectedSymbols((current) => (
+      current.includes(nextSymbol)
+        ? current.filter((item) => item !== nextSymbol)
+        : [...current, nextSymbol]
+    ))
+    setShareDraft((current) => ({ ...current, [nextSymbol]: current[nextSymbol] ?? 1 }))
+  }
+
+  const payloadFromForm = () => {
+    const components = portfolioComponentsFromState(selectedSymbols, shareDraft)
+    return {
+      name: name.trim(),
+      components,
+      allocation_method: allocationMethod,
+      side_policy: sidePolicy,
+      total_capital_mad: 1_000_000,
+      cash_buffer_pct: 0,
+      stop_loss_pct: stopLossPct.trim() ? Number(stopLossPct) : null,
+      take_profit_pct: takeProfitPct.trim() ? Number(takeProfitPct) : null,
+      display_mode: displayMode,
+      technical_direction_mode: technicalDirectionMode,
+      horizon,
+    }
+  }
+
+  const submitPortfolio = async () => {
+    setErrorText(null)
+    const payload = payloadFromForm()
+    if (!payload.name || payload.components.length === 0) {
+      setErrorText("Nom et composants requis.")
+      return
+    }
+    setSaving(true)
+    try {
+      if (selected) {
+        await updateDashboardPortfolio(selected.id, payload)
+        await mutate()
+        await mutateSummary()
+      } else if (createMode === "history") {
+        const created = await createDashboardPortfolioFromHistory({ ...payload, start_date: startDate, end_date: endDate })
+        await mutate()
+        setSelectedId(created.portfolio.id)
+        setShowCreate(false)
+      } else {
+        const created = await createDashboardPortfolio(payload)
+        await mutate()
+        setSelectedId(created.id)
+        setShowCreate(false)
+      }
+      if (!selected) resetCreateForm()
+    } catch (err) {
+      setErrorText(err instanceof Error ? err.message : "Portfolio save failed")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const submitReplay = async () => {
+    if (!selected) return
+    setErrorText(null)
+    setSaving(true)
+    try {
+      await generateDashboardPortfolioHistory(selected.id, {
+        ...payloadFromForm(),
+        start_date: startDate,
+        end_date: endDate,
+        persist: true,
+      })
+      await mutate()
+      await mutateSummary()
+    } catch (err) {
+      setErrorText(err instanceof Error ? err.message : "Replay failed")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const submitTrade = async () => {
+    if (!selected) return
+    setErrorText(null)
+    const normalized = symbol.trim().toUpperCase()
+    const qty = Number(quantity)
+    const px = Number(price)
+    const feeValue = Number(fees || 0)
+    if (!normalized || !Number.isFinite(qty) || qty <= 0 || !Number.isFinite(px) || px <= 0 || !Number.isFinite(feeValue) || feeValue < 0) {
+      setErrorText("Trade invalide: ticker, quantite, prix et frais doivent etre numeriques.")
+      return
+    }
+    setSaving(true)
+    try {
+      await recordDashboardNamedPortfolioTrade(selected.id, {
+        symbol: normalized,
+        action,
+        quantity: qty,
+        price_mad: px,
+        fees_mad: feeValue,
+      })
+      setSymbol("")
+      setQuantity("")
+      setPrice("")
+      setFees("0")
+      await mutateSummary()
+      await mutate()
+    } catch (err) {
+      setErrorText(err instanceof Error ? err.message : "Trade save failed")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const launchBacktest = async () => {
+    if (!selected) return
+    setErrorText(null)
+    setSaving(true)
+    try {
+      const run = await runDashboardPortfolioBacktest(selected.id)
+      router.push(`/backtest?runId=${encodeURIComponent(run.run_id)}`)
+    } catch (err) {
+      setErrorText(err instanceof Error ? err.message : "Backtest launch failed")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const portfolioCard = (portfolio: DashboardPortfolio) => {
+    const weights = buildPortfolioWeightRows(stocks, portfolio.component_shares, { displayMode, technicalDirectionMode })
+    const signalSummary = summarizeWeightRows(weights.rows)
+    const previewRows = weights.rows.slice(0, 5)
+    return (
+      <button
+        key={portfolio.id}
+        type="button"
+        onClick={() => setSelectedId(portfolio.id)}
+        className="dashboard-panel w-full p-4 text-left transition hover:border-primary/40"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="dashboard-section-title">{portfolio.name}</h3>
+              {portfolio.is_default ? <span className="dashboard-chip h-6 text-[10px]">Default</span> : null}
+            </div>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {portfolio.symbols.length} composants · {portfolio.allocation_method === "hrp" ? "HRP" : "Shares"} · {portfolio.side_policy === "long_short" ? "Long/short" : "Long only"}
+            </p>
+          </div>
+          <div className="text-right">
+            <div className="dashboard-mono text-[13px] font-semibold">{formatMoney(portfolio.summary?.total_market_value_mad ?? null)}</div>
+            <div className={cn("dashboard-mono text-[11px] font-semibold", (portfolio.summary?.total_unrealized_pnl_mad ?? 0) > 0 ? "dashboard-text-positive" : (portfolio.summary?.total_unrealized_pnl_mad ?? 0) < 0 ? "dashboard-text-negative" : "text-muted-foreground")}>
+              {formatMoney(portfolio.summary?.total_unrealized_pnl_mad ?? null)}
+            </div>
+          </div>
+        </div>
+        <div className="mt-3 grid gap-2 md:grid-cols-3">
+          <TicketMetric label="Signal net" value={signalSummary.signalLabel} sub={`${formatDecimal(signalSummary.netSignalPct, 1)}% net`} />
+          <TicketMetric label="Long / Sell" value={`${formatDecimal(signalSummary.longWeightPct, 0)}% / ${formatDecimal(signalSummary.shortWeightPct, 0)}%`} />
+          <TicketMetric label="Replay" value={portfolio.replay_generated_at ? "Generated" : "Manual"} sub={portfolio.replay_end_date ?? "no history"} />
+        </div>
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {previewRows.length ? previewRows.map((row) => (
+            <span key={row.symbol} className="dashboard-chip h-7 gap-1.5 text-[11px]">
+              <span className="dashboard-mono font-semibold">{row.symbol}</span>
+              <span className={cn("font-semibold", portfolioDirectionTone(row.direction))}>{portfolioDirectionLabel(row.direction)}</span>
+            </span>
+          )) : <span className="text-[11px] text-muted-foreground">No component signals available.</span>}
+        </div>
+      </button>
+    )
+  }
+
+  const componentEditor = (
+    <div className="dashboard-panel p-3">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="dashboard-section-title">Composants</h3>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">Selectionnez les titres et les quantites cible par titre.</p>
+        </div>
+        <Input className="h-9 max-w-[260px]" placeholder="Search symbol" value={componentSearch} onChange={(event) => setComponentSearch(event.target.value)} />
+      </div>
+      <div className="grid max-h-[320px] gap-2 overflow-y-auto md:grid-cols-2 xl:grid-cols-3">
+        {visibleStockChoices.map((stock) => {
+          const stockSymbol = stock.symbol.toUpperCase()
+          const checked = selectedSymbols.includes(stockSymbol)
+          return (
+            <label key={stockSymbol} className={cn("flex items-center gap-2 rounded-md border border-border bg-card p-2 text-[12px]", checked && "border-primary/30 bg-[var(--dashboard-primary-bg)]")}>
+              <Checkbox checked={checked} onCheckedChange={() => toggleSymbol(stockSymbol)} />
+              <span className="dashboard-mono w-14 font-semibold">{stockSymbol}</span>
+              <span className="min-w-0 flex-1 truncate text-muted-foreground">{stock.display_name ?? stock.sector}</span>
+              <Input
+                className="h-7 w-20 text-right"
+                inputMode="numeric"
+                value={String(shareDraft[stockSymbol] ?? 1)}
+                disabled={!checked}
+                onChange={(event) => setShareDraft((current) => ({ ...current, [stockSymbol]: Math.max(1, Number(event.target.value) || 1) }))}
+              />
+            </label>
+          )
+        })}
+      </div>
+    </div>
+  )
+
+  if (!selected) {
+    return (
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold">Portfolios</h2>
+            <p className="text-[12px] text-muted-foreground">List view shows current component directions for the selected dashboard mode.</p>
+          </div>
+          <Button onClick={() => { resetCreateForm(); setShowCreate((value) => !value) }}>
+            <Plus className="h-3.5 w-3.5" />
+            New portfolio
+          </Button>
+        </div>
+        {showCreate ? (
+          <div className="space-y-3">
+            <div className="dashboard-panel p-3">
+              <div className="grid gap-2 md:grid-cols-[1fr_auto_auto_auto_auto]">
+                <Input placeholder="Portfolio name" value={name} onChange={(event) => setName(event.target.value)} />
+                <select value={createMode} onChange={(event) => setCreateMode(event.target.value as "manual" | "history")} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+                  <option value="manual">Manual</option>
+                  <option value="history">From history</option>
+                </select>
+                <select value={allocationMethod} onChange={(event) => setAllocationMethod(event.target.value as "share_quantities" | "hrp")} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+                  <option value="share_quantities">Share quantities</option>
+                  <option value="hrp">HRP</option>
+                </select>
+                <label className="flex h-10 items-center gap-2 rounded-md border border-input px-3 text-[12px]">
+                  <Checkbox checked={sidePolicy === "long_short"} onCheckedChange={(checked) => setSidePolicy(checked ? "long_short" : "long_only")} />
+                  Long/short
+                </label>
+                <Button onClick={() => void submitPortfolio()} disabled={saving}>
+                  <Save className={cn("h-3.5 w-3.5", saving && "animate-pulse")} />
+                  Save
+                </Button>
+              </div>
+              {createMode === "history" ? (
+                <div className="mt-2 grid gap-2 md:grid-cols-4">
+                  <Input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+                  <Input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
+                  <Input placeholder="Stop loss %" inputMode="decimal" value={stopLossPct} onChange={(event) => setStopLossPct(event.target.value)} />
+                  <Input placeholder="Take profit %" inputMode="decimal" value={takeProfitPct} onChange={(event) => setTakeProfitPct(event.target.value)} />
+                </div>
+              ) : null}
+              {errorText ? <div className="mt-2 text-[11px] text-destructive">{errorText}</div> : null}
+            </div>
+            {componentEditor}
+          </div>
+        ) : null}
+        {error ? <ErrorCard message={error instanceof Error ? error.message : "Portfolio load failed"} /> : null}
+        {isLoading ? <Skeleton className="h-40 rounded-md" /> : null}
+        <div className="grid gap-3 xl:grid-cols-2">
+          {portfolios.length ? portfolios.map(portfolioCard) : (
+            <div className="dashboard-panel px-4 py-8 text-center text-sm text-muted-foreground">No portfolios yet.</div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setSelectedId(null)}>
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Back
+          </Button>
+          <div>
+            <h2 className="text-base font-semibold">{selected.name}</h2>
+            <p className="text-[12px] text-muted-foreground">{selected.symbols.length} composants · {selected.replay_generated_at ? `Replay ${selected.replay_start_date} to ${selected.replay_end_date}` : "Manual portfolio"}</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={() => void mutateSummary()}>
+            <RefreshCw className="h-3.5 w-3.5" />
+            Refresh
+          </Button>
+          <Button size="sm" onClick={() => void launchBacktest()} disabled={saving || !selected.replay_start_date}>
+            <ExternalLink className="h-3.5 w-3.5" />
+            Run Backtest
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid gap-2 md:grid-cols-3">
+        <KpiTile label="Valeur marche" value={formatMoney(summary?.total_market_value_mad ?? null)} sub="mark live si disponible" />
+        <KpiTile
+          label="PnL latent"
+          value={formatMoney(summary?.total_unrealized_pnl_mad ?? null)}
+          tone={(summary?.total_unrealized_pnl_mad ?? 0) > 0 ? "positive" : (summary?.total_unrealized_pnl_mad ?? 0) < 0 ? "negative" : undefined}
+          sub={`${positions.length} positions`}
+        />
+        <KpiTile
+          label="PnL realise"
+          value={formatMoney(summary?.total_realized_pnl_mad ?? null)}
+          tone={(summary?.total_realized_pnl_mad ?? 0) > 0 ? "positive" : (summary?.total_realized_pnl_mad ?? 0) < 0 ? "negative" : undefined}
+          sub={`${trades.length} trades recents`}
+        />
+      </div>
+
+      <div className="dashboard-panel p-3">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h3 className="dashboard-section-title">Nouveau trade</h3>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">BUY/SELL pour long, SELL SHORT/COVER pour short. Le CMP est pondere par quantite.</p>
+          </div>
+        </div>
+        <div className="grid gap-2 md:grid-cols-[1fr_1fr_1fr_1fr_1fr_auto]">
+          <Input placeholder="Ticker" value={symbol} onChange={(event) => setSymbol(event.target.value.toUpperCase())} />
+          <select value={action} onChange={(event) => setAction(event.target.value as DashboardPortfolioTradeInput["action"])} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+            <option value="BUY">BUY</option>
+            <option value="SELL">SELL</option>
+            <option value="SELL_SHORT">SELL SHORT</option>
+            <option value="COVER">COVER</option>
+          </select>
+          <Input placeholder="Quantite" inputMode="decimal" value={quantity} onChange={(event) => setQuantity(event.target.value)} />
+          <Input placeholder="Prix" inputMode="decimal" value={price} onChange={(event) => setPrice(event.target.value)} />
+          <Input placeholder="Frais" inputMode="decimal" value={fees} onChange={(event) => setFees(event.target.value)} />
+          <Button onClick={() => void submitTrade()} disabled={saving}>
+            <Save className={cn("h-3.5 w-3.5", saving && "animate-pulse")} />
+            Save
+          </Button>
+        </div>
+      </div>
+
+      <div className="dashboard-panel p-3">
+        <div className="grid gap-2 md:grid-cols-[1fr_auto_auto_auto_auto_auto]">
+          <Input placeholder="Portfolio name" value={name} onChange={(event) => setName(event.target.value)} />
+          <select value={allocationMethod} onChange={(event) => setAllocationMethod(event.target.value as "share_quantities" | "hrp")} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+            <option value="share_quantities">Share quantities</option>
+            <option value="hrp">HRP</option>
+          </select>
+          <label className="flex h-10 items-center gap-2 rounded-md border border-input px-3 text-[12px]">
+            <Checkbox checked={sidePolicy === "long_short"} onCheckedChange={(checked) => setSidePolicy(checked ? "long_short" : "long_only")} />
+            Long/short
+          </label>
+          <Input className="w-28" placeholder="SL %" inputMode="decimal" value={stopLossPct} onChange={(event) => setStopLossPct(event.target.value)} />
+          <Input className="w-28" placeholder="TP %" inputMode="decimal" value={takeProfitPct} onChange={(event) => setTakeProfitPct(event.target.value)} />
+          <Button variant="outline" onClick={() => void submitPortfolio()} disabled={saving}>
+            <Save className="h-3.5 w-3.5" />
+            Settings
+          </Button>
+        </div>
+        <div className="mt-2 grid gap-2 md:grid-cols-[1fr_1fr_auto]">
+          <Input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+          <Input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
+          <Button variant="outline" onClick={() => void submitReplay()} disabled={saving}>
+            <RefreshCw className={cn("h-3.5 w-3.5", saving && "animate-spin")} />
+            Generate history
+          </Button>
+        </div>
+        {errorText ? <div className="mt-2 text-[11px] text-destructive">{errorText}</div> : null}
+      </div>
+
+      {componentEditor}
+
+      <div className="dashboard-panel overflow-hidden">
+        <div className="border-b border-border bg-bg2 px-4 py-3">
+          <h3 className="dashboard-section-title">Positions</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="dashboard-table min-w-[980px] w-full text-[11px]">
+            <thead className="bg-bg2 text-muted-foreground">
+              <tr className="border-b border-border">
+                <th className="px-3 py-2 text-left">Ticker</th>
+                <th className="px-3 py-2 text-left">Side</th>
+                <th className="px-3 py-2 text-right">Quantite</th>
+                <th className="px-3 py-2 text-right">CMP</th>
+                <th className="px-3 py-2 text-right">Mark</th>
+                <th className="px-3 py-2 text-right">Valeur</th>
+                <th className="px-3 py-2 text-right">PnL latent</th>
+                <th className="px-3 py-2 text-right">PnL realise</th>
+              </tr>
+            </thead>
+            <tbody>
+              {positions.length ? positions.map((position) => (
+                <tr key={`${position.symbol}-${position.side}`} className="border-b border-border/70 hover:bg-bg2">
+                  <td className="dashboard-mono px-3 py-2 font-semibold">{position.symbol}</td>
+                  <td className="px-3 py-2">{position.side === "short" ? "Short" : "Long"}</td>
+                  <td className="dashboard-mono px-3 py-2 text-right">{formatDecimal(position.quantity, 0)}</td>
+                  <td className="dashboard-mono px-3 py-2 text-right">{formatDecimal(position.cmp_mad, 2)}</td>
+                  <td className="dashboard-mono px-3 py-2 text-right">
+                    <div>{formatDecimal(position.mark_price_mad, 2)}</div>
+                    <div className="text-[9px] text-muted-foreground">{position.mark_source === "live" ? "Live" : position.mark_source === "replay_close" ? "Replay" : "Close"}</div>
+                  </td>
+                  <td className="dashboard-mono px-3 py-2 text-right">{formatMoney(position.market_value_mad)}</td>
+                  <td className={cn("dashboard-mono px-3 py-2 text-right font-semibold", (position.unrealized_pnl_mad ?? 0) > 0 ? "dashboard-text-positive" : (position.unrealized_pnl_mad ?? 0) < 0 ? "dashboard-text-negative" : "text-muted-foreground")}>{formatMoney(position.unrealized_pnl_mad)}</td>
+                  <td className={cn("dashboard-mono px-3 py-2 text-right font-semibold", position.realized_pnl_mad > 0 ? "dashboard-text-positive" : position.realized_pnl_mad < 0 ? "dashboard-text-negative" : "text-muted-foreground")}>{formatMoney(position.realized_pnl_mad)}</td>
+                </tr>
+              )) : (
+                <tr><td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">Aucune position active.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="dashboard-panel overflow-hidden">
+        <div className="border-b border-border bg-bg2 px-4 py-3">
+          <h3 className="dashboard-section-title">Trades recents</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="dashboard-table min-w-[760px] w-full text-[11px]">
+            <thead className="bg-bg2 text-muted-foreground">
+              <tr className="border-b border-border">
+                <th className="px-3 py-2 text-left">Date</th>
+                <th className="px-3 py-2 text-left">Ticker</th>
+                <th className="px-3 py-2 text-left">Action</th>
+                <th className="px-3 py-2 text-right">Quantite</th>
+                <th className="px-3 py-2 text-right">Prix</th>
+                <th className="px-3 py-2 text-right">PnL realise</th>
+              </tr>
+            </thead>
+            <tbody>
+              {trades.length ? trades.slice(0, 25).map((trade) => (
+                <tr key={trade.id} className="border-b border-border/70 hover:bg-bg2">
+                  <td className="dashboard-mono px-3 py-2">{trade.timestamp ?? "--"}</td>
+                  <td className="dashboard-mono px-3 py-2 font-semibold">{trade.symbol}</td>
+                  <td className="px-3 py-2">{trade.action}</td>
+                  <td className="dashboard-mono px-3 py-2 text-right">{formatDecimal(trade.quantity, 0)}</td>
+                  <td className="dashboard-mono px-3 py-2 text-right">{formatDecimal(trade.price_mad, 2)}</td>
+                  <td className={cn("dashboard-mono px-3 py-2 text-right font-semibold", trade.realized_pnl_mad > 0 ? "dashboard-text-positive" : trade.realized_pnl_mad < 0 ? "dashboard-text-negative" : "text-muted-foreground")}>{formatMoney(trade.realized_pnl_mad)}</td>
+                </tr>
+              )) : (
+                <tr><td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">Aucun trade enregistre.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function CompletView({
   stocks,
   assetTab,
@@ -1882,12 +2574,15 @@ function CompletView({
   signalView,
   scoreSource,
   displayMode,
+  technicalDirectionMode,
   edgeEnabled,
   edgeMode,
   edgeSource,
   edgeMap,
   visibleFamilies,
   onOpenEdge,
+  performancePeriod,
+  onPerformancePeriodChange,
 }: {
   stocks: DashboardStock[]
   assetTab: AssetTab
@@ -1899,12 +2594,15 @@ function CompletView({
   signalView: "legacy" | "expanded" | "factor_x_ta"
   scoreSource: DashboardScoreSource
   displayMode: DashboardDisplayMode
+  technicalDirectionMode: DashboardTechnicalDirectionMode
   edgeEnabled: boolean
   edgeMode: "gross" | "net"
   edgeSource: "signal_engine" | "wfo"
   edgeMap: Record<string, import("@/lib/api").EdgeMetrics | null | undefined>
   visibleFamilies: Partial<Record<FamilyColumn, boolean>>
   onOpenEdge: (stock: DashboardStock) => void
+  performancePeriod: PerformancePeriod
+  onPerformancePeriodChange: (value: PerformancePeriod) => void
 }) {
   return (
     <div className="space-y-3">
@@ -1950,12 +2648,15 @@ function CompletView({
         signalView={signalView}
         scoreSource={scoreSource}
         displayMode={displayMode}
+        technicalDirectionMode={technicalDirectionMode}
         edgeEnabled={edgeEnabled}
         edgeMode={edgeMode}
         edgeSource={edgeSource}
         edgeMap={edgeMap}
         visibleFamilies={visibleFamilies}
         onOpenEdge={onOpenEdge}
+        performancePeriod={performancePeriod}
+        onPerformancePeriodChange={onPerformancePeriodChange}
       />
     </div>
   )

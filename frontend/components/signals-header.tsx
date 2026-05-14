@@ -16,6 +16,7 @@ import {
   LogIn,
   LogOut,
   RefreshCw,
+  Settings,
   Target,
 } from "lucide-react"
 
@@ -32,6 +33,10 @@ const defaultNavItems = [
   { href: "/glossary", label: "Glossaire", icon: BookOpen },
 ]
 
+const adminNavItems = [
+  { href: "/admin/ops", label: "Ops", icon: Settings },
+]
+
 const publicNavItems = [
   { href: "/v1", label: "Tableau de bord", icon: LayoutDashboard },
   { href: "/signals", label: "Signaux", icon: Gauge },
@@ -42,13 +47,16 @@ const hiddenWorkspaceNavHrefs = new Set(["/strategy", "/backtest", "/analytics"]
 interface SignalsHeaderProps {
   sessionEmail?: string | null
   hideWorkspaceNavItems?: boolean
+  isAdmin?: boolean
 }
 
-function getNavItems(hideWorkspaceNavItems: boolean) {
+function getNavItems(hideWorkspaceNavItems: boolean, isAdmin: boolean) {
   if (isPublicDashboardOnly) return publicNavItems
-  if (!hideWorkspaceNavItems) return defaultNavItems
+  const base = !hideWorkspaceNavItems
+    ? defaultNavItems
+    : defaultNavItems.filter((item) => !hiddenWorkspaceNavHrefs.has(item.href))
 
-  return defaultNavItems.filter((item) => !hiddenWorkspaceNavHrefs.has(item.href))
+  return isAdmin ? [...base, ...adminNavItems] : base
 }
 
 function toPublicHref(path: string): string {
@@ -70,40 +78,46 @@ function initialsFromEmail(email: string | null | undefined): string {
   return initials.toUpperCase()
 }
 
-export function SignalsHeader({ sessionEmail, hideWorkspaceNavItems = false }: SignalsHeaderProps) {
+export function SignalsHeader({ sessionEmail, hideWorkspaceNavItems = false, isAdmin = false }: SignalsHeaderProps) {
   const pathname = usePathname()
   const [isSigningOut, startSignOut] = useTransition()
   const initials = initialsFromEmail(sessionEmail)
-  const navItems = getNavItems(hideWorkspaceNavItems)
+  const navItems = getNavItems(hideWorkspaceNavItems, isAdmin)
+  const mobileNavItems = navItems.filter((item) =>
+    isPublicDashboardOnly
+      ? item.href === "/v1" || item.href === "/signals"
+      : ["/dashboard", "/data", "/signals", "/glossary", "/admin/ops"].includes(item.href),
+  )
 
   return (
-    <header className="sticky top-0 z-50 h-14 w-full border-b border-line bg-[oklch(0.99_0.002_250_/_0.85)] backdrop-blur-md">
+    <>
+    <header className="sticky top-0 z-50 h-14 w-full border-b border-line bg-[oklch(0.99_0.002_250_/_0.85)] backdrop-blur-md max-md:hidden">
       <div className="mx-auto flex h-full max-w-7xl items-center gap-3.5 px-4">
         {isPublicDashboardOnly ? (
-          <a href={toPublicHref("/v1")} className="flex items-center gap-2.5">
+          <a href={toPublicHref("/v1")} className="flex items-center gap-2.5" aria-label="RDT Alpha">
             <div className="grid h-[30px] w-[30px] place-items-center rounded-lg bg-[linear-gradient(135deg,#1d4ed8_0%,#0f766e_100%)] text-[11px] font-black tracking-[0.04em] text-white">
-              BT
+              RDT
             </div>
             <div className="flex flex-col leading-none">
               <div className="text-[13px] font-bold tracking-normal text-foreground">
-                Backtest
+                RDT Alpha
               </div>
               <div className="mt-0.5 text-[10px] tracking-[0.04em] text-muted-foreground">
-                Signal Engine
+                Road to Alpha
               </div>
             </div>
           </a>
         ) : (
-          <Link href="/dashboard" className="flex items-center gap-2.5">
+          <Link href="/dashboard" className="flex items-center gap-2.5" aria-label="RDT Alpha">
             <div className="grid h-[30px] w-[30px] place-items-center rounded-lg bg-[linear-gradient(135deg,#1d4ed8_0%,#0f766e_100%)] text-[11px] font-black tracking-[0.04em] text-white">
-              BT
+              RDT
             </div>
             <div className="flex flex-col leading-none">
               <div className="text-[13px] font-bold tracking-normal text-foreground">
-                Backtest
+                RDT Alpha
               </div>
               <div className="mt-0.5 text-[10px] tracking-[0.04em] text-muted-foreground">
-                Signal Engine
+                Road to Alpha
               </div>
             </div>
           </Link>
@@ -207,5 +221,39 @@ export function SignalsHeader({ sessionEmail, hideWorkspaceNavItems = false }: S
         </div>
       </div>
     </header>
+    <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-line bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden" aria-label="Mobile navigation">
+      <div className="grid h-14" style={{ gridTemplateColumns: `repeat(${Math.max(mobileNavItems.length, 1)}, minmax(0, 1fr))` }}>
+        {mobileNavItems.map((item) => {
+          const isActive = pathname.startsWith(item.href)
+          const publicHref = toPublicHref(item.href)
+          return isPublicDashboardOnly ? (
+            <a
+              key={item.href}
+              href={publicHref}
+              className={cn(
+                "flex min-w-0 flex-col items-center justify-center gap-0.5 px-1 text-[10px] font-medium text-muted-foreground",
+                isActive && "text-primary",
+              )}
+            >
+              <item.icon className="h-5 w-5 stroke-[1.75]" />
+              <span className="max-w-full truncate">{item.label}</span>
+            </a>
+          ) : (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                "flex min-w-0 flex-col items-center justify-center gap-0.5 px-1 text-[10px] font-medium text-muted-foreground",
+                isActive && "text-primary",
+              )}
+            >
+              <item.icon className="h-5 w-5 stroke-[1.75]" />
+              <span className="max-w-full truncate">{item.label}</span>
+            </Link>
+          )
+        })}
+      </div>
+    </nav>
+    </>
   )
 }

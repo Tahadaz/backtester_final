@@ -34,14 +34,14 @@ export function AppHeader() {
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4">
         <Link href="/" className="flex items-center gap-2.5">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground text-xs font-black tracking-wider">
-            BT
+            RDT
           </div>
           <div>
             <div className="text-sm font-bold text-foreground leading-tight">
-              Backtest
+              RDT Alpha
             </div>
             <div className="text-[10px] text-muted-foreground leading-tight">
-              Quant Platform
+              Road to Alpha
             </div>
           </div>
         </Link>

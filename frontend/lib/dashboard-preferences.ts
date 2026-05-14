@@ -1,4 +1,4 @@
-import type { DashboardDisplayMode, DashboardView, Horizon } from "@/lib/dashboard-types"
+import type { DashboardDisplayMode, DashboardTechnicalDirectionMode, DashboardView, Horizon } from "@/lib/dashboard-types"
 
 export type DashboardViewMode = "masi" | "complet"
 export type DashboardAssetTab = "all" | "equity" | "commodity" | "forex" | "bond" | "crypto"
@@ -18,6 +18,7 @@ export interface DashboardPreferences {
   view: DashboardView
   liquidityFilter: boolean
   dashboardMode: DashboardDisplayMode
+  technicalDirectionMode: DashboardTechnicalDirectionMode
   visibleFamilies: DashboardVisibleFamilies
   edgeOnly: boolean
   edgeMode: DashboardEdgeMode
@@ -40,6 +41,7 @@ export const DEFAULT_DASHBOARD_PREFERENCES: DashboardPreferences = {
   view: "stocks",
   liquidityFilter: false,
   dashboardMode: "trade_opportunities",
+  technicalDirectionMode: "best",
   visibleFamilies: DEFAULT_DASHBOARD_VISIBLE_FAMILIES,
   edgeOnly: false,
   edgeMode: "net",
@@ -49,8 +51,9 @@ const VIEW_MODES: DashboardViewMode[] = ["masi", "complet"]
 const ASSET_TABS: DashboardAssetTab[] = ["all", "equity", "commodity", "forex", "bond", "crypto"]
 const REGION_TABS: DashboardRegionTab[] = ["all", "masi", "us", "european", "asian"]
 const HORIZONS: Horizon[] = ["weekly", "monthly", "quarterly"]
-const VIEWS: DashboardView[] = ["stocks", "sectors", "index"]
+const VIEWS: DashboardView[] = ["stocks", "sectors", "index", "portfolio"]
 const DASHBOARD_MODES: DashboardDisplayMode[] = ["trade_opportunities", "technical_directions"]
+const TECHNICAL_DIRECTION_MODES: DashboardTechnicalDirectionMode[] = ["best", "classic"]
 const FAMILY_COLUMNS: DashboardFamilyColumn[] = ["tendance", "momentum", "oscillation", "volume"]
 const EDGE_MODES: DashboardEdgeMode[] = ["gross", "net"]
 
@@ -91,6 +94,11 @@ export function sanitizeDashboardPreferences(raw: unknown): DashboardPreferences
     view: enumValue(value.view, VIEWS, DEFAULT_DASHBOARD_PREFERENCES.view),
     liquidityFilter: booleanValue(value.liquidityFilter, DEFAULT_DASHBOARD_PREFERENCES.liquidityFilter),
     dashboardMode: enumValue(value.dashboardMode, DASHBOARD_MODES, DEFAULT_DASHBOARD_PREFERENCES.dashboardMode),
+    technicalDirectionMode: enumValue(
+      value.technicalDirectionMode,
+      TECHNICAL_DIRECTION_MODES,
+      DEFAULT_DASHBOARD_PREFERENCES.technicalDirectionMode,
+    ),
     visibleFamilies: sanitizeVisibleFamilies(value.visibleFamilies),
     edgeOnly: booleanValue(value.edgeOnly, DEFAULT_DASHBOARD_PREFERENCES.edgeOnly),
     edgeMode: enumValue(value.edgeMode, EDGE_MODES, DEFAULT_DASHBOARD_PREFERENCES.edgeMode),

@@ -435,6 +435,8 @@ export const DashboardPortfolioTicketRequestSchema = z.object({
   atr_multiplier: z.number().min(0.1).max(10).default(1.5),
   buffer_pct: z.number().min(0).max(0.1).default(0.005),
   min_rr: z.number().min(0.1).max(20).default(1.5),
+  price_source: z.enum(["official_close", "live_if_fresh"]).default("live_if_fresh"),
+  max_live_quote_age_seconds: z.number().int().min(0).max(3600).default(60),
 })
 export type DashboardPortfolioTicketRequest = z.input<typeof DashboardPortfolioTicketRequestSchema>
 
@@ -460,6 +462,8 @@ export const DashboardPortfolioTicketRowSchema = z.object({
   shares: z.number().int().default(0),
   entry_timing: z.string().default("next_open"),
   entry_reference_price_type: z.string().default("last_close_proxy"),
+  price_source: z.enum(["official_close", "live"]).default("official_close"),
+  live_quote_age_seconds: z.number().nullable().optional(),
   execution_condition: z.string().default("execute_next_open_only_if_open_remains_in_entry_zone"),
   entry_reference_price: z.number().nullable().optional(),
   entry_zone_low: z.number().nullable().optional(),
@@ -557,6 +561,145 @@ export const DashboardDailyBlotterResponseSchema = z.object({
   rows: z.array(DashboardDailyBlotterRowSchema).default([]),
 })
 export type DashboardDailyBlotterResponse = z.infer<typeof DashboardDailyBlotterResponseSchema>
+
+export const BourseLiveQuoteSchema = z.object({
+  symbol: z.string(),
+  session_date: z.string().nullable().optional(),
+  quote_timestamp: z.string().nullable().optional(),
+  open_price: z.number().nullable().optional(),
+  last_price: z.number().nullable().optional(),
+  high_price: z.number().nullable().optional(),
+  low_price: z.number().nullable().optional(),
+  prev_close: z.number().nullable().optional(),
+  volume: z.number().nullable().optional(),
+  source_provider: z.string().default("casablanca_bourse_live"),
+  source_url: z.string().nullable().optional(),
+  updated_at: z.string().nullable().optional(),
+  is_fresh: z.boolean().default(false),
+  age_seconds: z.number().nullable().optional(),
+})
+export type BourseLiveQuote = z.infer<typeof BourseLiveQuoteSchema>
+
+export const BourseLiveQuotesResponseSchema = z.object({
+  quotes: z.array(BourseLiveQuoteSchema).default([]),
+  missing_symbols: z.array(z.string()).default([]),
+  max_age_seconds: z.number(),
+})
+export type BourseLiveQuotesResponse = z.infer<typeof BourseLiveQuotesResponseSchema>
+
+export const DashboardPortfolioTradeInputSchema = z.object({
+  symbol: z.string(),
+  action: z.enum(["BUY", "SELL", "SELL_SHORT", "COVER"]),
+  quantity: z.number().positive(),
+  price_mad: z.number().positive(),
+  timestamp: z.string().nullable().optional(),
+  fees_mad: z.number().min(0).default(0),
+  notes: z.string().nullable().optional(),
+})
+export type DashboardPortfolioTradeInput = z.input<typeof DashboardPortfolioTradeInputSchema>
+
+export const DashboardPortfolioTradeSchema = DashboardPortfolioTradeInputSchema.extend({
+  id: z.string(),
+  realized_pnl_mad: z.number().default(0),
+})
+export type DashboardPortfolioTrade = z.infer<typeof DashboardPortfolioTradeSchema>
+
+export const DashboardPortfolioPositionMarkSchema = z.object({
+  symbol: z.string(),
+  side: z.enum(["long", "short"]),
+  quantity: z.number(),
+  cmp_mad: z.number().nullable().optional(),
+  mark_price_mad: z.number().nullable().optional(),
+  mark_source: z.string().default("official_close"),
+  market_value_mad: z.number().nullable().optional(),
+  unrealized_pnl_mad: z.number().nullable().optional(),
+  realized_pnl_mad: z.number().default(0),
+  updated_at: z.string().nullable().optional(),
+  live_quote_age_seconds: z.number().nullable().optional(),
+})
+export type DashboardPortfolioPositionMark = z.infer<typeof DashboardPortfolioPositionMarkSchema>
+
+export const DashboardPortfolioSummarySchema = z.object({
+  positions: z.array(DashboardPortfolioPositionMarkSchema).default([]),
+  trades: z.array(DashboardPortfolioTradeSchema).default([]),
+  total_market_value_mad: z.number().default(0),
+  total_unrealized_pnl_mad: z.number().default(0),
+  total_realized_pnl_mad: z.number().default(0),
+})
+export type DashboardPortfolioSummary = z.infer<typeof DashboardPortfolioSummarySchema>
+
+export const DashboardPortfolioComponentSchema = z.object({
+  symbol: z.string(),
+  shares: z.number().int().positive(),
+  enabled: z.boolean().default(true),
+})
+export type DashboardPortfolioComponent = z.infer<typeof DashboardPortfolioComponentSchema>
+
+export const DashboardPortfolioSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string().nullable().optional(),
+  symbols: z.array(z.string()).default([]),
+  component_shares: z.record(z.string(), z.number().int().positive()).default({}),
+  components: z.array(DashboardPortfolioComponentSchema).default([]),
+  allocation_method: z.enum(["share_quantities", "hrp"]).default("share_quantities"),
+  side_policy: z.enum(["long_only", "long_short"]).default("long_only"),
+  total_capital_mad: z.number().default(1_000_000),
+  cash_buffer_pct: z.number().default(0),
+  stop_loss_pct: z.number().nullable().optional(),
+  take_profit_pct: z.number().nullable().optional(),
+  display_mode: z.enum(["trade_opportunities", "technical_directions"]).default("trade_opportunities"),
+  technical_direction_mode: z.enum(["best", "classic"]).default("best"),
+  horizon: z.string().default("monthly"),
+  is_default: z.boolean().default(false),
+  replay_start_date: z.string().nullable().optional(),
+  replay_end_date: z.string().nullable().optional(),
+  replay_generated_at: z.string().nullable().optional(),
+  last_replay: z.record(z.unknown()).default({}),
+  summary: DashboardPortfolioSummarySchema.nullable().optional(),
+  created_at: z.string().nullable().optional(),
+  updated_at: z.string().nullable().optional(),
+})
+export type DashboardPortfolio = z.infer<typeof DashboardPortfolioSchema>
+
+export const DashboardPortfolioReplayResponseSchema = z.object({
+  portfolio: DashboardPortfolioSchema,
+  summary: DashboardPortfolioSummarySchema,
+  replay: z.record(z.unknown()).default({}),
+})
+export type DashboardPortfolioReplayResponse = z.infer<typeof DashboardPortfolioReplayResponseSchema>
+
+export type DashboardPortfolioPayload = {
+  name: string
+  description?: string | null
+  symbols?: string[]
+  components?: DashboardPortfolioComponent[]
+  component_shares?: Record<string, number>
+  allocation_method?: "share_quantities" | "hrp"
+  side_policy?: "long_only" | "long_short"
+  total_capital_mad?: number
+  cash_buffer_pct?: number
+  stop_loss_pct?: number | null
+  take_profit_pct?: number | null
+  display_mode?: "trade_opportunities" | "technical_directions"
+  technical_direction_mode?: "best" | "classic"
+  horizon?: string
+}
+
+export type DashboardPortfolioReplayPayload = Omit<DashboardPortfolioPayload, "name" | "description"> & {
+  start_date: string
+  end_date: string
+  persist?: boolean
+}
+
+export const DashboardPortfolioBacktestRunSchema = z.object({
+  strategy_id: z.string(),
+  run_id: z.string(),
+  status: z.string(),
+  mode: z.string().default("portfolio_replay"),
+  title: z.string(),
+})
+export type DashboardPortfolioBacktestRun = z.infer<typeof DashboardPortfolioBacktestRunSchema>
 
 export const FillRowSchema = z.object({
   id: z.string().optional(),
@@ -1182,6 +1325,19 @@ export const SignalEvidenceStitchedMetricsSchema = z.object({
   stock_expected_return: z.number().nullable().optional(),
 })
 
+export const SignalEvidenceProofSummarySchema = z.object({
+  limit: z.string().default("100"),
+  n_trades: z.number().default(0),
+  window_start: z.string().nullable().optional(),
+  window_end: z.string().nullable().optional(),
+  expected_return_gross: z.number().nullable().optional(),
+  expected_return_net: z.number().nullable().optional(),
+  stock_expected_return: z.number().nullable().optional(),
+  hit_rate: z.number().nullable().optional(),
+  hit_ci_lower: z.number().nullable().optional(),
+  hit_ci_upper: z.number().nullable().optional(),
+})
+
 export const SignalEvidenceStitchedOosBacktestSchema = z.object({
   status: z.string().default("succeeded"),
   source: z.literal("wfo"),
@@ -1190,6 +1346,9 @@ export const SignalEvidenceStitchedOosBacktestSchema = z.object({
   bucket: z.string(),
   direction: z.string(),
   cooldown_bars: z.number().default(0),
+  stitched_window_start: z.string().nullable().optional(),
+  stitched_window_end: z.string().nullable().optional(),
+  proof: SignalEvidenceProofSummarySchema.default({}),
   dates: z.array(z.string()).default([]),
   open_series: z.array(z.number()).default([]),
   high_series: z.array(z.number()).default([]),
@@ -1199,6 +1358,7 @@ export const SignalEvidenceStitchedOosBacktestSchema = z.object({
   equity: z.array(z.number()).default([]),
   trades: z.array(SignalEvidenceTradeSchema).default([]),
   trade_ledger: z.array(z.record(z.unknown())).default([]),
+  warnings: z.array(z.string()).default([]),
   metrics: SignalEvidenceStitchedMetricsSchema.default({}),
 }).nullable()
 export type SignalEvidenceStitchedOosBacktest = z.infer<typeof SignalEvidenceStitchedOosBacktestSchema>
@@ -1227,6 +1387,9 @@ export const SignalEvidenceSchema = z.object({
     proof_window_end: z.string().nullable().optional(),
     proof_n: z.number().nullable().optional(),
     proof_method: z.string().nullable().optional(),
+    proof_limit: z.string().nullable().optional(),
+    stitched_window_start: z.string().nullable().optional(),
+    stitched_window_end: z.string().nullable().optional(),
     selection_window_start: z.string().nullable().optional(),
     selection_window_end: z.string().nullable().optional(),
     selection_n: z.number().nullable().optional(),
@@ -1249,6 +1412,7 @@ export async function fetchSignalEvidence(args: {
   variant?: string
   costBps?: number
   cooldownBars?: number
+  proofLimit?: "100" | "250" | "500" | "all"
 }): Promise<SignalEvidence> {
   const params = new URLSearchParams({
     symbol: args.symbol,
@@ -1258,6 +1422,7 @@ export async function fetchSignalEvidence(args: {
   if (args.variant) params.set("variant", args.variant)
   if (args.costBps != null) params.set("cost_bps", String(args.costBps))
   if (args.cooldownBars != null) params.set("cooldown_bars", String(Math.max(0, Math.floor(args.cooldownBars))))
+  if (args.proofLimit) params.set("proof_limit", args.proofLimit)
   const payload = await request<unknown>(`/strategy/signal/evidence?${params.toString()}`)
   return SignalEvidenceSchema.parse(payload)
 }
@@ -1278,6 +1443,72 @@ export async function fetchDashboardPortfolioPositions(): Promise<DashboardManua
   return parsed.positions
 }
 
+export async function fetchDashboardPortfolios(): Promise<DashboardPortfolio[]> {
+  const payload = await request<unknown>("/dashboard/portfolios")
+  const parsed = z.object({ portfolios: z.array(DashboardPortfolioSchema).default([]) }).parse(payload)
+  return parsed.portfolios
+}
+
+export async function createDashboardPortfolio(body: DashboardPortfolioPayload): Promise<DashboardPortfolio> {
+  const payload = await request<unknown>("/dashboard/portfolios", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+  return DashboardPortfolioSchema.parse(payload)
+}
+
+export async function updateDashboardPortfolio(id: string, body: Partial<DashboardPortfolioPayload>): Promise<DashboardPortfolio> {
+  const payload = await request<unknown>(`/dashboard/portfolios/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  })
+  return DashboardPortfolioSchema.parse(payload)
+}
+
+export async function deleteDashboardPortfolio(id: string): Promise<void> {
+  await request<unknown>(`/dashboard/portfolios/${id}`, { method: "DELETE" })
+}
+
+export async function createDashboardPortfolioFromHistory(
+  body: DashboardPortfolioPayload & { start_date: string; end_date: string },
+): Promise<DashboardPortfolioReplayResponse> {
+  const payload = await request<unknown>("/dashboard/portfolios/from-history", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+  return DashboardPortfolioReplayResponseSchema.parse(payload)
+}
+
+export async function generateDashboardPortfolioHistory(
+  id: string,
+  body: DashboardPortfolioReplayPayload,
+): Promise<DashboardPortfolioReplayResponse> {
+  const payload = await request<unknown>(`/dashboard/portfolios/${id}/generate-history`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+  return DashboardPortfolioReplayResponseSchema.parse(payload)
+}
+
+export async function runDashboardPortfolioBacktest(id: string): Promise<DashboardPortfolioBacktestRun> {
+  const payload = await request<unknown>(`/dashboard/portfolios/${id}/backtest-run`, {
+    method: "POST",
+  })
+  return DashboardPortfolioBacktestRunSchema.parse(payload)
+}
+
+export async function fetchDashboardNamedPortfolioSummary(
+  id: string,
+  options?: { priceSource?: "official_close" | "live_if_fresh"; maxLiveQuoteAgeSeconds?: number },
+): Promise<DashboardPortfolioSummary> {
+  const params = new URLSearchParams({
+    price_source: options?.priceSource ?? "live_if_fresh",
+    max_live_quote_age_seconds: String(options?.maxLiveQuoteAgeSeconds ?? 60),
+  })
+  const payload = await request<unknown>(`/dashboard/portfolios/${id}/summary?${params.toString()}`)
+  return DashboardPortfolioSummarySchema.parse(payload)
+}
+
 export async function saveDashboardPortfolioPositions(
   positions: DashboardManualPosition[],
 ): Promise<DashboardManualPosition[]> {
@@ -1287,6 +1518,55 @@ export async function saveDashboardPortfolioPositions(
   })
   const parsed = z.object({ positions: z.array(DashboardManualPositionSchema).default([]) }).parse(payload)
   return parsed.positions
+}
+
+export async function fetchBourseLiveQuotes(
+  symbols: string[],
+  options?: { maxAgeSeconds?: number; forceRefresh?: boolean },
+): Promise<BourseLiveQuotesResponse> {
+  const normalized = Array.from(new Set(symbols.map((symbol) => symbol.trim().toUpperCase()).filter(Boolean)))
+  if (normalized.length === 0) {
+    return { quotes: [], missing_symbols: [], max_age_seconds: options?.maxAgeSeconds ?? 60 }
+  }
+  const params = new URLSearchParams({
+    symbols: normalized.join(","),
+    max_age_seconds: String(options?.maxAgeSeconds ?? 60),
+  })
+  if (options?.forceRefresh) params.set("force_refresh", "true")
+  const payload = await request<unknown>(`/market-data/bourse/live-quotes?${params.toString()}`)
+  return BourseLiveQuotesResponseSchema.parse(payload)
+}
+
+export async function fetchDashboardPortfolioSummary(
+  options?: { priceSource?: "official_close" | "live_if_fresh"; maxLiveQuoteAgeSeconds?: number },
+): Promise<DashboardPortfolioSummary> {
+  const params = new URLSearchParams({
+    price_source: options?.priceSource ?? "live_if_fresh",
+    max_live_quote_age_seconds: String(options?.maxLiveQuoteAgeSeconds ?? 60),
+  })
+  const payload = await request<unknown>(`/dashboard/portfolio/summary?${params.toString()}`)
+  return DashboardPortfolioSummarySchema.parse(payload)
+}
+
+export async function recordDashboardPortfolioTrade(
+  trade: DashboardPortfolioTradeInput,
+): Promise<DashboardPortfolioTrade> {
+  const payload = await request<unknown>("/dashboard/portfolio/trades", {
+    method: "POST",
+    body: JSON.stringify(DashboardPortfolioTradeInputSchema.parse(trade)),
+  })
+  return DashboardPortfolioTradeSchema.parse(payload)
+}
+
+export async function recordDashboardNamedPortfolioTrade(
+  id: string,
+  trade: DashboardPortfolioTradeInput,
+): Promise<DashboardPortfolioTrade> {
+  const payload = await request<unknown>(`/dashboard/portfolios/${id}/trades`, {
+    method: "POST",
+    body: JSON.stringify(DashboardPortfolioTradeInputSchema.parse(trade)),
+  })
+  return DashboardPortfolioTradeSchema.parse(payload)
 }
 
 export async function fetchDashboardDailyBlotter(
@@ -1849,6 +2129,10 @@ export const StockMasterSchema = z.object({
   is_active: z.boolean(),
   track_source: z.string(),
   bourse_url: z.string().nullable().optional(),
+  shares_outstanding: z.number().int().nullable().optional(),
+  shares_as_of: z.string().nullable().optional(),
+  shares_source: z.string().nullable().optional(),
+  shares_updated_at: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
   created_at: z.string().nullable().optional(),
   updated_at: z.string().nullable().optional(),
@@ -1998,6 +2282,10 @@ export const MarketCatalogRowSchema = z.object({
   is_active: z.boolean().nullable().optional(),
   track_source: z.string().nullable().optional(),
   bourse_url: z.string().nullable().optional(),
+  shares_outstanding: z.number().int().nullable().optional(),
+  shares_as_of: z.string().nullable().optional(),
+  shares_source: z.string().nullable().optional(),
+  shares_updated_at: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
   // From market_data_store (null if tracked but not yet ingested)
   start_ts: z.string().nullable().optional(),
@@ -2355,6 +2643,16 @@ export const BloombergSeriesPreviewSchema = z.object({
 })
 export type BloombergSeriesPreview = z.infer<typeof BloombergSeriesPreviewSchema>
 
+export const BloombergDeleteResultSchema = z.object({
+  status: z.string(),
+  batch_id: z.string().optional(),
+  series_id: z.string().optional(),
+  last_batch_id: z.string().optional(),
+  objects_deleted: z.number().default(0),
+  object_delete_failed: z.number().default(0),
+})
+export type BloombergDeleteResult = z.infer<typeof BloombergDeleteResultSchema>
+
 export const BloombergBridgeStatusSchema = z.object({
   bridge_id: z.string(),
   status: z.string(),
@@ -2462,6 +2760,20 @@ export async function cancelBloombergJob(jobId: string): Promise<BloombergJob> {
     method: "POST",
   })
   return BloombergJobSchema.parse(row)
+}
+
+export async function deleteBloombergBatch(batchId: string): Promise<BloombergDeleteResult> {
+  const row = await request<unknown>(`/bloomberg/batches/${encodeURIComponent(batchId)}`, {
+    method: "DELETE",
+  })
+  return BloombergDeleteResultSchema.parse(row)
+}
+
+export async function deleteBloombergSeries(seriesId: string): Promise<BloombergDeleteResult> {
+  const row = await request<unknown>(`/bloomberg/series/${encodeURIComponent(seriesId)}`, {
+    method: "DELETE",
+  })
+  return BloombergDeleteResultSchema.parse(row)
 }
 
 export async function getBloombergSeriesPreview(
@@ -3737,6 +4049,7 @@ export const DashboardCustomIndexSchema = z.object({
   created_at: z.string(),
   updated_at: z.string(),
   portfolio_edge: DashboardPortfolioEdgeSchema.nullable().optional(),
+  editable: z.boolean().optional(),
 })
 export type DashboardCustomIndex = z.infer<typeof DashboardCustomIndexSchema>
 
@@ -4022,7 +4335,7 @@ export type StrategyBacktestStockDetail = z.infer<typeof StrategyBacktestStockDe
 
 export async function createStrategyBacktestRun(body: {
   strategy_id: string
-  mode?: "direct" | "wfo"
+  mode?: "direct" | "wfo" | "portfolio_replay"
   start_date?: string | null
   end_date?: string | null
   timeframe?: string
@@ -4244,6 +4557,7 @@ export async function createDashboardIndex(body: {
   name: string
   symbols?: string[]
   components?: DashboardCustomIndexComponent[]
+  use_available_shares?: boolean
 }): Promise<DashboardCustomIndex> {
   const raw = await request<unknown>("/dashboard/indices", {
     method: "POST",
@@ -4258,6 +4572,7 @@ export async function updateDashboardIndex(
     name: string
     symbols?: string[]
     components?: DashboardCustomIndexComponent[]
+    use_available_shares?: boolean
   },
 ): Promise<DashboardCustomIndex> {
   const raw = await request<unknown>(`/dashboard/indices/${id}`, {
@@ -5205,7 +5520,114 @@ export async function fetchSignalEngineGlobalBatchStatus(batchId?: string): Prom
 }
 
 // ---------------------------------------------------------------------------
-// Analytics — signal evaluation + macro factor
+// Admin ops scheduler
+// ---------------------------------------------------------------------------
+
+export const OpsSchedulerRunSchema = z.object({
+  id: z.string(),
+  schedule_id: z.string().optional(),
+  trigger_source: z.string().nullable().optional(),
+  status: z.string(),
+  started_at: z.string().nullable().optional(),
+  finished_at: z.string().nullable().optional(),
+  enqueued_jobs: z.number().default(0),
+  error_message: z.string().nullable().optional(),
+  meta_json: z.record(z.unknown()).default({}),
+})
+export type OpsSchedulerRun = z.infer<typeof OpsSchedulerRunSchema>
+
+const OpsSchedulerHeartbeatJobSchema = z.object({
+  id: z.string(),
+  next_run_at: z.string().nullable().optional(),
+}).passthrough()
+
+export const OpsSchedulerHeartbeatSchema = z.object({
+  scheduler_id: z.string().optional(),
+  started_at: z.string().optional(),
+  heartbeat_at: z.string().optional(),
+  jobs: z.array(OpsSchedulerHeartbeatJobSchema).default([]),
+}).passthrough()
+export type OpsSchedulerHeartbeat = z.infer<typeof OpsSchedulerHeartbeatSchema>
+
+export const OpsScheduleSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  kind: z.string(),
+  queue: z.string(),
+  cron: z.string(),
+  timezone: z.string(),
+  description: z.string(),
+  next_run_at: z.string().nullable().optional(),
+  last_run: OpsSchedulerRunSchema.nullable().optional(),
+})
+export type OpsSchedule = z.infer<typeof OpsScheduleSchema>
+
+export const OpsQueueStatusSchema = z.object({
+  name: z.string(),
+  queued: z.number().default(0),
+  workers: z.number().default(0),
+  failed: z.number().default(0),
+})
+export type OpsQueueStatus = z.infer<typeof OpsQueueStatusSchema>
+
+export const OpsSignalCoverageSchema = z.object({
+  symbols_total: z.number().default(0),
+  masi_symbols: z.number().default(0),
+  non_masi_symbols: z.number().default(0),
+  variants: z.array(z.string()).default([]),
+  horizons: z.array(z.string()).default([]),
+  expected_tuples: z.number().default(0),
+  signal_engine_stale_tuples: z.number().default(0),
+  wfo_stale_tuples: z.number().default(0),
+  stale_symbols_sample: z.array(z.string()).default([]),
+  non_masi_symbols_sample: z.array(z.string()).default([]),
+})
+export type OpsSignalCoverage = z.infer<typeof OpsSignalCoverageSchema>
+
+export const OpsSchedulerStatusSchema = z.object({
+  ok: z.boolean().default(false),
+  scheduler: z.object({
+    online: z.boolean().default(false),
+    heartbeat: OpsSchedulerHeartbeatSchema.nullable().optional(),
+  }),
+  schedules: z.array(OpsScheduleSchema).default([]),
+  queues: z.array(OpsQueueStatusSchema).default([]),
+  legacy_rq_scheduler_entries: z.array(z.record(z.unknown())).default([]),
+  signal_coverage: OpsSignalCoverageSchema,
+})
+export type OpsSchedulerStatus = z.infer<typeof OpsSchedulerStatusSchema>
+
+export const OpsSchedulerDispatchResponseSchema = z.object({
+  status: z.string(),
+  schedule_id: z.string().optional(),
+  run_id: z.string().optional(),
+  enqueued_jobs: z.number().default(0),
+  runs: z.array(z.record(z.unknown())).optional(),
+  error: z.string().optional(),
+}).passthrough()
+export type OpsSchedulerDispatchResponse = z.infer<typeof OpsSchedulerDispatchResponseSchema>
+
+export async function fetchOpsSchedulerStatus(): Promise<OpsSchedulerStatus> {
+  const payload = await request<unknown>("/ops/scheduler/status")
+  return OpsSchedulerStatusSchema.parse(payload)
+}
+
+export async function runOpsSchedule(scheduleId: string): Promise<OpsSchedulerDispatchResponse> {
+  const payload = await request<unknown>(`/ops/scheduler/run/${encodeURIComponent(scheduleId)}`, {
+    method: "POST",
+  })
+  return OpsSchedulerDispatchResponseSchema.parse(payload)
+}
+
+export async function backfillOpsSignals(): Promise<OpsSchedulerDispatchResponse> {
+  const payload = await request<unknown>("/ops/scheduler/backfill/signals", {
+    method: "POST",
+  })
+  return OpsSchedulerDispatchResponseSchema.parse(payload)
+}
+
+// ---------------------------------------------------------------------------
+// Analytics - signal evaluation + macro factor
 // ---------------------------------------------------------------------------
 
 export const ICCurveSchema = z.object({

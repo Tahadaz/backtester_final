@@ -18,6 +18,7 @@ type SharedSignalsViewProps = {
   topbarContent?: ReactNode
   defaultTab?: "technique" | "evidence" | "indicateurs" | "wfo" | "backtest"
   evidenceSource?: "auto" | "signal_engine" | "wfo"
+  evidenceVariant?: string | null
   selectedVariantId?: string | null
 }
 
@@ -66,6 +67,7 @@ export function SharedSignalsView({
   topbarContent,
   defaultTab,
   evidenceSource = "auto",
+  evidenceVariant = null,
   selectedVariantId = null,
 }: SharedSignalsViewProps) {
   const [cooldownBars, setCooldownBars] = useState(0)
@@ -99,7 +101,7 @@ export function SharedSignalsView({
           <SignalEvidenceTab
             symbol={selectedSymbol}
             horizon={horizon}
-            variant={variant}
+            variant={evidenceVariant}
             source={evidenceSource}
             selectedVariantId={selectedVariantId}
             cooldownBars={cooldownBars}

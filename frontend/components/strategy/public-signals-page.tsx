@@ -80,10 +80,8 @@ function parseSignalView(value: string | null): PublicSignalView {
   return "expanded"
 }
 
-function evidenceVariantFromQuery(value: string | null, fallbackView: string | null, legacyVariant: string | null): string {
+function evidenceVariantFromQuery(value: string | null): string | undefined {
   const token = String(value ?? "").trim().toLowerCase()
-  const legacyToken = String(legacyVariant ?? "").trim().toLowerCase()
-  const fallbackToken = String(fallbackView ?? "").trim().toLowerCase()
   const aliases: Record<string, string> = {
     legacy: "legacy_ta_simple",
     expanded: "expanded_ta_simple",
@@ -99,11 +97,9 @@ function evidenceVariantFromQuery(value: string | null, fallbackView: string | n
     "legacy_factor_x_ta_combo",
     "expanded_factor_x_ta_combo",
   ])
-  for (const candidate of [token, legacyToken, fallbackToken]) {
-    if (aliases[candidate]) return aliases[candidate]
-    if (validModes.has(candidate)) return candidate
-  }
-  return "expanded_ta_simple"
+  if (aliases[token]) return aliases[token]
+  if (validModes.has(token)) return token
+  return undefined
 }
 
 function selectedSignalVariantIdFromQuery(value: string | null): string | null {
@@ -274,12 +270,7 @@ export function PublicSignalsPage() {
   const requestedSymbol = (searchParams.get("symbol") ?? "").toUpperCase()
   const requestedHorizon = parseHorizon(searchParams.get("horizon"))
   const requestedView = parseSignalView(searchParams.get("view"))
-  const viewParam = searchParams.get("view")
-  const requestedEvidenceVariant = evidenceVariantFromQuery(
-    viewParam ?? searchParams.get("evidence_variant"),
-    viewParam,
-    searchParams.get("variant"),
-  )
+  const requestedEvidenceVariant = evidenceVariantFromQuery(searchParams.get("evidence_variant"))
   const requestedSelectedVariantId = selectedSignalVariantIdFromQuery(searchParams.get("variant"))
   const requestedTab = parseTab(searchParams.get("tab"))
   const requestedSource = parseEvidenceSource(searchParams.get("source"))

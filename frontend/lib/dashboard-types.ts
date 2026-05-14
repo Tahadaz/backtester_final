@@ -224,6 +224,23 @@ export interface DashboardBestTechnicalSignal {
   factor_dependencies?: Record<string, FactorDependency[]>
 }
 
+export interface DashboardPerformancePeriod {
+  pct: number | null
+  start_price: number | null
+  end_price: number | null
+  start_date: string | null
+  end_date: string | null
+  source: string
+}
+
+export interface DashboardPerformance {
+  one_day?: DashboardPerformancePeriod
+  wtd?: DashboardPerformancePeriod
+  mtd?: DashboardPerformancePeriod
+  ytd?: DashboardPerformancePeriod
+  open_to_now?: DashboardPerformancePeriod
+}
+
 export interface DashboardStock {
   symbol: string
   display_name: string | null
@@ -232,6 +249,8 @@ export interface DashboardStock {
   last_price?: number | null
   prev_close?: number | null
   var1j_pct?: number | null
+  performance?: DashboardPerformance | null
+  live_quote?: import("@/lib/api").BourseLiveQuote | null
   adv?: number | null
   edge?: {
     signal_engine?: EdgeMetrics | null
@@ -239,6 +258,7 @@ export interface DashboardStock {
   }
   best_signal?: DashboardBestSignal | null
   best_technical_signal?: DashboardBestTechnicalSignal | null
+  classic_technical_signal?: DashboardBestTechnicalSignal | null
   asset_class?: string | null     // "equity" | "index" | "factor"
   asset_type?: string | null      // "equity" | "commodity" | "forex" | "bond" | "crypto"
   market_region?: string | null   // "masi" | "us" | "european" | "asian" | null
@@ -281,11 +301,13 @@ export interface DashboardCustomIndexDefinition {
   components?: DashboardCustomIndexComponent[]
   is_weighted_complete?: boolean
   portfolio_edge?: DashboardPortfolioEdge | null
+  editable?: boolean
 }
 
 export type DashboardScoreSource = "both" | "signal_engine" | "wfo"
-export type DashboardView = "stocks" | "sectors" | "index"
+export type DashboardView = "stocks" | "sectors" | "index" | "portfolio"
 export type DashboardDisplayMode = "trade_opportunities" | "technical_directions"
+export type DashboardTechnicalDirectionMode = "best" | "classic"
 export type DashboardHorizon = TradingHorizon
 export type DashboardHorizonAlias = DashboardHorizon | "short" | "medium" | "long"
 export type Horizon = DashboardHorizonAlias

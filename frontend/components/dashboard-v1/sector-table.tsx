@@ -8,6 +8,7 @@ import type {
   DashboardScoreSource,
   DashboardSector,
   DashboardStock,
+  DashboardTechnicalDirectionMode,
   Horizon,
   SignalEngineScores,
 } from "@/lib/dashboard-types"
@@ -70,6 +71,7 @@ interface SectorTableProps {
   signalView?: "legacy" | "expanded" | "factor_x_ta"
   scoreSource?: DashboardScoreSource
   displayMode?: DashboardDisplayMode
+  technicalDirectionMode?: DashboardTechnicalDirectionMode
   edgeEnabled?: boolean
   showTechnicalLevels?: boolean
   visibleFamilies?: Partial<Record<FamilyKey, boolean>>
@@ -151,17 +153,21 @@ function evidenceHref(
   })
 }
 
-function technicalHref(stock: DashboardStock, horizon: Horizon) {
-  const signal = technicalSignalForDisplay(stock)
-  const variant = signal?.variant ?? "expanded_ta_simple"
+function technicalHref(stock: DashboardStock, horizon: Horizon, mode: DashboardTechnicalDirectionMode) {
+  const signal = technicalSignalForDisplay(stock, mode)
+  const variant = mode === "classic" ? "legacy_ta_simple" : signal?.variant ?? "expanded_ta_simple"
   return signalEvidenceUrl({
     symbol: stock.symbol,
     horizon,
     view: variant,
     source: signal?.source ?? "auto",
-    evidenceVariant: signal?.variant,
+    evidenceVariant: mode === "classic" ? undefined : signal?.variant,
     tab: "technique",
   })
+}
+
+function technicalModeShortLabel(mode: DashboardTechnicalDirectionMode) {
+  return mode === "classic" ? "classic" : "best"
 }
 
 function technicalDirectionLabel(direction: string | null | undefined) {
@@ -244,6 +250,7 @@ export function SectorTable({
   signalView = "legacy",
   scoreSource = "both",
   displayMode = "trade_opportunities",
+  technicalDirectionMode = "best",
   edgeEnabled = true,
   visibleFamilies,
   portfolioShares,
@@ -264,8 +271,8 @@ export function SectorTable({
   )
 
   const portfolioWeights = useMemo(
-    () => buildPortfolioWeightRows(stocks, portfolioShares ?? {}, { displayMode }),
-    [displayMode, portfolioShares, stocks],
+    () => buildPortfolioWeightRows(stocks, portfolioShares ?? {}, { displayMode, technicalDirectionMode }),
+    [displayMode, portfolioShares, stocks, technicalDirectionMode],
   )
   const portfolioRowBySymbol = useMemo<Record<string, PortfolioWeightRow>>(
     () => portfolioRowsBySymbol(portfolioWeights.rows) as Record<string, PortfolioWeightRow>,
@@ -288,9 +295,11 @@ export function SectorTable({
           return {
             sector,
             sectorStocks,
-            sortedStocks: [...sectorStocks].sort(isTechnicalMode ? compareTechnicalSignalStocks : compareBestSignalStocks),
+            sortedStocks: [...sectorStocks].sort((left, right) =>
+              isTechnicalMode ? compareTechnicalSignalStocks(left, right, technicalDirectionMode) : compareBestSignalStocks(left, right),
+            ),
             stats: summarizeBestSignals(sectorStocks),
-            technicalStats: summarizeTechnicalSignals(sectorStocks),
+            technicalStats: summarizeTechnicalSignals(sectorStocks, technicalDirectionMode),
             weightSummary,
           }
         })
@@ -311,7 +320,7 @@ export function SectorTable({
             scoreForSort(right.sector, scoreSource, signalView),
           )
         }),
-    [hasWeightedPortfolio, isTechnicalMode, portfolioWeights.rows, scoreSource, sectors, signalView, stocks],
+    [hasWeightedPortfolio, isTechnicalMode, portfolioWeights.rows, scoreSource, sectors, signalView, stocks, technicalDirectionMode],
   )
 
   const columnCount = 1 + (showPortfolioWeights ? 1 : 0) + shownFamilies.length + 3 + (!isTechnicalMode && edgeEnabled ? 2 : 0) + 1
@@ -425,7 +434,7 @@ export function SectorTable({
               </TableHead>
             ))}
             <TableHead className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-              {isTechnicalMode ? "Direction best" : "Portefeuille"}
+              {isTechnicalMode ? `Direction ${technicalModeShortLabel(technicalDirectionMode)}` : "Portefeuille"}
             </TableHead>
             <TableHead className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
               {isTechnicalMode ? "Methode technique" : "Methode auto"}
@@ -527,7 +536,9 @@ export function SectorTable({
                         <div className="max-w-[180px] truncate text-[11px] font-semibold" title={topTechnicalSignal?.label ?? ""}>
                           {topTechnicalSignal?.label?.replace("Signal Engine - ", "Engine ").replace("Factor x TA", "FX") ?? "No technical signal"}
                         </div>
-                        <div className="dashboard-mono text-[10px] text-muted-foreground">{technicalStats.topStock?.symbol ?? "--"}</div>
+                        <div className="dashboard-mono text-[10px] text-muted-foreground">
+                          {technicalDirectionMode === "classic" ? "Fixed classic" : technicalStats.topStock?.symbol ?? "--"}
+                        </div>
                       </div>
                     ) : <PortfolioEdgeMethodCell edge={portfolioEdge} />}
                   </TableCell>
@@ -591,7 +602,7 @@ export function SectorTable({
                                       </TableHead>
                                     ))}
                                     <TableHead className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                                      {isTechnicalMode ? "Direction best" : "Signal"}
+                                      {isTechnicalMode ? `Direction ${technicalModeShortLabel(technicalDirectionMode)}` : "Signal"}
                                     </TableHead>
                                     <TableHead className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                                       {isTechnicalMode ? "Methode technique" : "Methode auto"}
@@ -610,9 +621,9 @@ export function SectorTable({
                                 </TableHeader>
                                 <TableBody>
                                   {sortedStocks.map((stock) => {
-                                    const href = isTechnicalMode ? technicalHref(stock, horizon) : evidenceHref(stock, horizon)
+                                    const href = isTechnicalMode ? technicalHref(stock, horizon, technicalDirectionMode) : evidenceHref(stock, horizon)
                                     const signal = bestSignalForDisplay(stock)
-                                    const technicalSignal = technicalSignalForDisplay(stock)
+                                    const technicalSignal = technicalSignalForDisplay(stock, technicalDirectionMode)
                                     const shareSymbol = String(stock.symbol ?? "").trim().toUpperCase()
                                     const weightRow = portfolioRowBySymbol[shareSymbol]
                                     const shareValue = portfolioShares?.[shareSymbol] ?? ""
@@ -684,7 +695,9 @@ export function SectorTable({
                                               <div className="max-w-[180px] truncate text-[11px] font-semibold" title={technicalSignal?.label ?? ""}>
                                                 {technicalSignal?.label?.replace("Signal Engine - ", "Engine ").replace("Factor x TA", "FX") ?? "No technical signal"}
                                               </div>
-                                              <div className="dashboard-mono text-[10px] text-muted-foreground">{displayVariantLabel(technicalSignal?.variant)}</div>
+                                              <div className="dashboard-mono text-[10px] text-muted-foreground">
+                                                {technicalDirectionMode === "classic" ? "Fixed classic" : displayVariantLabel(technicalSignal?.variant)}
+                                              </div>
                                             </div>
                                           ) : <BestSignalMethodCell signal={signal} />}
                                         </TableCell>

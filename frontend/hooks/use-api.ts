@@ -70,8 +70,10 @@ import type {
   BloombergBridgeStatus,
   BloombergJob,
   BloombergSeries,
+  OpsSchedulerStatus,
 } from "@/lib/api"
 import {
+  fetchOpsSchedulerStatus,
   getAnalyticsSignalsOverview,
   getMacroCatalog,
   evaluateStockSignal,
@@ -1413,6 +1415,17 @@ export function useSignalEngineBatchStatus() {
     }
   )
   return { data, ...rest }
+}
+
+export function useOpsSchedulerStatus() {
+  return useSWR<OpsSchedulerStatus>(
+    "/ops/scheduler/status",
+    fetchOpsSchedulerStatus,
+    {
+      revalidateOnFocus: true,
+      refreshInterval: 15000,
+    }
+  )
 }
 
 export function usePredictiveAbility(args: PredictiveAbilityArgs | null) {

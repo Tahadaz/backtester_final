@@ -1274,3 +1274,30 @@
     font-variant-numeric: tabular-nums;
   }
 }
+
+@media (max-width: 768px) {
+  html,
+  body {
+    overflow-x: hidden;
+  }
+
+  .dashboard-claude .dashboard-panel.overflow-hidden {
+    overflow-x: auto;
+  }
+
+  .dashboard-claude .dashboard-section-title {
+    font-size: 12px;
+    line-height: 1.3;
+  }
+
+  .dashboard-claude .dashboard-meta {
+    font-size: 10px;
+  }
+
+  .dashboard-claude .dashboard-chip {
+    height: auto;
+    min-height: 1.75rem;
+    max-width: 100%;
+    white-space: normal;
+  }
+}

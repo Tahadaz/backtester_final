@@ -13,6 +13,7 @@ type ExpandedSignalsViewProps = {
   variant?: ExpandedSignalsPageView
   defaultTab?: "technique" | "evidence" | "indicateurs" | "wfo" | "backtest"
   evidenceSource?: "auto" | "signal_engine" | "wfo"
+  evidenceVariant?: string | null
   selectedVariantId?: string | null
 }
 

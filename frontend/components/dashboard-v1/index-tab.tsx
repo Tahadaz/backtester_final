@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useMemo, useState } from "react"
-import { ArrowRight, ChevronDown, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react"
+import { ArrowRight, ChevronDown, ChevronRight, Database, Pencil, Plus, Trash2 } from "lucide-react"
 import type {
   DashboardBreadth,
   DashboardCustomIndexComponent,
@@ -12,6 +12,7 @@ import type {
   DashboardScoreSource,
   DashboardIndex,
   DashboardStock,
+  DashboardTechnicalDirectionMode,
   FamilyScore,
   Horizon,
   SignalEngineScores,
@@ -66,7 +67,9 @@ interface IndexTabProps {
   horizon: Horizon
   horizonDays: number
   edgeEnabled?: boolean
+  technicalDirectionMode?: DashboardTechnicalDirectionMode
   visibleFamilies?: Partial<Record<FamilyKey, boolean>>
+  availableShares?: Record<string, number>
   onCreate?: (payload: { name: string; components: DashboardCustomIndexComponent[] }) => Promise<void>
   onUpdate?: (id: string, payload: { name: string; components: DashboardCustomIndexComponent[] }) => Promise<void>
   onDelete?: (id: string) => Promise<void>
@@ -117,6 +120,7 @@ interface ComputedIndex {
   members: IndexMember[]
   totalMarketValue: number
   isWeightedComplete: boolean
+  hasComponentWeights: boolean
   editable: boolean
 }
 
@@ -314,17 +318,21 @@ function evidenceHref(
   })
 }
 
-function technicalHref(stock: DashboardStock, horizon: Horizon) {
-  const signal = technicalSignalForDisplay(stock)
-  const variant = signal?.variant ?? "expanded_ta_simple"
+function technicalHref(stock: DashboardStock, horizon: Horizon, mode: DashboardTechnicalDirectionMode) {
+  const signal = technicalSignalForDisplay(stock, mode)
+  const variant = mode === "classic" ? "legacy_ta_simple" : signal?.variant ?? "expanded_ta_simple"
   return signalEvidenceUrl({
     symbol: stock.symbol,
     horizon,
     view: variant,
     source: signal?.source ?? "auto",
-    evidenceVariant: signal?.variant,
+    evidenceVariant: mode === "classic" ? undefined : signal?.variant,
     tab: "technique",
   })
+}
+
+function technicalModeShortLabel(mode: DashboardTechnicalDirectionMode) {
+  return mode === "classic" ? "classic" : "best"
 }
 
 function technicalDirectionLabel(direction: string | null | undefined) {
@@ -377,7 +385,7 @@ function BreadthBar({
 }
 
 function renderIndexHeaderSignal(index: ComputedIndex, displayMode: DashboardDisplayMode) {
-  if (index.editable && !index.isWeightedComplete) {
+  if ((index.editable || index.hasComponentWeights) && !index.isWeightedComplete) {
     return (
       <div className="space-y-1 text-right">
         <div className="text-[11px] font-semibold text-amber-700">Poids incomplets</div>
@@ -411,17 +419,19 @@ function IndexSignalOverview({
   horizonDays,
   edgeEnabled,
   displayMode,
+  technicalDirectionMode,
 }: {
   index: ComputedIndex
   horizonDays: number
   edgeEnabled: boolean
   displayMode: DashboardDisplayMode
+  technicalDirectionMode: DashboardTechnicalDirectionMode
 }) {
   const portfolioEdge = index.portfolioEdge
   const technicalSignal = index.technicalStats.topSignal
   const isTechnicalMode = displayMode === "technical_directions"
 
-  if (index.editable && !index.isWeightedComplete) {
+  if ((index.editable || index.hasComponentWeights) && !index.isWeightedComplete) {
     return (
       <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950">
         Renseignez un nombre entier d'actions et un prix disponible pour chaque composant afin de calculer les poids et les scores ponderes.
@@ -432,7 +442,7 @@ function IndexSignalOverview({
   return (
     <div className={cn("grid gap-2", !isTechnicalMode && edgeEnabled ? "md:grid-cols-5" : "md:grid-cols-3")}>
       <div className="dashboard-field px-3 py-2">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{isTechnicalMode ? "Direction best" : "Portefeuille"}</div>
+        <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{isTechnicalMode ? `Direction ${technicalModeShortLabel(technicalDirectionMode)}` : "Portefeuille"}</div>
         <div className="mt-1">
           {isTechnicalMode ? <SignalBadge label={technicalSignal?.signal_label ?? "Indisponible"} /> : <PortfolioEdgeBadgeCell edge={portfolioEdge} />}
           <div className="dashboard-mono mt-1 text-[10px] text-muted-foreground">
@@ -450,7 +460,9 @@ function IndexSignalOverview({
               <div className="max-w-[180px] truncate text-[11px] font-semibold" title={technicalSignal?.label ?? ""}>
                 {technicalSignal?.label?.replace("Signal Engine - ", "Engine ").replace("Factor x TA", "FX") ?? "No technical signal"}
               </div>
-              <div className="dashboard-mono text-[10px] text-muted-foreground">{index.technicalStats.topStock?.symbol ?? "--"}</div>
+              <div className="dashboard-mono text-[10px] text-muted-foreground">
+                {technicalDirectionMode === "classic" ? "Fixed classic" : index.technicalStats.topStock?.symbol ?? "--"}
+              </div>
             </div>
           ) : <PortfolioEdgeMethodCell edge={portfolioEdge} />}
         </div>
@@ -502,7 +514,9 @@ export function IndexTab({
   horizon,
   horizonDays,
   edgeEnabled = true,
+  technicalDirectionMode = "best",
   visibleFamilies,
+  availableShares,
 }: IndexTabProps) {
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
@@ -555,6 +569,17 @@ export function IndexTab({
         ]),
       ),
     [stocks],
+  )
+
+  const availableShareSymbols = useMemo(
+    () =>
+      stockCatalog
+        .map((stock) => stock.symbol)
+        .filter((symbol) => {
+          const shares = Number(availableShares?.[symbol])
+          return Number.isInteger(shares) && shares > 0
+        }),
+    [availableShares, stockCatalog],
   )
 
   const createMissingPriceSymbols = useMemo(
@@ -624,18 +649,20 @@ export function IndexTab({
         wfo: computeScoreBlock(masiMembers, "wfo"),
       },
       bestStats: summarizeBestSignals(stocks),
-      technicalStats: summarizeTechnicalSignals(stocks),
+      technicalStats: summarizeTechnicalSignals(stocks, technicalDirectionMode),
       weightSummary: null,
       portfolioEdge: baseIndex.portfolio_edge ?? null,
       members: masiMembers,
       totalMarketValue: 0,
       isWeightedComplete: true,
+      hasComponentWeights: false,
       editable: false,
     }
 
     const custom = customDefinitions.map((definition) => {
       const symbols = normalizeSymbols(definition.symbols)
       const componentShares = normalizeComponentShares(definition)
+      const hasComponentWeights = Object.keys(componentShares).length > 0
       const rawMembers = symbols.map((symbol) => makeMember(stockBySymbol.get(symbol), symbol, componentShares[symbol] ?? null))
       const totalMarketValue = rawMembers.reduce((sum, member) => sum + member.marketValue, 0)
       const isWeightedComplete =
@@ -655,7 +682,7 @@ export function IndexTab({
         .map((member) => member.stock)
         .filter((stock): stock is DashboardStock => Boolean(stock))
       const weightRows = isWeightedComplete
-        ? buildPortfolioWeightRows(memberStocks, componentShares, { displayMode }).rows
+        ? buildPortfolioWeightRows(memberStocks, componentShares, { displayMode, technicalDirectionMode }).rows
         : []
 
       return {
@@ -670,18 +697,19 @@ export function IndexTab({
           wfo: isWeightedComplete ? computeScoreBlock(members, "wfo", true) : null,
         },
         bestStats: summarizeBestSignals(memberStocks),
-        technicalStats: summarizeTechnicalSignals(memberStocks),
+        technicalStats: summarizeTechnicalSignals(memberStocks, technicalDirectionMode),
         weightSummary: isWeightedComplete ? summarizeWeightRows(weightRows) : null,
         portfolioEdge: isWeightedComplete ? definition.portfolio_edge ?? null : null,
         members,
         totalMarketValue,
         isWeightedComplete,
-        editable: true,
+        hasComponentWeights,
+        editable: definition.editable ?? true,
       } satisfies ComputedIndex
     })
 
     return [base, ...custom]
-  }, [baseIndex.name, baseIndex.portfolio_edge, customDefinitions, displayMode, signalView, stockBySymbol, stocks])
+  }, [baseIndex.name, baseIndex.portfolio_edge, customDefinitions, displayMode, signalView, stockBySymbol, stocks, technicalDirectionMode])
 
   function symbolOptions(query: string) {
     const normalized = query.trim().toLowerCase()
@@ -712,11 +740,33 @@ export function IndexTab({
     setShareInputs((previous) => ({ ...previous, [symbol]: previous[symbol] ?? "" }))
   }
 
+  function applyAvailableShares(
+    symbols: string[],
+    setSymbols: (next: string[]) => void,
+    setShareInputs: (updater: (previous: Record<string, string>) => Record<string, string>) => void,
+  ) {
+    const nextSymbols = symbols.length > 0
+      ? normalizeSymbols(symbols.filter((symbol) => Number(availableShares?.[symbol]) > 0))
+      : availableShareSymbols
+    if (nextSymbols.length === 0) return
+    setSymbols(nextSymbols)
+    setShareInputs((previous) => {
+      const next: Record<string, string> = {}
+      for (const symbol of nextSymbols) {
+        const shares = Number(availableShares?.[symbol])
+        next[symbol] = Number.isInteger(shares) && shares > 0 ? String(shares) : previous[symbol] ?? ""
+      }
+      return next
+    })
+  }
+
   function componentPreviewRows(symbols: string[], shareInputs: Record<string, string>): Record<string, PortfolioWeightRow> {
     const selectedStocks = symbols
       .map((symbol) => stockBySymbol.get(symbol))
       .filter((stock): stock is DashboardStock => Boolean(stock))
-    return portfolioRowsBySymbol(buildPortfolioWeightRows(selectedStocks, shareInputs, { displayMode }).rows) as Record<string, PortfolioWeightRow>
+    return portfolioRowsBySymbol(
+      buildPortfolioWeightRows(selectedStocks, shareInputs, { displayMode, technicalDirectionMode }).rows,
+    ) as Record<string, PortfolioWeightRow>
   }
 
   function renderComponentShareEditor({
@@ -896,6 +946,19 @@ export function IndexTab({
                 onChange={(event) => setCreateSearch(event.target.value)}
                 placeholder="Rechercher un symbole"
               />
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={availableShareSymbols.length === 0}
+                  onClick={() => applyAvailableShares([], setCreateSymbols, setCreateShareInputs)}
+                >
+                  <Database className="h-4 w-4" />
+                  Toutes les actions disponibles
+                </Button>
+                <span className="text-xs text-muted-foreground">{availableShareSymbols.length} quantite(s) disponible(s)</span>
+              </div>
               <div className="max-h-52 space-y-2 overflow-y-auto rounded-md border p-3">
                 {symbolOptions(createSearch).map((stock) => (
                   <label key={`create-${stock.symbol}`} className="flex items-center gap-2 text-sm">
@@ -957,10 +1020,12 @@ export function IndexTab({
         const isOpen = openKey === index.id
         const isEditing = editingId === index.id
         const sortedMembers = [...index.members].sort((left, right) => {
-          if (isTechnicalMode && left.stock && right.stock) return compareTechnicalSignalStocks(left.stock, right.stock)
+          if (isTechnicalMode && left.stock && right.stock) {
+            return compareTechnicalSignalStocks(left.stock, right.stock, technicalDirectionMode)
+          }
           return compareIndexMembers(left, right)
         })
-        const showComponentWeights = index.editable
+        const showComponentWeights = index.editable || index.hasComponentWeights
         const memberColumnCount = 2 + (showComponentWeights ? 3 : 0) + shownFamilies.length + 3 + (!isTechnicalMode && edgeEnabled ? 2 : 0) + 1
         return (
           <Collapsible key={index.id} open={isOpen}>
@@ -1015,6 +1080,7 @@ export function IndexTab({
                   horizonDays={horizonDays}
                   edgeEnabled={edgeEnabled}
                   displayMode={displayMode}
+                  technicalDirectionMode={technicalDirectionMode}
                 />
 
                 {isEditing && !readOnly && index.editable && (
@@ -1033,6 +1099,19 @@ export function IndexTab({
                       onChange={(event) => setEditSearch(event.target.value)}
                       placeholder="Rechercher un symbole"
                     />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={availableShareSymbols.length === 0}
+                        onClick={() => applyAvailableShares([], setEditSymbols, setEditShareInputs)}
+                      >
+                        <Database className="h-4 w-4" />
+                        Toutes les actions disponibles
+                      </Button>
+                      <span className="text-xs text-muted-foreground">{availableShareSymbols.length} quantite(s) disponible(s)</span>
+                    </div>
                     <div className="max-h-52 space-y-2 overflow-y-auto rounded-md border p-3">
                       {symbolOptions(editSearch).map((stock) => (
                         <label key={`edit-${index.id}-${stock.symbol}`} className="flex items-center gap-2 text-sm">
@@ -1160,7 +1239,7 @@ export function IndexTab({
                               </TableHead>
                             ))}
                             <TableHead className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                              {isTechnicalMode ? "Direction best" : "Signal"}
+                              {isTechnicalMode ? `Direction ${technicalModeShortLabel(technicalDirectionMode)}` : "Signal"}
                             </TableHead>
                             <TableHead className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                               {isTechnicalMode ? "Methode technique" : "Methode auto"}
@@ -1187,10 +1266,10 @@ export function IndexTab({
                           ) : (
                             sortedMembers.map((member) => {
                               const signal = bestSignalForDisplay(member.stock)
-                              const technicalSignal = technicalSignalForDisplay(member.stock)
+                              const technicalSignal = technicalSignalForDisplay(member.stock, technicalDirectionMode)
                               const href = member.stock
                                 ? isTechnicalMode
-                                  ? technicalHref(member.stock, horizon)
+                                  ? technicalHref(member.stock, horizon, technicalDirectionMode)
                                   : evidenceHref(member.stock, horizon)
                                 : null
 
@@ -1255,7 +1334,9 @@ export function IndexTab({
                                         <div className="max-w-[180px] truncate text-[11px] font-semibold" title={technicalSignal?.label ?? ""}>
                                           {technicalSignal?.label?.replace("Signal Engine - ", "Engine ").replace("Factor x TA", "FX") ?? "No technical signal"}
                                         </div>
-                                        <div className="dashboard-mono text-[10px] text-muted-foreground">{displayVariantLabel(technicalSignal?.variant)}</div>
+                                        <div className="dashboard-mono text-[10px] text-muted-foreground">
+                                          {technicalDirectionMode === "classic" ? "Fixed classic" : displayVariantLabel(technicalSignal?.variant)}
+                                        </div>
                                       </div>
                                     ) : <BestSignalMethodCell signal={signal} />}
                                   </TableCell>

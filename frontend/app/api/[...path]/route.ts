@@ -8,6 +8,7 @@ const UPSTREAM =
   process.env.API_URL ??
   "http://127.0.0.1:8000"
 const API_KEY = process.env.API_KEY ?? ""
+const ADMIN_API_KEY = process.env.ADMIN_API_KEY ?? ""
 const IS_PROD = process.env.NODE_ENV === "production"
 const UPSTREAM_TIMEOUT_MS = Number(process.env.UPSTREAM_TIMEOUT_MS ?? "120000")
 const STRATEGY_UNIVERSE_TIMEOUT_MS = Number(process.env.STRATEGY_UNIVERSE_TIMEOUT_MS ?? "4000")
@@ -43,19 +44,38 @@ async function currentSessionUser(): Promise<{ id?: string | null; email?: strin
   }
 }
 
-async function buildUpstreamHeaders(req: NextRequest): Promise<Headers> {
+function adminEmails(): Set<string> {
+  return new Set(
+    (process.env.ADMIN_EMAILS ?? "")
+      .split(",")
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean),
+  )
+}
+
+function isAdminEmail(email: string | null | undefined): boolean {
+  const normalized = email?.trim().toLowerCase()
+  return Boolean(normalized && adminEmails().has(normalized))
+}
+
+async function buildUpstreamHeaders(req: NextRequest, pathParts: string[]): Promise<Headers> {
   const headers = new Headers()
   const contentType = req.headers.get("content-type")
   const accept = req.headers.get("accept")
   const authorization = req.headers.get("authorization")
   const cookie = req.headers.get("cookie")
+  const ifNoneMatch = req.headers.get("if-none-match")
   const user = await currentSessionUser()
 
   if (contentType) headers.set("content-type", contentType)
   if (accept) headers.set("accept", accept)
   if (authorization) headers.set("authorization", authorization)
   if (cookie) headers.set("cookie", cookie)
+  if (ifNoneMatch) headers.set("if-none-match", ifNoneMatch)
   if (API_KEY) headers.set("x-api-key", API_KEY)
+  if (ADMIN_API_KEY && pathParts[0] === "ops" && isAdminEmail(user?.email)) {
+    headers.set("x-admin-api-key", ADMIN_API_KEY)
+  }
   if (user?.id) headers.set("x-app-user-id", user.id)
   if (user?.email) headers.set("x-app-user-email", user.email)
   return headers
@@ -93,7 +113,7 @@ async function proxy(req: NextRequest, { params }: RouteContext) {
   const target = buildTargetUrl(req, pathParts)
 
   const method = req.method.toUpperCase()
-  const headers = await buildUpstreamHeaders(req)
+  const headers = await buildUpstreamHeaders(req, pathParts)
 
   const init: RequestInit & { duplex?: "half" } = {
     method,

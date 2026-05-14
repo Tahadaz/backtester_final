@@ -21,6 +21,12 @@ function stock(symbol, price, direction, sector = "Banks", expectedReturnNet = 0
       direction,
       action_expected_return_net: expectedReturnNet,
     },
+    best_technical_signal: {
+      direction,
+    },
+    classic_technical_signal: {
+      direction: direction === "long" ? "short" : direction === "short" ? "long" : "none",
+    },
     scores: {
       signal_engine: {
         technical_levels: {
@@ -100,6 +106,17 @@ test("summarizes a sector subset as part of the full portfolio", () => {
   assert.equal(banksSummary.totalWeightPct, 75)
   assert.equal(banksSummary.longWeightPct, 75)
   assert.equal(banksSummary.signalLabel, "Achat fort")
+})
+
+test("uses selected technical mode for weighted technical directions", () => {
+  const result = buildPortfolioWeightRows(
+    [stock("AAA", 100, "long"), stock("BBB", 100, "short")],
+    { AAA: "1", BBB: "1" },
+    { displayMode: "technical_directions", technicalDirectionMode: "classic" },
+  )
+
+  assert.equal(result.rows.find((row) => row.symbol === "AAA")?.direction, "short")
+  assert.equal(result.rows.find((row) => row.symbol === "BBB")?.direction, "long")
 })
 
 test("labels net portfolio signal thresholds", () => {

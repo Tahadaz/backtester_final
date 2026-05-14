@@ -29,9 +29,11 @@ function isActionableBestSignal(signal) {
   return false
 }
 
-export function directionForWeightedSignal(stock, displayMode = "trade_opportunities") {
+export function directionForWeightedSignal(stock, displayMode = "trade_opportunities", technicalDirectionMode = "best") {
   if (displayMode === "technical_directions") {
-    const signal = stock?.best_technical_signal
+    const signal = technicalDirectionMode === "classic"
+      ? stock?.classic_technical_signal
+      : stock?.best_technical_signal
     return signal?.direction === "long" || signal?.direction === "short" ? signal.direction : "none"
   }
   const signal = stock?.best_signal
@@ -55,6 +57,7 @@ export function signalLabelFromNetWeight(netWeightPct) {
 
 export function buildPortfolioWeightRows(stocks, sharesBySymbol, options = {}) {
   const displayMode = options.displayMode ?? "trade_opportunities"
+  const technicalDirectionMode = options.technicalDirectionMode ?? "best"
   const rows = []
   let totalMarketValue = 0
 
@@ -75,7 +78,7 @@ export function buildPortfolioWeightRows(stocks, sharesBySymbol, options = {}) {
       marketValue,
       weightFraction: 0,
       weightPct: 0,
-      direction: directionForWeightedSignal(stock, displayMode),
+      direction: directionForWeightedSignal(stock, displayMode, technicalDirectionMode),
       expectedReturnNet: expectedReturnForWeightedSignal(stock),
       stock,
     })

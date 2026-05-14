@@ -1,7 +1,13 @@
 "use client"
 
 import { Star } from "lucide-react"
-import type { DashboardBestSignal, DashboardBestTechnicalSignal, DashboardPortfolioEdge, DashboardStock } from "@/lib/dashboard-types"
+import type {
+  DashboardBestSignal,
+  DashboardBestTechnicalSignal,
+  DashboardPortfolioEdge,
+  DashboardStock,
+  DashboardTechnicalDirectionMode,
+} from "@/lib/dashboard-types"
 import { formatPercent } from "@/lib/format"
 import { SignalBadge } from "./signal-badge"
 
@@ -23,8 +29,13 @@ export function bestSignalForDisplay(stock: DashboardStock | null | undefined): 
   return signal
 }
 
-export function technicalSignalForDisplay(stock: DashboardStock | null | undefined): DashboardBestTechnicalSignal | null {
-  const signal = stock?.best_technical_signal ?? null
+export function technicalSignalForDisplay(
+  stock: DashboardStock | null | undefined,
+  mode: DashboardTechnicalDirectionMode = "best",
+): DashboardBestTechnicalSignal | null {
+  const signal = mode === "classic"
+    ? stock?.classic_technical_signal ?? null
+    : stock?.best_technical_signal ?? null
   if (!signal) return null
   if (signal.score_pct == null || !Number.isFinite(signal.score_pct)) return null
   return signal
@@ -97,12 +108,16 @@ export function compareBestSignalStocks(left: DashboardStock, right: DashboardSt
   return left.symbol.localeCompare(right.symbol)
 }
 
-export function compareTechnicalSignalStocks(left: DashboardStock, right: DashboardStock) {
-  const leftSignal = technicalSignalForDisplay(left)
-  const rightSignal = technicalSignalForDisplay(right)
+export function compareTechnicalSignalStocks(
+  left: DashboardStock,
+  right: DashboardStock,
+  mode: DashboardTechnicalDirectionMode = "best",
+) {
+  const leftSignal = technicalSignalForDisplay(left, mode)
+  const rightSignal = technicalSignalForDisplay(right, mode)
 
-  const rightScore = rightSignal?.abs_score_pct ?? Math.abs(rightSignal?.score_pct ?? Number.NEGATIVE_INFINITY)
-  const leftScore = leftSignal?.abs_score_pct ?? Math.abs(leftSignal?.score_pct ?? Number.NEGATIVE_INFINITY)
+  const rightScore = rightSignal?.abs_score_pct ?? (rightSignal?.score_pct != null ? Math.abs(rightSignal.score_pct) : Number.NEGATIVE_INFINITY)
+  const leftScore = leftSignal?.abs_score_pct ?? (leftSignal?.score_pct != null ? Math.abs(leftSignal.score_pct) : Number.NEGATIVE_INFINITY)
   if (rightScore !== leftScore) return rightScore - leftScore
 
   const sourceRank = (rightSignal?.source === "wfo" ? 1 : 0) - (leftSignal?.source === "wfo" ? 1 : 0)
@@ -146,18 +161,18 @@ export function summarizeBestSignals(stocks: DashboardStock[]) {
   }
 }
 
-export function summarizeTechnicalSignals(stocks: DashboardStock[]) {
+export function summarizeTechnicalSignals(stocks: DashboardStock[], mode: DashboardTechnicalDirectionMode = "best") {
   const ranked = [...stocks]
-    .filter((stock) => technicalSignalForDisplay(stock) !== null)
-    .sort(compareTechnicalSignalStocks)
+    .filter((stock) => technicalSignalForDisplay(stock, mode) !== null)
+    .sort((left, right) => compareTechnicalSignalStocks(left, right, mode))
   const topStock = ranked[0] ?? null
   const signals = ranked
-    .map((stock) => technicalSignalForDisplay(stock))
+    .map((stock) => technicalSignalForDisplay(stock, mode))
     .filter((signal): signal is DashboardBestTechnicalSignal => signal !== null)
 
   return {
     topStock,
-    topSignal: topStock ? technicalSignalForDisplay(topStock) : null,
+    topSignal: topStock ? technicalSignalForDisplay(topStock, mode) : null,
     directionalCount: signals.filter((signal) => signal.direction === "long" || signal.direction === "short").length,
     bullishCount: signals.filter((signal) => signal.direction === "long").length,
     bearishCount: signals.filter((signal) => signal.direction === "short").length,

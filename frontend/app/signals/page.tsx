@@ -64,6 +64,7 @@ function PrivateSignalsPage() {
   const tabFromQuery = (searchParams.get("tab") ?? "").trim().toLowerCase()
   const sourceFromQuery = (searchParams.get("source") ?? "").trim().toLowerCase()
   const selectedVariantId = selectedSignalVariantIdFromQuery(searchParams.get("variant"))
+  const evidenceVariant = signalModeFromQuery(searchParams.get("evidence_variant"))
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null)
   const [horizon, setHorizon] = useState("weekly")
 
@@ -120,6 +121,7 @@ function PrivateSignalsPage() {
             variant={view}
             defaultTab={defaultTab}
             evidenceSource={evidenceSource}
+            evidenceVariant={evidenceVariant}
             selectedVariantId={selectedVariantId}
           />
         ) : (
@@ -132,6 +134,7 @@ function PrivateSignalsPage() {
             variant={view as ExpandedSignalsPageView}
             defaultTab={defaultTab}
             evidenceSource={evidenceSource}
+            evidenceVariant={evidenceVariant}
             selectedVariantId={selectedVariantId}
           />
         )}

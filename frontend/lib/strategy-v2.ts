@@ -89,11 +89,36 @@ export type RuleConditionV2 = {
   threshold: WFOParam<number>
 }
 
+export type RuleOperandV4 =
+  | string
+  | number
+  | {
+      kind?: string
+      type?: string
+      [key: string]: unknown
+    }
+
+export type RuleExpressionV4 = {
+  operator?: "all" | "any" | "not" | "and" | "or" | RuleOperator | string
+  logic?: "all" | "any" | "and" | "or" | "not" | string
+  type?: "threshold" | "breakout" | "breakdown" | "cross" | "crossover" | "touch" | string
+  children?: RuleExpressionV4[]
+  left?: RuleOperandV4
+  right?: RuleOperandV4
+  source?: RuleOperandV4
+  level?: RuleOperandV4
+  direction?: string
+  variable?: ScoreVariable
+  threshold?: WFOParam<number> | number
+  [key: string]: unknown
+}
+
 export type EntryRuleV2 = {
   id: string
   label: string
   config_option: ConfigOption
   conditions: RuleConditionV2[]
+  rule_expression?: RuleExpressionV4 | null
   sizing: {
     mode: "manual" | "kelly_wfo" | "wfo"
     manual_pct?: number
@@ -107,6 +132,7 @@ export type ExitRuleV2 = {
   label: string
   config_option: ConfigOption
   conditions: RuleConditionV2[]
+  rule_expression?: RuleExpressionV4 | null
   sizing: {
     mode: "manual" | "kelly_wfo" | "wfo"
     manual_pct?: number
@@ -985,6 +1011,11 @@ function normalizeStockStrategyConfig(
       const rule = isRecord(rawRule) ? rawRule : {}
       const sizingRaw = isRecord(rule.sizing) ? rule.sizing : {}
       const conditionsRaw = Array.isArray(rule.conditions) ? rule.conditions : []
+      const ruleExpression = isRecord(rule.rule_expression)
+        ? structuredClone(rule.rule_expression) as RuleExpressionV4
+        : isRecord(rule.expression)
+          ? structuredClone(rule.expression) as RuleExpressionV4
+          : null
       return {
         id: typeof rule.id === "string" ? rule.id : `entry_${index + 1}`,
         label: typeof rule.label === "string" ? rule.label : `Entry ${index + 1}`,
@@ -998,6 +1029,7 @@ function normalizeStockStrategyConfig(
             threshold: normalizeWfoParam(condition.threshold, 0, horizon),
           }
         }),
+        rule_expression: ruleExpression,
         sizing: {
           mode: ["manual", "kelly_wfo", "wfo"].includes(String(sizingRaw.mode)) ? sizingRaw.mode as EntryRuleV2["sizing"]["mode"] : "manual",
           manual_pct: toNumber(sizingRaw.manual_pct, toNumber(sizingRaw.value, 25)),
@@ -1025,6 +1057,11 @@ function normalizeStockStrategyConfig(
       const rule = isRecord(rawRule) ? rawRule : {}
       const sizingRaw = isRecord(rule.sizing) ? rule.sizing : {}
       const conditionsRaw = Array.isArray(rule.conditions) ? rule.conditions : []
+      const ruleExpression = isRecord(rule.rule_expression)
+        ? structuredClone(rule.rule_expression) as RuleExpressionV4
+        : isRecord(rule.expression)
+          ? structuredClone(rule.expression) as RuleExpressionV4
+          : null
       return {
         id: typeof rule.id === "string" ? rule.id : `exit_${index + 1}`,
         label: typeof rule.label === "string" ? rule.label : `Exit ${index + 1}`,
@@ -1038,6 +1075,7 @@ function normalizeStockStrategyConfig(
             threshold: normalizeWfoParam(condition.threshold, 0, horizon),
           }
         }),
+        rule_expression: ruleExpression,
         sizing: {
           mode: ["manual", "kelly_wfo", "wfo"].includes(String(sizingRaw.mode)) ? sizingRaw.mode as ExitRuleV2["sizing"]["mode"] : "manual",
           manual_pct: toNumber(sizingRaw.manual_pct, toNumber(sizingRaw.value, 100)),
@@ -1083,7 +1121,7 @@ function normalizeStockStrategyConfig(
 }
 
 export function migrateStrategyConfigV2(raw: unknown, horizon: string): StrategyConfigV2 {
-  if (isRecord(raw) && (raw.schema_version === 2 || raw.schema_version === 3) && raw.app_domain === "four_pages") {
+  if (isRecord(raw) && (raw.schema_version === 2 || raw.schema_version === 3 || raw.schema_version === 4) && raw.app_domain === "four_pages") {
     const next = defaultStrategyConfigV2(horizon)
     const portfolio = isRecord(raw.portfolio) ? raw.portfolio : {}
     const universe = isRecord(portfolio.universe) ? portfolio.universe : {}

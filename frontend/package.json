@@ -1,9 +1,9 @@
 {
-  "name": "my-project",
+  "name": "rdt-alpha",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/ensure-port-free.js 3000 && next dev --port 3000",
     "build": "next build",
     "build:pages": "node scripts/build-pages.js",
     "prune:pages": "node scripts/prune-pages-output.js",

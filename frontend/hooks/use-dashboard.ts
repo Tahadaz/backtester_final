@@ -21,7 +21,7 @@ function normalizePayload(payload: DashboardData): DashboardData {
 }
 
 async function requestDashboardData(normalized: string, headers?: HeadersInit): Promise<Response> {
-  return fetch(`/api/dashboard/data/${normalized}`, { headers })
+  return fetch(`/api/dashboard/data/${normalized}`, { headers, cache: "no-store" })
 }
 
 async function fetchDashboardData(horizon: DashboardHorizonAlias): Promise<DashboardData> {
@@ -63,7 +63,8 @@ export function useDashboardData(horizon: DashboardHorizonAlias) {
     `dashboard-${normalized}`,
     () => fetchDashboardData(horizon),
     {
-      revalidateOnFocus: false,
+      refreshInterval: 60_000,
+      revalidateOnFocus: true,
     },
   )
 }
