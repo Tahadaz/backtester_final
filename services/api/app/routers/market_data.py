@@ -33,6 +33,8 @@ from ..storage import delete_object, put_bytes, presign_get, s3_client
 from ..schemas.market_data import (
     AvailabilityCalendarDayOut,
     AvailabilityCalendarOut,
+    BourseLiveQuoteOut,
+    BourseLiveQuotesOut,
     BourseStockLookupOut,
     AssetCategoryPatchIn,
     MarketCatalogRowOut,
@@ -47,11 +49,14 @@ from ..schemas.market_data import (
     MarketRefreshRunOut,
     ProviderSymbolMapOut,
     ProviderSymbolMapUpdate,
+    StockShareOut,
     StockMasterCreate,
     StockMasterOut,
     StockMasterUpdate,
     UploadFormatReferenceOut,
 )
+from ..services.bourse_live_quotes import get_or_refresh_live_quotes, normalize_symbols as _normalize_live_symbols
+from ..services.stock_shares import list_stock_share_records
 
 router = APIRouter(prefix="/market-data", tags=["market-data"])
 _DEFAULT_SMA_WINDOWS = [5, 10, 14, 20, 30, 50, 100, 200]
@@ -434,6 +439,49 @@ def list_symbols(
     ]
 
 
+@router.get("/stocks/shares", response_model=list[StockShareOut])
+def list_stock_shares(
+    require_shares: bool = Query(default=False),
+    db: Session = Depends(get_db),
+) -> list[StockShareOut]:
+    records = list_stock_share_records(db, require_shares=require_shares)
+    return [
+        StockShareOut(
+            symbol=record.symbol,
+            display_name=record.display_name,
+            shares_outstanding=record.shares_outstanding,
+            shares_as_of=record.shares_as_of,
+            shares_source=record.shares_source,
+            shares_updated_at=record.shares_updated_at,
+        )
+        for record in records
+    ]
+
+
+@router.get("/stocks/shares.xlsx")
+def export_stock_shares_excel(db: Session = Depends(get_db)) -> StreamingResponse:
+    records = list_stock_share_records(db, require_shares=True)
+    frame = pd.DataFrame(
+        [
+            {
+                "symbol": record.symbol,
+                "display_name": record.display_name,
+                "shares_outstanding": record.shares_outstanding,
+            }
+            for record in records
+        ]
+    )
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        frame.to_excel(writer, index=False, sheet_name="shares")
+    output.seek(0)
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="masi_stock_shares.xlsx"'},
+    )
+
+
 @router.get("/uploads/{dataset_id}/report-url")
 def get_ingest_report_url(
     dataset_id: UUID,
@@ -509,6 +557,10 @@ def _stock_to_out(
         is_active=stock.is_active,
         track_source=stock.track_source,
         bourse_url=stock.bourse_url,
+        shares_outstanding=getattr(stock, "shares_outstanding", None),
+        shares_as_of=getattr(stock, "shares_as_of", None),
+        shares_source=getattr(stock, "shares_source", None),
+        shares_updated_at=getattr(stock, "shares_updated_at", None),
         notes=stock.notes,
         created_at=stock.created_at,
         updated_at=stock.updated_at,
@@ -671,6 +723,10 @@ def add_tracked_stock(
         is_active=True,
         track_source=body.track_source or "bourse_direct",
         bourse_url=body.bourse_url or lookup.bourse_url,
+        shares_outstanding=body.shares_outstanding,
+        shares_as_of=body.shares_as_of,
+        shares_source=body.shares_source,
+        shares_updated_at=body.shares_updated_at,
         notes=body.notes,
     )
     db.add(stock)
@@ -730,6 +786,14 @@ def update_tracked_stock(
         stock.track_source = body.track_source
     if body.bourse_url is not None:
         stock.bourse_url = body.bourse_url
+    if body.shares_outstanding is not None:
+        stock.shares_outstanding = body.shares_outstanding
+    if body.shares_as_of is not None:
+        stock.shares_as_of = body.shares_as_of
+    if body.shares_source is not None:
+        stock.shares_source = body.shares_source
+    if body.shares_updated_at is not None:
+        stock.shares_updated_at = body.shares_updated_at
     if body.notes is not None:
         stock.notes = body.notes
 
@@ -957,6 +1021,37 @@ def bourse_lookup_stock(symbol: str, db: Session = Depends(get_db)) -> BourseSto
         if changed:
             db.commit()
     return result
+
+
+@router.get("/bourse/live-quotes", response_model=BourseLiveQuotesOut)
+def get_bourse_live_quotes(
+    symbols: str = Query(..., min_length=1),
+    max_age_seconds: int = Query(default=60, ge=0, le=3600),
+    force_refresh: bool = Query(default=False),
+    db: Session = Depends(get_db),
+) -> BourseLiveQuotesOut:
+    requested = _normalize_live_symbols(symbols.split(","))
+    if not requested:
+        raise HTTPException(status_code=400, detail="No symbols requested")
+    if len(requested) > 150:
+        raise HTTPException(status_code=400, detail="Too many symbols requested")
+    try:
+        quotes = get_or_refresh_live_quotes(
+            db,
+            requested,
+            max_age_seconds=max_age_seconds,
+            force_refresh=force_refresh,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Bourse live quote refresh failed: {exc}") from exc
+    return BourseLiveQuotesOut(
+        quotes=[
+            BourseLiveQuoteOut(**quote.__dict__)
+            for quote in quotes.values()
+        ],
+        missing_symbols=[symbol for symbol in requested if symbol not in quotes],
+        max_age_seconds=max_age_seconds,
+    )
 
 
 # ── OHLCV Preview ─────────────────────────────────────────────────────────────
@@ -1436,6 +1531,10 @@ def get_market_catalog(db: Session = Depends(get_db)) -> list[MarketCatalogRowOu
             is_active=row.is_active,
             track_source=row.track_source,
             bourse_url=row.bourse_url,
+            shares_outstanding=row.shares_outstanding,
+            shares_as_of=row.shares_as_of,
+            shares_source=row.shares_source,
+            shares_updated_at=row.shares_updated_at,
             notes=row.notes,
             start_ts=row.start_ts,
             end_ts=row.end_ts,
@@ -1652,6 +1751,10 @@ def get_market_catalog(db: Session = Depends(get_db)) -> list[MarketCatalogRowOu
                 is_active=bool(r["is_active"]) if r["is_active"] is not None else True,
                 track_source=r["track_source"],
                 bourse_url=r["bourse_url"],
+                shares_outstanding=r.get("shares_outstanding"),
+                shares_as_of=r.get("shares_as_of"),
+                shares_source=r.get("shares_source"),
+                shares_updated_at=r.get("shares_updated_at"),
                 notes=r["notes"],
                 start_ts=r["start_ts"],
                 end_ts=r["end_ts"],
@@ -1871,6 +1974,10 @@ def patch_asset_category(
         is_active=row.is_active,
         track_source=row.track_source,
         bourse_url=row.bourse_url,
+        shares_outstanding=getattr(row, "shares_outstanding", None),
+        shares_as_of=getattr(row, "shares_as_of", None),
+        shares_source=getattr(row, "shares_source", None),
+        shares_updated_at=getattr(row, "shares_updated_at", None),
         notes=row.notes,
         is_tracked=True,
         has_canonical_data=False,

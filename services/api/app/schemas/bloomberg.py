@@ -14,6 +14,7 @@ BloombergJobStatus = Literal["queued", "leased", "running", "succeeded", "failed
 BloombergFrequency = Literal["daily", "hourly", "minute"]
 BloombergUniverse = Literal["masi", "selected", "custom", "bonds"]
 BloombergMode = Literal["discovery_only", "discover_then_backfill", "backfill_missing", "refresh_latest"]
+DEFAULT_BLOOMBERG_OHLCV_FIELDS = ["PX_OPEN", "PX_HIGH", "PX_LOW", "PX_LAST", "VOLUME"]
 
 
 class BloombergBridgeManifest(BaseModel):
@@ -97,7 +98,7 @@ class BloombergJobCreateIn(BaseModel):
     frequency: BloombergFrequency = "daily"
     symbols: list[str] = Field(default_factory=list, max_length=500)
     securities: list[str] = Field(default_factory=list, max_length=500)
-    fields: list[str] = Field(default_factory=lambda: ["PX_LAST", "VOLUME"], max_length=64)
+    fields: list[str] = Field(default_factory=lambda: DEFAULT_BLOOMBERG_OHLCV_FIELDS.copy(), max_length=64)
     start_date: str | None = None
     end_date: str | None = None
     apply_to_market_data: bool = False

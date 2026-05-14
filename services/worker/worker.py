@@ -43,6 +43,10 @@ def _register_schedules(redis: Redis) -> None:
     Weekly signal jobs are conditional fallbacks: they only recompute tuples that
     are more than 7 days old if the Friday market refresh did not already catch them.
     """
+    if os.getenv("LEGACY_RQ_CRON_ENABLED", "0").strip() not in ("1", "true", "True"):
+        log.info("Legacy rq-scheduler cron registration disabled; dedicated scheduler owns recurring jobs.")
+        return
+
     try:
         from rq_scheduler import Scheduler as RQScheduler
     except ImportError:
@@ -139,7 +143,7 @@ def main() -> None:
         LISTEN_QUEUES, settings.REDIS_URL, concurrency,
     )
 
-    # Register schedules using a short-lived parent connection, then close it.
+    # Register legacy rq-scheduler schedules only when explicitly enabled.
     sched_redis = _build_redis()
     _register_schedules(sched_redis)
     sched_redis.close()

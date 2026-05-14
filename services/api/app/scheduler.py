@@ -100,6 +100,9 @@ _scheduler: BackgroundScheduler | None = None
 
 def start_scheduler() -> None:
     global _scheduler
+    if os.environ.get("API_EMBEDDED_SCHEDULER_ENABLED", "0").strip() not in ("1", "true", "True"):
+        log.info("scheduler: API embedded scheduler disabled; use services.worker.scheduler")
+        return
     if os.environ.get("MARKET_REFRESH_CRON_ENABLED", "1").strip() in ("0", "false", "False"):
         log.info("scheduler: disabled via MARKET_REFRESH_CRON_ENABLED=0")
         return
@@ -126,13 +129,13 @@ def start_scheduler() -> None:
     )
     _scheduler.add_job(
         _enqueue_dashboard_snapshot,
-        trigger=CronTrigger(hour=20, minute=30, day_of_week="mon-fri", timezone="Africa/Casablanca"),
+        trigger=CronTrigger(hour=23, minute=30, day_of_week="mon-fri", timezone="Africa/Casablanca"),
         id="daily_dashboard_snapshot",
         replace_existing=True,
     )
     _scheduler.start()
     log.info(
-        "scheduler: started - daily refresh @20:00, dashboard snapshot @20:30, "
+        "scheduler: started - daily refresh @20:00, dashboard snapshot maintenance @23:30, "
         "factor monitor @22:00, quarterly recalib @Jan/Apr/Jul/Oct 1st"
     )
 

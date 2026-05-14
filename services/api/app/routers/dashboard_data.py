@@ -17,6 +17,7 @@ from datetime import date
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import status
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -34,16 +35,37 @@ from ..services.dashboard_builder import (
 from ..schemas.dashboard_portfolio import (
     DashboardDailyBlotterRequest,
     DashboardDailyBlotterResponse,
+    DashboardPortfolioBacktestRunResponse,
+    DashboardPortfolioCreate,
+    DashboardPortfolioFromHistoryRequest,
+    DashboardPortfolioListResponse,
+    DashboardPortfolioOut,
     DashboardPortfolioPositionsRequest,
     DashboardPortfolioPositionsResponse,
+    DashboardPortfolioReplayRequest,
+    DashboardPortfolioReplayResponse,
+    DashboardPortfolioSummaryOut,
     DashboardPortfolioTicketRequest,
     DashboardPortfolioTicketResponse,
+    DashboardPortfolioTradeIn,
+    DashboardPortfolioTradeOut,
+    DashboardPortfolioUpdate,
 )
 from ..services.dashboard_portfolio import (
+    build_dashboard_portfolio_summary,
     build_dashboard_daily_blotter,
     build_dashboard_portfolio_ticket,
+    create_dashboard_portfolio,
+    create_dashboard_portfolio_backtest_run,
+    create_dashboard_portfolio_from_history,
+    delete_dashboard_portfolio,
+    get_dashboard_portfolio_out,
     list_dashboard_positions,
+    list_dashboard_portfolios,
+    record_dashboard_portfolio_trade,
+    replay_dashboard_portfolio,
     replace_dashboard_positions,
+    update_dashboard_portfolio,
 )
 
 logger = logging.getLogger(__name__)
@@ -112,6 +134,7 @@ def _dashboard_snapshot_has_current_shape(payload: Any) -> bool:
         not isinstance(stock, dict)
         or (
             "best_technical_signal" in stock
+            and "classic_technical_signal" in stock
             and (
                 not isinstance(stock.get("best_signal"), dict)
                 or "edge_score" in stock["best_signal"]
@@ -144,7 +167,10 @@ def _dashboard_snapshot_can_merge_live_technical(payload: Any) -> bool:
 
 def _merge_live_technical_signals(snapshot_payload: dict[str, Any], live_payload: dict[str, Any]) -> dict[str, Any]:
     technical_by_symbol = {
-        str(stock.get("symbol") or "").upper(): stock.get("best_technical_signal")
+        str(stock.get("symbol") or "").upper(): (
+            stock.get("best_technical_signal"),
+            stock.get("classic_technical_signal"),
+        )
         for stock in live_payload.get("stocks") or []
         if isinstance(stock, dict)
     }
@@ -152,7 +178,9 @@ def _merge_live_technical_signals(snapshot_payload: dict[str, Any], live_payload
         if not isinstance(stock, dict):
             continue
         symbol = str(stock.get("symbol") or "").upper()
-        stock["best_technical_signal"] = technical_by_symbol.get(symbol)
+        best_technical, classic_technical = technical_by_symbol.get(symbol, (None, None))
+        stock["best_technical_signal"] = best_technical
+        stock["classic_technical_signal"] = classic_technical
     snapshot_payload.setdefault("payload_version", DASHBOARD_PAYLOAD_VERSION)
     return snapshot_payload
 
@@ -204,6 +232,179 @@ def get_dashboard_portfolio_ticket(
     )
 
 
+@router.get("/portfolios", response_model=DashboardPortfolioListResponse)
+def get_dashboard_portfolios(
+    user: AppUser = Depends(require_app_user),
+    _auth: None = Depends(require_auth),
+    db: Session = Depends(get_db),
+) -> DashboardPortfolioListResponse:
+    return list_dashboard_portfolios(db, owner_user_id=user.id, include_summary=True)
+
+
+@router.post("/portfolios", response_model=DashboardPortfolioOut, status_code=status.HTTP_201_CREATED)
+def post_dashboard_portfolio(
+    body: DashboardPortfolioCreate,
+    user: AppUser = Depends(require_app_user),
+    _auth: None = Depends(require_auth),
+    db: Session = Depends(get_db),
+) -> DashboardPortfolioOut:
+    try:
+        return create_dashboard_portfolio(db, body, owner_user_id=user.id)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/portfolios/from-history", response_model=DashboardPortfolioReplayResponse, status_code=status.HTTP_201_CREATED)
+def post_dashboard_portfolio_from_history(
+    body: DashboardPortfolioFromHistoryRequest,
+    user: AppUser = Depends(require_app_user),
+    _auth: None = Depends(require_auth),
+    db: Session = Depends(get_db),
+) -> DashboardPortfolioReplayResponse:
+    try:
+        return create_dashboard_portfolio_from_history(db, body, owner_user_id=user.id)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/portfolios/{portfolio_id}", response_model=DashboardPortfolioOut)
+def get_dashboard_portfolio(
+    portfolio_id: str,
+    user: AppUser = Depends(require_app_user),
+    _auth: None = Depends(require_auth),
+    db: Session = Depends(get_db),
+) -> DashboardPortfolioOut:
+    try:
+        return get_dashboard_portfolio_out(db, portfolio_id, owner_user_id=user.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.patch("/portfolios/{portfolio_id}", response_model=DashboardPortfolioOut)
+def patch_dashboard_portfolio(
+    portfolio_id: str,
+    body: DashboardPortfolioUpdate,
+    user: AppUser = Depends(require_app_user),
+    _auth: None = Depends(require_auth),
+    db: Session = Depends(get_db),
+) -> DashboardPortfolioOut:
+    try:
+        return update_dashboard_portfolio(db, portfolio_id, body, owner_user_id=user.id)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/portfolios/{portfolio_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_dashboard_portfolio_endpoint(
+    portfolio_id: str,
+    user: AppUser = Depends(require_app_user),
+    _auth: None = Depends(require_auth),
+    db: Session = Depends(get_db),
+) -> Response:
+    try:
+        delete_dashboard_portfolio(db, portfolio_id, owner_user_id=user.id)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/portfolios/{portfolio_id}/positions", response_model=DashboardPortfolioPositionsResponse)
+def get_dashboard_named_portfolio_positions(
+    portfolio_id: str,
+    user: AppUser = Depends(require_app_user),
+    _auth: None = Depends(require_auth),
+    db: Session = Depends(get_db),
+) -> DashboardPortfolioPositionsResponse:
+    try:
+        return list_dashboard_positions(db, owner_user_id=user.id, portfolio_id=portfolio_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.put("/portfolios/{portfolio_id}/positions", response_model=DashboardPortfolioPositionsResponse)
+def put_dashboard_named_portfolio_positions(
+    portfolio_id: str,
+    body: DashboardPortfolioPositionsRequest,
+    user: AppUser = Depends(require_app_user),
+    _auth: None = Depends(require_auth),
+    db: Session = Depends(get_db),
+) -> DashboardPortfolioPositionsResponse:
+    try:
+        return replace_dashboard_positions(db, body, owner_user_id=user.id, portfolio_id=portfolio_id)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/portfolios/{portfolio_id}/summary", response_model=DashboardPortfolioSummaryOut)
+def get_dashboard_named_portfolio_summary(
+    portfolio_id: str,
+    price_source: str = "live_if_fresh",
+    max_live_quote_age_seconds: int = 60,
+    user: AppUser = Depends(require_app_user),
+    _auth: None = Depends(require_auth),
+    db: Session = Depends(get_db),
+) -> DashboardPortfolioSummaryOut:
+    try:
+        return build_dashboard_portfolio_summary(
+            db,
+            owner_user_id=user.id,
+            portfolio_id=portfolio_id,
+            price_source=price_source,
+            max_live_quote_age_seconds=max_live_quote_age_seconds,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/portfolios/{portfolio_id}/trades", response_model=DashboardPortfolioTradeOut)
+def post_dashboard_named_portfolio_trade(
+    portfolio_id: str,
+    body: DashboardPortfolioTradeIn,
+    user: AppUser = Depends(require_app_user),
+    _auth: None = Depends(require_auth),
+    db: Session = Depends(get_db),
+) -> DashboardPortfolioTradeOut:
+    try:
+        return record_dashboard_portfolio_trade(db, body, owner_user_id=user.id, portfolio_id=portfolio_id)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/portfolios/{portfolio_id}/generate-history", response_model=DashboardPortfolioReplayResponse)
+def post_dashboard_named_portfolio_replay(
+    portfolio_id: str,
+    body: DashboardPortfolioReplayRequest,
+    user: AppUser = Depends(require_app_user),
+    _auth: None = Depends(require_auth),
+    db: Session = Depends(get_db),
+) -> DashboardPortfolioReplayResponse:
+    try:
+        return replay_dashboard_portfolio(db, portfolio_id, body, owner_user_id=user.id)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/portfolios/{portfolio_id}/backtest-run", response_model=DashboardPortfolioBacktestRunResponse)
+def post_dashboard_named_portfolio_backtest_run(
+    portfolio_id: str,
+    user: AppUser = Depends(require_app_user),
+    _auth: None = Depends(require_auth),
+    db: Session = Depends(get_db),
+) -> DashboardPortfolioBacktestRunResponse:
+    try:
+        return create_dashboard_portfolio_backtest_run(db, portfolio_id, owner_user_id=user.id)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.get("/portfolio/positions", response_model=DashboardPortfolioPositionsResponse)
 def get_dashboard_portfolio_positions(
     user: AppUser = Depends(require_app_user),
@@ -223,6 +424,36 @@ def put_dashboard_portfolio_positions(
 ) -> DashboardPortfolioPositionsResponse:
     """Replace active manual positions for portfolio follow-up."""
     return replace_dashboard_positions(db, body, owner_user_id=user.id)
+
+
+@router.get("/portfolio/summary", response_model=DashboardPortfolioSummaryOut)
+def get_dashboard_portfolio_summary(
+    price_source: str = "live_if_fresh",
+    max_live_quote_age_seconds: int = 60,
+    user: AppUser = Depends(require_app_user),
+    _auth: None = Depends(require_auth),
+    db: Session = Depends(get_db),
+) -> DashboardPortfolioSummaryOut:
+    return build_dashboard_portfolio_summary(
+        db,
+        owner_user_id=user.id,
+        price_source=price_source,
+        max_live_quote_age_seconds=max_live_quote_age_seconds,
+    )
+
+
+@router.post("/portfolio/trades", response_model=DashboardPortfolioTradeOut)
+def post_dashboard_portfolio_trade(
+    body: DashboardPortfolioTradeIn,
+    user: AppUser = Depends(require_app_user),
+    _auth: None = Depends(require_auth),
+    db: Session = Depends(get_db),
+) -> DashboardPortfolioTradeOut:
+    try:
+        return record_dashboard_portfolio_trade(db, body, owner_user_id=user.id)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/daily-blotter", response_model=DashboardDailyBlotterResponse)

@@ -55,6 +55,9 @@ class Settings(BaseModel):
     DEFAULTS_DISCOVERY_QUEUE_NAME: str = (
         os.getenv("DEFAULTS_DISCOVERY_QUEUE_NAME", "defaults_discovery").strip() or "defaults_discovery"
     )
+    MARKET_REFRESH_QUEUE_NAME: str = (
+        os.getenv("MARKET_REFRESH_QUEUE_NAME", "market_refresh").strip() or "market_refresh"
+    )
     SIGNAL_ENGINE_QUEUE_NAME: str = os.getenv("SIGNAL_ENGINE_QUEUE_NAME", "signal_engine").strip() or "signal_engine"
     SIGNAL_BACKTEST_QUEUE_NAME: str = (
         os.getenv("SIGNAL_BACKTEST_QUEUE_NAME", "signal_backtest").strip() or "signal_backtest"

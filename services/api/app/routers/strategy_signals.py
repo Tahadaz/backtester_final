@@ -4718,6 +4718,19 @@ def _evidence_source(value: str | None) -> str:
     raise HTTPException(status_code=422, detail="source must be auto, signal_engine, or wfo")
 
 
+def _evidence_proof_limit(value: str | int | None) -> tuple[int | None, str]:
+    token = str(value if value is not None else "100").strip().lower()
+    if token == "all":
+        return None, "all"
+    try:
+        limit = int(token)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="proof_limit must be one of 100, 250, 500, or all")
+    if limit not in {100, 250, 500}:
+        raise HTTPException(status_code=422, detail="proof_limit must be one of 100, 250, 500, or all")
+    return limit, str(limit)
+
+
 def _evidence_float(value: Any) -> float | None:
     try:
         number = float(value)
@@ -4777,12 +4790,17 @@ def _select_signal_evidence_edge(
 ) -> tuple[dict[str, Any], str, str, str]:
     """Return (edge, source, variant, method_label) for evidence.
 
-    Auto mode mirrors dashboard best-signal selection; explicit source/variant
-    returns the available edge payload even when it is not currently tradable.
+    Requests without an explicit variant are WFO-first for the evidence page.
+    The dashboard best-signal rank intentionally rejects weak signals; evidence
+    must still be auditable when the current WFO signal has too few samples or
+    fails proof gates.  Explicit variant requests keep their requested
+    source/variant behavior.
     """
     from ..services.dashboard_builder import (
         EDGE_CANDIDATE_COUNT,
+        _apply_wfo_all_oos_proof_to_edge,
         _best_signal_rank,
+        _is_actionable_edge_bucket,
         _signal_method_label,
     )
 
@@ -4794,14 +4812,18 @@ def _select_signal_evidence_edge(
     else:
         variants = list(ALL_SIGNAL_MODE_NAMES)
 
-    if source == "auto":
+    prefer_relaxed_wfo = variant is None
+    if prefer_relaxed_wfo:
+        candidate_sources = ["wfo"]
+    elif source == "auto":
         candidate_sources = ["signal_engine", "wfo"]
     else:
         candidate_sources = [source]
         if variant is None and source != "wfo":
             variants = [resolve_signal_mode("expanded").name]
 
-    best: tuple[tuple[int, float, float], dict[str, Any], str, str] | None = None
+    best: tuple[tuple[int, float, float, float], dict[str, Any], str, str] | None = None
+    relaxed_best: tuple[tuple[int, int, float, float, float], dict[str, Any], str, str] | None = None
     first_payload: tuple[dict[str, Any], str, str] | None = None
     for candidate_source in candidate_sources:
         for candidate_variant in variants:
@@ -4832,14 +4854,52 @@ def _select_signal_evidence_edge(
                 continue
             if edge is None:
                 continue
+            if candidate_source == "wfo":
+                edge = _apply_wfo_all_oos_proof_to_edge(
+                    db,
+                    symbol=symbol,
+                    horizon=horizon,
+                    variant=candidate_variant,
+                    edge=edge,
+                    cost_bps=cost_bps,
+                )
             first_payload = first_payload or (edge, candidate_source, candidate_variant)
-            rank = _best_signal_rank(edge)
-            if rank is None:
-                continue
-            if best is None or rank > best[0]:
-                best = (rank, edge, candidate_source, candidate_variant)
+            if prefer_relaxed_wfo:
+                direction = str(edge.get("direction") or "none").strip().lower()
+                actionable = 1 if _is_actionable_edge_bucket(edge.get("bucket"), direction) else 0
+                proven = 1 if bool(edge.get("proven_edge_net")) else 0
+                edge_score = _evidence_float(edge.get("edge_score"))
+                expected = _evidence_float(edge.get("action_expected_return_net"))
+                if expected is None:
+                    expected = _evidence_float(edge.get("expected_return_net"))
+                n = _evidence_float(edge.get("n")) or 0.0
+                relaxed_rank = (
+                    actionable,
+                    proven,
+                    edge_score if edge_score is not None else -1.0,
+                    expected if expected is not None else -1e12,
+                    n,
+                )
+                if relaxed_best is None or relaxed_rank > relaxed_best[0]:
+                    relaxed_best = (relaxed_rank, edge, candidate_source, candidate_variant)
+            else:
+                rank = _best_signal_rank(edge)
+                if rank is None:
+                    continue
+                if best is None or rank > best[0]:
+                    best = (rank, edge, candidate_source, candidate_variant)
 
-    if source == "auto" or (source == "wfo" and variant is None):
+    if prefer_relaxed_wfo:
+        if relaxed_best is None:
+            if first_payload is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No WFO signal evidence for {symbol}/{horizon}.",
+                )
+            edge, selected_source, selected_variant = first_payload
+        else:
+            _rank, edge, selected_source, selected_variant = relaxed_best
+    elif source == "auto":
         if best is None:
             if first_payload is None:
                 raise HTTPException(
@@ -5174,6 +5234,80 @@ def _evidence_mean(values: list[float]) -> float | None:
     return float(np.mean(finite)) if finite else None
 
 
+def _evidence_trade_proof_summary(
+    trades: list[dict[str, Any]],
+    *,
+    direction: str,
+    proof_limit_label: str,
+) -> dict[str, Any]:
+    action_trades = [
+        trade
+        for trade in trades
+        if str(trade.get("direction") or "").strip().lower() in {"long", "short"}
+    ]
+    proof_trades = action_trades if action_trades else list(trades)
+    signal_dates = [
+        str(trade.get("signal_date") or "")[:10]
+        for trade in proof_trades
+        if str(trade.get("signal_date") or "")[:10]
+    ]
+    gross_values = [
+        float(value)
+        for trade in proof_trades
+        for value in [_evidence_float(trade.get("action_return_gross"))]
+        if value is not None
+    ]
+    net_values = [
+        float(value)
+        for trade in proof_trades
+        for value in [_evidence_float(trade.get("action_return_net"))]
+        if value is not None
+    ]
+    stock_values = [
+        float(value)
+        for trade in proof_trades
+        for value in [_evidence_float(trade.get("stock_return"))]
+        if value is not None
+    ]
+
+    hit_ci_lower = None
+    hit_ci_upper = None
+    hit_rate = None
+    if gross_values:
+        from core.quant_core.research.stats.hit_rate import wilson_ci
+
+        hits = int(np.sum(np.asarray(gross_values, dtype="float64") > 0.0))
+        hit_rate = float(hits / len(gross_values))
+        hit_ci_lower, hit_ci_upper = wilson_ci(hits, len(gross_values))
+
+    from core.quant_core.research.edge import bootstrap_mean_ci
+
+    gross_ci = bootstrap_mean_ci(np.asarray(gross_values, dtype="float64"), n_iter=1000, seed=6101)
+    net_ci = bootstrap_mean_ci(np.asarray(net_values, dtype="float64"), n_iter=1000, seed=6102)
+    stock_ci = bootstrap_mean_ci(np.asarray(stock_values, dtype="float64"), n_iter=1000, seed=6103)
+
+    has_action = str(direction or "").strip().lower() in {"long", "short"}
+    n = len(action_trades) if has_action else len(stock_values)
+    return {
+        "limit": proof_limit_label,
+        "n_trades": n,
+        "window_start": min(signal_dates) if signal_dates else None,
+        "window_end": max(signal_dates) if signal_dates else None,
+        "expected_return_gross": _evidence_mean(gross_values),
+        "expected_return_gross_ci_lower": gross_ci[0],
+        "expected_return_gross_ci_upper": gross_ci[1],
+        "expected_return_net": _evidence_mean(net_values),
+        "expected_return_net_ci_lower": net_ci[0],
+        "expected_return_net_ci_upper": net_ci[1],
+        "stock_expected_return": _evidence_mean(stock_values),
+        "stock_expected_return_ci_lower": stock_ci[0],
+        "stock_expected_return_ci_upper": stock_ci[1],
+        "hit_rate": hit_rate,
+        "hit_ci_lower": float(hit_ci_lower) if hit_ci_lower is not None else None,
+        "hit_ci_upper": float(hit_ci_upper) if hit_ci_upper is not None else None,
+    }
+
+
 def _evidence_sharpe(returns: list[float]) -> float:
     arr = np.asarray([value for value in returns if np.isfinite(value)], dtype=np.float64)
     if len(arr) < 2:
@@ -5192,6 +5326,9 @@ def _evidence_max_drawdown(equity: list[float]) -> float:
     safe_peak = np.where(peak <= 0.0, 1.0, peak)
     drawdown = 1.0 - arr / safe_peak
     return float(np.max(drawdown))
+
+
+EVIDENCE_MIN_SAMPLE_N = 30
 
 
 def _evidence_chart_frame(
@@ -5221,8 +5358,18 @@ def _evidence_chart_frame(
 
     start = min(starts)
     end = max(ends)
-    mask = (price_index >= start) & (price_index <= end)
-    chart_index = pd.DatetimeIndex(price_index[mask])
+    start_pos = int(price_index.searchsorted(start, side="left"))
+    end_pos = int(price_index.searchsorted(end, side="right")) - 1
+    if len(price_index) == 0 or start_pos >= len(price_index) or end_pos < 0:
+        return [], [], [], [], []
+    start_pos = max(0, min(start_pos, len(price_index) - 1))
+    end_pos = max(0, min(end_pos, len(price_index) - 1))
+    if end_pos < start_pos:
+        start_pos, end_pos = end_pos, start_pos
+    if end_pos - start_pos + 1 < 2 and len(price_index) > 1:
+        start_pos = max(0, start_pos - 1)
+        end_pos = min(len(price_index) - 1, end_pos + 1)
+    chart_index = pd.DatetimeIndex(price_index[start_pos:end_pos + 1])
     rows: list[tuple[str, float | None, float | None, float | None, float]] = []
     for ts in chart_index:
         if ts not in price_frame.index:
@@ -5527,6 +5674,9 @@ def _evidence_stitched_backtest(
     cost_bps: float,
     cooldown_bars: int = 0,
     raw_trade_count: int | None = None,
+    proof_summary: dict[str, Any] | None = None,
+    stitched_window_start: str | None = None,
+    stitched_window_end: str | None = None,
 ) -> dict[str, Any]:
     action_trades = [
         trade
@@ -5600,6 +5750,15 @@ def _evidence_stitched_backtest(
     cagr = float((1.0 + total_return) ** (1.0 / years) - 1.0) if total_return > -1.0 else -1.0
     hit_rate = float(np.mean([value > 0.0 for value in gross_returns])) if gross_returns else None
 
+    warning_sample_n = len(action_trades) if direction in {"long", "short"} else len(stock_returns)
+    warnings: list[str] = []
+    if warning_sample_n < EVIDENCE_MIN_SAMPLE_N:
+        sample_label = "OOS trades" if direction in {"long", "short"} else "neutral OOS samples"
+        warnings.append(
+            f"Too few {sample_label}: n={warning_sample_n}, minimum={EVIDENCE_MIN_SAMPLE_N}. "
+            "Shown for audit only; do not treat as a proven edge."
+        )
+
     has_candles = (
         open_prices is not None
         and high is not None
@@ -5618,6 +5777,9 @@ def _evidence_stitched_backtest(
         "bucket": bucket,
         "direction": direction,
         "cooldown_bars": max(0, int(cooldown_bars or 0)),
+        "stitched_window_start": stitched_window_start or (dates[0] if dates else None),
+        "stitched_window_end": stitched_window_end or (dates[-1] if dates else None),
+        "proof": proof_summary or {},
         "dates": dates,
         "open_series": open_prices if has_candles else [],
         "high_series": high if has_candles else [],
@@ -5627,6 +5789,7 @@ def _evidence_stitched_backtest(
         "equity": equity,
         "trades": trades,
         "trade_ledger": ledger,
+        "warnings": warnings,
         "metrics": {
             "total_return": total_return,
             "cagr": cagr,
@@ -5655,6 +5818,8 @@ def _signal_evidence_oos_periods(
     contributors: list[dict[str, Any]],
     cost_bps: float,
     cooldown_bars: int = 0,
+    proof_limit: int | None = 100,
+    proof_limit_label: str = "100",
 ) -> tuple[list[dict[str, Any]], int, dict[str, Any] | None]:
     """Rebuild the exact OOS sample behind edge E[R] and hit-rate metrics."""
     try:
@@ -5667,7 +5832,6 @@ def _signal_evidence_oos_periods(
         )
         from core.quant_core.horizons import HORIZON_SPECS
         from core.quant_core.research.edge import (
-            EDGE_MAX_OBSERVATIONS,
             ExitCandidate,
             _normalized_price_frame,
             _sample_frames,
@@ -5705,6 +5869,8 @@ def _signal_evidence_oos_periods(
         price_index = pd.DatetimeIndex(price_frame.index)
 
         def wfo_loader(sym: str, _h: str) -> dict[str, Any]:
+            from ..services.wfo_folds import normalize_wfo_folds_json
+
             for db_h in db_horizons:
                 summary = (
                     db.query(models.WfoSignalSummary)
@@ -5719,7 +5885,13 @@ def _signal_evidence_oos_periods(
                     .first()
                 )
                 if summary is not None and summary.folds_json:
-                    return {"folds_json": summary.folds_json}
+                    return {
+                        "folds_json": normalize_wfo_folds_json(
+                            summary.folds_json,
+                            config_json=summary.config_json,
+                            ohlcv_index=price_index,
+                        )
+                    }
             return {}
 
         def score_history_loader(sym: str, _h: str) -> list[dict[str, Any]]:
@@ -5773,7 +5945,7 @@ def _signal_evidence_oos_periods(
             fwd_horizon_bars=fwd_horizon,
             return_calc_method=return_calc_method,
             max_lookback_years=None,
-            n_target=EDGE_MAX_OBSERVATIONS,
+            n_target=None,
             exit_candidate=selected_exit,
         )
 
@@ -5896,6 +6068,21 @@ def _signal_evidence_oos_periods(
             if str(trade.get("direction") or "").strip().lower() in {"long", "short"}
         )
         all_trades = _apply_evidence_trade_cooldown(all_trades, price_index, cooldown_bars)
+        all_trades = sorted(
+            all_trades,
+            key=lambda trade: (
+                str(trade.get("signal_date") or ""),
+                str(trade.get("entry_date") or ""),
+                str(trade.get("exit_date") or ""),
+                str(trade.get("trade_id") or ""),
+            ),
+        )
+        proof_trades = all_trades if proof_limit is None else all_trades[-max(0, int(proof_limit)):]
+        proof_summary = _evidence_trade_proof_summary(
+            proof_trades,
+            direction=direction,
+            proof_limit_label=proof_limit_label,
+        )
         for period in periods:
             period["trades"] = []
         if direction in {"long", "short"}:
@@ -5928,6 +6115,16 @@ def _signal_evidence_oos_periods(
             windows,
             all_trades,
         )
+        stitched_window_starts = [
+            _evidence_iso_date(getattr(window, "start", None))
+            for window in windows
+            if getattr(window, "start", None) is not None
+        ]
+        stitched_window_ends = [
+            _evidence_iso_date(getattr(window, "end", None))
+            for window in windows
+            if getattr(window, "end", None) is not None
+        ]
         stitched = _evidence_stitched_backtest(
             dates=chart_dates,
             open_prices=chart_open,
@@ -5941,6 +6138,9 @@ def _signal_evidence_oos_periods(
             cost_bps=float(cost_bps),
             cooldown_bars=max(0, int(cooldown_bars or 0)),
             raw_trade_count=raw_action_trade_count,
+            proof_summary=proof_summary,
+            stitched_window_start=min(stitched_window_starts) if stitched_window_starts else None,
+            stitched_window_end=max(stitched_window_ends) if stitched_window_ends else None,
         )
 
         return periods, total_trades, stitched
@@ -5960,33 +6160,78 @@ def _edge_with_stitched_evidence(edge: dict[str, Any], stitched: dict[str, Any] 
     if not stitched:
         return edge
     metrics = stitched.get("metrics") if isinstance(stitched.get("metrics"), dict) else {}
+    proof = stitched.get("proof") if isinstance(stitched.get("proof"), dict) else {}
     out = dict(edge)
     dates = stitched.get("dates") if isinstance(stitched.get("dates"), list) else []
-    n_trades = int(metrics.get("n_trades") or 0)
+    n_trades = int(proof.get("n_trades") if proof.get("n_trades") is not None else metrics.get("n_trades") or 0)
     direction = str(stitched.get("direction") or out.get("direction") or "").strip().lower()
     has_action = direction in {"long", "short"}
+    out["stitched_window_start"] = stitched.get("stitched_window_start") or (dates[0] if dates else out.get("stitched_window_start"))
+    out["stitched_window_end"] = stitched.get("stitched_window_end") or (dates[-1] if dates else out.get("stitched_window_end"))
+    if proof.get("limit") is not None:
+        out["proof_limit"] = proof.get("limit")
     if metrics.get("stock_expected_return") is not None:
         out["stock_expected_return"] = metrics.get("stock_expected_return")
     if not has_action:
+        out["n"] = n_trades
+        out["proof_n"] = n_trades
+        out["proof_window_start"] = proof.get("window_start") or out.get("proof_window_start")
+        out["proof_window_end"] = proof.get("window_end") or out.get("proof_window_end")
         out["proof_method"] = "no_action_current_signal"
         return out
 
     out["n"] = n_trades
     out["proof_n"] = n_trades
     out["proof_method"] = "all_wfo_oos_folds_exact_bucket"
-    out["window_start"] = dates[0] if dates else out.get("window_start")
-    out["window_end"] = dates[-1] if dates else out.get("window_end")
-    out["proof_window_start"] = dates[0] if dates else out.get("proof_window_start")
-    out["proof_window_end"] = dates[-1] if dates else out.get("proof_window_end")
+    out["window_start"] = proof.get("window_start") or out.get("window_start")
+    out["window_end"] = proof.get("window_end") or out.get("window_end")
+    out["proof_window_start"] = proof.get("window_start") or out.get("proof_window_start")
+    out["proof_window_end"] = proof.get("window_end") or out.get("proof_window_end")
     for target_key, metric_key in (
         ("action_expected_return_gross", "expected_return_gross"),
         ("expected_return_gross", "expected_return_gross"),
         ("action_expected_return_net", "expected_return_net"),
         ("expected_return_net", "expected_return_net"),
+        ("action_expected_return_gross_ci_lower", "expected_return_gross_ci_lower"),
+        ("action_expected_return_gross_ci_upper", "expected_return_gross_ci_upper"),
+        ("expected_return_gross_ci_lower", "expected_return_gross_ci_lower"),
+        ("expected_return_gross_ci_upper", "expected_return_gross_ci_upper"),
+        ("action_expected_return_net_ci_lower", "expected_return_net_ci_lower"),
+        ("action_expected_return_net_ci_upper", "expected_return_net_ci_upper"),
+        ("expected_return_net_ci_lower", "expected_return_net_ci_lower"),
+        ("expected_return_net_ci_upper", "expected_return_net_ci_upper"),
+        ("stock_expected_return", "stock_expected_return"),
+        ("stock_expected_return_ci_lower", "stock_expected_return_ci_lower"),
+        ("stock_expected_return_ci_upper", "stock_expected_return_ci_upper"),
         ("hit_rate", "hit_rate"),
+        ("hit_ci_lower", "hit_ci_lower"),
+        ("hit_ci_upper", "hit_ci_upper"),
     ):
-        if metrics.get(metric_key) is not None:
-            out[target_key] = metrics.get(metric_key)
+        source_metrics = proof if proof else metrics
+        if source_metrics.get(metric_key) is not None:
+            out[target_key] = source_metrics.get(metric_key)
+    gates = dict(out.get("gates") or {}) if isinstance(out.get("gates"), dict) else {}
+    if gates:
+        from core.quant_core.research.edge import N_MIN, WILSON_LB_THRESHOLD
+
+        hit_ci_lower = _evidence_float(out.get("hit_ci_lower"))
+        gates["n"] = bool(n_trades >= int(N_MIN))
+        gates["wilson"] = bool(hit_ci_lower is not None and float(hit_ci_lower) > WILSON_LB_THRESHOLD)
+        out["gates"] = gates
+        out["proven_edge_gross"] = bool(
+            gates.get("mc_gross")
+            and gates.get("label_shuffle_gross")
+            and gates.get("wilson")
+            and gates.get("n")
+            and gates.get("freshness_gross")
+        )
+        out["proven_edge_net"] = bool(
+            gates.get("mc_net")
+            and gates.get("label_shuffle_net")
+            and gates.get("wilson")
+            and gates.get("n")
+            and gates.get("freshness_net")
+        )
     return out
 
 
@@ -5998,6 +6243,7 @@ def get_signal_evidence(
     variant: str | None = Query(None, description="Signal mode variant; auto by default"),
     cost_bps: float | None = Query(default=None, ge=0.0, le=500.0),
     cooldown_bars: int = Query(0, ge=0, le=252),
+    proof_limit: str = Query("100", description="Proof sample size: 100, 250, 500, or all"),
     db: Session = Depends(get_db),
 ):
     """Return the OOS proof and signal drivers behind today's tradable signal."""
@@ -6010,6 +6256,7 @@ def get_signal_evidence(
     canonical_h = _require_canonical_signal_horizon(horizon)
     requested_source = _evidence_source(source)
     cooldown = max(0, min(252, int(cooldown_bars or 0)))
+    proof_n_limit, proof_limit_label = _evidence_proof_limit(proof_limit)
 
     selected_edge, selected_source, selected_variant, method_label = _select_signal_evidence_edge(
         db,
@@ -6043,6 +6290,8 @@ def get_signal_evidence(
         contributors=contributors,
         cost_bps=float(settings.EDGE_COST_BPS_PER_SIDE if cost_bps is None else cost_bps),
         cooldown_bars=cooldown,
+        proof_limit=proof_n_limit,
+        proof_limit_label=proof_limit_label,
     )
     selected_edge = _edge_with_stitched_evidence(selected_edge, stitched_oos_backtest)
 
@@ -6063,6 +6312,9 @@ def get_signal_evidence(
             "proof_window_end": selected_edge.get("proof_window_end") or selected_edge.get("window_end"),
             "proof_n": selected_edge.get("proof_n") or selected_edge.get("n"),
             "proof_method": selected_edge.get("proof_method"),
+            "proof_limit": selected_edge.get("proof_limit") or proof_limit_label,
+            "stitched_window_start": selected_edge.get("stitched_window_start"),
+            "stitched_window_end": selected_edge.get("stitched_window_end"),
             "selection_window_start": selected_edge.get("selection_window_start"),
             "selection_window_end": selected_edge.get("selection_window_end"),
             "selection_n": selected_edge.get("selection_n"),

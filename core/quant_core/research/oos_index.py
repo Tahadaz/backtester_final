@@ -84,8 +84,23 @@ def _fold_to_window(fold: Mapping[str, Any],
     `winner_variant_id` (treated as None), absent `index`/`winner_*` keys.
     Returns None if the fold cannot be resolved to a usable window.
     """
-    start = _coerce_ts(fold.get("oos_start_date"))
-    end = _coerce_ts(fold.get("oos_end_date"))
+    start = None
+    end = None
+    used_abs_idx = False
+    if ohlcv_index is not None and len(ohlcv_index) > 0:
+        try:
+            s_abs = int(fold["oos_start_abs_idx"])
+            e_abs = int(fold["oos_end_abs_idx"])
+        except (KeyError, TypeError, ValueError):
+            s_abs = e_abs = -1
+        if 0 <= s_abs < e_abs <= len(ohlcv_index):
+            start = pd.Timestamp(ohlcv_index[s_abs])
+            end = pd.Timestamp(ohlcv_index[e_abs - 1])
+            used_abs_idx = True
+
+    if start is None or end is None:
+        start = _coerce_ts(fold.get("oos_start_date"))
+        end = _coerce_ts(fold.get("oos_end_date"))
 
     if start is None or end is None:
         if ohlcv_index is None or len(ohlcv_index) == 0:
@@ -102,7 +117,7 @@ def _fold_to_window(fold: Mapping[str, Any],
         if end is None:
             # `oos_end` is exclusive in bar-index space → inclusive in date space.
             end = pd.Timestamp(ohlcv_index[e_idx - 1])
-    else:
+    elif not used_abs_idx:
         # JSON dates: writer emits `oos_end_date` via `_window_date(end_exclusive=True)`,
         # i.e. it already points to the bar AFTER the last OOS bar. Step back one
         # business day to land on an inclusive boundary that matches the

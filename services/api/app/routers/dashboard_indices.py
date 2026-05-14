@@ -20,6 +20,7 @@ from ..services.dashboard_builder import (
     HORIZONS,
     build_dashboard_portfolio_edge_for_symbols,
 )
+from ..services.stock_shares import stock_shares_by_symbol
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -97,9 +98,29 @@ def _normalize_components(components: list[DashboardIndexComponent]) -> tuple[li
 
 def _normalize_definition_payload(
     *,
+    db: Session,
     symbols: list[str] | None,
     components: list[DashboardIndexComponent] | None,
+    use_available_shares: bool = False,
 ) -> tuple[list[str], dict[str, int]]:
+    if use_available_shares:
+        target_symbols = _clean_symbols(symbols or [])
+        shares_by_symbol = stock_shares_by_symbol(
+            db,
+            symbols=target_symbols or None,
+            require_shares=True,
+        )
+        if not shares_by_symbol:
+            raise HTTPException(status_code=422, detail="No available stock share counts found")
+        selected_symbols = target_symbols or sorted(shares_by_symbol)
+        component_shares = {
+            symbol: shares_by_symbol[symbol]
+            for symbol in selected_symbols
+            if symbol in shares_by_symbol
+        }
+        if not component_shares:
+            raise HTTPException(status_code=422, detail="No selected symbols have available share counts")
+        return list(component_shares.keys()), component_shares
     if components is not None:
         return _normalize_components(components)
     return _normalize_symbols(symbols or []), {}
@@ -183,8 +204,10 @@ def create_dashboard_index(
 ) -> DashboardCustomIndexOut:
     name = _normalize_name(body.name)
     symbols, component_shares = _normalize_definition_payload(
+        db=db,
         symbols=body.symbols,
         components=body.components,
+        use_available_shares=body.use_available_shares,
     )
 
     duplicate = (
@@ -228,8 +251,10 @@ def update_dashboard_index(
 
     name = _normalize_name(body.name)
     symbols, component_shares = _normalize_definition_payload(
+        db=db,
         symbols=body.symbols,
         components=body.components,
+        use_available_shares=body.use_available_shares,
     )
 
     duplicate = (

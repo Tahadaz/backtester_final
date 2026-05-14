@@ -24,6 +24,10 @@ class MarketUniverseInstrument:
     is_active: bool | None
     track_source: str | None
     bourse_url: str | None
+    shares_outstanding: int | None
+    shares_as_of: dt.date | None
+    shares_source: str | None
+    shares_updated_at: dt.datetime | None
     notes: str | None
     asset_type: str
     market_region: str | None
@@ -132,6 +136,10 @@ def list_market_catalog(
                 sm.is_active,
                 sm.track_source,
                 sm.bourse_url,
+                sm.shares_outstanding,
+                sm.shares_as_of,
+                sm.shares_source,
+                sm.shares_updated_at,
                 sm.notes,
                 COALESCE(sm.asset_type, 'equity') AS asset_type,
                 sm.market_region,
@@ -158,6 +166,10 @@ def list_market_catalog(
                 sm.is_active,
                 sm.track_source,
                 sm.bourse_url,
+                sm.shares_outstanding,
+                sm.shares_as_of,
+                sm.shares_source,
+                sm.shares_updated_at,
                 sm.notes,
                 COALESCE(sm.asset_type, 'equity') AS asset_type,
                 sm.market_region,
@@ -185,6 +197,10 @@ def list_market_catalog(
                 TRUE AS is_active,
                 'casablanca_bourse' AS track_source,
                 NULL AS bourse_url,
+                NULL AS shares_outstanding,
+                NULL AS shares_as_of,
+                NULL AS shares_source,
+                NULL AS shares_updated_at,
                 NULL AS notes,
                 'equity' AS asset_type,
                 COALESCE(im.market_region, 'masi') AS market_region,
@@ -211,6 +227,10 @@ def list_market_catalog(
                 TRUE AS is_active,
                 'yahoo' AS track_source,
                 NULL AS bourse_url,
+                NULL AS shares_outstanding,
+                NULL AS shares_as_of,
+                NULL AS shares_source,
+                NULL AS shares_updated_at,
                 mfm.notes AS notes,
                 mfm.asset_type,
                 mfm.market_region,
@@ -238,6 +258,10 @@ def list_market_catalog(
                 TRUE AS is_active,
                 'yahoo' AS track_source,
                 NULL AS bourse_url,
+                NULL AS shares_outstanding,
+                NULL AS shares_as_of,
+                NULL AS shares_source,
+                NULL AS shares_updated_at,
                 mfm.notes,
                 mfm.asset_type,
                 mfm.market_region,
@@ -308,6 +332,10 @@ def list_market_catalog(
                 is_active=bool(row["is_active"]) if row["is_active"] is not None else True,
                 track_source=row["track_source"],
                 bourse_url=row["bourse_url"],
+                shares_outstanding=row["shares_outstanding"],
+                shares_as_of=row["shares_as_of"],
+                shares_source=row["shares_source"],
+                shares_updated_at=row["shares_updated_at"],
                 notes=row["notes"],
                 asset_type=str(asset_type or "equity"),
                 market_region=market_region,

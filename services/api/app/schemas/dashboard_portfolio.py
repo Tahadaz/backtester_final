@@ -1,13 +1,19 @@
 from __future__ import annotations
 
-from datetime import date
-from typing import Literal
+from datetime import date, datetime
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 
 DashboardEdgeSource = Literal["signal_engine", "wfo", "auto"]
 DashboardSidePolicy = Literal["long_only", "long_short"]
+DashboardPriceSource = Literal["official_close", "live_if_fresh"]
+DashboardEffectivePriceSource = Literal["official_close", "live"]
+DashboardTradeAction = Literal["BUY", "SELL", "SELL_SHORT", "COVER"]
+DashboardPortfolioAllocationMethod = Literal["share_quantities", "hrp"]
+DashboardPortfolioDisplayMode = Literal["trade_opportunities", "technical_directions"]
+DashboardPortfolioTechnicalDirectionMode = Literal["best", "classic"]
 
 
 class DashboardPortfolioTicketRequest(BaseModel):
@@ -28,6 +34,8 @@ class DashboardPortfolioTicketRequest(BaseModel):
     atr_multiplier: float = Field(default=1.5, ge=0.1, le=10.0)
     buffer_pct: float = Field(default=0.005, ge=0.0, le=0.1)
     min_rr: float = Field(default=1.5, ge=0.1, le=20.0)
+    price_source: DashboardPriceSource = "live_if_fresh"
+    max_live_quote_age_seconds: int = Field(default=60, ge=0, le=3600)
 
 
 class DashboardPortfolioTicketRow(BaseModel):
@@ -52,6 +60,8 @@ class DashboardPortfolioTicketRow(BaseModel):
     shares: int = 0
     entry_timing: str = "next_open"
     entry_reference_price_type: str = "last_close_proxy"
+    price_source: DashboardEffectivePriceSource = "official_close"
+    live_quote_age_seconds: float | None = None
     execution_condition: str = "execute_next_open_only_if_open_remains_in_entry_zone"
     entry_reference_price: float | None = None
     entry_zone_low: float | None = None
@@ -162,3 +172,154 @@ class DashboardDailyBlotterResponse(BaseModel):
     summary: DashboardDailyBlotterSummary
     ticket: DashboardPortfolioTicketResponse
     rows: list[DashboardDailyBlotterRow]
+
+
+class DashboardPortfolioTradeIn(BaseModel):
+    symbol: str = Field(min_length=1, max_length=32)
+    action: DashboardTradeAction
+    quantity: float = Field(gt=0.0)
+    price_mad: float = Field(gt=0.0)
+    timestamp: date | None = None
+    fees_mad: float = Field(default=0.0, ge=0.0)
+    notes: str | None = Field(default=None, max_length=500)
+
+
+class DashboardPortfolioComponent(BaseModel):
+    symbol: str = Field(min_length=1, max_length=32)
+    shares: int = Field(default=1, ge=1)
+    enabled: bool = True
+
+
+class DashboardPortfolioCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=1000)
+    symbols: list[str] = Field(default_factory=list, max_length=100)
+    components: list[DashboardPortfolioComponent] | None = Field(default=None, max_length=100)
+    component_shares: dict[str, int] = Field(default_factory=dict)
+    allocation_method: DashboardPortfolioAllocationMethod = "share_quantities"
+    side_policy: DashboardSidePolicy = "long_only"
+    total_capital_mad: float = Field(default=1_000_000.0, gt=0.0)
+    cash_buffer_pct: float = Field(default=0.0, ge=0.0, le=95.0)
+    stop_loss_pct: float | None = Field(default=None, gt=0.0, le=95.0)
+    take_profit_pct: float | None = Field(default=None, gt=0.0, le=1000.0)
+    display_mode: DashboardPortfolioDisplayMode = "trade_opportunities"
+    technical_direction_mode: DashboardPortfolioTechnicalDirectionMode = "best"
+    horizon: str = "monthly"
+
+
+class DashboardPortfolioUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=1000)
+    symbols: list[str] | None = Field(default=None, max_length=100)
+    components: list[DashboardPortfolioComponent] | None = Field(default=None, max_length=100)
+    component_shares: dict[str, int] | None = None
+    allocation_method: DashboardPortfolioAllocationMethod | None = None
+    side_policy: DashboardSidePolicy | None = None
+    total_capital_mad: float | None = Field(default=None, gt=0.0)
+    cash_buffer_pct: float | None = Field(default=None, ge=0.0, le=95.0)
+    stop_loss_pct: float | None = Field(default=None, gt=0.0, le=95.0)
+    take_profit_pct: float | None = Field(default=None, gt=0.0, le=1000.0)
+    display_mode: DashboardPortfolioDisplayMode | None = None
+    technical_direction_mode: DashboardPortfolioTechnicalDirectionMode | None = None
+    horizon: str | None = None
+
+
+class DashboardPortfolioOut(BaseModel):
+    id: str
+    name: str
+    description: str | None = None
+    symbols: list[str] = Field(default_factory=list)
+    component_shares: dict[str, int] = Field(default_factory=dict)
+    components: list[DashboardPortfolioComponent] = Field(default_factory=list)
+    allocation_method: DashboardPortfolioAllocationMethod = "share_quantities"
+    side_policy: DashboardSidePolicy = "long_only"
+    total_capital_mad: float = 1_000_000.0
+    cash_buffer_pct: float = 0.0
+    stop_loss_pct: float | None = None
+    take_profit_pct: float | None = None
+    display_mode: DashboardPortfolioDisplayMode = "trade_opportunities"
+    technical_direction_mode: DashboardPortfolioTechnicalDirectionMode = "best"
+    horizon: str = "monthly"
+    is_default: bool = False
+    replay_start_date: date | None = None
+    replay_end_date: date | None = None
+    replay_generated_at: datetime | None = None
+    last_replay: dict = Field(default_factory=dict)
+    summary: dict[str, Any] | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class DashboardPortfolioListResponse(BaseModel):
+    portfolios: list[DashboardPortfolioOut] = Field(default_factory=list)
+
+
+class DashboardPortfolioReplayRequest(BaseModel):
+    start_date: date
+    end_date: date
+    symbols: list[str] = Field(default_factory=list, max_length=100)
+    components: list[DashboardPortfolioComponent] | None = Field(default=None, max_length=100)
+    component_shares: dict[str, int] = Field(default_factory=dict)
+    allocation_method: DashboardPortfolioAllocationMethod = "share_quantities"
+    side_policy: DashboardSidePolicy = "long_only"
+    total_capital_mad: float = Field(default=1_000_000.0, gt=0.0)
+    cash_buffer_pct: float = Field(default=0.0, ge=0.0, le=95.0)
+    stop_loss_pct: float | None = Field(default=None, gt=0.0, le=95.0)
+    take_profit_pct: float | None = Field(default=None, gt=0.0, le=1000.0)
+    display_mode: DashboardPortfolioDisplayMode = "trade_opportunities"
+    technical_direction_mode: DashboardPortfolioTechnicalDirectionMode = "best"
+    horizon: str = "monthly"
+    persist: bool = True
+
+
+class DashboardPortfolioFromHistoryRequest(DashboardPortfolioCreate):
+    start_date: date
+    end_date: date
+
+
+class DashboardPortfolioReplayResponse(BaseModel):
+    portfolio: DashboardPortfolioOut
+    summary: dict[str, Any] = Field(default_factory=dict)
+    replay: dict = Field(default_factory=dict)
+
+
+class DashboardPortfolioBacktestRunResponse(BaseModel):
+    strategy_id: str
+    run_id: str
+    status: str
+    mode: str = "portfolio_replay"
+    title: str
+
+
+class DashboardPortfolioTradeOut(BaseModel):
+    id: str
+    symbol: str
+    action: DashboardTradeAction
+    quantity: float
+    price_mad: float
+    timestamp: date | None = None
+    fees_mad: float = 0.0
+    realized_pnl_mad: float = 0.0
+    notes: str | None = None
+
+
+class DashboardPortfolioPositionMarkOut(BaseModel):
+    symbol: str
+    side: DashboardPositionSide
+    quantity: float
+    cmp_mad: float | None = None
+    mark_price_mad: float | None = None
+    mark_source: str = "official_close"
+    market_value_mad: float | None = None
+    unrealized_pnl_mad: float | None = None
+    realized_pnl_mad: float = 0.0
+    updated_at: datetime | None = None
+    live_quote_age_seconds: float | None = None
+
+
+class DashboardPortfolioSummaryOut(BaseModel):
+    positions: list[DashboardPortfolioPositionMarkOut] = Field(default_factory=list)
+    trades: list[DashboardPortfolioTradeOut] = Field(default_factory=list)
+    total_market_value_mad: float = 0.0
+    total_unrealized_pnl_mad: float = 0.0
+    total_realized_pnl_mad: float = 0.0

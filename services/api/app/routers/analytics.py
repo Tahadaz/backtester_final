@@ -2212,6 +2212,8 @@ def _build_edge_metrics_from_db(
     ohlcv_idx = pd.DatetimeIndex(prices.index)
 
     def wfo_loader(sym: str, h: str) -> dict:
+        from ..services.wfo_folds import normalize_wfo_folds_json
+
         for db_h in db_horizons:
             summary = (
                 db.query(models.WfoSignalSummary)
@@ -2226,7 +2228,13 @@ def _build_edge_metrics_from_db(
                 .first()
             )
             if summary is not None and summary.folds_json:
-                return {"folds_json": summary.folds_json}
+                return {
+                    "folds_json": normalize_wfo_folds_json(
+                        summary.folds_json,
+                        config_json=summary.config_json,
+                        ohlcv_index=ohlcv_idx,
+                    )
+                }
         return {}
 
     def score_history_loader(sym: str, h: str) -> list[dict]:

@@ -25,7 +25,7 @@ _SAMPLE_PAYLOAD: dict[str, Any] = {
     "generated_at": "2026-05-08T20:30:00+00:00",
     "horizon": "weekly",
     "horizon_label": "Hebdomadaire",
-    "stocks": [{"symbol": "ATW", "best_technical_signal": None}],
+    "stocks": [{"symbol": "ATW", "best_technical_signal": None, "classic_technical_signal": None}],
     "sectors": [],
     "index": {"aggregate_score_pct": 55.0, "stocks": []},
     "custom_index_definitions": [],
@@ -70,7 +70,7 @@ def test_snapshot_mode_returns_payload(monkeypatch) -> None:
     assert resp.status_code == 200
     data = resp.json()
     assert data["horizon"] == "weekly"
-    assert data["stocks"] == [{"symbol": "ATW", "best_technical_signal": None}]
+    assert data["stocks"] == [{"symbol": "ATW", "best_technical_signal": None, "classic_technical_signal": None}]
 
 
 def test_snapshot_mode_merges_live_technical_only_when_snapshot_shape_is_stale(monkeypatch) -> None:
@@ -82,7 +82,13 @@ def test_snapshot_mode_merges_live_technical_only_when_snapshot_shape_is_stale(m
     }
     live_payload = {
         **_SAMPLE_PAYLOAD,
-        "stocks": [{"symbol": "ATW", "best_technical_signal": {"score_pct": 55.0}}],
+        "stocks": [
+            {
+                "symbol": "ATW",
+                "best_technical_signal": {"score_pct": 55.0},
+                "classic_technical_signal": {"score_pct": 25.0},
+            }
+        ],
     }
     with (
         patch(
@@ -99,6 +105,7 @@ def test_snapshot_mode_merges_live_technical_only_when_snapshot_shape_is_stale(m
     assert resp.status_code == 200
     assert resp.headers["X-Cache"] == "stale"
     assert resp.json()["stocks"][0]["best_technical_signal"] == {"score_pct": 55.0}
+    assert resp.json()["stocks"][0]["classic_technical_signal"] == {"score_pct": 25.0}
     mock_builder.assert_called_once()
     args, kwargs = mock_builder.call_args
     assert args[1] == "weekly"
@@ -134,6 +141,7 @@ def test_snapshot_mode_rejects_legacy_best_signal_score_shape(monkeypatch) -> No
                 {
                     "symbol": "ATW",
                     "best_technical_signal": None,
+                    "classic_technical_signal": None,
                     "best_signal": {"score": -0.004, "n": 60},
                 }
             ],
@@ -499,6 +507,74 @@ def test_best_technical_signal_tie_prefers_wfo() -> None:
     assert best["source"] == "wfo"
 
 
+def _classic_ohlcv(close_values: list[float], *, include_volume: bool = True) -> pd.DataFrame:
+    frame = pd.DataFrame(
+        {
+            "Close": close_values,
+        },
+        index=pd.date_range("2025-01-01", periods=len(close_values), freq="D"),
+    )
+    if include_volume:
+        frame["Volume"] = [1000.0 + (idx * 10.0) for idx in range(len(close_values))]
+    return frame
+
+
+def test_classic_technical_signal_builds_bullish_direction() -> None:
+    from services.api.app.services.dashboard_builder import _build_classic_technical_signal_payload_from_ohlcv
+
+    close = [100.0 + idx for idx in range(240)]
+    signal = _build_classic_technical_signal_payload_from_ohlcv(_classic_ohlcv(close))
+
+    assert signal is not None
+    assert signal["variant"] == "classic_ta"
+    assert signal["direction"] == "long"
+    assert signal["per_family"]["tendance"]["score_pct"] == 100.0
+    assert signal["per_family"]["momentum"]["score_pct"] == 100.0
+    assert signal["per_family"]["volume"]["score_pct"] == 100.0
+
+
+def test_classic_technical_signal_builds_bearish_direction() -> None:
+    from services.api.app.services.dashboard_builder import _build_classic_technical_signal_payload_from_ohlcv
+
+    close = [340.0 - idx for idx in range(240)]
+    signal = _build_classic_technical_signal_payload_from_ohlcv(_classic_ohlcv(close))
+
+    assert signal is not None
+    assert signal["direction"] == "short"
+    assert signal["per_family"]["tendance"]["score_pct"] == -100.0
+    assert signal["per_family"]["momentum"]["score_pct"] == -100.0
+    assert signal["per_family"]["volume"]["score_pct"] == -100.0
+
+
+def test_classic_technical_signal_neutral_when_classic_reads_are_flat() -> None:
+    from services.api.app.services.dashboard_builder import _build_classic_technical_signal_payload_from_ohlcv
+
+    signal = _build_classic_technical_signal_payload_from_ohlcv(_classic_ohlcv([100.0] * 240))
+
+    assert signal is not None
+    assert signal["direction"] == "none"
+    assert signal["score_pct"] == 0.0
+
+
+def test_classic_technical_signal_returns_none_for_insufficient_history() -> None:
+    from services.api.app.services.dashboard_builder import _build_classic_technical_signal_payload_from_ohlcv
+
+    signal = _build_classic_technical_signal_payload_from_ohlcv(_classic_ohlcv([100.0 + idx for idx in range(10)]))
+
+    assert signal is None
+
+
+def test_classic_technical_signal_omits_volume_when_missing() -> None:
+    from services.api.app.services.dashboard_builder import _build_classic_technical_signal_payload_from_ohlcv
+
+    close = [100.0 + idx for idx in range(240)]
+    signal = _build_classic_technical_signal_payload_from_ohlcv(_classic_ohlcv(close, include_volume=False))
+
+    assert signal is not None
+    assert "volume" not in signal["per_family"]
+    assert signal["direction"] == "long"
+
+
 def test_combo_variant_family_payload_maps_to_dashboard_categories() -> None:
     from services.api.app.services.dashboard_builder import _category_scores_from_family_payload
 
@@ -688,6 +764,21 @@ def test_dashboard_payload_reads_canonical_expanded_rows(monkeypatch) -> None:
         ],
     )
     monkeypatch.setattr(builder, "_load_dashboard_market_stats", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(
+        builder,
+        "_build_classic_technical_signal_payload",
+        lambda *_args, **_kwargs: {
+            "source": "signal_engine",
+            "variant": "classic_ta",
+            "label": "Classic TA - SMA50/200 RSI14 MACD OBV",
+            "signal_label": "Achat",
+            "direction": "long",
+            "score_pct": 50.0,
+            "abs_score_pct": 50.0,
+            "per_family": {},
+            "factor_dependencies": {},
+        },
+    )
 
     payload = builder.build_dashboard_payload(FakeDb(), "weekly", include_edge=False)
 
@@ -695,6 +786,7 @@ def test_dashboard_payload_reads_canonical_expanded_rows(monkeypatch) -> None:
     assert stock["scores"]["signal_engine"]["expanded_aggregate_score_pct"] == 77.0
     assert stock["scores"]["wfo"]["aggregate_score_pct"] == 66.0
     assert stock["scores"]["wfo"]["per_family"]["tendance"]["score_pct"] == 66.0
+    assert stock["classic_technical_signal"]["variant"] == "classic_ta"
 
 
 def test_dashboard_payload_prefers_canonical_expanded_rows(monkeypatch) -> None:

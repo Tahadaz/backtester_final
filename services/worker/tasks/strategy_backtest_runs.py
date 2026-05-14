@@ -11,6 +11,8 @@ from services.api.app.config import settings
 from services.api.app.market_data_loader import load_ohlcv_for_symbol
 from services.api.app.json_sanitize import sanitize_json_compatible
 from services.api.app import models
+from services.api.app.schemas.dashboard_portfolio import DashboardPortfolioReplayRequest
+from services.api.app.services.dashboard_portfolio import run_dashboard_portfolio_replay
 from services.api.app.strategy_v2 import (
     build_strategy_review,
     build_legacy_backtest_config_from_v2,
@@ -250,7 +252,104 @@ def execute_strategy_backtest_run(run_id: str) -> None:
         portfolio_candidates: list[dict[str, Any]] = []
         run.result_json = {}
 
-        if run.mode == "wfo":
+        if run.mode == "portfolio_replay":
+            replay_request = dict(request.get("replay") or {})
+            replay_request["persist"] = False
+            owner_user_id = str(request.get("owner_user_id") or "").strip()
+            portfolio_id = str(request.get("portfolio_id") or "").strip()
+            if not owner_user_id or not portfolio_id:
+                raise ValueError("Portfolio replay run is missing owner or portfolio id.")
+            _update_run_progress(
+                run,
+                completed=0,
+                total=total,
+                active_symbol=None,
+                message="Running portfolio replay",
+            )
+            db.commit()
+            _raise_if_canceled("Canceled before portfolio replay execution.")
+            _portfolio, replay = run_dashboard_portfolio_replay(
+                db,
+                DashboardPortfolioReplayRequest(**replay_request),
+                owner_user_id=owner_user_id,
+                portfolio_id=portfolio_id,
+            )
+            replay = sanitize_json_compatible(replay)
+            metrics = dict(replay.get("metrics") or {})
+            result = {
+                "strategy": {
+                    "strategy_id": str(strategy.id),
+                    "strategy_name": str(strategy.name),
+                    "mode": "portfolio_replay",
+                },
+                "assumptions": {
+                    "execution": "signals execute on the next available session open; open falls back to close",
+                    "same_bar_risk_precedence": "stop_loss_before_take_profit",
+                    "source": "dashboard_portfolio_replay",
+                },
+                "general_results": {
+                    "metrics": metrics,
+                    "trade_performance": [
+                        {"metric": "Net PnL", "value": metrics.get("net_pnl")},
+                        {"metric": "Total return", "value": metrics.get("total_return")},
+                        {"metric": "Trades", "value": metrics.get("number_of_trades")},
+                        {"metric": "Max drawdown", "value": metrics.get("max_drawdown")},
+                    ],
+                    "plots": {
+                        "equity_curve": replay.get("equity_curve") or [],
+                    },
+                },
+                "stocks": [],
+                "portfolio_replay": replay,
+            }
+            fills_by_symbol: dict[str, list[dict[str, Any]]] = {}
+            for fill in list(replay.get("fills") or []):
+                fills_by_symbol.setdefault(str(fill.get("symbol") or "").strip().upper(), []).append(fill)
+            positions_by_symbol = {
+                str(item.get("symbol") or "").strip().upper(): item
+                for item in list(replay.get("positions") or [])
+                if str(item.get("symbol") or "").strip()
+            }
+            for symbol in basket:
+                _raise_if_canceled("Canceled while persisting portfolio replay results.")
+                symbol_key = str(symbol).strip().upper()
+                symbol_fills = fills_by_symbol.get(symbol_key, [])
+                symbol_position = positions_by_symbol.get(symbol_key, {})
+                summary = {
+                    "symbol": symbol_key,
+                    "net_pnl": symbol_position.get("realized_pnl_mad"),
+                    "number_of_trades": len(symbol_fills),
+                    "market_value_mad": symbol_position.get("market_value_mad"),
+                    "unrealized_pnl_mad": symbol_position.get("unrealized_pnl_mad"),
+                }
+                stock_result = {
+                    "symbol": symbol_key,
+                    "allocation": {
+                        "component_shares": (replay.get("component_shares") or {}).get(symbol_key),
+                        "allocation_method": replay.get("allocation_method"),
+                    },
+                    "summary_metrics": summary,
+                    "trade_ledger": symbol_fills,
+                    "trade_performance": [],
+                    "price_chart": {},
+                }
+                result["stocks"].append(stock_result)
+                stock_row = stock_map.get(symbol_key)
+                if stock_row is None:
+                    stock_row = models.StrategyBacktestStock(run_id=run.id, symbol=symbol_key, status="queued")
+                    db.add(stock_row)
+                    db.flush()
+                    stock_map[symbol_key] = stock_row
+                stock_row.status = "succeeded"
+                stock_row.summary_json = sanitize_json_compatible(summary)
+                stock_row.result_json = sanitize_json_compatible(stock_result)
+                stock_row.error_text = None
+                stock_row.updated_at = _utcnow()
+                summaries.append(summary)
+                succeeded += 1
+                db.commit()
+            run.result_json = sanitize_json_compatible(result)
+        elif run.mode == "wfo":
             review = build_strategy_review(strategy.config_json or {}, horizon=strategy.horizon, for_wfo=True)
             if not review.get("ready"):
                 run.status = "failed"

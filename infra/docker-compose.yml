@@ -323,6 +323,27 @@ services:
   quant_worker_score_history_2:
     <<: *score_history_worker_base
 
+  quant_scheduler:
+    <<: *worker_base
+    environment:
+      REDIS_URL: redis://quant_redis:6379/0
+      DATABASE_URL: postgresql+psycopg2://app:app@quant_postgres:5432/quant
+      RUNS_QUEUE_NAME: runs
+      DEFAULTS_DISCOVERY_QUEUE_NAME: defaults_discovery
+      MARKET_REFRESH_QUEUE_NAME: market_refresh
+      SIGNAL_ENGINE_QUEUE_NAME: signal_engine
+      SIGNAL_BACKTEST_QUEUE_NAME: signal_backtest
+      S3_ENDPOINT: http://minio:9000
+      S3_PRESIGN_ENDPOINT_URL: http://127.0.0.1:9000
+      S3_ACCESS_KEY: minio
+      S3_SECRET_KEY: minio12345
+      S3_BUCKET: quant-artifacts
+      PYTHONPATH: /repo
+      OMP_NUM_THREADS: ${OMP_NUM_THREADS:-1}
+      MKL_NUM_THREADS: ${MKL_NUM_THREADS:-1}
+      OPENBLAS_NUM_THREADS: ${OPENBLAS_NUM_THREADS:-1}
+    command: python -m services.worker.scheduler
+
   quant_api:
     build:
       context: ..
@@ -331,6 +352,7 @@ services:
       API_WORKERS: ${API_WORKERS:-4}
       REDIS_URL: redis://quant_redis:6379/0
       DATABASE_URL: postgresql+psycopg2://app:app@quant_postgres:5432/quant
+      API_EMBEDDED_SCHEDULER_ENABLED: "0"
       SNAPSHOT_READ_MODE_OVERRIDES: dashboard=snapshot
       RUN_JOB_TIMEOUT_SECONDS: "21600"
       RUN_JOB_RESULT_TTL_SECONDS: "86400"
@@ -344,6 +366,9 @@ services:
       S3_SECRET_KEY: minio12345
       S3_BUCKET: quant-artifacts
       S3_SECURE: "false"
+      API_KEY: ${API_KEY:-}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-}
+      ADMIN_SCOPES: ${ADMIN_SCOPES:-admin}
       BLOOMBERG_BRIDGE_API_KEY: ${BLOOMBERG_BRIDGE_API_KEY:-local-bloomberg-bridge-key}
       BLOOMBERG_BRIDGE_MAX_UPLOAD_BYTES: ${BLOOMBERG_BRIDGE_MAX_UPLOAD_BYTES:-268435456}
       PYTHONPATH: /repo
@@ -384,19 +409,22 @@ services:
       start_period: 15s
 
   quant_frontend:
+    profiles: ["frontend-container"]
     build:
       context: ../frontend
       dockerfile: Dockerfile
     environment:
       UPSTREAM_API_BASE: http://quant_api:8000
       UPSTREAM_TIMEOUT_MS: ${UPSTREAM_TIMEOUT_MS:-120000}
+      API_KEY: ${API_KEY:-}
       DATABASE_URL: postgresql://app:app@quant_postgres:5432/quant
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-local-demo-auth-secret-change-me}
       AUTH_SECRET: ${AUTH_SECRET:-local-demo-auth-secret-change-me}
       AUTH_REQUIRED: ${AUTH_REQUIRED:-false}
       AUTH_TRUST_HOST: "true"
-      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3001}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
       ADMIN_EMAILS: ${ADMIN_EMAILS:-stg.tdazine@bmcek.co.ma}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-}
       DASHBOARD_PUBLIC_ONLY: ${DASHBOARD_PUBLIC_ONLY:-true}
     depends_on:
       quant_api:
@@ -404,7 +432,7 @@ services:
       quant_postgres:
         condition: service_healthy
     ports:
-      - "${FRONTEND_HOST_PORT:-3001}:3000"
+      - "3000:3000"
 
 volumes:
   pgdata:

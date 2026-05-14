@@ -111,6 +111,51 @@ def test_migrate_schema_v3_recovers_basket_from_stock_keys_when_missing() -> Non
     assert set(migrated["stocks"].keys()) == {"IAM", "BCP"}
 
 
+def test_migrate_schema_v4_preserves_rule_expression() -> None:
+    expression = {
+        "operator": "all",
+        "children": [
+            {
+                "type": "breakout",
+                "direction": "above",
+                "source": {"kind": "price", "field": "Close"},
+                "level": {"kind": "rolling", "function": "highest", "field": "High", "lookback": 20, "offset": 1},
+            }
+        ],
+    }
+
+    migrated = migrate_strategy_config_v2(
+        {
+            "schema_version": 4,
+            "app_domain": "four_pages",
+            "portfolio": {
+                "total_capital_mad": 250_000,
+                "universe": {"basket": ["IAM"]},
+                "allocation": {"method": "hrp", "hrp_lookback_bars": 60, "manual_overrides_by_symbol": {}},
+            },
+            "stocks": {
+                "IAM": {
+                    "strategy_type": "trend_following",
+                    "entry_rules": [
+                        {
+                            "id": "entry_1",
+                            "label": "Breakout",
+                            "conditions": [],
+                            "rule_expression": expression,
+                            "sizing": {"mode": "manual", "manual_pct": 25},
+                        }
+                    ],
+                    "exit_rules": [],
+                }
+            },
+        },
+        horizon="medium",
+    )
+
+    assert migrated["schema_version"] == 3
+    assert migrated["stocks"]["IAM"]["entry_rules"][0]["rule_expression"] == expression
+
+
 def test_migrate_schema_v3_preserves_edge_signal_selection() -> None:
     candidate = {
         "candidate_id": "iam:signal_engine:expanded_ta_simple:buy:long:21",

@@ -124,6 +124,26 @@ def test_wfo_folds_prefers_json_dates_when_present():
     assert windows[0].end == pd.Timestamp(idx[pos - 1])
 
 
+def test_wfo_folds_prefers_absolute_indices_over_stale_dates():
+    idx = _bidx("2024-01-01", 300)
+    folds = [{
+        "index": 0,
+        "oos_start": 0,
+        "oos_end": 20,
+        "oos_start_abs_idx": 200,
+        "oos_end_abs_idx": 232,
+        "oos_start_date": "2005-11-29",
+        "oos_end_date": "2006-02-02",
+        "winner_variant_id": "sv_a",
+    }]
+
+    windows = oos_windows_from_wfo(folds, ohlcv_index=idx)
+
+    assert len(windows) == 1
+    assert windows[0].start == pd.Timestamp(idx[200])
+    assert windows[0].end == pd.Timestamp(idx[231])
+
+
 def test_wfo_folds_normalize_aware_json_dates_to_naive_index():
     """Production folds may carry UTC timestamps while OHLCV indexes are naive."""
     idx = _bidx("2024-01-01", 300)

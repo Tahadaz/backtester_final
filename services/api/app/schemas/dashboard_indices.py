@@ -14,12 +14,14 @@ class DashboardCustomIndexCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=120)
     symbols: list[str] | None = None
     components: list[DashboardIndexComponent] | None = None
+    use_available_shares: bool = False
 
 
 class DashboardCustomIndexUpdate(BaseModel):
     name: str = Field(..., min_length=1, max_length=120)
     symbols: list[str] | None = None
     components: list[DashboardIndexComponent] | None = None
+    use_available_shares: bool = False
 
 
 class DashboardCustomIndexOut(BaseModel):

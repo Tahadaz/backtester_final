@@ -401,11 +401,202 @@ def _exit_rule_fraction(rule: dict[str, Any]) -> float:
     return _fraction_from_percent(sizing.get("manual_pct"), 0.0)
 
 
-def _condition_matches(snapshot: dict[str, float], condition: dict[str, Any]) -> bool:
-    variable = str(condition.get("variable") or "consensus_score")
-    operator = str(condition.get("operator") or ">=")
-    left = _safe_float(snapshot.get(variable), 0.0)
-    right = _rule_threshold_value(condition.get("threshold"), 0.0)
+_PRICE_FIELD_ALIASES = {
+    "open": "Open",
+    "high": "High",
+    "low": "Low",
+    "close": "Close",
+    "volume": "Volume",
+}
+
+
+def _is_finite_number(value: Any) -> bool:
+    try:
+        return math.isfinite(float(value))
+    except Exception:
+        return False
+
+
+def _normalize_bar_index(bars: pd.DataFrame | None, index: int | None) -> int | None:
+    if not isinstance(bars, pd.DataFrame) or bars.empty:
+        return None
+    if index is None:
+        return len(bars.index) - 1
+    if index < 0 or index >= len(bars.index):
+        return None
+    return index
+
+
+def _bar_column(bars: pd.DataFrame, field: Any) -> pd.Series | None:
+    field_name = str(field or "Close").strip()
+    normalized = _PRICE_FIELD_ALIASES.get(field_name.lower(), field_name)
+    for candidate in (normalized, normalized.title(), normalized.upper(), normalized.lower()):
+        if candidate in bars.columns:
+            return bars[candidate].astype(float)
+    return None
+
+
+def _bar_value(bars: pd.DataFrame | None, index: int | None, field: Any) -> float:
+    if not isinstance(bars, pd.DataFrame):
+        return float("nan")
+    pos = _normalize_bar_index(bars, index)
+    if pos is None:
+        return float("nan")
+    series = _bar_column(bars, field)
+    if series is None:
+        return float("nan")
+    return _safe_float(series.iloc[pos], float("nan"))
+
+
+def _rolling_operand_value(bars: pd.DataFrame | None, index: int | None, operand: dict[str, Any]) -> float:
+    if not isinstance(bars, pd.DataFrame):
+        return float("nan")
+    function = str(operand.get("function") or operand.get("mode") or "mean").strip().lower()
+    field = operand.get("field") or "Close"
+    lookback = max(_safe_int(operand.get("lookback") or operand.get("window") or operand.get("period"), 20), 1)
+    offset = max(_safe_int(operand.get("offset"), 0), 0)
+    pos = _normalize_bar_index(bars, index)
+    if pos is None:
+        return float("nan")
+    pos -= offset
+    if pos < 0:
+        return float("nan")
+    series = _bar_column(bars, field)
+    if series is None:
+        return float("nan")
+    window = series.iloc[: pos + 1].tail(lookback).astype(float)
+    if len(window) < lookback:
+        return float("nan")
+    if function in {"highest", "high", "max"}:
+        return _safe_float(window.max(), float("nan"))
+    if function in {"lowest", "low", "min"}:
+        return _safe_float(window.min(), float("nan"))
+    if function in {"sum", "total"}:
+        return _safe_float(window.sum(), float("nan"))
+    return _safe_float(window.mean(), float("nan"))
+
+
+def _rsi_value(close: pd.Series, index: int, period: int) -> float:
+    if index < period:
+        return float("nan")
+    delta = close.diff()
+    gains = delta.clip(lower=0.0)
+    losses = -delta.clip(upper=0.0)
+    avg_gain = gains.rolling(period, min_periods=period).mean().iloc[index]
+    avg_loss = losses.rolling(period, min_periods=period).mean().iloc[index]
+    if not _is_finite_number(avg_gain) or not _is_finite_number(avg_loss):
+        return float("nan")
+    if float(avg_loss) == 0.0:
+        return 100.0 if float(avg_gain) > 0.0 else 50.0
+    rs = float(avg_gain) / float(avg_loss)
+    return 100.0 - (100.0 / (1.0 + rs))
+
+
+def _indicator_operand_value(bars: pd.DataFrame | None, index: int | None, operand: dict[str, Any]) -> float:
+    if not isinstance(bars, pd.DataFrame):
+        return float("nan")
+    pos = _normalize_bar_index(bars, index)
+    if pos is None:
+        return float("nan")
+    name = str(operand.get("name") or operand.get("indicator") or "").strip().lower()
+    window = max(_safe_int(operand.get("window") or operand.get("period") or operand.get("lookback"), 20), 1)
+    close = _bar_column(bars, operand.get("field") or "Close")
+    if close is None:
+        return float("nan")
+
+    if name in {"sma", "ma", "moving_average", "bollinger_mid"}:
+        return _safe_float(close.rolling(window, min_periods=window).mean().iloc[pos], float("nan"))
+    if name in {"ema", "exponential_moving_average"}:
+        return _safe_float(close.ewm(span=window, adjust=False).mean().iloc[pos], float("nan"))
+    if name == "rsi":
+        return _rsi_value(close, pos, window)
+    if name in {"bollinger_upper", "bollinger_lower"}:
+        multiplier = _rule_param_value(operand.get("std") or operand.get("std_dev") or operand.get("multiplier"), 2.0)
+        rolling = close.rolling(window, min_periods=window)
+        middle = rolling.mean().iloc[pos]
+        std = rolling.std(ddof=0).iloc[pos]
+        if not _is_finite_number(middle) or not _is_finite_number(std):
+            return float("nan")
+        return float(middle) + (float(std) * multiplier) if name == "bollinger_upper" else float(middle) - (float(std) * multiplier)
+    if name in {"volume_sma", "volume_average"}:
+        volume = _bar_column(bars, "Volume")
+        if volume is None:
+            return float("nan")
+        return _safe_float(volume.rolling(window, min_periods=window).mean().iloc[pos], float("nan"))
+    if name in {"volume_sma_ratio", "relative_volume"}:
+        volume = _bar_column(bars, "Volume")
+        if volume is None:
+            return float("nan")
+        average = volume.rolling(window, min_periods=window).mean().iloc[pos]
+        current = volume.iloc[pos]
+        if not _is_finite_number(average) or float(average) == 0.0:
+            return float("nan")
+        return _safe_float(current, 0.0) / float(average)
+    if name == "atr":
+        return _safe_float(_compute_atr_series(bars, window=window).iloc[pos], float("nan"))
+    return float("nan")
+
+
+def _darvas_operand_value(bars: pd.DataFrame | None, index: int | None, operand: dict[str, Any]) -> float:
+    side = str(operand.get("side") or operand.get("field") or "top").strip().lower()
+    return _rolling_operand_value(
+        bars,
+        index,
+        {
+            "function": "highest" if side in {"top", "upper", "high"} else "lowest",
+            "field": "High" if side in {"top", "upper", "high"} else "Low",
+            "lookback": operand.get("lookback") or operand.get("window") or operand.get("period") or 20,
+            "offset": operand.get("offset", 1),
+        },
+    )
+
+
+def _operand_value(
+    operand: Any,
+    *,
+    snapshot: dict[str, float],
+    bars: pd.DataFrame | None = None,
+    index: int | None = None,
+    previous: bool = False,
+) -> float:
+    if previous:
+        if index is None:
+            return float("nan")
+        index -= 1
+    if isinstance(operand, (int, float)):
+        return _safe_float(operand, float("nan"))
+    if isinstance(operand, str):
+        return _safe_float(snapshot.get(operand), float("nan"))
+    if not isinstance(operand, dict):
+        return float("nan")
+
+    if "kind" not in operand and "value" in operand and len(operand.keys() & {"left", "right", "source", "level", "children"}) == 0:
+        return _rule_param_value(operand, float("nan"))
+
+    kind = str(operand.get("kind") or operand.get("type") or "").strip().lower()
+    if kind in {"constant", "number", "param", "value"}:
+        return _rule_param_value(operand.get("value"), float("nan"))
+    if kind in {"score", "snapshot", "variable"}:
+        key = str(operand.get("key") or operand.get("variable") or "consensus_score").strip()
+        return _safe_float(snapshot.get(key), float("nan"))
+    if kind == "price":
+        return _bar_value(bars, index, operand.get("field") or "Close")
+    if kind == "volume":
+        return _bar_value(bars, index, "Volume")
+    if kind == "rolling":
+        return _rolling_operand_value(bars, index, operand)
+    if kind == "indicator":
+        return _indicator_operand_value(bars, index, operand)
+    if kind == "darvas_box":
+        return _darvas_operand_value(bars, index, operand)
+    if "variable" in operand:
+        return _safe_float(snapshot.get(str(operand.get("variable"))), float("nan"))
+    return float("nan")
+
+
+def _compare_values(left: float, right: float, operator: str) -> bool:
+    if not _is_finite_number(left) or not _is_finite_number(right):
+        return False
     if operator == ">":
         return left > right
     if operator == ">=":
@@ -414,14 +605,255 @@ def _condition_matches(snapshot: dict[str, float], condition: dict[str, Any]) ->
         return left < right
     if operator == "<=":
         return left <= right
+    if operator in {"=", "=="}:
+        return abs(left - right) <= 1e-12
+    if operator == "!=":
+        return abs(left - right) > 1e-12
     return False
 
 
-def _rule_triggered(snapshot: dict[str, float], rule: dict[str, Any]) -> bool:
+def _condition_matches(
+    snapshot: dict[str, float],
+    condition: dict[str, Any],
+    *,
+    bars: pd.DataFrame | None = None,
+    index: int | None = None,
+) -> bool:
+    condition_type = str(condition.get("type") or "threshold").strip().lower()
+    if condition_type in {"cross", "crossover"}:
+        left_operand = condition.get("left") if "left" in condition else condition.get("source", {"kind": "price", "field": "Close"})
+        right_operand = condition.get("right") if "right" in condition else condition.get("level", {"kind": "indicator", "name": "sma", "window": 20})
+        left = _operand_value(left_operand, snapshot=snapshot, bars=bars, index=index)
+        right = _operand_value(right_operand, snapshot=snapshot, bars=bars, index=index)
+        previous_left = _operand_value(left_operand, snapshot=snapshot, bars=bars, index=index, previous=True)
+        previous_right = _operand_value(right_operand, snapshot=snapshot, bars=bars, index=index, previous=True)
+        direction = str(condition.get("direction") or condition.get("operator") or "above").strip().lower()
+        if direction in {"above", "crosses_above", "bullish", ">"}:
+            return (
+                _is_finite_number(previous_left)
+                and _is_finite_number(previous_right)
+                and previous_left <= previous_right
+                and _compare_values(left, right, ">")
+            )
+        if direction in {"below", "crosses_below", "bearish", "<"}:
+            return (
+                _is_finite_number(previous_left)
+                and _is_finite_number(previous_right)
+                and previous_left >= previous_right
+                and _compare_values(left, right, "<")
+            )
+        return False
+
+    if condition_type in {"breakout", "breakdown"}:
+        left_operand = condition.get("source") if "source" in condition else condition.get("left", {"kind": "price", "field": "Close"})
+        right_operand = condition.get("level") if "level" in condition else condition.get("right")
+        if right_operand is None:
+            return False
+        direction = str(condition.get("direction") or ("below" if condition_type == "breakdown" else "above")).strip().lower()
+        operator = "<" if direction in {"below", "down", "breaks_below", "breakdown"} else ">"
+        left = _operand_value(left_operand, snapshot=snapshot, bars=bars, index=index)
+        right = _operand_value(right_operand, snapshot=snapshot, bars=bars, index=index)
+        return _compare_values(left, right, operator)
+
+    if condition_type == "touch":
+        direction = str(condition.get("direction") or "above").strip().lower()
+        field = "Low" if direction in {"below", "down", "lower"} else "High"
+        left_operand = condition.get("source") if "source" in condition else condition.get("left", {"kind": "price", "field": field})
+        right_operand = condition.get("level") if "level" in condition else condition.get("right")
+        if right_operand is None:
+            return False
+        operator = "<=" if direction in {"below", "down", "lower"} else ">="
+        left = _operand_value(left_operand, snapshot=snapshot, bars=bars, index=index)
+        right = _operand_value(right_operand, snapshot=snapshot, bars=bars, index=index)
+        return _compare_values(left, right, operator)
+
+    variable = str(condition.get("variable") or "consensus_score")
+    operator = str(condition.get("operator") or ">=")
+    left_operand = condition.get("left") if "left" in condition else {"kind": "score", "key": variable}
+    right_operand = condition.get("right") if "right" in condition else condition.get("threshold")
+    left = _operand_value(left_operand, snapshot=snapshot, bars=bars, index=index)
+    right = _operand_value(right_operand, snapshot=snapshot, bars=bars, index=index)
+    if not _is_finite_number(right):
+        right = _rule_threshold_value(condition.get("threshold"), 0.0)
+    return _compare_values(left, right, operator)
+
+
+def _expression_matches(
+    snapshot: dict[str, float],
+    expression: dict[str, Any],
+    *,
+    bars: pd.DataFrame | None = None,
+    index: int | None = None,
+) -> bool:
+    operator = str(expression.get("operator") or expression.get("logic") or "").strip().lower()
+    children = [item for item in list(expression.get("children") or []) if isinstance(item, dict)]
+    if operator in {"all", "and"}:
+        return bool(children) and all(_expression_matches(snapshot, child, bars=bars, index=index) for child in children)
+    if operator in {"any", "or"}:
+        return bool(children) and any(_expression_matches(snapshot, child, bars=bars, index=index) for child in children)
+    if operator == "not":
+        return bool(children) and not _expression_matches(snapshot, children[0], bars=bars, index=index)
+    if children:
+        return all(_expression_matches(snapshot, child, bars=bars, index=index) for child in children)
+    return _condition_matches(snapshot, expression, bars=bars, index=index)
+
+
+def _rule_triggered(
+    snapshot: dict[str, float],
+    rule: dict[str, Any],
+    *,
+    bars: pd.DataFrame | None = None,
+    index: int | None = None,
+) -> bool:
+    expression = rule.get("rule_expression") or rule.get("expression")
+    if isinstance(expression, dict):
+        return _expression_matches(snapshot, expression, bars=bars, index=index)
     conditions = [item for item in list(rule.get("conditions") or []) if isinstance(item, dict)]
     if not conditions:
         return False
-    return all(_condition_matches(snapshot, condition) for condition in conditions)
+    return all(_condition_matches(snapshot, condition, bars=bars, index=index) for condition in conditions)
+
+
+def rule_triggered(
+    snapshot: dict[str, float],
+    rule: dict[str, Any],
+    *,
+    bars: pd.DataFrame | None = None,
+    index: int | None = None,
+) -> bool:
+    return _rule_triggered(snapshot, rule, bars=bars, index=index)
+
+
+def _operand_label(operand: Any) -> str:
+    if isinstance(operand, (int, float)):
+        return f"{float(operand):g}"
+    if isinstance(operand, str):
+        return operand
+    if not isinstance(operand, dict):
+        return "value"
+    if "kind" not in operand and "value" in operand:
+        return f"{_rule_param_value(operand, 0.0):g}"
+    kind = str(operand.get("kind") or operand.get("type") or "").strip().lower()
+    if kind in {"constant", "number", "param", "value"}:
+        return f"{_rule_param_value(operand.get('value'), 0.0):g}"
+    if kind in {"score", "snapshot", "variable"}:
+        return str(operand.get("key") or operand.get("variable") or "consensus_score")
+    if kind == "price":
+        return str(operand.get("field") or "Close")
+    if kind == "volume":
+        return "Volume"
+    if kind == "rolling":
+        function = str(operand.get("function") or "mean").replace("_", " ")
+        field = str(operand.get("field") or "Close")
+        lookback = _safe_int(operand.get("lookback") or operand.get("window") or operand.get("period"), 20)
+        offset = _safe_int(operand.get("offset"), 0)
+        suffix = " prior" if offset else ""
+        return f"{lookback}-bar {function} {field}{suffix}"
+    if kind == "indicator":
+        name = str(operand.get("name") or operand.get("indicator") or "indicator").upper()
+        window = operand.get("window") or operand.get("period") or operand.get("lookback")
+        return f"{name}({window})" if window is not None else name
+    if kind == "darvas_box":
+        side = str(operand.get("side") or "top")
+        lookback = _safe_int(operand.get("lookback") or operand.get("window") or operand.get("period"), 20)
+        return f"Darvas {side}({lookback})"
+    if "variable" in operand:
+        return str(operand.get("variable"))
+    return "value"
+
+
+def _condition_description(condition: dict[str, Any]) -> str:
+    condition_type = str(condition.get("type") or "threshold").strip().lower()
+    if condition_type in {"cross", "crossover"}:
+        direction = str(condition.get("direction") or condition.get("operator") or "above").replace("_", " ")
+        left = condition.get("left") if "left" in condition else condition.get("source")
+        right = condition.get("right") if "right" in condition else condition.get("level")
+        return f"{_operand_label(left)} crosses {direction} {_operand_label(right)}"
+    if condition_type in {"breakout", "breakdown"}:
+        direction = str(condition.get("direction") or ("below" if condition_type == "breakdown" else "above")).replace("_", " ")
+        left = condition.get("source") if "source" in condition else condition.get("left")
+        right = condition.get("level") if "level" in condition else condition.get("right")
+        return f"{_operand_label(left)} breaks {direction} {_operand_label(right)}"
+    if condition_type == "touch":
+        direction = str(condition.get("direction") or "above").replace("_", " ")
+        left = condition.get("source") if "source" in condition else condition.get("left")
+        right = condition.get("level") if "level" in condition else condition.get("right")
+        return f"{_operand_label(left)} touches {direction} {_operand_label(right)}"
+    variable = str(condition.get("variable") or "consensus_score")
+    left = condition.get("left") if "left" in condition else {"kind": "score", "key": variable}
+    right = condition.get("right") if "right" in condition else condition.get("threshold")
+    return f"{_operand_label(left)} {condition.get('operator', '>=')} {_operand_label(right)}"
+
+
+def _expression_descriptions(expression: dict[str, Any]) -> list[str]:
+    operator = str(expression.get("operator") or expression.get("logic") or "").strip().lower()
+    children = [item for item in list(expression.get("children") or []) if isinstance(item, dict)]
+    if children:
+        joiner = " OR " if operator in {"any", "or"} else " AND "
+        child_text = [
+            " ".join(_expression_descriptions(child)).strip()
+            for child in children
+        ]
+        return [joiner.join(text for text in child_text if text)]
+    return [_condition_description(expression)]
+
+
+def describe_rule_conditions(rule: dict[str, Any]) -> list[str]:
+    expression = rule.get("rule_expression") or rule.get("expression")
+    if isinstance(expression, dict):
+        return _expression_descriptions(expression)
+    return [
+        _condition_description(condition)
+        for condition in [item for item in list(rule.get("conditions") or []) if isinstance(item, dict)]
+    ]
+
+
+def rule_condition_count(rule: dict[str, Any]) -> int:
+    expression = rule.get("rule_expression") or rule.get("expression")
+    if isinstance(expression, dict):
+        children = [item for item in list(expression.get("children") or []) if isinstance(item, dict)]
+        if children:
+            return sum(rule_condition_count({"rule_expression": child}) for child in children)
+        return 1
+    return len([item for item in list(rule.get("conditions") or []) if isinstance(item, dict)])
+
+
+def build_rule_snapshot(
+    score_snapshot: dict[str, Any] | pd.Series | None,
+    *,
+    bars: pd.DataFrame | None = None,
+    index: int | None = None,
+) -> dict[str, float]:
+    if isinstance(score_snapshot, pd.Series):
+        snapshot = {str(key): _safe_float(value, 0.0) for key, value in score_snapshot.items()}
+    elif isinstance(score_snapshot, dict):
+        snapshot = {str(key): _safe_float(value, 0.0) for key, value in score_snapshot.items()}
+    else:
+        snapshot = {}
+
+    if isinstance(bars, pd.DataFrame):
+        pos = _normalize_bar_index(bars, index)
+        if pos is not None:
+            for source_field, snapshot_key in (
+                ("Open", "open"),
+                ("High", "high"),
+                ("Low", "low"),
+                ("Close", "close"),
+                ("Volume", "volume"),
+            ):
+                value = _bar_value(bars, pos, source_field)
+                if _is_finite_number(value):
+                    snapshot[snapshot_key] = value
+            atr_value = _safe_float(_compute_atr_series(bars).iloc[pos], float("nan"))
+            if _is_finite_number(atr_value):
+                snapshot["atr"] = atr_value
+
+    snapshot.setdefault("trend_score", 0.0)
+    snapshot.setdefault("momentum_score", 0.0)
+    snapshot.setdefault("oscillation_score", 0.0)
+    snapshot.setdefault("volume_score", 0.0)
+    snapshot.setdefault("consensus_score", 0.0)
+    return snapshot
 
 
 def _rule_reference(rule: dict[str, Any], fallback: str) -> str:
@@ -481,10 +913,16 @@ def _entry_target_fraction(
     previous_fraction: float,
     side_policy: str,
     max_fraction: float,
+    bars: pd.DataFrame | None = None,
+    index: int | None = None,
 ) -> tuple[float, dict[str, Any] | None]:
     if not entry_rules:
         return previous_fraction, None
-    triggered: list[dict[str, Any]] = [rule for rule in entry_rules if _rule_triggered(snapshot, rule)]
+    triggered: list[dict[str, Any]] = [
+        rule
+        for rule in entry_rules
+        if _rule_triggered(snapshot, rule, bars=bars, index=index)
+    ]
     if not triggered:
         return previous_fraction, None
 
@@ -512,6 +950,8 @@ def _apply_exit_rules(
     snapshot: dict[str, float],
     exit_rules: list[dict[str, Any]],
     target_fraction: float,
+    bars: pd.DataFrame | None = None,
+    index: int | None = None,
 ) -> tuple[float, dict[str, Any] | None]:
     if not exit_rules or target_fraction == 0.0:
         return target_fraction, None
@@ -519,7 +959,7 @@ def _apply_exit_rules(
     direction = math.copysign(1.0, target_fraction)
     triggered_rule: dict[str, Any] | None = None
     for rule in exit_rules:
-        if not isinstance(rule, dict) or not _rule_triggered(snapshot, rule):
+        if not isinstance(rule, dict) or not _rule_triggered(snapshot, rule, bars=bars, index=index):
             continue
         reduction = _exit_rule_fraction(rule)
         remaining *= max(0.0, 1.0 - reduction)
@@ -1229,13 +1669,12 @@ def _simulate_stock(
         adv_t1 = _safe_float(adv20.iloc[i + 1], 0.0)
         atr_t = _safe_float(atr_series.iloc[i], 0.0)
         score_t = _safe_float(scores.iloc[i], 0.0)
-        snapshot = {
-            "trend_score": _safe_float(snapshots["trend_score"].iloc[i], 0.0) if "trend_score" in snapshots.columns else 0.0,
-            "momentum_score": _safe_float(snapshots["momentum_score"].iloc[i], 0.0) if "momentum_score" in snapshots.columns else 0.0,
-            "oscillation_score": _safe_float(snapshots["oscillation_score"].iloc[i], 0.0) if "oscillation_score" in snapshots.columns else 0.0,
-            "volume_score": _safe_float(snapshots["volume_score"].iloc[i], 0.0) if "volume_score" in snapshots.columns else 0.0,
-            "consensus_score": _safe_float(snapshots["consensus_score"].iloc[i], score_t),
+        score_snapshot = {
+            str(column): _safe_float(snapshots[column].iloc[i], 0.0)
+            for column in snapshots.columns
         }
+        score_snapshot["consensus_score"] = _safe_float(score_snapshot.get("consensus_score"), score_t)
+        snapshot = build_rule_snapshot(score_snapshot, bars=window, index=i)
 
         risk_reason: str | None = None
         rule_reason: str | None = None
@@ -1269,11 +1708,15 @@ def _simulate_stock(
                 previous_fraction=previous_fraction,
                 side_policy=side_policy,
                 max_fraction=max_fraction,
+                bars=window,
+                index=i,
             )
             target_fraction, exit_match = _apply_exit_rules(
                 snapshot=snapshot,
                 exit_rules=[rule for rule in list(exit_rules or []) if isinstance(rule, dict)],
                 target_fraction=target_fraction,
+                bars=window,
+                index=i,
             )
             entry_rule_match = entry_match
             exit_rule_match = exit_match

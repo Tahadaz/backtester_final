@@ -530,7 +530,8 @@ def _normalize_entry_rule(raw: Any, *, index: int, horizon: str) -> dict[str, An
     sizing_mode = _normalize_rule_sizing_mode(sizing.get("mode"), allow_kelly=True)
     manual_pct = _to_float(sizing.get("manual_pct"), _to_float(sizing.get("value"), 25.0))
     kelly_modifier = sizing.get("kelly_modifier")
-    return {
+    rule_expression = record.get("rule_expression") if _is_record(record.get("rule_expression")) else record.get("expression")
+    out = {
         "id": str(record.get("id") or f"entry_{index + 1}"),
         "label": str(record.get("label") or f"Entree {index + 1}"),
         "config_option": config_option,
@@ -553,6 +554,9 @@ def _normalize_entry_rule(raw: Any, *, index: int, horizon: str) -> dict[str, An
             else None,
         },
     }
+    if _is_record(rule_expression):
+        out["rule_expression"] = deepcopy(rule_expression)
+    return out
 
 
 def _normalize_exit_rule(raw: Any, *, index: int, horizon: str) -> dict[str, Any]:
@@ -563,7 +567,8 @@ def _normalize_exit_rule(raw: Any, *, index: int, horizon: str) -> dict[str, Any
     sizing = record.get("sizing") if _is_record(record.get("sizing")) else {}
     sizing_mode = _normalize_rule_sizing_mode(sizing.get("mode"), allow_kelly=True)
     manual_pct = _to_float(sizing.get("manual_pct"), _to_float(sizing.get("value"), 100.0))
-    return {
+    rule_expression = record.get("rule_expression") if _is_record(record.get("rule_expression")) else record.get("expression")
+    out = {
         "id": str(record.get("id") or f"exit_{index + 1}"),
         "label": str(record.get("label") or f"Sortie {index + 1}"),
         "config_option": config_option,
@@ -586,6 +591,9 @@ def _normalize_exit_rule(raw: Any, *, index: int, horizon: str) -> dict[str, Any
             else None,
         },
     }
+    if _is_record(rule_expression):
+        out["rule_expression"] = deepcopy(rule_expression)
+    return out
 
 
 def _normalize_stock_strategy_config(raw: Any, *, horizon: str) -> dict[str, Any]:
@@ -664,7 +672,7 @@ def _normalize_stock_strategy_config(raw: Any, *, horizon: str) -> dict[str, Any
 
 
 def migrate_strategy_config_v2(raw: Any, *, horizon: str) -> dict[str, Any]:
-    if _is_record(raw) and int(raw.get("schema_version") or 0) in {2, 3} and str(raw.get("app_domain") or "").strip() == "four_pages":
+    if _is_record(raw) and int(raw.get("schema_version") or 0) in {2, 3, 4} and str(raw.get("app_domain") or "").strip() == "four_pages":
         portfolio_raw = raw.get("portfolio") if _is_record(raw.get("portfolio")) else {}
         universe_raw = portfolio_raw.get("universe") if _is_record(portfolio_raw.get("universe")) else {}
         allocation_raw = portfolio_raw.get("allocation") if _is_record(portfolio_raw.get("allocation")) else {}

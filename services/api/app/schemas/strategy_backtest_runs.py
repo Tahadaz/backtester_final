@@ -23,7 +23,7 @@ class StrategyBacktestRunWfoConfig(BaseModel):
 
 class StrategyBacktestRunCreateRequest(BaseModel):
     strategy_id: str = Field(..., min_length=1)
-    mode: str = Field(default="direct", pattern=r"^(direct|wfo)$")
+    mode: str = Field(default="direct", pattern=r"^(direct|wfo|portfolio_replay)$")
     start_date: str | None = None
     end_date: str | None = None
     timeframe: str = Field(default="1D", min_length=1)

@@ -45,7 +45,6 @@ from services.worker.tasks.ingest_market_data import (
     _try_load_existing_parquet,
     _save_parquet,
 )
-from services.worker.tasks.dashboard_snapshot import regenerate_dashboard_snapshot
 from services.api.app.services.weekly_recompute_policy import (
     is_friday_market_refresh,
     iter_signal_engine_weekly_stale_tuples,
@@ -61,12 +60,72 @@ def _finite_float(value) -> float | None:
     return out if out == out and out not in (float("inf"), float("-inf")) else None
 
 
+def _positive_int(value) -> int | None:
+    number = _finite_float(value)
+    if number is None:
+        return None
+    rounded = int(round(number))
+    return rounded if rounded > 0 else None
+
+
+def _update_stock_share_count_from_frame(
+    db: Session,
+    symbol: str,
+    frame,
+    *,
+    source: str,
+) -> None:
+    """Persist the latest Bourse ``NombreTitres`` value without breaking refreshes."""
+    if frame is None or "NombreTitres" not in getattr(frame, "columns", []):
+        return
+
+    share_count: int | None = None
+    share_as_of: datetime.date | None = None
+    try:
+        for ts, value in reversed(list(frame["NombreTitres"].items())):
+            share_count = _positive_int(value)
+            if share_count is None:
+                continue
+            share_as_of = ts.date() if hasattr(ts, "date") else None
+            break
+    except Exception:
+        return
+
+    if share_count is None:
+        return
+
+    try:
+        db.execute(
+            text(
+                """
+                UPDATE stock_master
+                SET
+                  shares_outstanding = :shares_outstanding,
+                  shares_source = :shares_source,
+                  shares_as_of = :shares_as_of,
+                  shares_updated_at = now(),
+                  updated_at = now()
+                WHERE symbol = :symbol
+                """
+            ),
+            {
+                "symbol": symbol,
+                "shares_outstanding": share_count,
+                "shares_source": source,
+                "shares_as_of": share_as_of,
+            },
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+
+
 def _enqueue_signal_layers_after_refresh(
     symbol: str,
     *,
     db: Session | None = None,
     now: datetime.datetime | None = None,
-) -> None:
+) -> list[str]:
     """Best-effort: enqueue post-refresh signal-layer jobs.
 
     Daily market refresh keeps the same representative sets but recomputes each
@@ -74,6 +133,7 @@ def _enqueue_signal_layers_after_refresh(
     Set SIGNAL_ENGINE_REFRESH_ON_MARKET_REFRESH=0 to disable Signal Engine's
     representative refresh on market updates.
     """
+    job_ids: list[str] = []
     try:
         from services.worker.tasks.wfo_signal_batch import enqueue_wfo_refresh_for_symbol_horizon
         from services.worker.tasks.wfo_signal_batch import enqueue_wfo_full_for_symbol_horizon
@@ -84,46 +144,104 @@ def _enqueue_signal_layers_after_refresh(
         for horizon in ("weekly", "monthly", "quarterly"):
             for variant in ALL_SIGNAL_MODE_NAMES:
                 if _SIGNAL_ENGINE_REFRESH_ON_MARKET_REFRESH:
-                    enqueue_signal_engine_refresh_for_symbol(
+                    job_id = enqueue_signal_engine_refresh_for_symbol(
                         symbol,
                         horizon,
                         variant=variant,
                         triggered_by="market_refresh",
                     )
-                enqueue_wfo_refresh_for_symbol_horizon(
+                    if job_id:
+                        job_ids.append(str(job_id))
+                job_id = enqueue_wfo_refresh_for_symbol_horizon(
                     symbol,
                     horizon,
                     variant=variant,
                     triggered_by="market_refresh",
                 )
+                if job_id:
+                    job_ids.append(str(job_id))
         if db is not None and is_friday_market_refresh(now):
             for _, horizon, variant in iter_signal_engine_weekly_stale_tuples(
                 db,
                 symbols=[symbol],
                 now=now,
             ):
-                enqueue_signal_engine_for_symbol(
+                job_id = enqueue_signal_engine_for_symbol(
                     symbol,
                     horizon,
                     variant=variant,
                     triggered_by="weekly_market_refresh",
                 )
+                if job_id:
+                    job_ids.append(str(job_id))
             for _, horizon, variant in iter_wfo_weekly_stale_tuples(
                 db,
                 symbols=[symbol],
                 now=now,
             ):
-                enqueue_wfo_full_for_symbol_horizon(
+                job_id = enqueue_wfo_full_for_symbol_horizon(
                     symbol,
                     horizon,
                     variant=variant,
                     triggered_by="weekly_market_refresh",
                 )
+                if job_id:
+                    job_ids.append(str(job_id))
     except Exception:
         import logging
         logging.getLogger(__name__).warning(
             "Could not enqueue signal-layer refresh after market update for %s — skipping.", symbol
         )
+    return job_ids
+
+
+def _market_refresh_queue():
+    from rq import Queue
+
+    from services.worker.redis_utils import connect_redis_with_fallback
+
+    redis = connect_redis_with_fallback(settings.REDIS_URL, decode_responses=False)
+    return Queue(settings.MARKET_REFRESH_QUEUE_NAME, connection=redis)
+
+
+def _dashboard_snapshot_dependency(job_ids: list[str]):
+    from rq.job import Dependency
+
+    return Dependency(job_ids, allow_failure=True)
+
+
+def _enqueue_dashboard_snapshot_after_signal_jobs(
+    signal_job_ids: list[str],
+    *,
+    symbols: list[str],
+    triggered_by: str,
+) -> str | None:
+    """Queue a dashboard snapshot after post-refresh signal jobs settle."""
+    unique_job_ids = list(dict.fromkeys(str(job_id) for job_id in signal_job_ids if str(job_id).strip()))
+    try:
+        dependency = _dashboard_snapshot_dependency(unique_job_ids) if unique_job_ids else None
+        job = _market_refresh_queue().enqueue(
+            "services.worker.tasks.dashboard_snapshot.refresh_dashboard_snapshot",
+            None,
+            job_timeout=600,
+            depends_on=dependency,
+            meta={
+                "triggered_by": triggered_by,
+                "updated_symbols_count": len(symbols),
+                "updated_symbols_sample": symbols[:20],
+                "signal_dependency_count": len(unique_job_ids),
+            },
+        )
+        return str(job.id)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).warning(
+            "Could not enqueue dashboard snapshot after market refresh signal jobs.",
+            exc_info=True,
+        )
+        return None
+
+
 from services.api.app.market_refresh_window import (
     BOURSE_REFRESH_CUTOFF_LABEL,
     needs_bourse_refresh,
@@ -505,6 +623,7 @@ def _do_refresh_symbol(
         prev_close=prev_close,
         adv_20d=adv_20d,
     )
+    _update_stock_share_count_from_frame(db, symbol, df_new, source=source)
 
     return {
         "status": summary["status"],
@@ -535,10 +654,15 @@ def refresh_single_symbol(
         refresh_now = _utcnow()
 
         result = _do_refresh_symbol(db, run_id, symbol, timeframe, source)
+        dashboard_snapshot_job_id: str | None = None
         if result["status"] in {"created", "updated"}:
-            pass
             # Enqueue lightweight signal refresh so DB-cached results stay aligned with latest close.
-            _enqueue_signal_layers_after_refresh(symbol, db=db, now=refresh_now)
+            signal_job_ids = _enqueue_signal_layers_after_refresh(symbol, db=db, now=refresh_now)
+            dashboard_snapshot_job_id = _enqueue_dashboard_snapshot_after_signal_jobs(
+                signal_job_ids,
+                symbols=[symbol],
+                triggered_by="market_refresh_single",
+            )
 
         _set_run_status(
             db, run_id, "succeeded",
@@ -546,7 +670,10 @@ def refresh_single_symbol(
             symbols_done=1,
             symbols_failed=0,
         )
-        return {"refresh_run_id": refresh_run_id, "symbol": symbol, **result}
+        payload = {"refresh_run_id": refresh_run_id, "symbol": symbol, **result}
+        if dashboard_snapshot_job_id:
+            payload["dashboard_snapshot_job_id"] = dashboard_snapshot_job_id
+        return payload
 
     except Exception as exc:
         err_msg = f"{type(exc).__name__}: {exc}"
@@ -644,10 +771,16 @@ def refresh_all_tracked_symbols(
         else:
             final_status = "partial"
 
+        dashboard_snapshot_job_id: str | None = None
+        signal_job_ids: list[str] = []
         if updated_symbols > 0:
-            pass
             for symbol in refreshed_symbols:
-                _enqueue_signal_layers_after_refresh(symbol, db=db, now=refresh_now)
+                signal_job_ids.extend(_enqueue_signal_layers_after_refresh(symbol, db=db, now=refresh_now))
+            dashboard_snapshot_job_id = _enqueue_dashboard_snapshot_after_signal_jobs(
+                signal_job_ids,
+                symbols=refreshed_symbols,
+                triggered_by="market_refresh_all",
+            )
 
         _set_run_status(
             db, run_id, final_status,
@@ -655,13 +788,16 @@ def refresh_all_tracked_symbols(
             symbols_done=done,
             symbols_failed=failed,
         )
-        return {
+        payload = {
             "refresh_run_id": refresh_run_id,
             "status": final_status,
             "symbols_done": done,
             "symbols_failed": failed,
             "results": results,
         }
+        if dashboard_snapshot_job_id:
+            payload["dashboard_snapshot_job_id"] = dashboard_snapshot_job_id
+        return payload
 
     except Exception as exc:
         err_msg = f"{type(exc).__name__}: {exc}"

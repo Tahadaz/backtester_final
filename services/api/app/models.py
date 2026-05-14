@@ -44,8 +44,36 @@ class MarketDataStore(Base):
     source_provider = Column(String, nullable=True)   # "bourse_direct"|"yahoo"|"bmce_excel"|"casablanca_bourse"
     data_as_of = Column(Date, nullable=True)           # last bar date (denormalized for freshness display)
     asset_class = Column(String(16), nullable=False, default="equity")  # "equity"|"index"|"factor"
+    close_last = Column(Float, nullable=True)
+    prev_close = Column(Float, nullable=True)
+    adv_20d = Column(Float, nullable=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class BourseLiveQuote(Base):
+    """Latest scraped Bourse de Casablanca quote, separate from canonical OHLCV."""
+    __tablename__ = "bourse_live_quote"
+
+    symbol = Column(String, primary_key=True)
+    session_date = Column(Date, nullable=True)
+    quote_timestamp = Column(DateTime(timezone=True), nullable=True)
+    open_price = Column(Float, nullable=True)
+    last_price = Column(Float, nullable=True)
+    high_price = Column(Float, nullable=True)
+    low_price = Column(Float, nullable=True)
+    prev_close = Column(Float, nullable=True)
+    volume = Column(Float, nullable=True)
+    source_provider = Column(String, nullable=False, default="casablanca_bourse_live")
+    source_url = Column(String, nullable=True)
+    raw_json = Column(JSONB, nullable=False, default=dict)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_bourse_live_quote_updated_at", "updated_at"),
+        Index("ix_bourse_live_quote_session_date", "session_date"),
+    )
 
 class Run(Base):
     __tablename__ = "run"
@@ -403,6 +431,10 @@ class StockMaster(Base):
     is_active = Column(Boolean, nullable=False, default=True)
     track_source = Column(String, nullable=False, default="bourse_direct")
     bourse_url = Column(String, nullable=True)              # direct link to Bourse de Casablanca stock page
+    shares_outstanding = Column(BigInteger, nullable=True)  # latest "Nombre de titres" scraped from Bourse
+    shares_source = Column(String, nullable=True)
+    shares_as_of = Column(Date, nullable=True)
+    shares_updated_at = Column(DateTime(timezone=True), nullable=True)
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -729,12 +761,48 @@ class DashboardCustomIndex(Base):
     )
 
 
+class DashboardPortfolio(Base):
+    """Named dashboard portfolio definition and replay metadata owned by one app user."""
+    __tablename__ = "dashboard_portfolio"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    owner_user_id = Column(String, nullable=True)
+    name = Column(String(120), nullable=False)
+    description = Column(Text, nullable=True)
+    symbols = Column(JSONB, nullable=False, default=list)
+    component_shares = Column(JSONB, nullable=False, default=dict)
+    allocation_method = Column(String(24), nullable=False, default="share_quantities")
+    side_policy = Column(String(20), nullable=False, default="long_only")
+    total_capital_mad = Column(Float, nullable=False, default=1_000_000.0)
+    cash_buffer_pct = Column(Float, nullable=False, default=0.0)
+    stop_loss_pct = Column(Float, nullable=True)
+    take_profit_pct = Column(Float, nullable=True)
+    display_mode = Column(String(32), nullable=False, default="trade_opportunities")
+    technical_direction_mode = Column(String(16), nullable=False, default="best")
+    horizon = Column(String(20), nullable=False, default="monthly")
+    is_default = Column(Boolean, nullable=False, default=False)
+    replay_start_date = Column(Date, nullable=True)
+    replay_end_date = Column(Date, nullable=True)
+    replay_generated_at = Column(DateTime(timezone=True), nullable=True)
+    last_replay_json = Column(JSONB, nullable=False, default=dict)
+    meta_json = Column(JSONB, nullable=False, default=dict)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_dashboard_portfolio_owner_updated_at", "owner_user_id", "updated_at"),
+        Index("uq_dashboard_portfolio_owner_name_ci", "owner_user_id", func.lower(name), unique=True),
+        Index("ix_dashboard_portfolio_owner_default", "owner_user_id", "is_default"),
+    )
+
+
 class DeskPortfolioPosition(Base):
     """Manual current-position state used by the daily dashboard blotter."""
     __tablename__ = "desk_portfolio_position"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     owner_user_id = Column(String, nullable=True)
+    portfolio_id = Column(UUID(as_uuid=True), ForeignKey("dashboard_portfolio.id", ondelete="CASCADE"), nullable=True)
     symbol = Column(String, nullable=False)
     side = Column(String(16), nullable=False, default="long")
     quantity = Column(Float, nullable=False, default=0.0)
@@ -750,10 +818,11 @@ class DeskPortfolioPosition(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     __table_args__ = (
-        UniqueConstraint("owner_user_id", "symbol", "side", name="uq_desk_portfolio_position_owner_symbol_side"),
+        UniqueConstraint("portfolio_id", "symbol", "side", name="uq_desk_portfolio_position_portfolio_symbol_side"),
         Index("ix_desk_portfolio_position_status", "status"),
         Index("ix_desk_portfolio_position_symbol", "symbol"),
         Index("ix_desk_portfolio_position_owner_status", "owner_user_id", "status"),
+        Index("ix_desk_portfolio_position_portfolio_status", "portfolio_id", "status"),
     )
 
 
@@ -762,6 +831,8 @@ class DeskPortfolioFill(Base):
     __tablename__ = "desk_portfolio_fill"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    owner_user_id = Column(String, nullable=True)
+    portfolio_id = Column(UUID(as_uuid=True), ForeignKey("dashboard_portfolio.id", ondelete="CASCADE"), nullable=True)
     timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     symbol = Column(String, nullable=False)
     side = Column(String(16), nullable=False)
@@ -773,6 +844,8 @@ class DeskPortfolioFill(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     __table_args__ = (
+        Index("ix_desk_portfolio_fill_owner_timestamp", "owner_user_id", "timestamp"),
+        Index("ix_desk_portfolio_fill_portfolio_timestamp", "portfolio_id", "timestamp"),
         Index("ix_desk_portfolio_fill_timestamp", "timestamp"),
         Index("ix_desk_portfolio_fill_symbol_timestamp", "symbol", "timestamp"),
     )
@@ -1192,6 +1265,32 @@ class SignalEngineBatchJob(Base):
         Index("ix_sebj_status", "status"),
         Index("ix_sebj_created_at", "created_at"),
         Index("ix_sebj_batch_id", "batch_id"),
+    )
+
+
+class SchedulerRun(Base):
+    """Audit row for one scheduler dispatch attempt.
+
+    The scheduler process only fans work out to RQ queues. This table records
+    that dispatch layer so operations can see whether recurring jobs are
+    firing, how much work they enqueued, and what failed before queueing.
+    """
+    __tablename__ = "scheduler_run"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    schedule_id = Column(String(64), nullable=False)
+    trigger_source = Column(String(32), nullable=False, server_default="scheduled")
+    status = Column(String(20), nullable=False, server_default="running")
+    started_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    enqueued_jobs = Column(Integer, nullable=False, server_default="0")
+    error_message = Column(Text, nullable=True)
+    meta_json = Column(JSONB, nullable=False, default=dict)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_scheduler_run_schedule_started", "schedule_id", "started_at"),
+        Index("ix_scheduler_run_status", "status"),
     )
 
 

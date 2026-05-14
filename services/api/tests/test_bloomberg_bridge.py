@@ -45,6 +45,11 @@ class _FakeS3:
         _ = Bucket
         return {"Body": _FakeBody(self._objects[Key])}
 
+    def delete_object(self, *, Bucket: str, Key: str) -> dict[str, object]:
+        _ = Bucket
+        self._objects.pop(Key, None)
+        return {}
+
 
 @pytest.fixture()
 def client_and_storage(monkeypatch):
@@ -231,3 +236,85 @@ def test_bloomberg_job_can_be_queued_claimed_and_completed(client_and_storage) -
     events = client.get(f"/bloomberg/jobs/{job_id}/events")
     assert events.status_code == 200
     assert [event["status"] for event in events.json()] == ["queued", "leased", "succeeded"]
+
+
+def test_bloomberg_job_queue_and_cancel_do_not_require_admin_key(client_and_storage, monkeypatch) -> None:
+    client, _objects = client_and_storage
+    monkeypatch.setattr(settings, "ADMIN_API_KEY", "admin-secret")
+
+    created = client.post(
+        "/bloomberg/jobs",
+        json={
+            "job_type": "backfill",
+            "universe": "selected",
+            "mode": "backfill_missing",
+            "frequency": "daily",
+            "symbols": ["ATW"],
+            "fields": ["PX_LAST"],
+        },
+    )
+    assert created.status_code == 201
+
+    cancelled = client.post(f"/bloomberg/jobs/{created.json()['id']}/cancel")
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+
+
+def test_bloomberg_series_and_batch_can_be_deleted_in_order(client_and_storage) -> None:
+    client, objects = client_and_storage
+    payload = _parquet_payload()
+    manifest = {
+        "schema_version": 1,
+        "bridge_id": "bank-terminal-01",
+        "request_id": "req-delete",
+        "bloomberg_source": "bdh",
+        "kind": "time_series",
+        "securities": ["ATW MA Equity"],
+        "fields": ["PX_LAST"],
+        "start_date": "2026-05-01",
+        "end_date": "2026-05-04",
+        "periodicity": "DAILY",
+        "overrides": {},
+        "columns": ["date", "security", "field", "value"],
+        "row_count": 2,
+    }
+
+    created = client.post(
+        "/bridge/bloomberg/batches",
+        headers={"X-Bloomberg-Bridge-Key": "secret"},
+        data={"manifest_json": json.dumps(manifest)},
+        files={"file": ("sample.parquet", payload, "application/octet-stream")},
+    )
+    assert created.status_code == 201
+    batch = created.json()["batch"]
+    batch_id = batch["id"]
+
+    series = client.get("/bloomberg/series").json()
+    assert len(series) == 1
+    series_id = series[0]["id"]
+
+    blocked = client.delete(f"/bloomberg/batches/{batch_id}")
+    assert blocked.status_code == 409
+
+    series_object_key = series[0]["object_key"]
+    deleted_series = client.delete(f"/bloomberg/series/{series_id}")
+    assert deleted_series.status_code == 200
+    assert deleted_series.json()["objects_deleted"] == 1
+    assert series_object_key not in objects
+    assert client.get("/bloomberg/series").json() == []
+
+    updated_batch = client.get(f"/bloomberg/batches/{batch_id}").json()
+    assert updated_batch["series_count"] == 0
+    batch_object_keys = [
+        updated_batch["raw_object_key"],
+        updated_batch["manifest_object_key"],
+        updated_batch["normalized_object_key"],
+    ]
+
+    deleted_batch = client.delete(f"/bloomberg/batches/{batch_id}")
+    assert deleted_batch.status_code == 200
+    assert deleted_batch.json()["objects_deleted"] == len([key for key in batch_object_keys if key])
+    assert client.get(f"/bloomberg/batches/{batch_id}").status_code == 404
+    for key in batch_object_keys:
+        if key:
+            assert key not in objects

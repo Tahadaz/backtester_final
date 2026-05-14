@@ -14,10 +14,18 @@ from collections import defaultdict
 from datetime import date, datetime, timezone
 from typing import Any
 
+import numpy as np
 import pandas as pd
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from core.quant_core.optimize import obv_array
+from core.quant_core.signal_engine.indicator_series import (
+    compute_ema_series,
+    compute_macd_pack_series,
+    compute_rsi_series,
+    compute_sma_series,
+)
 from core.quant_core.signal_engine.domain import signal_type_label as _core_signal_type_label
 from core.quant_core.signal_engine.modes import ALL_SIGNAL_MODE_NAMES, resolve_signal_mode, signal_mode_read_names
 from .market_universe import (
@@ -43,7 +51,7 @@ HORIZONS: dict[str, str] = {
     "quarterly": "Trimestriel",
 }
 
-DASHBOARD_PAYLOAD_VERSION = "2026-05-13-net-edge-score-v1"
+DASHBOARD_PAYLOAD_VERSION = "2026-05-13-live-performance-v1"
 
 EDGE_SIGNAL_MODES: tuple[str, ...] = ALL_SIGNAL_MODE_NAMES
 EDGE_CANDIDATE_COUNT = len(EDGE_SIGNAL_MODES)
@@ -82,6 +90,17 @@ EXPANDED_CATEGORY_FAMILIES: dict[str, list[str]] = {
     "oscillation": ["rsi", "stochastic", "cci", "mfi", "uo"],
     "volume": ["obv", "cmf", "ad", "vwap", "fi"],
 }
+
+CLASSIC_TECHNICAL_VARIANT = "classic_ta"
+CLASSIC_TECHNICAL_LABEL = "Classic TA - SMA50/200 RSI14 MACD OBV"
+CLASSIC_SMA_PERIODS = (50, 200)
+CLASSIC_RSI_PERIOD = 14
+CLASSIC_RSI_OVERSOLD = 30.0
+CLASSIC_RSI_OVERBOUGHT = 70.0
+CLASSIC_MACD_FAST = 12
+CLASSIC_MACD_SLOW = 26
+CLASSIC_MACD_SIGNAL = 9
+CLASSIC_OBV_EMA_PERIOD = 20
 
 SIGNAL_MODE_CATEGORY_FAMILIES: dict[str, dict[str, list[str]]] = {
     "legacy_ta_simple": LEGACY_CATEGORY_FAMILIES,
@@ -244,6 +263,112 @@ def _variation_pct(close_last: Any, prev_close: Any) -> float | None:
     if close is None or prev in (None, 0.0):
         return None
     return round(((close - prev) / prev) * 100.0, 2)
+
+
+def _period_payload(
+    *,
+    start_price: Any,
+    end_price: Any,
+    start_date: Any,
+    end_date: Any,
+    source: str = "official_close",
+) -> dict[str, Any]:
+    return {
+        "pct": _variation_pct(end_price, start_price),
+        "start_price": _safe_float(start_price),
+        "end_price": _safe_float(end_price),
+        "start_date": _iso_or_none(start_date),
+        "end_date": _iso_or_none(end_date),
+        "source": source,
+    }
+
+
+def _close_before(close: pd.Series, boundary: pd.Timestamp) -> tuple[Any, Any] | None:
+    before = close[close.index < boundary]
+    if before.empty:
+        return None
+    return before.index[-1], before.iloc[-1]
+
+
+def _build_price_performance_payload(
+    db: Session,
+    symbol: str,
+    *,
+    fallback_last: float | None,
+    fallback_prev: float | None,
+) -> dict[str, Any]:
+    """Official close-based returns. Live quote overlays stay outside OHLCV."""
+    fallback_payload = {
+        "one_day": _period_payload(
+            start_price=fallback_prev,
+            end_price=fallback_last,
+            start_date=None,
+            end_date=None,
+        ),
+        "wtd": _period_payload(start_price=None, end_price=fallback_last, start_date=None, end_date=None),
+        "mtd": _period_payload(start_price=None, end_price=fallback_last, start_date=None, end_date=None),
+        "ytd": _period_payload(start_price=None, end_price=fallback_last, start_date=None, end_date=None),
+        "open_to_now": _period_payload(start_price=None, end_price=fallback_last, start_date=None, end_date=None),
+    }
+    try:
+        from ..market_data_loader import load_ohlcv_for_symbol
+
+        frame = load_ohlcv_for_symbol(db, symbol, timeframe="1D").sort_index()
+        if frame.empty or "Close" not in frame.columns:
+            return fallback_payload
+        close = pd.to_numeric(frame["Close"], errors="coerce").replace([np.inf, -np.inf], np.nan).dropna()
+        close = close[close != 0]
+        close = close[~close.index.duplicated(keep="last")].sort_index()
+        if close.empty:
+            return fallback_payload
+        latest_ts = close.index[-1]
+        latest_price = _safe_float(close.iloc[-1])
+        if latest_price is None:
+            return fallback_payload
+        prev_ts = close.index[-2] if len(close) >= 2 else None
+        prev_price = close.iloc[-2] if len(close) >= 2 else None
+        latest_day = pd.Timestamp(latest_ts).normalize()
+        week_start = latest_day - pd.Timedelta(days=int(latest_day.weekday()))
+        month_start = latest_day.replace(day=1)
+        year_start = latest_day.replace(month=1, day=1)
+
+        def since(boundary: pd.Timestamp) -> dict[str, Any]:
+            anchor = _close_before(close, boundary)
+            if anchor is None:
+                return _period_payload(start_price=None, end_price=latest_price, start_date=None, end_date=latest_ts)
+            anchor_ts, anchor_price = anchor
+            return _period_payload(
+                start_price=anchor_price,
+                end_price=latest_price,
+                start_date=anchor_ts,
+                end_date=latest_ts,
+            )
+
+        open_price = frame["Open"].iloc[-1] if "Open" in frame.columns else None
+        return {
+            "one_day": _period_payload(
+                start_price=prev_price,
+                end_price=latest_price,
+                start_date=prev_ts,
+                end_date=latest_ts,
+            ),
+            "wtd": since(week_start),
+            "mtd": since(month_start),
+            "ytd": since(year_start),
+            "open_to_now": _period_payload(
+                start_price=open_price,
+                end_price=latest_price,
+                start_date=latest_ts,
+                end_date=latest_ts,
+            ),
+        }
+    except Exception:
+        logger.debug("dashboard performance unavailable", extra={"symbol": symbol}, exc_info=True)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return fallback_payload
 
 
 def _factor_specs_by_ticker() -> dict[str, Any]:
@@ -471,6 +596,150 @@ def _build_best_technical_signal_payload(candidates: list[dict[str, Any] | None]
     return max(usable, key=_technical_signal_rank)
 
 
+def _latest_finite_value(values: np.ndarray) -> float | None:
+    if len(values) == 0:
+        return None
+    value = _safe_float(values[-1])
+    return value
+
+
+def _directional_classic_score(current: float | None, reference: float | None) -> float | None:
+    if current is None or reference is None:
+        return None
+    if current > reference:
+        return 100.0
+    if current < reference:
+        return -100.0
+    return 0.0
+
+
+def _classic_category_payload(category: str, score: float) -> dict[str, Any]:
+    signal_type = _category_signal_type(category, LEGACY_CATEGORY_FAMILIES[category][0])
+    return {"score_pct": _round(score), "label": _signal_type_label(signal_type, score)}
+
+
+def _normalise_classic_ohlcv(ohlcv: pd.DataFrame) -> pd.DataFrame | None:
+    if not isinstance(ohlcv, pd.DataFrame) or ohlcv.empty:
+        return None
+
+    frame = ohlcv.copy()
+    rename_map: dict[str, str] = {}
+    for target, candidates in {
+        "Close": ("Close", "close", "Adj Close", "AdjClose", "adj_close", "Price", "price"),
+        "Volume": ("Volume", "volume", "Vol", "vol"),
+    }.items():
+        for candidate in candidates:
+            if candidate in frame.columns:
+                rename_map[candidate] = target
+                break
+    if rename_map:
+        frame = frame.rename(columns=rename_map)
+    if "Close" not in frame.columns:
+        return None
+
+    frame["Close"] = pd.to_numeric(frame["Close"], errors="coerce").replace([np.inf, -np.inf], np.nan)
+    if "Volume" in frame.columns:
+        frame["Volume"] = pd.to_numeric(frame["Volume"], errors="coerce").replace([np.inf, -np.inf], np.nan)
+
+    frame = frame.dropna(subset=["Close"]).sort_index()
+    frame = frame[~frame.index.duplicated(keep="last")]
+    return None if frame.empty else frame
+
+
+def _build_classic_technical_signal_payload_from_ohlcv(ohlcv: pd.DataFrame) -> dict[str, Any] | None:
+    frame = _normalise_classic_ohlcv(ohlcv)
+    if frame is None:
+        return None
+
+    close = frame["Close"].to_numpy(dtype=np.float64)
+    close_last = _latest_finite_value(close)
+    per_family: dict[str, Any] = {}
+
+    trend_scores = [
+        score
+        for period in CLASSIC_SMA_PERIODS
+        for score in [_directional_classic_score(close_last, _latest_finite_value(compute_sma_series(close, period)))]
+        if score is not None
+    ]
+    if trend_scores:
+        trend_score = sum(trend_scores) / len(trend_scores)
+        per_family["tendance"] = _classic_category_payload("tendance", trend_score)
+
+    if len(close) >= CLASSIC_MACD_SLOW + CLASSIC_MACD_SIGNAL:
+        macd_line, signal_line, _histogram = compute_macd_pack_series(
+            close,
+            CLASSIC_MACD_FAST,
+            CLASSIC_MACD_SLOW,
+            CLASSIC_MACD_SIGNAL,
+        )
+        macd_score = _directional_classic_score(
+            _latest_finite_value(macd_line),
+            _latest_finite_value(signal_line),
+        )
+        if macd_score is not None:
+            per_family["momentum"] = _classic_category_payload("momentum", macd_score)
+
+    rsi_last = _latest_finite_value(compute_rsi_series(close, CLASSIC_RSI_PERIOD))
+    if rsi_last is not None:
+        if rsi_last <= CLASSIC_RSI_OVERSOLD:
+            rsi_score = 100.0
+        elif rsi_last >= CLASSIC_RSI_OVERBOUGHT:
+            rsi_score = -100.0
+        else:
+            rsi_score = 0.0
+        per_family["oscillation"] = _classic_category_payload("oscillation", rsi_score)
+
+    if "Volume" in frame.columns:
+        volume_frame = frame[["Close", "Volume"]].dropna()
+        if len(volume_frame) >= CLASSIC_OBV_EMA_PERIOD:
+            volume_close = volume_frame["Close"].to_numpy(dtype=np.float64)
+            volume = volume_frame["Volume"].to_numpy(dtype=np.float64)
+            obv = obv_array(volume_close, volume)
+            obv_score = _directional_classic_score(
+                _latest_finite_value(obv),
+                _latest_finite_value(compute_ema_series(obv, CLASSIC_OBV_EMA_PERIOD)),
+            )
+            if obv_score is not None:
+                per_family["volume"] = _classic_category_payload("volume", obv_score)
+
+    scores = [
+        _safe_float(item.get("score_pct"))
+        for item in per_family.values()
+        if isinstance(item, dict)
+    ]
+    available_scores = [score for score in scores if score is not None]
+    if not available_scores:
+        return None
+
+    aggregate_score = sum(available_scores) / len(available_scores)
+    return {
+        "source": "signal_engine",
+        "variant": CLASSIC_TECHNICAL_VARIANT,
+        "label": CLASSIC_TECHNICAL_LABEL,
+        "signal_label": _score_to_label(aggregate_score),
+        "direction": _direction_from_score(aggregate_score),
+        "score_pct": _round(aggregate_score),
+        "abs_score_pct": _round(abs(float(aggregate_score))),
+        "per_family": per_family,
+        "factor_dependencies": {},
+    }
+
+
+def _build_classic_technical_signal_payload(db: Session, symbol: str) -> dict[str, Any] | None:
+    try:
+        from ..market_data_loader import load_ohlcv_for_symbol
+
+        ohlcv = load_ohlcv_for_symbol(db, symbol, timeframe="1D")
+        return _build_classic_technical_signal_payload_from_ohlcv(ohlcv)
+    except Exception:
+        logger.debug("classic technical signal unavailable", extra={"symbol": symbol}, exc_info=True)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return None
+
+
 def _iso_or_none(value: Any) -> str | None:
     if value is None:
         return None
@@ -687,6 +956,8 @@ def _apply_wfo_all_oos_proof_to_edge(
         price_index = pd.DatetimeIndex(prices.index)
 
         def wfo_loader(sym: str, _h: str) -> dict[str, Any]:
+            from .wfo_folds import normalize_wfo_folds_json
+
             for db_h in db_horizons:
                 summary = (
                     db.query(models.WfoSignalSummary)
@@ -701,7 +972,13 @@ def _apply_wfo_all_oos_proof_to_edge(
                     .first()
                 )
                 if summary is not None and summary.folds_json:
-                    return {"folds_json": summary.folds_json}
+                    return {
+                        "folds_json": normalize_wfo_folds_json(
+                            summary.folds_json,
+                            config_json=summary.config_json,
+                            ohlcv_index=price_index,
+                        )
+                    }
             return {}
 
         oos_sample = oos_sample_for(
@@ -1075,6 +1352,8 @@ def _portfolio_edge_member_from_stock(
         ohlcv_idx = pd.DatetimeIndex(prices.index)
 
         def wfo_loader(sym: str, _h: str) -> dict[str, Any]:
+            from .wfo_folds import normalize_wfo_folds_json
+
             for db_h in db_horizons:
                 summary = (
                     db.query(models.WfoSignalSummary)
@@ -1089,7 +1368,13 @@ def _portfolio_edge_member_from_stock(
                     .first()
                 )
                 if summary is not None and summary.folds_json:
-                    return {"folds_json": summary.folds_json}
+                    return {
+                        "folds_json": normalize_wfo_folds_json(
+                            summary.folds_json,
+                            config_json=summary.config_json,
+                            ohlcv_index=ohlcv_idx,
+                        )
+                    }
             return {}
 
         def score_history_loader(sym: str, _h: str) -> list[dict[str, Any]]:
@@ -1588,10 +1873,17 @@ def build_dashboard_payload(db: Session, horizon: str, *, include_edge: bool = F
             "last_price": last_price,
             "prev_close": prev_close,
             "var1j_pct": _variation_pct(last_price, prev_close),
+            "performance": _build_price_performance_payload(
+                db,
+                symbol,
+                fallback_last=last_price,
+                fallback_prev=prev_close,
+            ),
             "adv": adv_20d,
             "edge": _build_stock_edge_payload(db, symbol, horizon) if include_edge else {},
             "best_signal": _build_best_signal_payload(db, symbol, horizon) if include_edge else None,
             "best_technical_signal": _build_best_technical_signal_payload(technical_candidates),
+            "classic_technical_signal": _build_classic_technical_signal_payload(db, symbol),
             "scores": {"signal_engine": se_scores_obj, "wfo": wfo_scores_obj},
             # flat backwards-compat fields
             "aggregate_score_pct": se_scores_obj["aggregate_score_pct"],

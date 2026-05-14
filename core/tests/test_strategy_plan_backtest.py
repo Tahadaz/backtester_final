@@ -244,6 +244,195 @@ def test_simulate_stock_executes_entry_and_exit_rules() -> None:
     assert any(display.startswith("Exit B (") for display in trigger_displays)
 
 
+def test_entry_target_fraction_evaluates_donchian_breakout_expression() -> None:
+    idx = pd.date_range("2026-01-01", periods=21, freq="D")
+    bars = pd.DataFrame(
+        {
+            "Open": np.linspace(100, 120, 21),
+            "High": [100 + i for i in range(20)] + [121],
+            "Low": [98 + i for i in range(21)],
+            "Close": [99 + i for i in range(20)] + [120.5],
+            "Volume": [100_000] * 21,
+        },
+        index=idx,
+    )
+    rule = {
+        "label": "20-bar breakout",
+        "rule_expression": {
+            "operator": "all",
+            "children": [
+                {
+                    "type": "breakout",
+                    "direction": "above",
+                    "source": {"kind": "price", "field": "Close"},
+                    "level": {"kind": "rolling", "function": "highest", "field": "High", "lookback": 20, "offset": 1},
+                }
+            ],
+        },
+        "sizing": {"mode": "manual", "manual_pct": 25},
+    }
+
+    target, matched = _entry_target_fraction(
+        snapshot={"consensus_score": 0.0},
+        entry_rules=[rule],
+        previous_fraction=0.0,
+        side_policy="long_only",
+        max_fraction=1.0,
+        bars=bars,
+        index=20,
+    )
+
+    assert matched is rule
+    assert target == pytest.approx(0.25)
+
+
+def test_entry_target_fraction_evaluates_moving_average_cross_expression() -> None:
+    idx = pd.date_range("2026-02-01", periods=7, freq="D")
+    bars = pd.DataFrame(
+        {
+            "Open": [10, 10, 10, 10, 8, 8, 14],
+            "High": [11, 11, 11, 11, 9, 9, 15],
+            "Low": [9, 9, 9, 9, 7, 7, 13],
+            "Close": [10, 10, 10, 10, 8, 8, 14],
+            "Volume": [100_000] * 7,
+        },
+        index=idx,
+    )
+    rule = {
+        "label": "fast over slow",
+        "rule_expression": {
+            "operator": "all",
+            "children": [
+                {
+                    "type": "cross",
+                    "direction": "above",
+                    "left": {"kind": "indicator", "name": "sma", "window": 2},
+                    "right": {"kind": "indicator", "name": "sma", "window": 3},
+                }
+            ],
+        },
+        "sizing": {"mode": "manual", "manual_pct": 40},
+    }
+
+    target, matched = _entry_target_fraction(
+        snapshot={"consensus_score": 0.0},
+        entry_rules=[rule],
+        previous_fraction=0.0,
+        side_policy="long_only",
+        max_fraction=1.0,
+        bars=bars,
+        index=6,
+    )
+
+    assert matched is rule
+    assert target == pytest.approx(0.4)
+
+
+def test_simulate_stock_executes_price_expression_rules() -> None:
+    idx = pd.date_range("2026-03-01", periods=24, freq="D")
+    bars = pd.DataFrame(
+        {
+            "Open": [100 + i for i in range(24)],
+            "High": [101 + i for i in range(20)] + [125, 126, 127, 128],
+            "Low": [99 + i for i in range(24)],
+            "Close": [100 + i for i in range(20)] + [124, 125, 126, 127],
+            "Volume": [100_000] * 24,
+        },
+        index=idx,
+    )
+    scores = pd.Series([0.0] * len(bars), index=bars.index)
+    score_frame = pd.DataFrame({"consensus_score": scores}, index=bars.index, dtype="float64")
+
+    sim = _simulate_stock(
+        symbol="AAA",
+        bars=bars,
+        score_series=scores,
+        score_frame=score_frame,
+        allocated_capital=100_000,
+        side_policy="long_only",
+        exposure_ladder=EXPOSURE_LADDER,
+        entry_rules=[
+            {
+                "config_option": "A",
+                "label": "Donchian entry",
+                "rule_expression": {
+                    "operator": "all",
+                    "children": [
+                        {
+                            "type": "breakout",
+                            "direction": "above",
+                            "source": {"kind": "price", "field": "Close"},
+                            "level": {"kind": "rolling", "function": "highest", "field": "High", "lookback": 20, "offset": 1},
+                        }
+                    ],
+                },
+                "sizing": {"mode": "manual", "manual_pct": 50},
+            }
+        ],
+        exit_rules=[],
+        risk={
+            "max_holding_bars": 999,
+            "stop_atr_multiplier": 1000,
+            "take_profit_rr": 1000,
+            "time_stop_enabled": False,
+            "trailing_stop_enabled": False,
+            "max_position_pct": 100,
+        },
+        cost_model=_build_cost_model({}),
+        cooldown_bars=0,
+        volume_gate={"enabled": False, "kind": "min_ratio_adv", "min_volume_abs": 0, "min_volume_ratio_adv": 0, "adv_window": 20},
+    )
+
+    assert any(str(row["reason"]).startswith("entry_rule:") for row in sim.per_fill_ledger)
+    assert any(row["entry_rule"] == "A - Donchian entry" for row in sim.per_fill_ledger)
+
+
+def test_simulate_stock_rule_conditions_can_use_custom_score_frame_columns() -> None:
+    bars = _sample_bars()
+    score_frame = pd.DataFrame(
+        {
+            "custom_edge_score": [0, 0, 80, 80, 80, 80, 80, 80],
+            "consensus_score": [0] * 8,
+        },
+        index=bars.index,
+        dtype="float64",
+    )
+
+    sim = _simulate_stock(
+        symbol="AAA",
+        bars=bars,
+        score_series=score_frame["consensus_score"],
+        score_frame=score_frame,
+        allocated_capital=100_000,
+        side_policy="long_only",
+        exposure_ladder=EXPOSURE_LADDER,
+        entry_rules=[
+            {
+                "config_option": "A",
+                "label": "Custom score",
+                "conditions": [
+                    {"variable": "custom_edge_score", "operator": ">=", "threshold": {"mode": "manual", "value": 60}}
+                ],
+                "sizing": {"mode": "manual", "manual_pct": 50},
+            }
+        ],
+        exit_rules=[],
+        risk={
+            "max_holding_bars": 999,
+            "stop_atr_multiplier": 1000,
+            "take_profit_rr": 1000,
+            "time_stop_enabled": False,
+            "trailing_stop_enabled": False,
+            "max_position_pct": 100,
+        },
+        cost_model=_build_cost_model({}),
+        cooldown_bars=0,
+        volume_gate={"enabled": False, "kind": "min_ratio_adv", "min_volume_abs": 0, "min_volume_ratio_adv": 0, "adv_window": 20},
+    )
+
+    assert any(str(row["reason"]).startswith("entry_rule:") for row in sim.per_fill_ledger)
+
+
 def test_entry_target_fraction_uses_direct_wfo_size_pct() -> None:
     target, matched = _entry_target_fraction(
         snapshot={"consensus_score": 80.0},

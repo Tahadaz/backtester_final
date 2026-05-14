@@ -114,6 +114,7 @@ services:
       API_WORKERS: ${API_WORKERS:-1}
       REDIS_URL: redis://quant_redis:6379/0
       DATABASE_URL: postgresql+psycopg2://app:app@quant_postgres:5432/quant
+      API_EMBEDDED_SCHEDULER_ENABLED: "0"
       SNAPSHOT_READ_MODE_OVERRIDES: ${SNAPSHOT_READ_MODE_OVERRIDES:-dashboard=snapshot}
       RUN_JOB_TIMEOUT_SECONDS: "21600"
       RUN_JOB_RESULT_TTL_SECONDS: "86400"
@@ -285,6 +286,38 @@ services:
   quant_worker_wfo:
     <<: *wfo_worker_base
 
+  quant_scheduler:
+    image: ghcr.io/tahadaz/bt-worker:${IMAGE_TAG:-latest}
+    container_name: quant_scheduler
+    environment:
+      REDIS_URL: redis://quant_redis:6379/0
+      DATABASE_URL: postgresql+psycopg2://app:app@quant_postgres:5432/quant
+      RUNS_QUEUE_NAME: runs
+      DEFAULTS_DISCOVERY_QUEUE_NAME: defaults_discovery
+      MARKET_REFRESH_QUEUE_NAME: market_refresh
+      SIGNAL_ENGINE_QUEUE_NAME: signal_engine
+      SIGNAL_BACKTEST_QUEUE_NAME: signal_backtest
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minio}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minio12345}
+      S3_BUCKET: quant-artifacts
+      S3_SECURE: "false"
+      PYTHONPATH: /repo
+      OMP_NUM_THREADS: ${OMP_NUM_THREADS:-1}
+      MKL_NUM_THREADS: ${MKL_NUM_THREADS:-1}
+      OPENBLAS_NUM_THREADS: ${OPENBLAS_NUM_THREADS:-1}
+    depends_on:
+      quant_postgres:
+        condition: service_healthy
+      quant_redis:
+        condition: service_healthy
+      quant_minio:
+        condition: service_healthy
+      quant_minio_init:
+        condition: service_completed_successfully
+    command: python -m services.worker.scheduler
+    restart: unless-stopped
+
   quant_frontend:
     image: ghcr.io/tahadaz/bt-frontend:${IMAGE_TAG:-latest}
     container_name: quant_frontend
@@ -296,6 +329,7 @@ services:
       NODE_ENV: production
       # Auth.js
       DATABASE_URL: postgresql://app:app@quant_postgres:5432/quant
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       AUTH_SECRET: ${NEXTAUTH_SECRET}
       AUTH_REQUIRED: "true"

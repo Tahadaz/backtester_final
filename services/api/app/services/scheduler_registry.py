@@ -1,0 +1,134 @@
+"""Single source of truth for recurring operations schedules."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Literal
+from zoneinfo import ZoneInfo
+
+from apscheduler.triggers.cron import CronTrigger
+
+
+ScheduleKind = Literal[
+    "market_refresh",
+    "dashboard_snapshot",
+    "factor_monitor",
+    "factor_recalibration",
+    "wfo_dispatch",
+    "signal_engine_dispatch",
+    "signal_backtest_dispatch",
+]
+
+
+@dataclass(frozen=True)
+class ScheduleSpec:
+    id: str
+    label: str
+    kind: ScheduleKind
+    queue: str
+    cron: str
+    timezone: str
+    description: str
+
+    def trigger(self) -> CronTrigger:
+        return CronTrigger.from_crontab(self.cron, timezone=ZoneInfo(self.timezone))
+
+    def next_run_at(self, now: datetime | None = None) -> datetime | None:
+        reference = now or datetime.now(ZoneInfo(self.timezone))
+        return self.trigger().get_next_fire_time(None, reference)
+
+
+SCHEDULE_SPECS: tuple[ScheduleSpec, ...] = (
+    ScheduleSpec(
+        id="daily_market_refresh",
+        label="Daily market refresh",
+        kind="market_refresh",
+        queue="market_refresh",
+        cron="0 20 * * mon-fri",
+        timezone="Africa/Casablanca",
+        description="Refresh active tracked market data after the Casablanca session.",
+    ),
+    ScheduleSpec(
+        id="daily_dashboard_snapshot",
+        label="Daily dashboard snapshot",
+        kind="dashboard_snapshot",
+        queue="market_refresh",
+        cron="30 23 * * mon-fri",
+        timezone="Africa/Casablanca",
+        description="Maintenance rebuild for dashboard snapshots after the refresh/signal chain.",
+    ),
+    ScheduleSpec(
+        id="daily_factor_monitor",
+        label="Daily factor monitor",
+        kind="factor_monitor",
+        queue="market_refresh",
+        cron="0 22 * * mon-fri",
+        timezone="Africa/Casablanca",
+        description="Run factor parameter drift monitoring.",
+    ),
+    ScheduleSpec(
+        id="quarterly_factor_recalibration",
+        label="Quarterly factor recalibration",
+        kind="factor_recalibration",
+        queue="market_refresh",
+        cron="0 2 1 1,4,7,10 *",
+        timezone="Africa/Casablanca",
+        description="Run full factor-selection recalibration at quarter start.",
+    ),
+    ScheduleSpec(
+        id="weekly_wfo_dispatch",
+        label="Weekly WFO dispatch",
+        kind="wfo_dispatch",
+        queue="wfo_signals",
+        cron="0 21 * * sun",
+        timezone="UTC",
+        description="Enqueue stale WFO signal tuples for all data-backed instruments.",
+    ),
+    ScheduleSpec(
+        id="weekly_signal_engine_dispatch",
+        label="Weekly Signal Engine dispatch",
+        kind="signal_engine_dispatch",
+        queue="signal_engine",
+        cron="0 22 * * sun",
+        timezone="UTC",
+        description="Enqueue stale Signal Engine tuples for all data-backed instruments.",
+    ),
+    ScheduleSpec(
+        id="weekly_signal_backtest_dispatch",
+        label="Weekly signal backtest dispatch",
+        kind="signal_backtest_dispatch",
+        queue="signal_backtest",
+        cron="0 23 * * sun",
+        timezone="UTC",
+        description="Enqueue signal backtest jobs after weekly Signal Engine dispatch.",
+    ),
+)
+
+
+SCHEDULE_BY_ID = {spec.id: spec for spec in SCHEDULE_SPECS}
+
+
+LEGACY_RQ_SCHEDULER_IDS = (
+    "weekly_signal_engine_batch",
+    "weekly_wfo_signal_batch",
+    "weekly_signal_backtest_batch",
+)
+
+
+QUEUE_NAMES = (
+    "runs",
+    "market_refresh",
+    "signal_engine",
+    "wfo_signals",
+    "signal_backtest",
+    "score_history",
+    "defaults_discovery",
+)
+
+
+def get_schedule_spec(schedule_id: str) -> ScheduleSpec:
+    try:
+        return SCHEDULE_BY_ID[schedule_id]
+    except KeyError as exc:
+        raise ValueError(f"Unknown schedule_id {schedule_id!r}") from exc

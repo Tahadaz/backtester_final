@@ -23,6 +23,7 @@ from ..schemas.bloomberg import (
     BloombergBatchOut,
     BloombergBridgeStatusOut,
     BloombergBridgeManifest,
+    DEFAULT_BLOOMBERG_OHLCV_FIELDS,
     BloombergHeartbeatIn,
     BloombergJobClaimOut,
     BloombergJobCreateIn,
@@ -137,7 +138,7 @@ def _build_job_spec(body: BloombergJobCreateIn) -> dict[str, Any]:
     if not securities:
         securities = [item["candidates"][0] for item in security_candidates if item["candidates"]]
 
-    fields = body.fields or ["PX_LAST", "VOLUME"]
+    fields = body.fields or DEFAULT_BLOOMBERG_OHLCV_FIELDS.copy()
     options = {
         "daily_chunk_days": 365,
         "hourly_chunk_days": 5,
@@ -252,6 +253,25 @@ def _stream_object(object_key: str, filename: str, media_type: str = "applicatio
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+def _delete_objects_best_effort(object_keys: list[str | None]) -> tuple[int, int]:
+    keys = [str(key).strip() for key in object_keys if str(key or "").strip()]
+    if not keys:
+        return 0, 0
+    deleted = 0
+    failed = 0
+    try:
+        client = s3_client()
+    except Exception:
+        return 0, len(keys)
+    for key in keys:
+        try:
+            client.delete_object(Bucket=settings.S3_BUCKET, Key=key)
+            deleted += 1
+        except Exception:
+            failed += 1
+    return deleted, failed
 
 
 def _merge_series_frame(old: pd.DataFrame | None, incoming: pd.DataFrame) -> pd.DataFrame:
@@ -705,7 +725,7 @@ def list_bloomberg_bridges(
     "/jobs",
     response_model=BloombergJobOut,
     status_code=201,
-    dependencies=[Depends(auth.require_admin), Depends(auth.rate_limit_trigger)],
+    dependencies=[Depends(auth.rate_limit_trigger)],
 )
 def create_bloomberg_job(
     body: BloombergJobCreateIn,
@@ -786,7 +806,7 @@ def list_bloomberg_job_events(
 @app_router.post(
     "/jobs/{job_id}/cancel",
     response_model=BloombergJobOut,
-    dependencies=[Depends(auth.require_admin), Depends(auth.rate_limit_trigger)],
+    dependencies=[Depends(auth.rate_limit_trigger)],
 )
 def cancel_bloomberg_job(job_id: UUID, db: Session = Depends(get_db)) -> BloombergJobOut:
     job = db.query(models.BloombergJob).filter(models.BloombergJob.id == job_id).one_or_none()
@@ -833,6 +853,37 @@ def get_bloomberg_batch(batch_id: UUID, db: Session = Depends(get_db)) -> Bloomb
     return _batch_out(row)
 
 
+@app_router.delete("/batches/{batch_id}", dependencies=[Depends(auth.rate_limit_trigger)])
+def delete_bloomberg_batch(batch_id: UUID, db: Session = Depends(get_db)) -> dict[str, Any]:
+    row = db.query(models.BloombergIngestBatch).filter(models.BloombergIngestBatch.id == batch_id).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Bloomberg batch not found")
+
+    referenced = (
+        db.query(models.BloombergSeries.id)
+        .filter(models.BloombergSeries.last_batch_id == batch_id)
+        .limit(1)
+        .first()
+    )
+    if referenced is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot delete Bloomberg batch while indexed series reference it. Delete indexed series first.",
+        )
+
+    objects_deleted, object_delete_failed = _delete_objects_best_effort(
+        [row.raw_object_key, row.manifest_object_key, row.normalized_object_key]
+    )
+    db.delete(row)
+    db.commit()
+    return {
+        "status": "deleted",
+        "batch_id": str(batch_id),
+        "objects_deleted": objects_deleted,
+        "object_delete_failed": object_delete_failed,
+    }
+
+
 @app_router.get("/batches/{batch_id}/raw")
 def download_bloomberg_batch_raw(batch_id: UUID, db: Session = Depends(get_db)) -> StreamingResponse:
     row = db.query(models.BloombergIngestBatch).filter(models.BloombergIngestBatch.id == batch_id).one_or_none()
@@ -875,6 +926,28 @@ def list_bloomberg_series(
         .all()
     )
     return [_series_out(row) for row in rows]
+
+
+@app_router.delete("/series/{series_id}", dependencies=[Depends(auth.rate_limit_trigger)])
+def delete_bloomberg_series(series_id: UUID, db: Session = Depends(get_db)) -> dict[str, Any]:
+    row = db.query(models.BloombergSeries).filter(models.BloombergSeries.id == series_id).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Bloomberg series not found")
+
+    batch_id = row.last_batch_id
+    objects_deleted, object_delete_failed = _delete_objects_best_effort([row.object_key])
+    batch = db.query(models.BloombergIngestBatch).filter(models.BloombergIngestBatch.id == batch_id).one_or_none()
+    if batch is not None and batch.series_count:
+        batch.series_count = max(0, int(batch.series_count) - 1)
+    db.delete(row)
+    db.commit()
+    return {
+        "status": "deleted",
+        "series_id": str(series_id),
+        "last_batch_id": str(batch_id),
+        "objects_deleted": objects_deleted,
+        "object_delete_failed": object_delete_failed,
+    }
 
 
 @app_router.get("/series/{series_id}/preview", response_model=BloombergSeriesPreviewOut)

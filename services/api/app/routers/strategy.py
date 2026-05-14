@@ -66,7 +66,13 @@ from .strategy_signals import (
 from core.quant_core.data import drop_incomplete_ohlcv_rows
 from core.quant_core.horizons import canonical_horizon
 from core.quant_core.strategy_plan.allocation import compute_strategy_allocation
-from core.quant_core.strategy_plan.backtest import run_strategy_plan_backtest
+from core.quant_core.strategy_plan.backtest import (
+    build_rule_snapshot,
+    describe_rule_conditions,
+    rule_condition_count,
+    rule_triggered,
+    run_strategy_plan_backtest,
+)
 from core.quant_core.signal_engine.domain import (
     CATEGORY_FAMILIES,
     FAMILY_SIGNAL_TYPE,
@@ -839,47 +845,53 @@ def _latest_score_snapshot(
     return snapshot
 
 
-def _condition_to_text(condition: dict[str, Any]) -> str:
-    threshold = condition.get("threshold") if isinstance(condition.get("threshold"), dict) else {}
-    if str(threshold.get("mode") or "manual").lower() == "wfo":
-        value_text = f"WFO {threshold.get('scan_min', threshold.get('value', 0))}-{threshold.get('scan_max', threshold.get('value', 0))}"
-    else:
-        value_text = str(threshold.get("value", 0))
-    return f"{condition.get('variable', 'consensus_score')} {condition.get('operator', '>=')} {value_text}"
+def _latest_rule_preview_context(
+    db: Session,
+    *,
+    symbol: str,
+    horizon: str,
+    timeframe: str,
+    stock_config: dict[str, Any],
+    cost_bps: float,
+    cooldown_bars: int,
+) -> tuple[dict[str, float], pd.DataFrame | None, int | None]:
+    score_snapshot = _latest_score_snapshot(
+        db,
+        symbol=symbol,
+        horizon=horizon,
+        timeframe=timeframe,
+        stock_config=stock_config,
+        cost_bps=cost_bps,
+        cooldown_bars=cooldown_bars,
+    )
+    bars = load_ohlcv_for_symbol(db, symbol, timeframe)
+    bars = _truncate_for_horizon(bars, horizon)
+    bars = _clean_ohlcv(bars)
+    if bars.empty:
+        return build_rule_snapshot(score_snapshot), None, None
+    index = len(bars.index) - 1
+    return build_rule_snapshot(score_snapshot, bars=bars, index=index), bars, index
 
 
-def _condition_triggered(condition: dict[str, Any], snapshot: dict[str, float | None]) -> bool:
-    threshold = condition.get("threshold") if isinstance(condition.get("threshold"), dict) else {}
-    variable = str(condition.get("variable") or "consensus_score")
-    left = snapshot.get(variable)
-    right = float(threshold.get("value") or 0.0)
-    if left is None:
-        return False
-    operator = str(condition.get("operator") or ">=")
-    if operator == ">":
-        return left > right
-    if operator == ">=":
-        return left >= right
-    if operator == "<":
-        return left < right
-    if operator == "<=":
-        return left <= right
-    return False
-
-
-def _build_rule_preview_rows(rules: list[Any], snapshot: dict[str, float | None]) -> list[RulePreviewRow]:
+def _build_rule_preview_rows(
+    rules: list[Any],
+    snapshot: dict[str, float],
+    *,
+    bars: pd.DataFrame | None = None,
+    index: int | None = None,
+) -> list[RulePreviewRow]:
     out: list[RulePreviewRow] = []
-    for index, raw_rule in enumerate(rules):
+    bar_index = index
+    for rule_index, raw_rule in enumerate(rules):
         rule = raw_rule if isinstance(raw_rule, dict) else {}
-        conditions = [item for item in list(rule.get("conditions") or []) if isinstance(item, dict)]
         out.append(
             RulePreviewRow(
-                id=str(rule.get("id") or f"rule_{index + 1}"),
-                label=str(rule.get("label") or f"Rule {index + 1}"),
+                id=str(rule.get("id") or f"rule_{rule_index + 1}"),
+                label=str(rule.get("label") or f"Rule {rule_index + 1}"),
                 config_option=str(rule.get("config_option") or "A"),
-                condition_count=len(conditions),
-                triggered=all(_condition_triggered(condition, snapshot) for condition in conditions) if conditions else False,
-                conditions=[_condition_to_text(condition) for condition in conditions],
+                condition_count=rule_condition_count(rule),
+                triggered=rule_triggered(snapshot, rule, bars=bars, index=bar_index),
+                conditions=describe_rule_conditions(rule),
             )
         )
     return out
@@ -1163,21 +1175,22 @@ def preview_entry_rules(
     body: RulePreviewRequest,
     db: Session = Depends(get_db),
 ) -> RulePreviewOut:
-    snapshot = _latest_score_snapshot(
+    stock_config = body.stock_config if isinstance(body.stock_config, dict) else {}
+    snapshot, bars, bar_index = _latest_rule_preview_context(
         db,
         symbol=body.symbol,
         horizon=body.horizon,
         timeframe=body.timeframe,
-        stock_config=body.stock_config if isinstance(body.stock_config, dict) else {},
+        stock_config=stock_config,
         cost_bps=body.cost_bps,
         cooldown_bars=body.cooldown_bars,
     )
-    rules = list((body.stock_config.get("entry_rules") if isinstance(body.stock_config, dict) else []) or [])
+    rules = list((stock_config.get("entry_rules") if isinstance(stock_config, dict) else []) or [])
     return RulePreviewOut(
         symbol=body.symbol,
         score_snapshot=snapshot,
-        rules=_build_rule_preview_rows(rules, snapshot),
-        explain="Preview evaluates the latest score snapshot against the configured entry rules.",
+        rules=_build_rule_preview_rows(rules, snapshot, bars=bars, index=bar_index),
+        explain="Preview evaluates the latest score and price context against the configured entry rules.",
     )
 
 
@@ -1186,21 +1199,22 @@ def preview_exit_rules(
     body: RulePreviewRequest,
     db: Session = Depends(get_db),
 ) -> RulePreviewOut:
-    snapshot = _latest_score_snapshot(
+    stock_config = body.stock_config if isinstance(body.stock_config, dict) else {}
+    snapshot, bars, bar_index = _latest_rule_preview_context(
         db,
         symbol=body.symbol,
         horizon=body.horizon,
         timeframe=body.timeframe,
-        stock_config=body.stock_config if isinstance(body.stock_config, dict) else {},
+        stock_config=stock_config,
         cost_bps=body.cost_bps,
         cooldown_bars=body.cooldown_bars,
     )
-    rules = list((body.stock_config.get("exit_rules") if isinstance(body.stock_config, dict) else []) or [])
+    rules = list((stock_config.get("exit_rules") if isinstance(stock_config, dict) else []) or [])
     return RulePreviewOut(
         symbol=body.symbol,
         score_snapshot=snapshot,
-        rules=_build_rule_preview_rows(rules, snapshot),
-        explain="Preview evaluates the latest score snapshot against the configured exit rules.",
+        rules=_build_rule_preview_rows(rules, snapshot, bars=bars, index=bar_index),
+        explain="Preview evaluates the latest score and price context against the configured exit rules.",
     )
 
 

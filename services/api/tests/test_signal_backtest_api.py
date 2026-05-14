@@ -394,6 +394,78 @@ def test_signal_evidence_endpoint_respects_requested_source_and_keeps_requested_
     assert payload["edge"]["variant"] == "expanded_factor_x_ta_combo"
 
 
+def test_signal_evidence_auto_prefers_relaxed_wfo_even_when_unproven(monkeypatch):
+    from services.api.app.services import dashboard_builder
+
+    calls: list[tuple[str, str]] = []
+
+    def edge_payload(source: str, variant: str, *, n: int, expected: float, edge_score: float) -> dict[str, object]:
+        return {
+            "symbol": "AAA",
+            "horizon": "weekly",
+            "source": source,
+            "variant": variant,
+            "bucket": "buy",
+            "direction": "long",
+            "n": n,
+            "proof_n": n,
+            "action_expected_return_net": expected,
+            "expected_return_net": expected,
+            "edge_score": edge_score,
+            "proven_edge_net": False,
+            "gates": {"n": False},
+            "cost_bps_per_side": 33.0,
+        }
+
+    def fake_edge(_db, **kwargs):
+        source = str(kwargs["source"])
+        variant = str(kwargs["variant"])
+        calls.append((source, variant))
+        if source == "signal_engine":
+            return edge_payload(source, variant, n=80, expected=0.05, edge_score=95.0)
+        if variant == "legacy_ta_simple":
+            return edge_payload(source, variant, n=2, expected=-0.01, edge_score=3.0)
+        if variant == "expanded_factor_x_ta_simple":
+            return edge_payload(source, variant, n=4, expected=0.002, edge_score=12.0)
+        return None
+
+    monkeypatch.setattr(strategy_signals, "_edge_payload_for_evidence", fake_edge)
+    monkeypatch.setattr(
+        dashboard_builder,
+        "_apply_wfo_all_oos_proof_to_edge",
+        lambda _db, **kwargs: kwargs["edge"],
+    )
+
+    edge, selected_source, selected_variant, _label = strategy_signals._select_signal_evidence_edge(
+        _FakeDB({}),
+        symbol="AAA",
+        horizon="weekly",
+        source="auto",
+        variant=None,
+        cost_bps=33.0,
+    )
+
+    assert selected_source == "wfo"
+    assert selected_variant == "expanded_factor_x_ta_simple"
+    assert edge["n"] == 4
+    assert calls
+    assert {source for source, _variant in calls} == {"wfo"}
+
+    calls.clear()
+    _edge, selected_source, selected_variant, _label = strategy_signals._select_signal_evidence_edge(
+        _FakeDB({}),
+        symbol="AAA",
+        horizon="weekly",
+        source="signal_engine",
+        variant=None,
+        cost_bps=33.0,
+    )
+
+    assert selected_source == "wfo"
+    assert selected_variant == "expanded_factor_x_ta_simple"
+    assert {source for source, _variant in calls} == {"wfo"}
+
+
 def test_signal_evidence_endpoint_uses_wfo_stitched_oos_when_wfo_requested(monkeypatch):
     edge_payload = {
         "symbol": "AAA",
@@ -573,6 +645,11 @@ def test_signal_evidence_endpoint_uses_wfo_stitched_oos_when_wfo_requested(monke
     assert payload["current_signal"]["bucket"] == "sell"
     assert payload["edge"]["proof_method"] == "all_wfo_oos_folds_exact_bucket"
     assert payload["edge"]["n"] == 2
+    assert payload["oos"]["proof_window_start"] == "2026-01-02"
+    assert payload["oos"]["proof_window_end"] == "2026-01-06"
+    assert payload["oos"]["proof_limit"] == "100"
+    assert payload["oos"]["stitched_window_start"] == "2026-01-02"
+    assert payload["oos"]["stitched_window_end"] == "2026-01-07"
     assert payload["contributor_count"] == 2
     assert payload["evidence_trade_count"] == 2
     assert [period["sample_n"] for period in payload["oos_periods"]] == [1, 1]
@@ -591,6 +668,9 @@ def test_signal_evidence_endpoint_uses_wfo_stitched_oos_when_wfo_requested(monke
     assert stitched["low_series"] == [99.0, 97.0, 96.0, 95.0]
     assert stitched["close_series"] == [100.0, 98.0, 97.0, 96.0]
     assert stitched["metrics"]["n_trades"] == 2
+    assert stitched["warnings"] == [
+        "Too few OOS trades: n=2, minimum=30. Shown for audit only; do not treat as a proven edge."
+    ]
     assert stitched["metrics"]["hit_rate"] == 1.0
     assert [row["marker_label"] for row in stitched["trade_ledger"]] == ["Short 1", "Cover 1", "Short 2", "Cover 2"]
     assert [row["position"] for row in stitched["trade_ledger"]] == [-1.0, 0.0, -1.0, 0.0]
@@ -614,6 +694,171 @@ def test_signal_evidence_endpoint_uses_wfo_stitched_oos_when_wfo_requested(monke
     assert cooldown_stitched["metrics"]["cooldown_bars"] == 3
     assert cooldown_stitched["metrics"]["cooldown_filtered_trades"] == 1
     assert [row["marker_label"] for row in cooldown_stitched["trade_ledger"]] == ["Short 1", "Cover 1"]
+
+
+def test_signal_evidence_proof_limit_uses_latest_bucket_trades_and_keeps_full_stitch(monkeypatch):
+    dates = pd.bdate_range("2026-01-01", periods=130)
+    opens = [200.0 - float(i) for i in range(len(dates))]
+    prices = pd.DataFrame(
+        {
+            "Open": opens,
+            "High": [value + 1.0 for value in opens],
+            "Low": [value - 2.0 for value in opens],
+            "Close": [value - 1.0 for value in opens],
+            "Volume": [1000.0] * len(dates),
+        },
+        index=dates,
+    )
+    from services.api.app.routers import analytics as analytics_mod
+
+    monkeypatch.setattr(analytics_mod, "_load_pricing_data", lambda _db, _symbol: prices)
+
+    edge_payload = {
+        "symbol": "AAA",
+        "horizon": "weekly",
+        "source": "wfo",
+        "variant": "expanded_ta_simple",
+        "bucket": "sell",
+        "direction": "short",
+        "n": 100,
+        "window_start": dates[20].date().isoformat(),
+        "window_end": dates[119].date().isoformat(),
+        "proof_n": 100,
+        "proof_method": "same_oos_sample",
+        "fwd_horizon_bars": 1,
+        "return_calc_method": "open_to_exit_ladder",
+        "exit_price_kind": "close",
+        "exit_timing_label": "close T+1",
+        "cost_bps_per_side": 0.0,
+    }
+
+    monkeypatch.setattr(
+        strategy_signals,
+        "_select_signal_evidence_edge",
+        lambda _db, **_kwargs: (edge_payload, "wfo", "expanded_ta_simple", "WFO / Expanded"),
+    )
+
+    global_row = WfoGlobalSignal(
+        symbol="AAA",
+        horizon="weekly",
+        variant="expanded_ta_simple",
+        status="succeeded",
+        global_score_pct=-25.0,
+        raw_score_pct=-25.0,
+        signal_label="Vente",
+        recommendation="vente",
+        best_category="tendance",
+        best_category_score=-25.0,
+        computed_at=dt.datetime(2026, 4, 21, tzinfo=dt.timezone.utc),
+        data_as_of=dt.date(2026, 4, 21),
+    )
+    summary_row = WfoSignalSummary(
+        symbol="AAA",
+        category="tendance",
+        horizon="weekly",
+        variant="expanded_ta_simple",
+        status="succeeded",
+        score_pct=-25.0,
+        signal_label="Vente",
+        computed_at=dt.datetime(2026, 4, 21, tzinfo=dt.timezone.utc),
+        data_as_of=dt.date(2026, 4, 21),
+        representatives_json=[
+            {
+                "variant_id": "sma_20",
+                "family": "sma",
+                "archetype": "price_vs_sma",
+                "description": "Price below SMA 20",
+                "params": {"window": 20},
+                "normalized_weight": 1.0,
+                "signal_label": "Vente",
+            },
+        ],
+        folds_json=[
+            {
+                "index": 0,
+                "oos_start": 0,
+                "oos_end": 120,
+                "winner_variant_id": "sma_20",
+                "winner_description": "Price below SMA 20",
+                "winner_params": {"window": 20},
+            },
+        ],
+    )
+    score_rows = [
+        SignalScoreHistory(
+            date=date.date(),
+            symbol="AAA",
+            source="wfo:expanded_ta_simple",
+            category="tendance",
+            horizon="weekly",
+            score_pct=-25.0,
+            is_oos=True,
+        )
+        for date in dates[:120]
+    ]
+    market_row = MarketDataStore(symbol="AAA", timeframe="1D", data_as_of=dt.date(2026, 4, 21))
+    client = TestClient(
+        _app(
+            _FakeDB(
+                {
+                    WfoGlobalSignal: [global_row],
+                    WfoSignalSummary: [summary_row],
+                    SignalScoreHistory: score_rows,
+                    MarketDataStore: [market_row],
+                }
+            )
+        )
+    )
+
+    response = client.get("/strategy/signal/evidence?symbol=AAA&horizon=weekly&source=wfo")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["edge"]["n"] == 100
+    assert payload["oos"]["proof_n"] == 100
+    assert payload["oos"]["proof_window_start"] == dates[20].date().isoformat()
+    assert payload["oos"]["proof_window_end"] == dates[119].date().isoformat()
+    assert payload["evidence_trade_count"] == 120
+    assert payload["stitched_oos_backtest"]["metrics"]["n_trades"] == 120
+    assert payload["stitched_oos_backtest"]["proof"]["n_trades"] == 100
+    assert payload["oos"]["stitched_window_start"] == dates[0].date().isoformat()
+    assert payload["oos"]["stitched_window_end"] == dates[119].date().isoformat()
+
+    all_response = client.get("/strategy/signal/evidence?symbol=AAA&horizon=weekly&source=wfo&proof_limit=all")
+    assert all_response.status_code == 200
+    all_payload = all_response.json()
+    assert all_payload["edge"]["n"] == 120
+    assert all_payload["oos"]["proof_n"] == 120
+    assert all_payload["oos"]["proof_limit"] == "all"
+    assert all_payload["oos"]["proof_window_start"] == dates[0].date().isoformat()
+    assert all_payload["oos"]["proof_window_end"] == dates[119].date().isoformat()
+    assert all_payload["stitched_oos_backtest"]["metrics"]["n_trades"] == 120
+
+
+def test_normalize_wfo_folds_rebases_stale_horizon_capped_rows():
+    from services.api.app.services.wfo_folds import normalize_wfo_folds_json
+
+    index = pd.bdate_range("2021-01-01", periods=1300)
+    folds = [
+        {
+            "index": 0,
+            "oos_start": 224,
+            "oos_end": 268,
+            "oos_start_date": "2005-11-29",
+            "oos_end_date": "2006-02-02",
+        }
+    ]
+
+    normalized = normalize_wfo_folds_json(
+        folds,
+        config_json={"horizon_cap_bars_used": 1260, "data_bars": 1300},
+        ohlcv_index=index,
+    )
+
+    assert normalized is not None
+    assert normalized[0]["oos_start_abs_idx"] == 264
+    assert normalized[0]["oos_end_abs_idx"] == 308
+    assert normalized[0]["oos_start_date"] == index[264].date().isoformat()
+    assert normalized[0]["oos_end_date"] == index[307].date().isoformat()
 
 
 def test_evidence_trade_ledger_sorts_by_transaction_date_and_stacks_positions():

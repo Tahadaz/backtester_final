@@ -322,11 +322,11 @@ def _sample_frames(
     fwd_horizon_bars: int,
     return_calc_method: str,
     max_lookback_years: float | None,
-    n_target: int,
+    n_target: int | None,
     exit_candidate: ExitCandidate | None = None,
     lookback_anchor: pd.Timestamp | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    target_n = max(0, min(int(n_target), int(EDGE_MAX_OBSERVATIONS)))
+    target_n = None if n_target is None else max(0, min(int(n_target), int(EDGE_MAX_OBSERVATIONS)))
     score = score_series.dropna()
     candidate = exit_candidate or _exit_candidates(
         (int(fwd_horizon_bars),),
@@ -353,7 +353,8 @@ def _sample_frames(
         cutoff = anchor - pd.Timedelta(days=int(365.25 * float(max_lookback_years)))
         bucket_df = bucket_df[bucket_df.index >= cutoff]
 
-    bucket_df = bucket_df.tail(target_n)
+    if target_n is not None:
+        bucket_df = bucket_df.tail(target_n)
     return full_oos_df, bucket_df
 
 

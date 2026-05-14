@@ -17,6 +17,10 @@ class StockMasterCreate(BaseModel):
     market_cap_class: Optional[str] = None
     track_source: str = "bourse_direct"
     bourse_url: Optional[str] = None
+    shares_outstanding: Optional[int] = None
+    shares_as_of: Optional[datetime.date] = None
+    shares_source: Optional[str] = None
+    shares_updated_at: Optional[datetime.datetime] = None
     notes: Optional[str] = None
 
 
@@ -27,6 +31,10 @@ class StockMasterUpdate(BaseModel):
     is_active: Optional[bool] = None
     track_source: Optional[str] = None
     bourse_url: Optional[str] = None
+    shares_outstanding: Optional[int] = None
+    shares_as_of: Optional[datetime.date] = None
+    shares_source: Optional[str] = None
+    shares_updated_at: Optional[datetime.datetime] = None
     notes: Optional[str] = None
 
 
@@ -39,6 +47,10 @@ class StockMasterOut(BaseModel):
     is_active: bool
     track_source: str
     bourse_url: Optional[str] = None
+    shares_outstanding: Optional[int] = None
+    shares_as_of: Optional[datetime.date] = None
+    shares_source: Optional[str] = None
+    shares_updated_at: Optional[datetime.datetime] = None
     notes: Optional[str] = None
     created_at: Optional[datetime.datetime] = None
     updated_at: Optional[datetime.datetime] = None
@@ -62,6 +74,38 @@ class BourseStockLookupOut(BaseModel):
     sector: Optional[str] = None
     isin: Optional[str] = None
     found: bool = True
+
+
+class BourseLiveQuoteOut(BaseModel):
+    symbol: str
+    session_date: Optional[datetime.date] = None
+    quote_timestamp: Optional[datetime.datetime] = None
+    open_price: Optional[float] = None
+    last_price: Optional[float] = None
+    high_price: Optional[float] = None
+    low_price: Optional[float] = None
+    prev_close: Optional[float] = None
+    volume: Optional[float] = None
+    source_provider: str = "casablanca_bourse_live"
+    source_url: Optional[str] = None
+    updated_at: Optional[datetime.datetime] = None
+    is_fresh: bool = False
+    age_seconds: Optional[float] = None
+
+
+class BourseLiveQuotesOut(BaseModel):
+    quotes: list[BourseLiveQuoteOut] = Field(default_factory=list)
+    missing_symbols: list[str] = Field(default_factory=list)
+    max_age_seconds: int
+
+
+class StockShareOut(BaseModel):
+    symbol: str
+    display_name: Optional[str] = None
+    shares_outstanding: Optional[int] = None
+    shares_as_of: Optional[datetime.date] = None
+    shares_source: Optional[str] = None
+    shares_updated_at: Optional[datetime.datetime] = None
 
 
 # ── Provider Symbol Map ──────────────────────────────────────────────────────
@@ -144,6 +188,10 @@ class MarketCatalogRowOut(BaseModel):
     is_active: Optional[bool] = None
     track_source: Optional[str] = None
     bourse_url: Optional[str] = None
+    shares_outstanding: Optional[int] = None
+    shares_as_of: Optional[datetime.date] = None
+    shares_source: Optional[str] = None
+    shares_updated_at: Optional[datetime.datetime] = None
     notes: Optional[str] = None
     # From market_data_store (null when tracked but not yet ingested)
     start_ts: Optional[datetime.datetime] = None
