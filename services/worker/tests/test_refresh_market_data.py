@@ -281,6 +281,6 @@ def test_enqueue_dashboard_snapshot_after_signal_jobs_uses_allow_failure_depende
         "jobs": ("engine-1", "wfo-1"),
         "allow_failure": True,
     }
-    assert captured["kwargs"]["job_timeout"] == 600
+    assert captured["kwargs"]["job_timeout"] == 3600
     assert captured["kwargs"]["meta"]["updated_symbols_count"] == 2
     assert captured["kwargs"]["meta"]["signal_dependency_count"] == 2

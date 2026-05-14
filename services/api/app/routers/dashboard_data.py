@@ -70,6 +70,7 @@ from ..services.dashboard_portfolio import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+DASHBOARD_SNAPSHOT_JOB_TIMEOUT_SECONDS = 3600
 
 
 def _normalize_horizon(raw: str) -> str:
@@ -196,6 +197,24 @@ def _latest_snapshot(db: Session, horizon: str) -> Any:
         """),
         {"horizon": horizon},
     ).fetchone()
+
+
+def _serve_live_dashboard_fallback(
+    horizon: str,
+    request: Request,
+    response: Response,
+    db: Session,
+    *,
+    reason: str,
+) -> Any:
+    logger.warning(
+        "dashboard snapshot for %s %s; serving live dashboard fallback",
+        horizon,
+        reason,
+    )
+    response.headers["Cache-Control"] = "private, max-age=30"
+    set_freshness(request, cache="bypass")
+    return _compact_dashboard_payload(build_dashboard_payload(db, horizon, include_edge=True))
 
 
 @router.get("/data/{horizon}", response_model=None)
@@ -480,27 +499,23 @@ def _serve_snapshot(
 ) -> Any:
     row = _latest_snapshot(db, horizon)
     if row is None:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                f"No snapshot available for horizon '{horizon}'. "
-            "Trigger a backfill via POST /dashboard/snapshot/backfill and retry."
-            ),
+        return _serve_live_dashboard_fallback(
+            horizon,
+            request,
+            response,
+            db,
+            reason="is missing",
         )
 
     payload_jsonb, upstream_rev, computed_at, as_of_date = row
     if not _dashboard_snapshot_has_current_shape(payload_jsonb):
         if not _dashboard_snapshot_can_merge_live_technical(payload_jsonb):
-            logger.warning(
-                "dashboard snapshot for %s has unusable stale shape; refusing live edge fallback",
+            return _serve_live_dashboard_fallback(
                 horizon,
-            )
-            raise HTTPException(
-                status_code=503,
-                detail=(
-                    f"Dashboard snapshot for horizon '{horizon}' is stale or invalid. "
-                    "Trigger a backfill via POST /dashboard/snapshot/backfill and retry."
-                ),
+                request,
+                response,
+                db,
+                reason="has unusable stale shape",
             )
         logger.warning(
             "dashboard snapshot for %s has stale shape; merging live technical signals until backfill refreshes it",
@@ -630,7 +645,7 @@ def trigger_dashboard_snapshot(body: SnapshotTriggerBody) -> dict:
     job = q.enqueue(
         "services.worker.tasks.dashboard_snapshot.refresh_dashboard_snapshot",
         horizon,
-        job_timeout=600,
+        job_timeout=DASHBOARD_SNAPSHOT_JOB_TIMEOUT_SECONDS,
     )
     return {"job_id": str(job.id), "horizon": horizon or "all", "status": "queued"}
 
@@ -654,7 +669,7 @@ def backfill_dashboard_snapshots() -> dict:
         job = q.enqueue(
             "services.worker.tasks.dashboard_snapshot.refresh_dashboard_snapshot",
             h,
-            job_timeout=600,
+            job_timeout=DASHBOARD_SNAPSHOT_JOB_TIMEOUT_SECONDS,
         )
         job_ids.append(str(job.id))
     return {"job_ids": job_ids, "horizons": ["weekly", "monthly", "quarterly"], "status": "queued"}

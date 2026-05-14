@@ -52,6 +52,9 @@ from services.api.app.services.weekly_recompute_policy import (
 )
 
 
+DASHBOARD_SNAPSHOT_JOB_TIMEOUT_SECONDS = 3600
+
+
 def _finite_float(value) -> float | None:
     try:
         out = float(value)
@@ -223,7 +226,7 @@ def _enqueue_dashboard_snapshot_after_signal_jobs(
         job = _market_refresh_queue().enqueue(
             "services.worker.tasks.dashboard_snapshot.refresh_dashboard_snapshot",
             None,
-            job_timeout=600,
+            job_timeout=DASHBOARD_SNAPSHOT_JOB_TIMEOUT_SECONDS,
             depends_on=dependency,
             meta={
                 "triggered_by": triggered_by,

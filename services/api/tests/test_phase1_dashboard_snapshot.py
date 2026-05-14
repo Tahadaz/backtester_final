@@ -112,7 +112,7 @@ def test_snapshot_mode_merges_live_technical_only_when_snapshot_shape_is_stale(m
     assert kwargs == {"include_edge": False}
 
 
-def test_snapshot_mode_rejects_unusable_stale_snapshot_without_live_edge_fallback(monkeypatch) -> None:
+def test_snapshot_mode_serves_live_payload_when_snapshot_is_unusable(monkeypatch) -> None:
     client = _build_app(monkeypatch, "snapshot")
     with (
         patch(
@@ -126,12 +126,16 @@ def test_snapshot_mode_rejects_unusable_stale_snapshot_without_live_edge_fallbac
     ):
         resp = client.get("/dashboard/data/weekly")
 
-    assert resp.status_code == 503
-    assert "backfill" in resp.json()["detail"].lower()
-    mock_builder.assert_not_called()
+    assert resp.status_code == 200
+    assert resp.headers["X-Cache"] == "bypass"
+    assert resp.json()["payload_version"] == dashboard_data.DASHBOARD_PAYLOAD_VERSION
+    mock_builder.assert_called_once()
+    args, kwargs = mock_builder.call_args
+    assert args[1] == "weekly"
+    assert kwargs == {"include_edge": True}
 
 
-def test_snapshot_mode_rejects_legacy_best_signal_score_shape(monkeypatch) -> None:
+def test_snapshot_mode_serves_live_payload_for_legacy_best_signal_shape(monkeypatch) -> None:
     client = _build_app(monkeypatch, "snapshot")
     stale_payload = {
         key: value
@@ -160,9 +164,12 @@ def test_snapshot_mode_rejects_legacy_best_signal_score_shape(monkeypatch) -> No
     ):
         resp = client.get("/dashboard/data/weekly")
 
-    assert resp.status_code == 503
-    assert "backfill" in resp.json()["detail"].lower()
-    mock_builder.assert_not_called()
+    assert resp.status_code == 200
+    assert resp.headers["X-Cache"] == "bypass"
+    mock_builder.assert_called_once()
+    args, kwargs = mock_builder.call_args
+    assert args[1] == "weekly"
+    assert kwargs == {"include_edge": True}
 
 
 def test_snapshot_mode_returns_computed_at_header(monkeypatch) -> None:
@@ -200,15 +207,22 @@ def test_snapshot_mode_304_on_if_none_match(monkeypatch) -> None:
     assert second.status_code == 304
 
 
-def test_snapshot_mode_503_when_no_row(monkeypatch) -> None:
+def test_snapshot_mode_serves_live_payload_when_no_row(monkeypatch) -> None:
     client = _build_app(monkeypatch, "snapshot")
-    with patch(
-        "services.api.app.routers.dashboard_data._latest_snapshot",
-        return_value=None,
+    with (
+        patch(
+            "services.api.app.routers.dashboard_data._latest_snapshot",
+            return_value=None,
+        ),
+        patch(
+            "services.api.app.routers.dashboard_data.build_dashboard_payload",
+            return_value=_SAMPLE_PAYLOAD,
+        ) as mock_builder,
     ):
         resp = client.get("/dashboard/data/weekly")
-    assert resp.status_code == 503
-    assert "backfill" in resp.json()["detail"].lower()
+    assert resp.status_code == 200
+    assert resp.headers["X-Cache"] == "bypass"
+    mock_builder.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

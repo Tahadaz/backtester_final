@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 
 HORIZONS = ("weekly", "monthly", "quarterly")
 SCHEDULER_HEARTBEAT_KEY = "ops:scheduler:heartbeat"
+DASHBOARD_SNAPSHOT_JOB_TIMEOUT_SECONDS = 3600
 
 
 def _redis() -> Redis:
@@ -200,7 +201,7 @@ def _dispatch_dashboard_snapshot() -> dict[str, Any]:
     job = _queue(settings.MARKET_REFRESH_QUEUE_NAME).enqueue(
         "services.worker.tasks.dashboard_snapshot.refresh_dashboard_snapshot",
         None,
-        job_timeout=600,
+        job_timeout=DASHBOARD_SNAPSHOT_JOB_TIMEOUT_SECONDS,
     )
     return {"enqueued_jobs": 1, "rq_job_id": str(job.id)}
 
