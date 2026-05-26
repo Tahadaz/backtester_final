@@ -64,6 +64,9 @@ import type {
   AllFactorRelevanceSummary,
   FactorSignalEval,
   FactorLeaderboardRow,
+  StatArbLeaderboard,
+  StatArbPairDetail,
+  StatArbStatus,
   FactorSelectionActiveRow,
   FactorSelectionStage1Row,
   BloombergBatch,
@@ -81,6 +84,9 @@ import {
   getAllFactorRelevanceSummary,
   getFactorSignalEval,
   getFactorLeaderboard,
+  getStatArbLeaderboard,
+  getStatArbPairDetail,
+  fetchStatArbStatus,
   fetchWfoBatchStatus,
   fetchSignalEngineGlobalBatchStatus,
   fetchBatchScores,
@@ -1383,6 +1389,45 @@ export function useFactorLeaderboard(opts?: {
     () => getFactorLeaderboard(opts),
     { revalidateOnFocus: false }
   )
+}
+
+export function useStatArbLeaderboard(opts?: {
+  horizon?: string
+  archetype?: string
+  actionType?: string
+  status?: string
+  limit?: number
+}) {
+  const key = `/analytics/stat-arb/leaderboard?h=${opts?.horizon ?? "short"}&a=${opts?.archetype ?? ""}&t=${opts?.actionType ?? ""}&s=${opts?.status ?? ""}&l=${opts?.limit ?? 100}`
+  return useSWR<StatArbLeaderboard>(
+    key,
+    () => getStatArbLeaderboard(opts),
+    { revalidateOnFocus: false, keepPreviousData: true }
+  )
+}
+
+export function useStatArbPairDetail(pairId: string | null) {
+  return useSWR<StatArbPairDetail>(
+    pairId ? `/analytics/stat-arb/pairs/${pairId}` : null,
+    () => getStatArbPairDetail(pairId!),
+    { revalidateOnFocus: false }
+  )
+}
+
+export function useStatArbStatus() {
+  const { data, ...rest } = useSWR<StatArbStatus>(
+    "/analytics/stat-arb/status",
+    () => fetchStatArbStatus(),
+    {
+      revalidateOnFocus: false,
+      refreshInterval: (latestData) => {
+        if (!latestData) return 5000
+        const active = (latestData.pending ?? 0) + (latestData.running ?? 0)
+        return active > 0 ? 5000 : 0
+      },
+    }
+  )
+  return { data, ...rest }
 }
 
 export function useWfoBatchStatus() {

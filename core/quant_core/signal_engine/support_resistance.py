@@ -20,6 +20,10 @@ METHOD_ORDER = (
     "score_inversion",
     "swing_levels",
     "pivot_points",
+    "fibonacci_pivot",
+    "camarilla",
+    "woodie",
+    "dm",
     "quantile_extrema_atr",
     "fibonacci_retracement",
 )

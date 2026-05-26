@@ -178,6 +178,63 @@ class PredictiveHistoryTriggerOut(BaseModel):
     job_ids: list[str] = []
 
 
+class StatArbTriggerOut(BaseModel):
+    triggered: int
+    job_ids: list[str] = []
+
+
+class StatArbStatusOut(BaseModel):
+    total: int
+    pending: int
+    running: int
+    succeeded: int
+    failed: int
+    latest: dict[str, Any] | None = None
+
+
+class StatArbPairRow(BaseModel):
+    pair_id: str
+    symbol_y: str
+    symbol_x: str
+    horizon: str
+    archetype: str
+    lag_bars: int = 0
+    action_type: str = "none"
+    current_signal: str = "none"
+    direction: str = "none"
+    validation_status: str = "pending"
+    status: str = "pending"
+    n_obs: int = 0
+    n_folds: int = 0
+    hedge_ratio: Optional[float] = None
+    intercept: Optional[float] = None
+    zscore: Optional[float] = None
+    half_life: Optional[float] = None
+    adf_pvalue: Optional[float] = None
+    raw_pvalue: Optional[float] = None
+    fdr_qvalue: Optional[float] = None
+    oos_sharpe: Optional[float] = None
+    oos_return: Optional[float] = None
+    max_drawdown: Optional[float] = None
+    profitable_fold_ratio: Optional[float] = None
+    data_as_of: Optional[str] = None
+    cost_bps_per_side: float = 33.0
+    slippage_bps_per_side: float = 5.0
+    borrow_bps_annual: float = 300.0
+    warnings: list[str] = Field(default_factory=list)
+    updated_at: Optional[str] = None
+
+
+class StatArbLeaderboardOut(BaseModel):
+    horizon: str
+    rows: list[StatArbPairRow] = Field(default_factory=list)
+
+
+class StatArbPairDetailOut(StatArbPairRow):
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    chart: dict[str, Any] = Field(default_factory=dict)
+
+
 class LeaderboardRow(BaseModel):
     symbol: str
     source: str                                  # 'engine_legacy' | 'engine_expanded' | 'wfo'

@@ -10,8 +10,8 @@ from dataclasses import dataclass
 from typing import Literal
 
 
-SignalUniverse = Literal["legacy", "expanded"]
-SignalConditioning = Literal["ta", "factor_x_ta"]
+SignalUniverse = Literal["legacy", "expanded", "fundamental"]
+SignalConditioning = Literal["ta", "factor_x_ta", "fundamental"]
 SignalComplexity = Literal["simple", "combo"]
 
 
@@ -21,6 +21,7 @@ class SignalMode:
     universe: SignalUniverse
     conditioning: SignalConditioning
     complexity: SignalComplexity
+    fundamental_focus: str | None = None
 
     @property
     def is_factor_x_ta(self) -> bool:
@@ -29,6 +30,10 @@ class SignalMode:
     @property
     def is_combo(self) -> bool:
         return self.complexity == "combo"
+
+    @property
+    def is_fundamental(self) -> bool:
+        return self.conditioning == "fundamental"
 
     @property
     def is_legacy(self) -> bool:
@@ -56,15 +61,44 @@ SIGNAL_MODES: dict[str, SignalMode] = {
     "expanded_factor_x_ta_combo": SignalMode(
         "expanded_factor_x_ta_combo", "expanded", "factor_x_ta", "combo"
     ),
+    "fundamental_balanced_simple": SignalMode(
+        "fundamental_balanced_simple", "fundamental", "fundamental", "simple", "balanced"
+    ),
+    "fundamental_value_simple": SignalMode(
+        "fundamental_value_simple", "fundamental", "fundamental", "simple", "value"
+    ),
+    "fundamental_quality_simple": SignalMode(
+        "fundamental_quality_simple", "fundamental", "fundamental", "simple", "quality"
+    ),
+    "fundamental_growth_simple": SignalMode(
+        "fundamental_growth_simple", "fundamental", "fundamental", "simple", "growth"
+    ),
 }
 
-ALL_SIGNAL_MODE_NAMES: tuple[str, ...] = tuple(SIGNAL_MODES)
+TECHNICAL_SIGNAL_MODE_NAMES: tuple[str, ...] = tuple(
+    name for name, mode in SIGNAL_MODES.items() if not mode.is_fundamental
+)
+FUNDAMENTAL_SIGNAL_MODE_NAMES: tuple[str, ...] = tuple(
+    name for name, mode in SIGNAL_MODES.items() if mode.is_fundamental
+)
+ALL_RESOLVABLE_SIGNAL_MODE_NAMES: tuple[str, ...] = tuple(SIGNAL_MODES)
+
+# Historical callers use ALL_SIGNAL_MODE_NAMES as the schedulable technical/WFO set.
+# Fundamental modes are computed from fundamental snapshots and are exposed through
+# resolve_signal_mode(), but are not queued through technical or WFO pipelines.
+ALL_SIGNAL_MODE_NAMES: tuple[str, ...] = TECHNICAL_SIGNAL_MODE_NAMES
 
 
 SIGNAL_MODE_ALIASES: dict[str, str] = {
     "legacy": "legacy_ta_simple",
     "expanded": "expanded_ta_simple",
     "factor_x_ta": "expanded_factor_x_ta_simple",
+    "fundamental": "fundamental_balanced_simple",
+    "fundamentals": "fundamental_balanced_simple",
+    "fundamental_balanced": "fundamental_balanced_simple",
+    "fundamental_value": "fundamental_value_simple",
+    "fundamental_quality": "fundamental_quality_simple",
+    "fundamental_growth": "fundamental_growth_simple",
 }
 
 

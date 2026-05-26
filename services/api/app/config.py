@@ -129,6 +129,24 @@ class Settings(BaseModel):
     TRIGGER_RATE_LIMIT_WINDOW_SECONDS: int = int(
         os.getenv("TRIGGER_RATE_LIMIT_WINDOW_SECONDS", "60")
     )
+    FUNDAMENTAL_LLM_PROVIDER: str = os.getenv("FUNDAMENTAL_LLM_PROVIDER", "gemini").strip().lower() or "gemini"
+    FUNDAMENTAL_LLM_API_KEYS: str = _getenv_any(
+        "FUNDAMENTAL_LLM_API_KEYS",
+        "GEMINI_API_KEYS",
+        "GEMINI_API_KEY",
+        default="",
+    ).strip()
+    FUNDAMENTAL_LLM_MODEL: str = _getenv_any(
+        "FUNDAMENTAL_LLM_MODEL",
+        "GEMINI_MODEL",
+        default="gemma-4-31b-it",
+    ).strip()
+    FUNDAMENTAL_LLM_FALLBACK_MODELS: str = os.getenv("FUNDAMENTAL_LLM_FALLBACK_MODELS", "").strip()
+    FUNDAMENTAL_LLM_BASE_URL: str = os.getenv(
+        "FUNDAMENTAL_LLM_BASE_URL",
+        "https://generativelanguage.googleapis.com/v1beta/openai/",
+    ).strip()
+    BVC_PUBLICATIONS_MAX_PAGES: int = int(os.getenv("BVC_PUBLICATIONS_MAX_PAGES", "9999"))
 
     def snapshot_read_mode_for(self, surface: str) -> SnapshotReadMode:
         """Return the effective read mode for a logical surface (e.g. "dashboard")."""

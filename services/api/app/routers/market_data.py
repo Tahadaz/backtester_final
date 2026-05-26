@@ -20,6 +20,7 @@ from ..db import get_db
 from ..market_data_formats import build_upload_format_reference
 from ..market_refresh_window import (
     BOURSE_REFRESH_CUTOFF_LABEL,
+    bourse_session_status,
     needs_bourse_refresh,
     is_before_bourse_refresh_cutoff,
     is_bourse_source,
@@ -35,6 +36,7 @@ from ..schemas.market_data import (
     AvailabilityCalendarOut,
     BourseLiveQuoteOut,
     BourseLiveQuotesOut,
+    BourseSessionStatusOut,
     BourseStockLookupOut,
     AssetCategoryPatchIn,
     MarketCatalogRowOut,
@@ -1028,6 +1030,7 @@ def get_bourse_live_quotes(
     symbols: str = Query(..., min_length=1),
     max_age_seconds: int = Query(default=60, ge=0, le=3600),
     force_refresh: bool = Query(default=False),
+    persist_history: bool = Query(default=False),
     db: Session = Depends(get_db),
 ) -> BourseLiveQuotesOut:
     requested = _normalize_live_symbols(symbols.split(","))
@@ -1041,6 +1044,7 @@ def get_bourse_live_quotes(
             requested,
             max_age_seconds=max_age_seconds,
             force_refresh=force_refresh,
+            persist_history=persist_history,
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Bourse live quote refresh failed: {exc}") from exc
@@ -1051,7 +1055,13 @@ def get_bourse_live_quotes(
         ],
         missing_symbols=[symbol for symbol in requested if symbol not in quotes],
         max_age_seconds=max_age_seconds,
+        persisted_history_count=len(quotes) if persist_history and force_refresh else 0,
     )
+
+
+@router.get("/bourse/session-status", response_model=BourseSessionStatusOut)
+def get_bourse_session_status() -> BourseSessionStatusOut:
+    return BourseSessionStatusOut(**bourse_session_status())
 
 
 # ── OHLCV Preview ─────────────────────────────────────────────────────────────

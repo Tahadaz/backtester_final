@@ -9,6 +9,7 @@ import {
   type SignalEvidenceContributor,
   type SignalEvidenceOosPeriod,
   type SignalEvidenceTrade,
+  type SrOverlay,
 } from "@/lib/api"
 import { formatNumber, formatPercent } from "@/lib/format"
 import { buildSignalEvidenceRangeView } from "@/lib/signal-evidence-range"
@@ -132,6 +133,54 @@ function formatPvalue(value: number | null | undefined) {
   return value.toFixed(3)
 }
 
+function SrOverlaySummary({ overlay }: { overlay?: SrOverlay | null }) {
+  if (!overlay) return null
+  const ready = overlay.status === "ready" && overlay.overlay_metrics
+  const bestLabel = overlay.best_variant_id?.replace(/^sr:/, "").replaceAll("__", " / ").replaceAll(":", " ")
+  return (
+    <div className="rounded-md border border-line bg-muted/20 px-3 py-3">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">S/R execution overlay</h4>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Baseline WFO signal replayed with support entry and resistance exit.
+          </p>
+        </div>
+        <Badge variant={ready ? "default" : "outline"} className="h-6 rounded-md text-[11px]">
+          {ready ? `${overlay.viable_count} viable / ${overlay.tested_count} tested` : overlay.reason ?? "unavailable"}
+        </Badge>
+      </div>
+      {ready ? (
+        <div className="grid gap-3 md:grid-cols-4">
+          <StatCard
+            label="Baseline return"
+            value={formatPercent(overlay.baseline_metrics.total_return)}
+            detail={`trades ${formatNumber(overlay.baseline_metrics.n_trades, 0)}`}
+          />
+          <StatCard
+            label="S/R return"
+            value={formatPercent(overlay.overlay_metrics?.total_return)}
+            detail={bestLabel ?? "best pair"}
+            tone={metricTone(overlay.overlay_metrics?.total_return)}
+          />
+          <StatCard
+            label="Return uplift"
+            value={formatPercent(overlay.uplift.total_return)}
+            detail={`${overlay.best_support_method ?? "--"} ${overlay.best_support_line ?? ""} / ${overlay.best_resistance_method ?? "--"} ${overlay.best_resistance_line ?? ""}`}
+            tone={metricTone(overlay.uplift.total_return)}
+          />
+          <StatCard
+            label="Drawdown uplift"
+            value={formatPercent(overlay.uplift.max_drawdown)}
+            detail="positive means lower drawdown"
+            tone={metricTone(overlay.uplift.max_drawdown)}
+          />
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function StitchedWfoEvidenceBacktest({ data }: { data: SignalEvidence }) {
   const [range, setRange] = useState<EvidenceRangeKey>("all")
   const stitched = data.stitched_oos_backtest
@@ -209,6 +258,8 @@ function StitchedWfoEvidenceBacktest({ data }: { data: SignalEvidence }) {
             {stitched.warnings.join(" ")}
           </div>
         ) : null}
+
+        <SrOverlaySummary overlay={stitched.sr_overlay ?? data.sr_overlay} />
 
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <StatCard

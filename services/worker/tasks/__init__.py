@@ -40,6 +40,42 @@ def ingest_macro_series(*args, **kwargs):
     return _ingest_macro_series(*args, **kwargs)
 
 
+def execute_fundamental_import(*args, **kwargs):
+    from .fundamentals import execute_fundamental_import as _execute_fundamental_import
+
+    return _execute_fundamental_import(*args, **kwargs)
+
+
+def refresh_yfinance_universe(*args, **kwargs):
+    from .refresh_yfinance_fundamentals import refresh_yfinance_universe as _refresh_yfinance_universe
+
+    return _refresh_yfinance_universe(*args, **kwargs)
+
+
+def refresh_yfinance_for_symbol(*args, **kwargs):
+    from .refresh_yfinance_fundamentals import refresh_yfinance_for_symbol as _refresh_yfinance_for_symbol
+
+    return _refresh_yfinance_for_symbol(*args, **kwargs)
+
+
+def execute_targeted_bvc_fundamental_import(*args, **kwargs):
+    from .targeted_bvc_fundamentals import execute_targeted_bvc_fundamental_import as _execute_targeted_bvc_fundamental_import
+
+    return _execute_targeted_bvc_fundamental_import(*args, **kwargs)
+
+
+def refresh_fundamental_catalysts(*args, **kwargs):
+    from .refresh_fundamental_catalysts import refresh_fundamental_catalysts as _refresh_fundamental_catalysts
+
+    return _refresh_fundamental_catalysts(*args, **kwargs)
+
+
+def compute_stat_arb_for_horizon(*args, **kwargs):
+    from .stat_arb import compute_stat_arb_for_horizon as _compute_stat_arb_for_horizon
+
+    return _compute_stat_arb_for_horizon(*args, **kwargs)
+
+
 def __getattr__(name):
     # RQ resolves dotted-string jobs by walking attributes from this package in
     # some versions. Keep heavy task modules lazy so API containers can import
@@ -78,6 +114,12 @@ __all__ = [
     "refresh_all_tracked_symbols",
     "execute_strategy_backtest_run",
     "ingest_macro_series",
+    "execute_fundamental_import",
+    "refresh_yfinance_universe",
+    "refresh_yfinance_for_symbol",
+    "execute_targeted_bvc_fundamental_import",
+    "refresh_fundamental_catalysts",
+    "compute_stat_arb_for_horizon",
     "defaults_discovery",
     "refresh_market_data",
 ]

@@ -56,7 +56,10 @@ class SupportResistanceRequest(StrategySignalRequestBase):
 class SupportResistanceMethodDetailRequest(SupportResistanceRequest):
     method_id: str = Field(
         ...,
-        pattern=r"^(ma_anchor|score_inversion|swing_levels|pivot_points|quantile_extrema_atr)$",
+        pattern=(
+            r"^(ma_anchor|score_inversion|swing_levels|pivot_points|fibonacci_pivot|"
+            r"camarilla|woodie|dm|quantile_extrema_atr|fibonacci_retracement)$"
+        ),
     )
 
 
@@ -122,11 +125,23 @@ class SignalZoneChartRequest(StrategySignalRequestBase):
     family_history_mode: str = Field(default="static_current_reps", pattern=r"^(static_current_reps|dynamic_point_in_time)$")
 
 
+class IndicatorLiveBar(BaseModel):
+    date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+    open: float | None = None
+    high: float | None = None
+    low: float | None = None
+    close: float
+    volume: float | None = None
+    quote_timestamp: str | None = None
+    source: str | None = None
+
+
 class IndicatorSeriesRequest(BaseModel):
     symbol: str = Field(..., min_length=1)
     indicator: str = Field(..., pattern=r"^(sma|ema|ema_cross|ichimoku|psar|macd|roc|trix|adx|tsi|rsi|stochastic|cci|mfi|uo|obv|cmf|ad|vwap|fi)$")
     params: dict[str, float] = Field(default_factory=dict)
     timeframe: str = Field(default="1D", pattern=r"^1D$")
+    live_bar: IndicatorLiveBar | None = None
 
 
 class IndicatorSeriesResponse(BaseModel):
@@ -137,9 +152,12 @@ class IndicatorSeriesResponse(BaseModel):
     close: list[float | None]
     indicator_values: list[float | None]
     indicator_overlay: list[float | None] | None = None
+    plot_payload: dict[str, Any] | None = None
     current_score: float
     current_label: str
     atr: float | None = None
+    live_bar_applied: bool = False
+    data_as_of: str | None = None
 
 
 class SupportResistanceMethod(BaseModel):

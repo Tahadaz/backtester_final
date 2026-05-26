@@ -42,7 +42,7 @@ const publicNavItems = [
   { href: "/signals", label: "Signaux", icon: Gauge },
 ]
 
-const hiddenWorkspaceNavHrefs = new Set(["/strategy", "/backtest", "/analytics"])
+const hiddenWorkspaceNavHrefs = new Set(["/strategy", "/backtest", "/analytics", "/fundamentals"])
 
 interface SignalsHeaderProps {
   sessionEmail?: string | null

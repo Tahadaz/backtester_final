@@ -97,6 +97,15 @@ LEGACY_CATEGORY_FAMILIES: dict[str, list[str]] = {
     "volume": ["obv"],
 }
 
+FUNDAMENTAL_CATEGORY_FAMILIES: dict[str, list[str]] = {
+    "value": ["fundamental_value"],
+    "quality": ["fundamental_quality"],
+    "growth": ["fundamental_growth"],
+    "risk": ["fundamental_risk"],
+    "cash_flow": ["fundamental_cash_flow"],
+    "health": ["fundamental_health"],
+}
+
 VARIANT_FAMILIES: dict[str, dict[str, list[str]]] = {
     "legacy": LEGACY_CATEGORY_FAMILIES,
     "expanded": CATEGORY_FAMILIES,
@@ -130,6 +139,10 @@ VARIANT_FAMILIES: dict[str, dict[str, list[str]]] = {
         category: [f"expanded_fx_combo_{category}"]
         for category in CATEGORY_FAMILIES
     },
+    "fundamental_balanced_simple": FUNDAMENTAL_CATEGORY_FAMILIES,
+    "fundamental_value_simple": FUNDAMENTAL_CATEGORY_FAMILIES,
+    "fundamental_quality_simple": FUNDAMENTAL_CATEGORY_FAMILIES,
+    "fundamental_growth_simple": FUNDAMENTAL_CATEGORY_FAMILIES,
 }
 
 ALL_FAMILIES: tuple[str, ...] = tuple(

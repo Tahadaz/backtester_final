@@ -158,6 +158,27 @@ def _upsert_quote_from_frame(db: Session, symbol: str, frame: pd.DataFrame) -> m
     return quote
 
 
+def _append_quote_history(db: Session, quote: models.BourseLiveQuote) -> models.BourseLiveQuoteHistory:
+    observed_at = _as_aware_utc(quote.updated_at) or _utcnow()
+    history = models.BourseLiveQuoteHistory(
+        symbol=str(quote.symbol or "").upper(),
+        session_date=quote.session_date,
+        observed_at=observed_at,
+        quote_timestamp=quote.quote_timestamp,
+        open_price=_safe_float(quote.open_price),
+        last_price=_safe_float(quote.last_price),
+        high_price=_safe_float(quote.high_price),
+        low_price=_safe_float(quote.low_price),
+        prev_close=_safe_float(quote.prev_close),
+        volume=_safe_float(quote.volume),
+        source_provider=quote.source_provider or SOURCE_PROVIDER,
+        source_url=quote.source_url,
+        raw_json=dict(quote.raw_json or {}),
+    )
+    db.add(history)
+    return history
+
+
 def get_cached_live_quotes(
     db: Session,
     symbols: list[str],
@@ -184,6 +205,7 @@ def get_or_refresh_live_quotes(
     *,
     max_age_seconds: int = DEFAULT_MAX_AGE_SECONDS,
     force_refresh: bool = False,
+    persist_history: bool = False,
 ) -> dict[str, LiveQuoteView]:
     normalized = normalize_symbols(symbols)
     if not normalized:
@@ -209,6 +231,8 @@ def get_or_refresh_live_quotes(
                 frame = market_data.bars.get(symbol)
                 quote = _upsert_quote_from_frame(db, symbol, frame) if frame is not None else None
                 if quote is not None:
+                    if persist_history:
+                        _append_quote_history(db, quote)
                     db.commit()
                     db.refresh(quote)
                     cached_rows[symbol] = quote

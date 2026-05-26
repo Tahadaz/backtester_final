@@ -18,6 +18,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi import status
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -32,6 +33,7 @@ from ..services.dashboard_builder import (
     build_dashboard_payload,
     derive_upstream_rev,
 )
+from ..services.dashboard_live import build_dashboard_live_refresh
 from ..schemas.dashboard_portfolio import (
     DashboardDailyBlotterRequest,
     DashboardDailyBlotterResponse,
@@ -71,6 +73,14 @@ from ..services.dashboard_portfolio import (
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 DASHBOARD_SNAPSHOT_JOB_TIMEOUT_SECONDS = 3600
+
+
+class DashboardLiveRefreshBody(BaseModel):
+    symbols: list[str] = Field(default_factory=list)
+    horizon: str = "monthly"
+    max_age_seconds: int = Field(default=60, ge=0, le=3600)
+    persist_history: bool = True
+    allow_when_closed: bool = False
 
 
 def _normalize_horizon(raw: str) -> str:
@@ -236,6 +246,33 @@ def get_dashboard_data(
     # legacy — original live-compute path
     payload = build_dashboard_payload(db, horizon, include_edge=True)
     return payload
+
+
+@router.post("/live-refresh", dependencies=[Depends(rate_limit_trigger)], response_model=None)
+def post_dashboard_live_refresh(
+    body: DashboardLiveRefreshBody,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    symbols = [str(symbol or "").strip().upper() for symbol in body.symbols if str(symbol or "").strip()]
+    symbols = list(dict.fromkeys(symbols))
+    if not symbols:
+        raise HTTPException(status_code=400, detail="No symbols requested")
+    if len(symbols) > 80:
+        raise HTTPException(status_code=400, detail="Too many symbols requested")
+    try:
+        return build_dashboard_live_refresh(
+            db,
+            symbols=symbols,
+            horizon=body.horizon,
+            max_age_seconds=body.max_age_seconds,
+            persist_history=body.persist_history,
+            allow_when_closed=body.allow_when_closed,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("dashboard live refresh failed")
+        raise HTTPException(status_code=502, detail=f"Dashboard live refresh failed: {exc}") from exc
 
 
 @router.post("/portfolio-ticket", response_model=DashboardPortfolioTicketResponse)
@@ -615,12 +652,6 @@ def _serve_shadow(
 # ---------------------------------------------------------------------------
 # Admin: snapshot trigger + backfill
 # ---------------------------------------------------------------------------
-
-class _SnapshotTriggerBody:
-    pass
-
-
-from pydantic import BaseModel
 
 
 class SnapshotTriggerBody(BaseModel):

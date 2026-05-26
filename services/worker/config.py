@@ -73,6 +73,38 @@ class Settings(BaseModel):
     WFO_TEST_MONTHS: int = int(os.getenv("WFO_TEST_MONTHS", "6"))
     WFO_ROLL_MONTHS: int = int(os.getenv("WFO_ROLL_MONTHS", "1"))
     MC_NUM_PATHS: int = int(os.getenv("MC_NUM_PATHS", "200"))
+    FAMA_FRENCH_DIR: str = os.getenv(
+        "FAMA_FRENCH_DIR",
+        r"C:\Users\taha\Downloads\fama french",
+    )
+    FAMA_FRENCH_PYTHON: str = os.getenv("FAMA_FRENCH_PYTHON", "")
+    FAMA_FRENCH_MARKET_REFERENCE_WORKBOOK: str = os.getenv(
+        "FAMA_FRENCH_MARKET_REFERENCE_WORKBOOK",
+        r"C:\Users\taha\Downloads\fundamental_data_all_structured_market_formula_factors_formula_corrected.xlsx",
+    )
+    FAMA_FRENCH_HISTORICAL_WORKBOOK: str = os.getenv(
+        "FAMA_FRENCH_HISTORICAL_WORKBOOK",
+        r"C:\Users\taha\Downloads\fundamental_data_formula_fixed.xlsx",
+    )
+    FAMA_FRENCH_TARGET_TIMEOUT_SECONDS: int = int(os.getenv("FAMA_FRENCH_TARGET_TIMEOUT_SECONDS", "7200"))
+    FAMA_FRENCH_TARGET_MAX_PAGES: int = int(os.getenv("FAMA_FRENCH_TARGET_MAX_PAGES", "9999"))
+    FUNDAMENTAL_LLM_PROVIDER: str = os.getenv("FUNDAMENTAL_LLM_PROVIDER", "gemini").strip().lower() or "gemini"
+    FUNDAMENTAL_LLM_API_KEYS: str = _getenv_any(
+        "FUNDAMENTAL_LLM_API_KEYS",
+        "GEMINI_API_KEYS",
+        "GEMINI_API_KEY",
+        default="",
+    ).strip()
+    FUNDAMENTAL_LLM_MODEL: str = _getenv_any(
+        "FUNDAMENTAL_LLM_MODEL",
+        "GEMINI_MODEL",
+        default="gemma-4-31b-it",
+    ).strip()
+    FUNDAMENTAL_LLM_FALLBACK_MODELS: str = os.getenv("FUNDAMENTAL_LLM_FALLBACK_MODELS", "").strip()
+    FUNDAMENTAL_LLM_BASE_URL: str = os.getenv(
+        "FUNDAMENTAL_LLM_BASE_URL",
+        "https://generativelanguage.googleapis.com/v1beta/openai/",
+    ).strip()
 
 
 settings = Settings()

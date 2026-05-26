@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import math
 import time
+import uuid
 from collections import defaultdict
 from dataclasses import dataclass, replace
 from typing import Any, Optional
@@ -42,6 +43,11 @@ from ..schemas.analytics import (
     CategoryCombinationsOut,
     PredictiveHistoryStatus,
     PredictiveHistoryTriggerOut,
+    StatArbTriggerOut,
+    StatArbStatusOut,
+    StatArbPairRow,
+    StatArbLeaderboardOut,
+    StatArbPairDetailOut,
     LeaderboardRow,
     LeaderboardOut,
     MethodEvaluationRow,
@@ -1820,6 +1826,223 @@ def predictive_history_batch_status(db: Session = Depends(get_db)) -> Predictive
 
 
 # ---------------------------------------------------------------------------
+# Statistical arbitrage pair diagnostics (analytics-only)
+# ---------------------------------------------------------------------------
+
+def _stat_arb_iso(value: Any) -> str | None:
+    return value.isoformat() if value is not None and hasattr(value, "isoformat") else None
+
+
+def _stat_arb_warnings(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    return []
+
+
+def _stat_arb_row_out(row: models.StatArbPairSignal) -> StatArbPairRow:
+    return StatArbPairRow(
+        pair_id=row.pair_id,
+        symbol_y=row.symbol_y,
+        symbol_x=row.symbol_x,
+        horizon=row.horizon,
+        archetype=row.archetype,
+        lag_bars=row.lag_bars or 0,
+        action_type=row.action_type or "none",
+        current_signal=row.current_signal or "none",
+        direction=row.direction or "none",
+        validation_status=row.validation_status or "pending",
+        status=row.status or "pending",
+        n_obs=row.n_obs or 0,
+        n_folds=row.n_folds or 0,
+        hedge_ratio=row.hedge_ratio,
+        intercept=row.intercept,
+        zscore=row.zscore,
+        half_life=row.half_life,
+        adf_pvalue=row.adf_pvalue,
+        raw_pvalue=row.raw_pvalue,
+        fdr_qvalue=row.fdr_qvalue,
+        oos_sharpe=row.oos_sharpe,
+        oos_return=row.oos_return,
+        max_drawdown=row.max_drawdown,
+        profitable_fold_ratio=row.profitable_fold_ratio,
+        data_as_of=_stat_arb_iso(row.data_as_of),
+        cost_bps_per_side=float(row.cost_bps_per_side or 0.0),
+        slippage_bps_per_side=float(row.slippage_bps_per_side or 0.0),
+        borrow_bps_annual=float(row.borrow_bps_annual or 0.0),
+        warnings=_stat_arb_warnings(row.warnings_json),
+        updated_at=_stat_arb_iso(row.updated_at),
+    )
+
+
+def _stat_arb_detail_out(row: models.StatArbPairSignal) -> StatArbPairDetailOut:
+    base = _stat_arb_row_out(row)
+    data = base.model_dump() if hasattr(base, "model_dump") else base.dict()
+    return StatArbPairDetailOut(
+        **data,
+        metrics=row.metrics_json if isinstance(row.metrics_json, dict) else {},
+        chart=row.chart_json if isinstance(row.chart_json, dict) else {},
+    )
+
+
+def _stat_arb_job_out(row: models.StatArbBatchJob | None) -> dict[str, Any] | None:
+    if row is None:
+        return None
+    return {
+        "id": str(row.id),
+        "horizon": row.horizon,
+        "status": row.status,
+        "rq_job_id": row.rq_job_id,
+        "total_pairs": row.total_pairs,
+        "completed_pairs": row.completed_pairs,
+        "failed_pairs": row.failed_pairs,
+        "error_message": row.error_message,
+        "started_at": _stat_arb_iso(row.started_at),
+        "finished_at": _stat_arb_iso(row.finished_at),
+        "created_at": _stat_arb_iso(row.created_at),
+        "updated_at": _stat_arb_iso(row.updated_at),
+    }
+
+
+@router.post(
+    "/stat-arb/recompute",
+    response_model=StatArbTriggerOut,
+    dependencies=[Depends(require_admin), Depends(rate_limit_trigger)],
+)
+def trigger_stat_arb_recompute(
+    horizon: str = Query("short", description="Signal horizon: short|medium|long"),
+    cost_bps_per_side: float | None = Query(None, ge=0),
+    slippage_bps_per_side: float | None = Query(None, ge=0),
+    borrow_bps_annual: float | None = Query(None, ge=0),
+    max_drawdown_floor: float | None = Query(None, ge=-1, le=0),
+    db: Session = Depends(get_db),
+) -> StatArbTriggerOut:
+    from redis import Redis
+    from rq import Queue
+    from ..config import settings
+
+    canonical = canonical_horizon(horizon, allow_legacy=True)
+    config = {
+        key: value
+        for key, value in {
+            "cost_bps_per_side": cost_bps_per_side,
+            "slippage_bps_per_side": slippage_bps_per_side,
+            "borrow_bps_annual": borrow_bps_annual,
+            "max_drawdown_floor": max_drawdown_floor,
+        }.items()
+        if value is not None
+    }
+    job_uuid = uuid.uuid4()
+    row = models.StatArbBatchJob(
+        id=job_uuid,
+        horizon=canonical,
+        status="pending",
+        total_pairs=0,
+        completed_pairs=0,
+        failed_pairs=0,
+    )
+    db.add(row)
+    db.commit()
+
+    try:
+        from os import getenv
+
+        redis_conn = Redis.from_url(settings.REDIS_URL, decode_responses=False)
+        queue = Queue(getenv("STAT_ARB_QUEUE_NAME", "score_history"), connection=redis_conn)
+        job = queue.enqueue(
+            "services.worker.tasks.stat_arb.compute_stat_arb_for_horizon",
+            canonical,
+            config,
+            str(job_uuid),
+            job_id=str(job_uuid),
+            job_timeout=7200,
+        )
+        row.rq_job_id = str(job.id)
+        db.commit()
+    except Exception as exc:
+        row.status = "failed"
+        row.error_message = str(exc)
+        db.commit()
+        raise HTTPException(status_code=503, detail=f"Could not enqueue stat-arb recompute: {exc}") from exc
+
+    return StatArbTriggerOut(triggered=1, job_ids=[str(job_uuid)])
+
+
+@router.get("/stat-arb/status", response_model=StatArbStatusOut)
+def stat_arb_batch_status(db: Session = Depends(get_db)) -> StatArbStatusOut:
+    from sqlalchemy import func as sa_func
+
+    rows = (
+        db.query(models.StatArbBatchJob.status, sa_func.count().label("cnt"))
+        .group_by(models.StatArbBatchJob.status)
+        .all()
+    )
+    counts: dict[str, int] = {r.status: r.cnt for r in rows}
+    latest = (
+        db.query(models.StatArbBatchJob)
+        .order_by(models.StatArbBatchJob.created_at.desc())
+        .first()
+    )
+    total = sum(counts.values())
+    return StatArbStatusOut(
+        total=total,
+        pending=counts.get("pending", 0),
+        running=counts.get("running", 0),
+        succeeded=counts.get("succeeded", 0),
+        failed=counts.get("failed", 0),
+        latest=_stat_arb_job_out(latest),
+    )
+
+
+@router.get("/stat-arb/leaderboard", response_model=StatArbLeaderboardOut)
+def get_stat_arb_leaderboard(
+    horizon: str = Query("short"),
+    archetype: str | None = Query(None),
+    action_type: str | None = Query(None),
+    status: str | None = Query(None),
+    limit: int = Query(100, ge=1, le=1000),
+    db: Session = Depends(get_db),
+) -> StatArbLeaderboardOut:
+    from sqlalchemy import case, desc, nullslast
+
+    canonical = canonical_horizon(horizon, allow_legacy=True)
+    query = db.query(models.StatArbPairSignal).filter(models.StatArbPairSignal.horizon == canonical)
+    if archetype:
+        query = query.filter(models.StatArbPairSignal.archetype == archetype)
+    if action_type:
+        query = query.filter(models.StatArbPairSignal.action_type == action_type)
+    if status:
+        query = query.filter(models.StatArbPairSignal.status == status)
+
+    status_rank = case(
+        (models.StatArbPairSignal.status == "actionable", 0),
+        (models.StatArbPairSignal.status == "watch", 1),
+        (models.StatArbPairSignal.status == "rejected", 2),
+        (models.StatArbPairSignal.status == "failed", 3),
+        else_=9,
+    )
+    rows = (
+        query.order_by(
+            status_rank,
+            nullslast(desc(models.StatArbPairSignal.oos_sharpe)),
+            nullslast(desc(models.StatArbPairSignal.profitable_fold_ratio)),
+            models.StatArbPairSignal.symbol_y,
+            models.StatArbPairSignal.symbol_x,
+        )
+        .limit(limit)
+        .all()
+    )
+    return StatArbLeaderboardOut(horizon=canonical, rows=[_stat_arb_row_out(row) for row in rows])
+
+
+@router.get("/stat-arb/pairs/{pair_id}", response_model=StatArbPairDetailOut)
+def get_stat_arb_pair_detail(pair_id: str, db: Session = Depends(get_db)) -> StatArbPairDetailOut:
+    row = db.get(models.StatArbPairSignal, pair_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Stat-arb pair not found")
+    return _stat_arb_detail_out(row)
+
+
+# ---------------------------------------------------------------------------
 # Edge metrics endpoint (§4.2.b of the edge-deploy plan)
 # ---------------------------------------------------------------------------
 
@@ -2154,6 +2377,7 @@ def _build_edge_metrics_from_db(
     cost_bps: float,
     db: "Session",
     multiple_testing_count: int | None = None,
+    bucket_override: str | None = None,
 ) -> "EdgeMetrics | None":
     """Load all required data from DB and compute EdgeMetrics. Returns None on missing data."""
     from core.quant_core.horizons import HORIZON_SPECS, canonical_horizon
@@ -2200,7 +2424,7 @@ def _build_edge_metrics_from_db(
     if live_score_raw is None:
         # Fall back to the latest bar in score history.
         live_score_raw = float(score.dropna().iloc[-1])
-    today_bucket = _bucket_for(live_score_raw)
+    today_bucket = str(bucket_override or _bucket_for(live_score_raw))
 
     # --- Load prices ---
     try:

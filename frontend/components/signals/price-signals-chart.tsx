@@ -33,11 +33,11 @@ export interface IndicatorOverlaySeries {
 }
 
 interface PriceSignalsChartProps {
-  open?: number[] | null | undefined
-  high?: number[] | null | undefined
-  low?: number[] | null | undefined
-  close: number[] | null | undefined
-  position: number[] | null | undefined
+  open?: Array<number | null> | null | undefined
+  high?: Array<number | null> | null | undefined
+  low?: Array<number | null> | null | undefined
+  close: Array<number | null> | null | undefined
+  position: Array<number | null> | null | undefined
   dates: string[] | null | undefined
   title?: string
   indicatorSeries?: IndicatorOverlaySeries[]
@@ -230,14 +230,14 @@ function orderedIndicatorCategories(series: IndicatorOverlaySeries[]): Indicator
 
 function createTradeMarkers(
   dates: string[],
-  close: number[],
-  position: number[],
+  close: Array<number | null | undefined>,
+  position: Array<number | null | undefined>,
 ): ChartTradeMarker[] {
   const markers: ChartTradeMarker[] = []
   const length = Math.min(dates.length, close.length, position.length)
   for (let index = 1; index < length; index += 1) {
-    const prev = position[index - 1] ?? 0
-    const cur = position[index] ?? 0
+    const prev = finiteValue(position[index - 1]) ?? 0
+    const cur = finiteValue(position[index]) ?? 0
     const time = toTime(dates[index]!)
     if (cur === prev) continue
 

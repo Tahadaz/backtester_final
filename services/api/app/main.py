@@ -19,6 +19,7 @@ from .routers import (
     defaults,
     factor_selection,
     factor_signals,
+    fundamentals,
     leaderboard,
     market_data,
     market_data_indices,
@@ -68,6 +69,7 @@ def create_app() -> FastAPI:
     app.include_router(analytics.router, dependencies=[Depends(auth.require_api_key)])
     app.include_router(factor_signals.router, dependencies=[Depends(auth.require_api_key)])
     app.include_router(factor_selection.router, dependencies=[Depends(auth.require_api_key)])
+    app.include_router(fundamentals.router, dependencies=[Depends(auth.require_api_key)])
     app.include_router(data.router)
     app.include_router(dashboard_indices.router)
     app.include_router(dashboard_data.router)

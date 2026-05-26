@@ -137,6 +137,104 @@ def test_indicator_series_supports_sma_period_alias(monkeypatch) -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["params"]["window"] == 21.0
+    assert payload["live_bar_applied"] is False
+    assert payload["data_as_of"] == "2024-06-08"
+
+
+def test_indicator_series_live_bar_replaces_same_day(monkeypatch) -> None:
+    app = _app()
+    frame = _ohlcv()
+    monkeypatch.setattr(strategy_signals, "load_ohlcv_for_symbol", lambda *args, **kwargs: frame.copy())
+
+    client = TestClient(app)
+    response = client.post(
+        "/strategy/signal/indicator-series",
+        json={
+            "symbol": "AAA",
+            "indicator": "sma",
+            "params": {"period": 20},
+            "timeframe": "1D",
+            "live_bar": {
+                "date": str(frame.index[-1])[:10],
+                "open": 139.0,
+                "high": 150.0,
+                "low": 138.0,
+                "close": 200.0,
+                "volume": 222_000.0,
+                "source": "test",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["live_bar_applied"] is True
+    assert len(payload["close"]) == len(frame)
+    assert payload["close"][-1] == 200.0
+    assert payload["data_as_of"] == str(frame.index[-1])[:10]
+
+
+def test_indicator_series_live_bar_appends_newer_day(monkeypatch) -> None:
+    app = _app()
+    frame = _ohlcv()
+    next_date = (frame.index[-1] + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+    monkeypatch.setattr(strategy_signals, "load_ohlcv_for_symbol", lambda *args, **kwargs: frame.copy())
+
+    client = TestClient(app)
+    response = client.post(
+        "/strategy/signal/indicator-series",
+        json={
+            "symbol": "AAA",
+            "indicator": "sma",
+            "params": {"period": 20},
+            "timeframe": "1D",
+            "live_bar": {
+                "date": next_date,
+                "open": 141.0,
+                "high": 142.0,
+                "low": 140.0,
+                "close": 143.0,
+                "volume": 222_000.0,
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["live_bar_applied"] is True
+    assert len(payload["close"]) == len(frame) + 1
+    assert payload["dates"][-1] == next_date
+    assert payload["close"][-1] == 143.0
+    assert payload["data_as_of"] == next_date
+
+
+def test_indicator_series_live_bar_ignores_stale_day(monkeypatch) -> None:
+    app = _app()
+    frame = _ohlcv()
+    stale_date = (frame.index[-1] - pd.Timedelta(days=5)).strftime("%Y-%m-%d")
+    original_close = round(float(frame["Close"].iloc[-1]), 4)
+    monkeypatch.setattr(strategy_signals, "load_ohlcv_for_symbol", lambda *args, **kwargs: frame.copy())
+
+    client = TestClient(app)
+    response = client.post(
+        "/strategy/signal/indicator-series",
+        json={
+            "symbol": "AAA",
+            "indicator": "sma",
+            "params": {"period": 20},
+            "timeframe": "1D",
+            "live_bar": {
+                "date": stale_date,
+                "close": 999.0,
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["live_bar_applied"] is False
+    assert len(payload["close"]) == len(frame)
+    assert payload["close"][-1] == original_close
 
 
 def test_indicator_series_requires_rsi_thresholds(monkeypatch) -> None:

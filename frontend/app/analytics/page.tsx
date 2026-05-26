@@ -16,7 +16,8 @@ import { PredictiveAbilityPanel } from "@/components/analytics/predictive-abilit
 import { TopSignauxLeaderboard } from "@/components/analytics/top-signaux-leaderboard"
 import { MethodEvaluationPanel } from "@/components/analytics/method-evaluation-panel"
 import { FactorLeaderboardPanel } from "@/components/analytics/factor-leaderboard-panel"
-import { Activity, BarChart2, BookOpen, CheckCircle2, Database, Download, Globe, Layers3, RefreshCw, Search, TrendingUp, Trophy, Eye, ListOrdered } from "lucide-react"
+import { StatArbPanel } from "@/components/analytics/stat-arb-panel"
+import { Activity, BarChart2, BookOpen, CheckCircle2, Database, Download, GitCompareArrows, Globe, Layers3, RefreshCw, Search, TrendingUp, Trophy, Eye, ListOrdered } from "lucide-react"
 
 const ADV_THRESHOLD = 1_000_000
 const fmtIc = (value: number | null | undefined) => {
@@ -24,13 +25,13 @@ const fmtIc = (value: number | null | undefined) => {
   return `${value >= 0 ? "+" : ""}${value.toFixed(3)}`
 }
 
-type Tab = "signals" | "macro" | "factors"
+type Tab = "signals" | "macro" | "factors" | "stat-arb"
 type SubTab = "top" | "methodes" | "par-action"
 type FactorSubTab = "leaderboard" | "par-action"
 type EngineHorizon = "short" | "medium" | "long"
 type Source = string
 
-function AnalyticsPageInner() {
+export function AnalyticsPageInner() {
   const [tab, setTab] = useState<Tab>("signals")
   const [subTab, setSubTab] = useState<SubTab>("top")
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null)
@@ -206,6 +207,10 @@ function AnalyticsPageInner() {
           <button type="button" onClick={() => setTab("factors")} className={tab === "factors" ? "active" : ""}>
             <Layers3 className="h-3.5 w-3.5" />
             Facteurs
+          </button>
+          <button type="button" onClick={() => setTab("stat-arb")} className={tab === "stat-arb" ? "active" : ""}>
+            <GitCompareArrows className="h-3.5 w-3.5" />
+            Stat-arb
           </button>
         </div>
 
@@ -429,6 +434,8 @@ function AnalyticsPageInner() {
             </Card>
           ) : null}
 
+          {tab === "stat-arb" ? <StatArbPanel /> : null}
+
           {tab === "factors" ? (
             <>
               <div className="seg w-fit">
@@ -513,7 +520,7 @@ function AnalyticsPageInner() {
       <RecomputeStatusCard />
 
       <div className="flex border-b border-line bg-bg2">
-        {(["signals", "macro", "factors"] as Tab[]).map((t) => (
+        {(["signals", "macro", "factors", "stat-arb"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -531,9 +538,13 @@ function AnalyticsPageInner() {
               <span className="flex items-center gap-1.5">
                 <Database className="h-3.5 w-3.5" /> Données Macro
               </span>
-            ) : (
+            ) : t === "factors" ? (
               <span className="flex items-center gap-1.5">
                 <TrendingUp className="h-3.5 w-3.5" /> Facteurs Macro
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5">
+                <GitCompareArrows className="h-3.5 w-3.5" /> Stat-arb
               </span>
             )}
           </button>
@@ -718,6 +729,8 @@ function AnalyticsPageInner() {
           </CardContent>
         </Card>
       )}
+
+      {tab === "stat-arb" && <StatArbPanel />}
 
       {tab === "factors" && (
         <div className="space-y-4">

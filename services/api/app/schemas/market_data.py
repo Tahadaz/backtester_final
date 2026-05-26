@@ -97,6 +97,18 @@ class BourseLiveQuotesOut(BaseModel):
     quotes: list[BourseLiveQuoteOut] = Field(default_factory=list)
     missing_symbols: list[str] = Field(default_factory=list)
     max_age_seconds: int
+    persisted_history_count: int = 0
+
+
+class BourseSessionStatusOut(BaseModel):
+    timezone: str
+    local_time: datetime.datetime
+    session_date: datetime.date
+    phase: str
+    is_live_session: bool
+    next_state_at: Optional[datetime.datetime] = None
+    holiday_name: Optional[str] = None
+    holiday_certainty: Optional[str] = None
 
 
 class StockShareOut(BaseModel):

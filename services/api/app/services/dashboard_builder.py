@@ -1545,6 +1545,33 @@ def build_dashboard_payload(db: Session, horizon: str, *, include_edge: bool = F
     symbols = list(stock_dict.keys())
 
     market_stats_by_symbol = _load_dashboard_market_stats(db, symbols)
+    try:
+        from .. import models
+        from .fundamentals import latest_imports_by_symbol, latest_snapshot_rows_by_symbol
+
+        fundamental_snapshots = latest_snapshot_rows_by_symbol(db, symbols=symbols)
+        fundamental_imports = latest_imports_by_symbol(db, symbols=symbols)
+        fundamental_import_ids = sorted({row.import_id for row in fundamental_snapshots.values()})
+        fundamental_ensembles = {}
+        if fundamental_import_ids:
+            ensemble_rows = (
+                db.query(models.FundamentalEnsembleResult)
+                .filter(
+                    models.FundamentalEnsembleResult.import_id.in_(fundamental_import_ids),
+                    models.FundamentalEnsembleResult.scenario == "base",
+                )
+                .all()
+            )
+            fundamental_ensembles = {(row.import_id, row.symbol): row for row in ensemble_rows}
+    except Exception:
+        logger.debug("dashboard fundamentals unavailable", exc_info=True)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        fundamental_snapshots = {}
+        fundamental_imports = {}
+        fundamental_ensembles = {}
 
     se_rows = db.execute(
         text(f"""
@@ -1814,12 +1841,59 @@ def build_dashboard_payload(db: Session, horizon: str, *, include_edge: bool = F
         last_price = _safe_float(market_stats.get("close_last"))
         prev_close = _safe_float(market_stats.get("prev_close"))
         adv_20d = _safe_float(market_stats.get("adv_20d"))
+        fundamental_snapshot = fundamental_snapshots.get(symbol)
+        fundamental_import = fundamental_imports.get(symbol)
+        fundamental_ensemble = (
+            fundamental_ensembles.get((fundamental_snapshot.import_id, symbol))
+            if fundamental_snapshot is not None
+            else None
+        )
+        fundamentals_obj: dict[str, Any] | None = None
+        if fundamental_snapshot is not None:
+            scores = dict(fundamental_snapshot.scores_json or {})
+            coverage = dict(fundamental_snapshot.coverage_json or {})
+            metrics = dict(fundamental_snapshot.metrics_json or {})
+            as_of = None
+            if fundamental_import is not None:
+                when = fundamental_import.completed_at or fundamental_import.imported_at or fundamental_import.created_at
+                as_of = _iso_or_none(when)
+            metric_count = _safe_float(coverage.get("metric_count"))
+            coverage_pct = _safe_float(coverage.get("coverage_pct"))
+            if coverage_pct is None and metric_count is not None:
+                coverage_pct = min(1.0, max(0.0, metric_count / 20.0))
+            confidence_score = _safe_float(getattr(fundamental_ensemble, "confidence_score", None))
+            fundamentals_obj = {
+                "overall_score": _round(scores.get("overall")),
+                "value_score": _round(scores.get("value")),
+                "quality_score": _round(scores.get("quality")),
+                "growth_score": _round(scores.get("growth")),
+                "risk_score": _round(scores.get("risk")),
+                "cash_flow_score": _round(scores.get("cash_flow")),
+                "health_score": _round(scores.get("health")),
+                "fair_value": _round(getattr(fundamental_ensemble, "fair_value_base", None)),
+                "upside_pct": _round(getattr(fundamental_ensemble, "upside_pct", None)),
+                "confidence": (
+                    "high" if confidence_score is not None and confidence_score >= 0.75
+                    else "medium" if confidence_score is not None and confidence_score >= 0.45
+                    else "low" if confidence_score is not None and confidence_score > 0
+                    else None
+                ),
+                "coverage_pct": _round(coverage_pct * 100.0) if coverage_pct is not None else None,
+                "data_source": fundamental_snapshot.data_source or (fundamental_import.data_source if fundamental_import else None),
+                "currency": (fundamental_snapshot.source_json or {}).get("currency"),
+                "as_of": as_of,
+                "pe": _round(metrics.get("PER")),
+                "dividend_yield": _round(metrics.get("Dividend_Yield")),
+                "market_cap": _round(metrics.get("MarketCap_Calc")),
+            }
 
         technical_candidates: list[dict[str, Any] | None] = []
         for row in technical_se_by_symbol.get(symbol, []):
             variant = str(row[1] or "")
             try:
                 mode = resolve_signal_mode(variant)
+                if mode.is_fundamental:
+                    continue
                 canonical_variant = mode.name
             except ValueError:
                 mode = resolve_signal_mode("expanded_ta_simple")
@@ -1884,6 +1958,7 @@ def build_dashboard_payload(db: Session, horizon: str, *, include_edge: bool = F
             "best_signal": _build_best_signal_payload(db, symbol, horizon) if include_edge else None,
             "best_technical_signal": _build_best_technical_signal_payload(technical_candidates),
             "classic_technical_signal": _build_classic_technical_signal_payload(db, symbol),
+            "fundamentals": fundamentals_obj,
             "scores": {"signal_engine": se_scores_obj, "wfo": wfo_scores_obj},
             # flat backwards-compat fields
             "aggregate_score_pct": se_scores_obj["aggregate_score_pct"],

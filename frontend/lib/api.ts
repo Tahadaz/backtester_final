@@ -584,8 +584,49 @@ export const BourseLiveQuotesResponseSchema = z.object({
   quotes: z.array(BourseLiveQuoteSchema).default([]),
   missing_symbols: z.array(z.string()).default([]),
   max_age_seconds: z.number(),
+  persisted_history_count: z.number().default(0),
 })
 export type BourseLiveQuotesResponse = z.infer<typeof BourseLiveQuotesResponseSchema>
+
+export const BourseSessionStatusSchema = z.object({
+  timezone: z.string(),
+  local_time: z.string(),
+  session_date: z.string(),
+  phase: z.string(),
+  is_live_session: z.boolean(),
+  next_state_at: z.string().nullable().optional(),
+  holiday_name: z.string().nullable().optional(),
+  holiday_certainty: z.string().nullable().optional(),
+})
+export type BourseSessionStatus = z.infer<typeof BourseSessionStatusSchema>
+
+export const DashboardLiveRefreshOverlaySchema = z.object({
+  symbol: z.string(),
+  live_quote: BourseLiveQuoteSchema.nullable().optional(),
+  last_price: z.number().nullable().optional(),
+  prev_close: z.number().nullable().optional(),
+  var1j_pct: z.number().nullable().optional(),
+  performance: z.record(z.unknown()).optional(),
+  best_signal: z.record(z.unknown()).nullable().optional(),
+  best_technical_signal: z.record(z.unknown()).nullable().optional(),
+  classic_technical_signal: z.record(z.unknown()).nullable().optional(),
+  warnings: z.array(z.string()).default([]),
+  live_adjusted: z.boolean().default(false),
+}).passthrough()
+export type DashboardLiveRefreshOverlay = z.infer<typeof DashboardLiveRefreshOverlaySchema>
+
+export const DashboardLiveRefreshResponseSchema = z.object({
+  market_session: BourseSessionStatusSchema,
+  horizon: z.string(),
+  max_age_seconds: z.number(),
+  persisted_history_count: z.number().default(0),
+  quotes: z.array(BourseLiveQuoteSchema).default([]),
+  missing_symbols: z.array(z.string()).default([]),
+  overlays: z.array(DashboardLiveRefreshOverlaySchema).default([]),
+  skipped: z.boolean().default(false),
+  reason: z.string().nullable().optional(),
+}).passthrough()
+export type DashboardLiveRefreshResponse = z.infer<typeof DashboardLiveRefreshResponseSchema>
 
 export const DashboardPortfolioTradeInputSchema = z.object({
   symbol: z.string(),
@@ -700,6 +741,12 @@ export const DashboardPortfolioBacktestRunSchema = z.object({
   title: z.string(),
 })
 export type DashboardPortfolioBacktestRun = z.infer<typeof DashboardPortfolioBacktestRunSchema>
+
+export type DashboardPortfolioLoadState = {
+  portfolios: DashboardPortfolio[]
+  legacyFallback: boolean
+  authRequired: boolean
+}
 
 export const FillRowSchema = z.object({
   id: z.string().optional(),
@@ -1325,6 +1372,49 @@ export const SignalEvidenceStitchedMetricsSchema = z.object({
   stock_expected_return: z.number().nullable().optional(),
 })
 
+export const SrOverlayMetricsSchema = z.object({
+  total_return: z.number().nullable().optional(),
+  cagr: z.number().nullable().optional(),
+  sharpe: z.number().nullable().optional(),
+  max_drawdown: z.number().nullable().optional(),
+  win_rate: z.number().nullable().optional(),
+  n_trades: z.number().nullable().optional(),
+}).passthrough()
+
+export const SrOverlayVariantSchema = z.object({
+  variant_id: z.string(),
+  support_method: z.string().nullable().optional(),
+  support_line: z.string().nullable().optional(),
+  resistance_method: z.string().nullable().optional(),
+  resistance_line: z.string().nullable().optional(),
+  support_level: z.number().nullable().optional(),
+  resistance_level: z.number().nullable().optional(),
+  metrics: SrOverlayMetricsSchema.default({}),
+  uplift: z.record(z.string(), z.number().nullable()).default({}),
+  rank_score: z.number().nullable().optional(),
+  trade_count: z.number().default(0),
+  trades: z.array(z.record(z.unknown())).default([]),
+}).passthrough()
+
+export const SrOverlaySchema = z.object({
+  status: z.string().default("unavailable"),
+  reason: z.string().nullable().optional(),
+  best_variant_id: z.string().nullable().optional(),
+  best_support_method: z.string().nullable().optional(),
+  best_support_line: z.string().nullable().optional(),
+  best_resistance_method: z.string().nullable().optional(),
+  best_resistance_line: z.string().nullable().optional(),
+  baseline_metrics: SrOverlayMetricsSchema.default({}),
+  overlay_metrics: SrOverlayMetricsSchema.nullable().optional(),
+  uplift: z.record(z.string(), z.number().nullable()).default({}),
+  top_variants: z.array(SrOverlayVariantSchema).default([]),
+  tested_count: z.number().default(0),
+  viable_count: z.number().default(0),
+  invalid_pair_count: z.number().default(0),
+  unavailable_count: z.number().default(0),
+}).passthrough()
+export type SrOverlay = z.infer<typeof SrOverlaySchema>
+
 export const SignalEvidenceProofSummarySchema = z.object({
   limit: z.string().default("100"),
   n_trades: z.number().default(0),
@@ -1360,6 +1450,7 @@ export const SignalEvidenceStitchedOosBacktestSchema = z.object({
   trade_ledger: z.array(z.record(z.unknown())).default([]),
   warnings: z.array(z.string()).default([]),
   metrics: SignalEvidenceStitchedMetricsSchema.default({}),
+  sr_overlay: SrOverlaySchema.optional(),
 }).nullable()
 export type SignalEvidenceStitchedOosBacktest = z.infer<typeof SignalEvidenceStitchedOosBacktestSchema>
 
@@ -1402,6 +1493,7 @@ export const SignalEvidenceSchema = z.object({
   oos_periods: z.array(SignalEvidenceOosPeriodSchema).default([]),
   evidence_trade_count: z.number().default(0),
   stitched_oos_backtest: SignalEvidenceStitchedOosBacktestSchema.optional(),
+  sr_overlay: SrOverlaySchema.optional(),
 })
 export type SignalEvidence = z.infer<typeof SignalEvidenceSchema>
 
@@ -1447,6 +1539,67 @@ export async function fetchDashboardPortfolios(): Promise<DashboardPortfolio[]> 
   const payload = await request<unknown>("/dashboard/portfolios")
   const parsed = z.object({ portfolios: z.array(DashboardPortfolioSchema).default([]) }).parse(payload)
   return parsed.portfolios
+}
+
+function legacyPortfolioFromSummary(summary: DashboardPortfolioSummary): DashboardPortfolio {
+  const componentShares: Record<string, number> = {}
+  for (const position of summary.positions) {
+    const symbol = String(position.symbol || "").trim().toUpperCase()
+    if (!symbol) continue
+    componentShares[symbol] = Math.max(1, Math.round(Number(position.quantity || 0)))
+  }
+  const symbols = Object.keys(componentShares).sort()
+  return {
+    id: "__legacy_default__",
+    name: "Default portfolio",
+    description: "Legacy portfolio summary",
+    symbols,
+    component_shares: componentShares,
+    components: symbols.map((symbol) => ({ symbol, shares: componentShares[symbol], enabled: true })),
+    allocation_method: "share_quantities",
+    side_policy: summary.positions.some((position) => position.side === "short") ? "long_short" : "long_only",
+    total_capital_mad: 1_000_000,
+    cash_buffer_pct: 0,
+    stop_loss_pct: null,
+    take_profit_pct: null,
+    display_mode: "trade_opportunities",
+    technical_direction_mode: "best",
+    horizon: "monthly",
+    is_default: true,
+    replay_start_date: null,
+    replay_end_date: null,
+    replay_generated_at: null,
+    last_replay: {},
+    summary,
+    created_at: null,
+    updated_at: null,
+  }
+}
+
+export async function fetchDashboardPortfolioLoadState(): Promise<DashboardPortfolioLoadState> {
+  try {
+    return {
+      portfolios: await fetchDashboardPortfolios(),
+      legacyFallback: false,
+      authRequired: false,
+    }
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      return { portfolios: [], legacyFallback: false, authRequired: true }
+    }
+    if (error instanceof ApiError && error.status === 404) {
+      const summary = await fetchDashboardPortfolioSummary({
+        priceSource: "live_if_fresh",
+        maxLiveQuoteAgeSeconds: 60,
+      })
+      return {
+        portfolios: [legacyPortfolioFromSummary(summary)],
+        legacyFallback: true,
+        authRequired: false,
+      }
+    }
+    throw error
+  }
 }
 
 export async function createDashboardPortfolio(body: DashboardPortfolioPayload): Promise<DashboardPortfolio> {
@@ -1522,19 +1675,45 @@ export async function saveDashboardPortfolioPositions(
 
 export async function fetchBourseLiveQuotes(
   symbols: string[],
-  options?: { maxAgeSeconds?: number; forceRefresh?: boolean },
+  options?: { maxAgeSeconds?: number; forceRefresh?: boolean; persistHistory?: boolean },
 ): Promise<BourseLiveQuotesResponse> {
   const normalized = Array.from(new Set(symbols.map((symbol) => symbol.trim().toUpperCase()).filter(Boolean)))
   if (normalized.length === 0) {
-    return { quotes: [], missing_symbols: [], max_age_seconds: options?.maxAgeSeconds ?? 60 }
+    return { quotes: [], missing_symbols: [], max_age_seconds: options?.maxAgeSeconds ?? 60, persisted_history_count: 0 }
   }
   const params = new URLSearchParams({
     symbols: normalized.join(","),
     max_age_seconds: String(options?.maxAgeSeconds ?? 60),
   })
   if (options?.forceRefresh) params.set("force_refresh", "true")
+  if (options?.persistHistory) params.set("persist_history", "true")
   const payload = await request<unknown>(`/market-data/bourse/live-quotes?${params.toString()}`)
   return BourseLiveQuotesResponseSchema.parse(payload)
+}
+
+export async function fetchBourseSessionStatus(): Promise<BourseSessionStatus> {
+  const payload = await request<unknown>("/market-data/bourse/session-status")
+  return BourseSessionStatusSchema.parse(payload)
+}
+
+export async function fetchDashboardLiveRefresh(args: {
+  symbols: string[]
+  horizon: string
+  maxAgeSeconds?: number
+  persistHistory?: boolean
+  allowWhenClosed?: boolean
+}): Promise<DashboardLiveRefreshResponse> {
+  const payload = await request<unknown>("/dashboard/live-refresh", {
+    method: "POST",
+    body: JSON.stringify({
+      symbols: args.symbols,
+      horizon: canonicalSignalHorizon(args.horizon),
+      max_age_seconds: args.maxAgeSeconds ?? 60,
+      persist_history: args.persistHistory ?? true,
+      allow_when_closed: args.allowWhenClosed ?? false,
+    }),
+  })
+  return DashboardLiveRefreshResponseSchema.parse(payload)
 }
 
 export async function fetchDashboardPortfolioSummary(
@@ -3042,6 +3221,18 @@ export const SupportResistanceMethodDetailResponseSchema = z.object({
 })
 export type SupportResistanceMethodDetailResponse = z.infer<typeof SupportResistanceMethodDetailResponseSchema>
 
+export const IndicatorLiveBarSchema = z.object({
+  date: z.string(),
+  open: z.number().nullable().optional(),
+  high: z.number().nullable().optional(),
+  low: z.number().nullable().optional(),
+  close: z.number(),
+  volume: z.number().nullable().optional(),
+  quote_timestamp: z.string().nullable().optional(),
+  source: z.string().nullable().optional(),
+})
+export type IndicatorLiveBar = z.infer<typeof IndicatorLiveBarSchema>
+
 export const IndicatorSeriesResponseSchema = z.object({
   symbol: z.string(),
   indicator: z.string(),
@@ -3054,6 +3245,8 @@ export const IndicatorSeriesResponseSchema = z.object({
   current_score: z.number(),
   current_label: z.string(),
   atr: z.number().nullable(),
+  live_bar_applied: z.boolean().default(false),
+  data_as_of: z.string().nullable().optional(),
 })
 export type IndicatorSeriesResponse = z.infer<typeof IndicatorSeriesResponseSchema>
 
@@ -3154,6 +3347,7 @@ export async function fetchIndicatorSeries(body: {
   indicator: string
   params: Record<string, number>
   timeframe?: string
+  live_bar?: IndicatorLiveBar | null
 }): Promise<IndicatorSeriesResponse> {
   const payload: Record<string, unknown> = {
     symbol: body.symbol,
@@ -3161,6 +3355,7 @@ export async function fetchIndicatorSeries(body: {
     params: body.params,
     timeframe: body.timeframe ?? "1D",
   }
+  if (body.live_bar) payload.live_bar = body.live_bar
   const raw = await request<unknown>("/strategy/signal/indicator-series", {
     method: "POST",
     body: JSON.stringify(payload),
@@ -5144,6 +5339,7 @@ export const SignalBacktestResultSchema = z.object({
   global_score_series: z.array(z.number().nullable()).nullable().optional(),
   signal_diagnostics: z.record(z.unknown()).nullable().optional(),
   metrics: BacktestMetricsSchema,
+  sr_overlay: SrOverlaySchema.optional(),
   mc: z.object({
     method: z.string(),
     n_paths: z.number(),
@@ -5754,6 +5950,600 @@ export async function enqueueAllMacroIngest(start?: string): Promise<{ enqueued:
   return request(`/analytics/macro/ingest-all${q ? `?${q}` : ""}`, { method: "POST" })
 }
 
+// Fundamentals
+
+export const FundamentalImportSchema = z.object({
+  id: z.string(),
+  dataset_id: z.string().nullable().optional(),
+  filename: z.string(),
+  source_hash: z.string(),
+  data_source: z.string().default("workbook"),
+  source_universe: z.string().nullable().optional(),
+  status: z.string(),
+  methodology_version: z.string().default("v3"),
+  rq_job_id: z.string().nullable().optional(),
+  company_count: z.number(),
+  symbol_count: z.number(),
+  annual_metric_count: z.number(),
+  latest_snapshot_count: z.number(),
+  quality_issue_count: z.number().default(0),
+  summary: z.record(z.unknown()).default({}),
+  error_message: z.string().nullable().optional(),
+  created_at: z.string(),
+  imported_at: z.string().nullable().optional(),
+  completed_at: z.string().nullable().optional(),
+})
+export type FundamentalImport = z.infer<typeof FundamentalImportSchema>
+
+export const FundamentalQualityIssueSchema = z.object({
+  severity: z.string(),
+  code: z.string(),
+  message: z.string(),
+  symbol: z.string().nullable().optional(),
+  metric_name: z.string().nullable().optional(),
+  statement_year: z.number().nullable().optional(),
+  context: z.record(z.unknown()).default({}),
+})
+export type FundamentalQualityIssue = z.infer<typeof FundamentalQualityIssueSchema>
+
+export const FundamentalTechnicalContextSchema = z.object({
+  horizon: z.string().nullable().optional(),
+  signal_label: z.string().nullable().optional(),
+  signal_score_pct: z.number().nullable().optional(),
+  computed_at: z.string().nullable().optional(),
+})
+export type FundamentalTechnicalContext = z.infer<typeof FundamentalTechnicalContextSchema>
+
+export const FundamentalEnsembleSchema = z.object({
+  symbol: z.string().nullable().optional(),
+  scenario: z.string().nullable().optional(),
+  fair_value_low: z.number().nullable().optional(),
+  fair_value_base: z.number().nullable().optional(),
+  fair_value_high: z.number().nullable().optional(),
+  current_price: z.number().nullable().optional(),
+  upside_pct: z.number().nullable().optional(),
+  confidence_score: z.number().nullable().optional(),
+  usable_model_count: z.number().default(0),
+  excluded_model_count: z.number().default(0),
+  model_weights: z.record(z.number()).default({}),
+  warnings: z.array(z.string()).default([]),
+  currency: z.string().nullable().optional(),
+  model_dispersion_low: z.number().nullable().optional(),
+  model_dispersion_base: z.number().nullable().optional(),
+  model_dispersion_high: z.number().nullable().optional(),
+  monte_carlo_low: z.number().nullable().optional(),
+  monte_carlo_base: z.number().nullable().optional(),
+  monte_carlo_high: z.number().nullable().optional(),
+})
+export type FundamentalEnsemble = z.infer<typeof FundamentalEnsembleSchema>
+
+export const FundamentalUniverseRowSchema = z.object({
+  symbol: z.string(),
+  company_name: z.string(),
+  display_name: z.string().nullable().optional(),
+  sector: z.string().nullable().optional(),
+  market_region: z.string().nullable().optional(),
+  latest_statement_year: z.number().nullable().optional(),
+  current_price: z.number().nullable().optional(),
+  market_cap: z.number().nullable().optional(),
+  overall_score: z.number().nullable().optional(),
+  value_score: z.number().nullable().optional(),
+  quality_score: z.number().nullable().optional(),
+  growth_score: z.number().nullable().optional(),
+  dividend_score: z.number().nullable().optional(),
+  risk_score: z.number().nullable().optional(),
+  cash_flow_score: z.number().nullable().optional(),
+  health_score: z.number().nullable().optional(),
+  accrual_quality_score: z.number().nullable().optional(),
+  magic_formula_score: z.number().nullable().optional(),
+  peg_value: z.number().nullable().optional(),
+  peg_garp_score: z.number().nullable().optional(),
+  altman_z_score: z.number().nullable().optional(),
+  altman_zone: z.string().nullable().optional(),
+  eva_score: z.number().nullable().optional(),
+  regression_adj_score: z.number().nullable().optional(),
+  regression_richness_avg: z.number().nullable().optional(),
+  recommendation: z.enum(["BUY", "HOLD", "SELL"]).nullable().optional(),
+  target_price: z.number().nullable().optional(),
+  conviction: z.number().int().min(0).max(5).default(0),
+  revision_direction: z.enum(["up", "down", "="]).default("="),
+  analyst: z.string().nullable().optional(),
+  as_of_date: z.string().nullable().optional(),
+  free_float_pct: z.number().nullable().optional(),
+  screens: z.record(z.unknown()).default({}),
+  coverage: z.record(z.unknown()).default({}),
+  model_eligibility: z.record(z.unknown()).default({}),
+  valuation_summary: z.record(z.unknown()).default({}),
+  ensemble: FundamentalEnsembleSchema.nullable().optional(),
+  technical: FundamentalTechnicalContextSchema.nullable().optional(),
+  data_source: z.string().nullable().optional(),
+  imported_at: z.string().nullable().optional(),
+})
+export type FundamentalUniverseRow = z.infer<typeof FundamentalUniverseRowSchema>
+
+export const FundamentalAnnualMetricSchema = z.object({
+  statement_year: z.number(),
+  metrics: z.record(z.number().nullable()),
+})
+export type FundamentalAnnualMetric = z.infer<typeof FundamentalAnnualMetricSchema>
+
+export const FundamentalAnnualMetricRawSchema = z.object({
+  statement_year: z.number(),
+  metric_name: z.string(),
+  metric_value: z.number().nullable().optional(),
+  raw_metric_name: z.string().nullable().optional(),
+  source_sheet: z.string().nullable().optional(),
+  source_field: z.string().nullable().optional(),
+  is_proxy: z.boolean().default(false),
+})
+export type FundamentalAnnualMetricRaw = z.infer<typeof FundamentalAnnualMetricRawSchema>
+
+export const FundamentalPeriodMetricSchema = z.object({
+  fiscal_year: z.number(),
+  period_type: z.string(),
+  period_label: z.string(),
+  metric_name: z.string(),
+  metric_value: z.number().nullable().optional(),
+  raw_metric_name: z.string().nullable().optional(),
+  period_end_date: z.string().nullable().optional(),
+  source_url: z.string().nullable().optional(),
+  document_title: z.string().nullable().optional(),
+  is_proxy: z.boolean().default(false),
+})
+export type FundamentalPeriodMetric = z.infer<typeof FundamentalPeriodMetricSchema>
+
+export const FundamentalValuationResultSchema = z.object({
+  model: z.string(),
+  scenario: z.string(),
+  fair_value: z.number().nullable().optional(),
+  current_price: z.number().nullable().optional(),
+  upside_pct: z.number().nullable().optional(),
+  confidence: z.string(),
+  confidence_score: z.number().nullable().optional(),
+  weight: z.number().nullable().optional(),
+  family: z.string().default("intrinsic"),
+  methodology: z.string().nullable().optional(),
+  model_version: z.string().default("v3"),
+  is_proxy: z.boolean().default(false),
+  data_quality_score: z.number().nullable().optional(),
+  currency: z.string().nullable().optional(),
+  inputs: z.record(z.unknown()).default({}),
+  outputs: z.record(z.unknown()).default({}),
+  warnings: z.array(z.string()).default([]),
+  computed_at: z.string().nullable().optional(),
+})
+export type FundamentalValuationResult = z.infer<typeof FundamentalValuationResultSchema>
+
+export const FundamentalStockDetailSchema = z.object({
+  symbol: z.string(),
+  company_name: z.string(),
+  display_name: z.string().nullable().optional(),
+  sector: z.string().nullable().optional(),
+  latest_statement_year: z.number().nullable().optional(),
+  metrics: z.record(z.number().nullable()).default({}),
+  scores: z.record(z.unknown()).default({}),
+  diagnostics: z.record(z.unknown()).default({}),
+  screens: z.record(z.unknown()).default({}),
+  coverage: z.record(z.unknown()).default({}),
+  model_eligibility: z.record(z.unknown()).default({}),
+  annual: z.array(FundamentalAnnualMetricSchema).default([]),
+  annual_raw: z.array(FundamentalAnnualMetricRawSchema).default([]),
+  period_metrics: z.array(FundamentalPeriodMetricSchema).default([]),
+  valuations: z.array(FundamentalValuationResultSchema).default([]),
+  ensemble: FundamentalEnsembleSchema.nullable().optional(),
+  ensembles: z.record(FundamentalEnsembleSchema).default({}),
+  assumptions: z.record(z.unknown()).default({}),
+  assumption_provenance: z.record(z.record(z.string())).default({}),
+  quality_issues: z.array(FundamentalQualityIssueSchema).default([]),
+  technical: FundamentalTechnicalContextSchema.nullable().optional(),
+  recommendation: z.enum(["BUY", "HOLD", "SELL"]).nullable().optional(),
+  target_price: z.number().nullable().optional(),
+  conviction: z.number().int().min(0).max(5).default(0),
+  revision_direction: z.enum(["up", "down", "="]).default("="),
+  analyst: z.string().nullable().optional(),
+  as_of_date: z.string().nullable().optional(),
+  free_float_pct: z.number().nullable().optional(),
+  data_source: z.string().nullable().optional(),
+  imported_at: z.string().nullable().optional(),
+})
+export type FundamentalStockDetail = z.infer<typeof FundamentalStockDetailSchema>
+
+export const FundamentalComparableComponentSchema = z.object({
+  symbol: z.string(),
+  shares: z.number().positive().nullable().optional(),
+})
+export type FundamentalComparableComponent = z.infer<typeof FundamentalComparableComponentSchema>
+
+export const FundamentalComparablesRequestSchema = z.object({
+  comparator_type: z.enum(["sector", "index"]).default("sector"),
+  comparator_id: z.string().nullable().optional(),
+  comparator_name: z.string().nullable().optional(),
+  sector: z.string().nullable().optional(),
+  symbols: z.array(z.string()).default([]),
+  components: z.array(FundamentalComparableComponentSchema).default([]),
+  component_shares: z.record(z.number().positive()).default({}),
+  metric_keys: z.array(z.string()).default([]),
+})
+export type FundamentalComparablesRequest = z.infer<typeof FundamentalComparablesRequestSchema>
+
+export const FundamentalComparableMetaSchema = z.object({
+  type: z.enum(["sector", "index"]),
+  id: z.string().nullable().optional(),
+  name: z.string(),
+  sector: z.string().nullable().optional(),
+  target_in_comparator: z.boolean().default(false),
+  weight_source: z.string().default("market_value"),
+})
+export type FundamentalComparableMeta = z.infer<typeof FundamentalComparableMetaSchema>
+
+export const FundamentalComparableBenchmarkSchema = z.object({
+  metric_key: z.string(),
+  selected_value: z.number().nullable().optional(),
+  weighted_including_target: z.number().nullable().optional(),
+  weighted_excluding_target: z.number().nullable().optional(),
+  median: z.number().nullable().optional(),
+  eligible_count: z.number().default(0),
+  weighted_count: z.number().default(0),
+  missing_metric_count: z.number().default(0),
+  missing_weight_count: z.number().default(0),
+})
+export type FundamentalComparableBenchmark = z.infer<typeof FundamentalComparableBenchmarkSchema>
+
+export const FundamentalComparablePeerSchema = z.object({
+  symbol: z.string(),
+  company_name: z.string(),
+  display_name: z.string().nullable().optional(),
+  sector: z.string().nullable().optional(),
+  current_price: z.number().nullable().optional(),
+  shares: z.number().nullable().optional(),
+  market_value: z.number().nullable().optional(),
+  base_weight: z.number().nullable().optional(),
+  is_target: z.boolean().default(false),
+  metrics: z.record(z.number().nullable()).default({}),
+  weights: z.record(z.number().nullable()).default({}),
+  contributions: z.record(z.number().nullable()).default({}),
+  warnings: z.array(z.string()).default([]),
+})
+export type FundamentalComparablePeer = z.infer<typeof FundamentalComparablePeerSchema>
+
+export const FundamentalComparablesSchema = z.object({
+  symbol: z.string(),
+  comparator: FundamentalComparableMetaSchema,
+  metric_keys: z.array(z.string()).default([]),
+  selected_metrics: z.record(z.number().nullable()).default({}),
+  benchmarks: z.record(FundamentalComparableBenchmarkSchema).default({}),
+  peers: z.array(FundamentalComparablePeerSchema).default([]),
+  warnings: z.array(z.string()).default([]),
+})
+export type FundamentalComparables = z.infer<typeof FundamentalComparablesSchema>
+
+export const FundamentalScreenRankedRowSchema = z.object({
+  symbol: z.string(),
+  company_name: z.string(),
+  display_name: z.string().nullable().optional(),
+  sector: z.string().nullable().optional(),
+  market_region: z.string().nullable().optional(),
+  score: z.number().nullable().optional(),
+  screen_name: z.string(),
+  screen: z.record(z.unknown()).default({}),
+  recommendation: z.enum(["BUY", "HOLD", "SELL"]).nullable().optional(),
+  target_price: z.number().nullable().optional(),
+  upside_pct: z.number().nullable().optional(),
+  conviction: z.number().int().min(0).max(5).default(0),
+})
+export type FundamentalScreenRankedRow = z.infer<typeof FundamentalScreenRankedRowSchema>
+
+export const FundamentalAssumptionSetSchema = z.object({
+  scope_type: z.string(),
+  scope_key: z.string(),
+  scenario: z.string(),
+  version_label: z.string(),
+  assumptions: z.record(z.unknown()).default({}),
+  source: z.string(),
+  is_active: z.boolean().default(true),
+  updated_at: z.string().nullable().optional(),
+  valuations: z.array(FundamentalValuationResultSchema).default([]),
+})
+export type FundamentalAssumptionSet = z.infer<typeof FundamentalAssumptionSetSchema>
+
+export const FundamentalAssumptionResolvedSchema = z.object({
+  symbol: z.string(),
+  scenario: z.string(),
+  assumptions: z.record(z.unknown()).default({}),
+  provenance: z.record(z.string()).default({}),
+})
+export type FundamentalAssumptionResolved = z.infer<typeof FundamentalAssumptionResolvedSchema>
+
+export const FundamentalAssumptionOverrideSchema = z.object({
+  id: z.number(),
+  symbol: z.string(),
+  scenario: z.string(),
+  overrides: z.record(z.number()).default({}),
+  note: z.string().nullable().optional(),
+  created_by: z.string(),
+  created_at: z.string().nullable().optional(),
+  is_current: z.boolean().default(true),
+})
+export type FundamentalAssumptionOverride = z.infer<typeof FundamentalAssumptionOverrideSchema>
+
+export const FundamentalCoverageRowSchema = z.object({
+  symbol: z.string(),
+  display_name: z.string().nullable().optional(),
+  sector: z.string().nullable().optional(),
+  market_region: z.string().nullable().optional(),
+  has_snapshot: z.boolean(),
+  has_annual: z.boolean(),
+  latest_statement_year: z.number().nullable().optional(),
+  latest_metric_count: z.number().default(0),
+  annual_metric_count: z.number().default(0),
+  annual_year_count: z.number().default(0),
+  annual_years: z.array(z.number()).default([]),
+  period_metric_count: z.number().default(0),
+  period_types: z.array(z.string()).default([]),
+  available_periods: z.array(z.string()).default([]),
+  current_price: z.number().nullable().optional(),
+  shares_outstanding: z.number().nullable().optional(),
+  market_cap: z.number().nullable().optional(),
+  price_as_of: z.string().nullable().optional(),
+  price_source: z.string().nullable().optional(),
+  price_source_provider: z.string().nullable().optional(),
+  data_source: z.string().nullable().optional(),
+  source_universe: z.string().nullable().optional(),
+  last_imported_at: z.string().nullable().optional(),
+  quality_issue_count: z.number().default(0),
+  missing_metrics: z.array(z.string()).default([]),
+  status: z.string().nullable().optional(),
+})
+export type FundamentalCoverageRow = z.infer<typeof FundamentalCoverageRowSchema>
+
+export const FundamentalProviderStatusSchema = z.object({
+  llm: z.object({
+    provider: z.string(),
+    configured: z.boolean(),
+    key_count: z.number().default(0),
+    model: z.string().nullable().optional(),
+    base_url: z.string().nullable().optional(),
+    note: z.string().nullable().optional(),
+  }),
+  bvc: z.record(z.unknown()).default({}),
+})
+export type FundamentalProviderStatus = z.infer<typeof FundamentalProviderStatusSchema>
+
+export const FundamentalLightSnapshotSchema = z.object({
+  symbol: z.string(),
+  overall_score: z.number().nullable().optional(),
+  value_score: z.number().nullable().optional(),
+  quality_score: z.number().nullable().optional(),
+  growth_score: z.number().nullable().optional(),
+  risk_score: z.number().nullable().optional(),
+  cash_flow_score: z.number().nullable().optional(),
+  health_score: z.number().nullable().optional(),
+  fair_value: z.number().nullable().optional(),
+  upside_pct: z.number().nullable().optional(),
+  confidence: z.string().nullable().optional(),
+  confidence_score: z.number().nullable().optional(),
+  coverage_pct: z.number().nullable().optional(),
+  data_source: z.string().nullable().optional(),
+  currency: z.string().nullable().optional(),
+  as_of: z.string().nullable().optional(),
+  metrics: z.record(z.number().nullable()).default({}),
+})
+export type FundamentalLightSnapshot = z.infer<typeof FundamentalLightSnapshotSchema>
+
+export const YfinanceFundamentalImportQueuedSchema = z.object({
+  batch_id: z.string(),
+  enqueued_count: z.number(),
+  rq_job_id: z.string().nullable().optional(),
+})
+export type YfinanceFundamentalImportQueued = z.infer<typeof YfinanceFundamentalImportQueuedSchema>
+
+export const TargetedBvcFundamentalTargetSchema = z.object({
+  symbol: z.string(),
+  display_name: z.string().nullable().optional(),
+  market_region: z.string().nullable().optional(),
+  reason: z.string(),
+  missing_metrics: z.array(z.string()).default([]),
+  has_snapshot: z.boolean().default(false),
+  has_annual: z.boolean().default(false),
+})
+export type TargetedBvcFundamentalTarget = z.infer<typeof TargetedBvcFundamentalTargetSchema>
+
+export const TargetedBvcFundamentalImportQueuedSchema = z.object({
+  batch_id: z.string(),
+  import_id: z.string().nullable().optional(),
+  selected_count: z.number(),
+  rq_job_id: z.string().nullable().optional(),
+  dry_run: z.boolean().default(false),
+  source_url_count: z.number().default(0),
+  sectors: z.array(z.string()).default([]),
+  period_types: z.array(z.string()).default([]),
+  years: z.array(z.number()).default([]),
+  targets: z.array(TargetedBvcFundamentalTargetSchema).default([]),
+})
+export type TargetedBvcFundamentalImportQueued = z.infer<typeof TargetedBvcFundamentalImportQueuedSchema>
+
+export const FundamentalSensitivitySchema = z.object({
+  symbol: z.string(),
+  scenario: z.string(),
+  axis_x: z.string(),
+  axis_y: z.string(),
+  xs: z.array(z.number()),
+  ys: z.array(z.number()),
+  matrix: z.array(z.array(z.number().nullable())),
+})
+export type FundamentalSensitivity = z.infer<typeof FundamentalSensitivitySchema>
+
+export async function uploadFundamentalsWorkbook(file: File): Promise<FundamentalImport> {
+  const form = new FormData()
+  form.append("file", file)
+  const data = await request<unknown>("/fundamentals/import", { method: "POST", body: form })
+  return FundamentalImportSchema.parse(data)
+}
+
+export async function getLatestFundamentalImport(): Promise<FundamentalImport | null> {
+  const data = await request<unknown>("/fundamentals/imports/latest")
+  return data == null ? null : FundamentalImportSchema.parse(data)
+}
+
+export async function getFundamentalUniverse(options: {
+  scenario?: string
+  market_region?: string
+  sector?: string
+  search?: string
+} = {}): Promise<FundamentalUniverseRow[]> {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(options)) {
+    if (value != null && value !== "") params.set(key, value)
+  }
+  const suffix = params.toString()
+  const data = await request<unknown>(`/fundamentals/universe${suffix ? `?${suffix}` : ""}`)
+  return z.array(FundamentalUniverseRowSchema).parse(data)
+}
+
+export async function getFundamentalCoverage(): Promise<FundamentalCoverageRow[]> {
+  const data = await request<unknown>("/fundamentals/coverage")
+  return z.array(FundamentalCoverageRowSchema).parse(data)
+}
+
+export async function getFundamentalScreenRanking(
+  screenName: "magic_formula" | "peg_garp" | "altman_z" | "eva" | "regression_adj",
+  options: {
+    top?: number
+    scenario?: string
+    sector?: string
+    market_region?: string
+  } = {},
+): Promise<FundamentalScreenRankedRow[]> {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(options)) {
+    if (value != null && value !== "") params.set(key, String(value))
+  }
+  const suffix = params.toString()
+  const data = await request<unknown>(`/fundamentals/screens/${encodeURIComponent(screenName)}${suffix ? `?${suffix}` : ""}`)
+  return z.array(FundamentalScreenRankedRowSchema).parse(data)
+}
+
+export async function refreshYfinanceFundamentals(body: {
+  symbols?: string[]
+  market_regions?: string[]
+}): Promise<YfinanceFundamentalImportQueued> {
+  const data = await request<unknown>("/fundamentals/imports/yfinance", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+  return YfinanceFundamentalImportQueuedSchema.parse(data)
+}
+
+export async function getFundamentalProviderStatus(): Promise<FundamentalProviderStatus> {
+  const data = await request<unknown>("/fundamentals/providers/status")
+  return FundamentalProviderStatusSchema.parse(data)
+}
+
+export async function refreshTargetedBvcFundamentals(body: {
+  symbols?: string[]
+  sectors?: string[]
+  source_urls?: string[]
+  period_types?: string[]
+  fields?: string[]
+  years?: number[]
+  start_year?: number | null
+  end_year?: number | null
+  dry_run?: boolean
+  only_unseen?: boolean
+  force?: boolean
+  include_mapping_repairs?: boolean
+}): Promise<TargetedBvcFundamentalImportQueued> {
+  const data = await request<unknown>("/fundamentals/imports/bvc", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+  return TargetedBvcFundamentalImportQueuedSchema.parse(data)
+}
+
+export async function getFundamentalSnapshotBatch(symbols: string[]): Promise<Record<string, FundamentalLightSnapshot | null>> {
+  const data = await request<unknown>("/fundamentals/snapshot/batch", {
+    method: "POST",
+    body: JSON.stringify({ symbols }),
+  })
+  return z.record(FundamentalLightSnapshotSchema.nullable()).parse(data)
+}
+
+export async function getFundamentalStockDetail(symbol: string, scenario = "auto"): Promise<FundamentalStockDetail> {
+  const params = new URLSearchParams({ scenario })
+  const data = await request<unknown>(`/fundamentals/stocks/${encodeURIComponent(symbol)}?${params.toString()}`)
+  return FundamentalStockDetailSchema.parse(data)
+}
+
+export async function getFundamentalComparables(
+  symbol: string,
+  body: FundamentalComparablesRequest,
+): Promise<FundamentalComparables> {
+  const payload = FundamentalComparablesRequestSchema.parse(body)
+  const data = await request<unknown>(`/fundamentals/stocks/${encodeURIComponent(symbol)}/comparables`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+  return FundamentalComparablesSchema.parse(data)
+}
+
+export async function getFundamentalSensitivity(
+  symbol: string,
+  scenario = "base",
+  axisX = "wacc",
+  axisY = "terminal_growth",
+): Promise<FundamentalSensitivity> {
+  const params = new URLSearchParams({ scenario, axis_x: axisX, axis_y: axisY })
+  const data = await request<unknown>(`/fundamentals/stocks/${encodeURIComponent(symbol)}/sensitivity?${params.toString()}`)
+  return FundamentalSensitivitySchema.parse(data)
+}
+
+export async function updateFundamentalAssumptions(
+  symbol: string,
+  scenario: string,
+  assumptions: Record<string, number | string>,
+): Promise<FundamentalAssumptionSet> {
+  const data = await request<unknown>(`/fundamentals/stocks/${encodeURIComponent(symbol)}/assumptions/${encodeURIComponent(scenario)}`, {
+    method: "PUT",
+    body: JSON.stringify({ assumptions }),
+  })
+  return FundamentalAssumptionSetSchema.parse(data)
+}
+
+export async function getFundamentalResolvedAssumptions(
+  symbol: string,
+  scenario: string,
+): Promise<FundamentalAssumptionResolved> {
+  const data = await request<unknown>(`/fundamentals/${encodeURIComponent(symbol)}/assumptions/${encodeURIComponent(scenario)}`)
+  return FundamentalAssumptionResolvedSchema.parse(data)
+}
+
+export async function getFundamentalAssumptionOverride(
+  symbol: string,
+  scenario: string,
+): Promise<FundamentalAssumptionOverride> {
+  const data = await request<unknown>(`/fundamentals/${encodeURIComponent(symbol)}/assumptions/${encodeURIComponent(scenario)}/override`)
+  return FundamentalAssumptionOverrideSchema.parse(data)
+}
+
+export async function putFundamentalAssumptionOverride(
+  symbol: string,
+  scenario: string,
+  overrides: Record<string, number>,
+  note?: string | null,
+): Promise<FundamentalAssumptionOverride> {
+  const data = await request<unknown>(`/fundamentals/${encodeURIComponent(symbol)}/assumptions/${encodeURIComponent(scenario)}/override`, {
+    method: "PUT",
+    body: JSON.stringify({ overrides, note }),
+  })
+  return FundamentalAssumptionOverrideSchema.parse(data)
+}
+
+export async function deleteFundamentalAssumptionOverride(symbol: string, scenario: string): Promise<void> {
+  await request<void>(`/fundamentals/${encodeURIComponent(symbol)}/assumptions/${encodeURIComponent(scenario)}/override`, {
+    method: "DELETE",
+  })
+}
+
 // Factor relevance
 
 export const FactorRelevanceRowSchema = z.object({
@@ -5927,6 +6717,62 @@ export const PredictiveHistoryStatusSchema = z.object({
 })
 export type PredictiveHistoryStatus = z.infer<typeof PredictiveHistoryStatusSchema>
 
+export const StatArbStatusSchema = z.object({
+  total: z.number(),
+  pending: z.number(),
+  running: z.number(),
+  succeeded: z.number(),
+  failed: z.number(),
+  latest: z.record(z.unknown()).nullable().optional(),
+})
+export type StatArbStatus = z.infer<typeof StatArbStatusSchema>
+
+export const StatArbPairRowSchema = z.object({
+  pair_id: z.string(),
+  symbol_y: z.string(),
+  symbol_x: z.string(),
+  horizon: z.string(),
+  archetype: z.string(),
+  lag_bars: z.number().default(0),
+  action_type: z.string().default("none"),
+  current_signal: z.string().default("none"),
+  direction: z.string().default("none"),
+  validation_status: z.string().default("pending"),
+  status: z.string().default("pending"),
+  n_obs: z.number().default(0),
+  n_folds: z.number().default(0),
+  hedge_ratio: z.number().nullable().optional(),
+  intercept: z.number().nullable().optional(),
+  zscore: z.number().nullable().optional(),
+  half_life: z.number().nullable().optional(),
+  adf_pvalue: z.number().nullable().optional(),
+  raw_pvalue: z.number().nullable().optional(),
+  fdr_qvalue: z.number().nullable().optional(),
+  oos_sharpe: z.number().nullable().optional(),
+  oos_return: z.number().nullable().optional(),
+  max_drawdown: z.number().nullable().optional(),
+  profitable_fold_ratio: z.number().nullable().optional(),
+  data_as_of: z.string().nullable().optional(),
+  cost_bps_per_side: z.number().default(33),
+  slippage_bps_per_side: z.number().default(5),
+  borrow_bps_annual: z.number().default(300),
+  warnings: z.array(z.string()).default([]),
+  updated_at: z.string().nullable().optional(),
+})
+export type StatArbPairRow = z.infer<typeof StatArbPairRowSchema>
+
+export const StatArbLeaderboardSchema = z.object({
+  horizon: z.string(),
+  rows: z.array(StatArbPairRowSchema).default([]),
+})
+export type StatArbLeaderboard = z.infer<typeof StatArbLeaderboardSchema>
+
+export const StatArbPairDetailSchema = StatArbPairRowSchema.extend({
+  metrics: z.record(z.unknown()).default({}),
+  chart: z.record(z.unknown()).default({}),
+})
+export type StatArbPairDetail = z.infer<typeof StatArbPairDetailSchema>
+
 export interface PredictiveAbilityArgs {
   symbol: string
   source: string
@@ -6004,6 +6850,49 @@ export async function triggerAllPredictiveHistory(): Promise<{ triggered: number
 export async function fetchPredictiveHistoryBatchStatus(): Promise<PredictiveHistoryStatus> {
   const data = await request("/analytics/predictive-history/batch-status")
   return PredictiveHistoryStatusSchema.parse(data)
+}
+
+export async function fetchStatArbStatus(): Promise<StatArbStatus> {
+  const data = await request("/analytics/stat-arb/status")
+  return StatArbStatusSchema.parse(data)
+}
+
+export async function getStatArbLeaderboard(opts?: {
+  horizon?: string
+  archetype?: string
+  actionType?: string
+  status?: string
+  limit?: number
+}): Promise<StatArbLeaderboard> {
+  const params = new URLSearchParams()
+  params.set("horizon", opts?.horizon ?? "short")
+  if (opts?.archetype) params.set("archetype", opts.archetype)
+  if (opts?.actionType) params.set("action_type", opts.actionType)
+  if (opts?.status) params.set("status", opts.status)
+  if (opts?.limit) params.set("limit", String(opts.limit))
+  const data = await request(`/analytics/stat-arb/leaderboard?${params.toString()}`)
+  return StatArbLeaderboardSchema.parse(data)
+}
+
+export async function getStatArbPairDetail(pairId: string): Promise<StatArbPairDetail> {
+  const data = await request(`/analytics/stat-arb/pairs/${encodeURIComponent(pairId)}`)
+  return StatArbPairDetailSchema.parse(data)
+}
+
+export async function triggerStatArbRecompute(opts?: {
+  horizon?: string
+  costBpsPerSide?: number
+  slippageBpsPerSide?: number
+  borrowBpsAnnual?: number
+  maxDrawdownFloor?: number
+}): Promise<{ triggered: number; job_ids: string[] }> {
+  const params = new URLSearchParams()
+  params.set("horizon", opts?.horizon ?? "short")
+  if (opts?.costBpsPerSide != null) params.set("cost_bps_per_side", String(opts.costBpsPerSide))
+  if (opts?.slippageBpsPerSide != null) params.set("slippage_bps_per_side", String(opts.slippageBpsPerSide))
+  if (opts?.borrowBpsAnnual != null) params.set("borrow_bps_annual", String(opts.borrowBpsAnnual))
+  if (opts?.maxDrawdownFloor != null) params.set("max_drawdown_floor", String(opts.maxDrawdownFloor))
+  return request(`/analytics/stat-arb/recompute?${params.toString()}`, { method: "POST" })
 }
 
 export const PredictiveLeaderboardRowSchema = z.object({

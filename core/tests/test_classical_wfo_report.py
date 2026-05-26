@@ -246,24 +246,24 @@ class TestClassicalWfoReport:
         assert report["current_live_trial_id"] == "tid_C"
 
     def test_multi_horizon_separation(self):
-        """Test 5: short/medium/long horizon rows don't bleed into each other."""
+        """Test 5: weekly/monthly/quarterly horizon rows don't bleed into each other."""
         rows = [
-            _make_fold_row("ma_cross", fold_index=0*1000+1, trial_id="tid_S1", horizon="short"),
-            _make_fold_row("ma_cross", fold_index=1*1000+1, trial_id="tid_S2", horizon="short"),
-            _make_fold_row("ma_cross", fold_index=0*1000+1, trial_id="tid_M1", horizon="medium"),
-            _make_fold_row("ma_cross", fold_index=0*1000+1, trial_id="tid_L1", horizon="long"),
+            _make_fold_row("ma_cross", fold_index=0*1000+1, trial_id="tid_S1", horizon="weekly"),
+            _make_fold_row("ma_cross", fold_index=1*1000+1, trial_id="tid_S2", horizon="weekly"),
+            _make_fold_row("ma_cross", fold_index=0*1000+1, trial_id="tid_M1", horizon="monthly"),
+            _make_fold_row("ma_cross", fold_index=0*1000+1, trial_id="tid_L1", horizon="quarterly"),
         ]
         winners = _extract_per_fold_winners(rows)
-        short_winners = [w for w in winners if w["horizon"] == "short"]
-        medium_winners = [w for w in winners if w["horizon"] == "medium"]
-        long_winners = [w for w in winners if w["horizon"] == "long"]
-        assert len(short_winners) == 2
-        assert len(medium_winners) == 1
-        assert len(long_winners) == 1
-        short_tids = {w["winning_trial_id"] for w in short_winners}
-        assert short_tids == {"tid_S1", "tid_S2"}
-        assert medium_winners[0]["winning_trial_id"] == "tid_M1"
-        assert long_winners[0]["winning_trial_id"] == "tid_L1"
+        weekly_winners = [w for w in winners if w["horizon"] == "weekly"]
+        monthly_winners = [w for w in winners if w["horizon"] == "monthly"]
+        quarterly_winners = [w for w in winners if w["horizon"] == "quarterly"]
+        assert len(weekly_winners) == 2
+        assert len(monthly_winners) == 1
+        assert len(quarterly_winners) == 1
+        weekly_tids = {w["winning_trial_id"] for w in weekly_winners}
+        assert weekly_tids == {"tid_S1", "tid_S2"}
+        assert monthly_winners[0]["winning_trial_id"] == "tid_M1"
+        assert quarterly_winners[0]["winning_trial_id"] == "tid_L1"
 
     def test_legacy_fallback_data_source(self):
         """Test 6: legacy fallback sets data_source='run_fold_derived' with correct stitched PnL."""

@@ -103,7 +103,7 @@ class TestValidateRegimeOOS:
         """weekly series → regime_active=False, label=insufficient_data."""
         close = np.linspace(100, 110, 50)
         signals = {"sma": np.ones(50), "rsi": np.ones(50)}
-        result = validate_regime_oos(close, signals, "medium", cost_bps=10.0)
+        result = validate_regime_oos(close, signals, "monthly", cost_bps=10.0)
         assert not result.regime_active
         assert result.regime_label == "insufficient_data"
 

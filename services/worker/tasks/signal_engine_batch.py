@@ -190,6 +190,77 @@ def enqueue_signal_engine_refresh_for_symbol(
     return str(job.id)
 
 
+def _compute_fundamental_signal_for_symbol(
+    symbol: str,
+    horizon: str,
+    variant: str,
+    *,
+    task_mode: str,
+) -> dict:
+    """Persist a fundamentals-derived SignalEngineGlobalResult row."""
+    db: Session = SessionLocal()
+    started = time.perf_counter()
+    job_row: SignalEngineBatchJob | None = None
+    try:
+        from services.api.app.services.fundamental_signal_engine import upsert_fundamental_signal_row
+
+        triggered_by = _resolve_triggered_by_from_rq_meta()
+        batch_id = _resolve_batch_id_from_rq_meta()
+        job_row = _upsert_batch_job(
+            db,
+            symbol,
+            horizon,
+            variant,
+            job_type="signal_engine",
+            status="running",
+            triggered_by=triggered_by,
+            batch_id=batch_id,
+            total_units=1,
+        )
+        db.commit()
+        result = upsert_fundamental_signal_row(db, symbol=symbol, horizon=horizon, variant=variant)
+        db.commit()
+        status = str(result.get("status") or "failed")
+        error = result.get("error")
+        _finish_job(
+            db,
+            job_row,
+            status=status,
+            error_message=str(error) if error else None,
+            completed_units=1 if status == "succeeded" else 0,
+            failed_units=0 if status == "succeeded" else 1,
+        )
+        db.commit()
+        return {
+            "symbol": symbol,
+            "horizon": horizon,
+            "variant": variant,
+            "status": status,
+            "completed": 1 if status == "succeeded" else 0,
+            "failed": 0 if status == "succeeded" else 1,
+            "elapsed": round(time.perf_counter() - started, 2),
+            "mode": task_mode,
+            "error": error,
+        }
+    except Exception as exc:
+        logger.exception("Fundamental signal engine failed for %s/%s/%s: %s", symbol, horizon, variant, exc)
+        db.rollback()
+        if job_row is not None:
+            _finish_job(db, job_row, "failed", error_message=str(exc), completed_units=0, failed_units=1)
+            db.commit()
+        return {
+            "symbol": symbol,
+            "horizon": horizon,
+            "variant": variant,
+            "status": "failed",
+            "error": str(exc),
+            "elapsed": round(time.perf_counter() - started, 2),
+            "mode": task_mode,
+        }
+    finally:
+        db.close()
+
+
 def compute_signal_engine_for_symbol(
     symbol: str,
     horizon: str,
@@ -214,6 +285,13 @@ def compute_signal_engine_for_symbol(
 
     mode = resolve_signal_mode(variant)
     variant = mode.name
+    if mode.is_fundamental:
+        return _compute_fundamental_signal_for_symbol(
+            symbol,
+            horizon,
+            variant,
+            task_mode="fundamental_snapshot",
+        )
     if mode.is_factor_x_ta:
         from services.worker.tasks.factor_x_ta_batch import compute_factor_x_ta_for_symbol
 
@@ -306,6 +384,27 @@ def refresh_signal_engine_for_symbol(
     """RQ task wrapper around representative-only refresh (with full fallback)."""
     mode = resolve_signal_mode(variant)
     variant = mode.name
+    if mode.is_fundamental:
+        try:
+            horizon = _require_canonical_signal_horizon(horizon)
+        except ValueError as exc:
+            return {
+                "symbol": symbol,
+                "horizon": horizon,
+                "variant": variant,
+                "status": "failed",
+                "completed": 0,
+                "failed": 1,
+                "elapsed": 0.0,
+                "mode": "fundamental_snapshot_refresh",
+                "error": str(exc),
+            }
+        return _compute_fundamental_signal_for_symbol(
+            symbol,
+            horizon,
+            variant,
+            task_mode="fundamental_snapshot_refresh",
+        )
     if mode.is_factor_x_ta:
         from services.worker.tasks.factor_x_ta_batch import compute_factor_x_ta_for_symbol
 

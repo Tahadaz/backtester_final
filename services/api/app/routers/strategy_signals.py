@@ -66,6 +66,13 @@ from core.quant_core.signal_engine.support_resistance import (
     finalize_support_resistance_methods,
     round_number,
 )
+from core.quant_core.signal_engine.sr_levels import (
+    compute_pivot_family_levels,
+    finite_float as _sr_finite_float,
+    nearest_support_resistance_from_lines,
+    normalize_line_id,
+    split_support_resistance_lines,
+)
 from core.quant_core.signal_engine.variant_detail import (
     compute_variant_detail,
     compute_variant_trade_register,
@@ -188,6 +195,97 @@ def _clean_ohlcv(ohlcv):
     The data page still sees the raw DataFrame for calendar flagging.
     """
     return drop_incomplete_ohlcv_rows(ohlcv)
+
+
+def _finite_live_number(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if np.isfinite(parsed) else None
+
+
+def _normalized_bar_date(value: Any) -> pd.Timestamp:
+    try:
+        parsed = pd.Timestamp(value).normalize()
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid live_bar date: {value!r}") from exc
+    if pd.isna(parsed):
+        raise HTTPException(status_code=422, detail=f"Invalid live_bar date: {value!r}")
+    if parsed.tzinfo is not None:
+        parsed = parsed.tz_convert(None)
+    return parsed
+
+
+def _apply_indicator_live_bar(ohlcv, live_bar) -> tuple[pd.DataFrame, bool]:
+    """Merge a dashboard live quote into the transient OHLCV frame only."""
+    if live_bar is None:
+        return ohlcv, False
+
+    live_close = _finite_live_number(live_bar.close)
+    if live_close is None or live_close <= 0:
+        raise HTTPException(status_code=422, detail="live_bar.close must be a finite positive number")
+
+    live_date = _normalized_bar_date(live_bar.date)
+    last_index = ohlcv.index[-1]
+    last_date = _normalized_bar_date(last_index)
+    if live_date < last_date:
+        return ohlcv, False
+
+    same_date = live_date == last_date
+    frame = ohlcv.copy()
+    target_index = last_index if same_date else live_date
+    existing = frame.iloc[-1] if same_date else None
+
+    def existing_number(column: str) -> float | None:
+        if existing is None or column not in frame.columns:
+            return None
+        return _finite_live_number(existing[column])
+
+    live_open = _finite_live_number(live_bar.open)
+    open_value = live_open if live_open is not None else existing_number("Open") or live_close
+
+    high_seed = _finite_live_number(live_bar.high)
+    if high_seed is None:
+        high_seed = existing_number("High") if same_date else None
+    high_value = max(value for value in [high_seed, open_value, live_close] if value is not None)
+
+    low_seed = _finite_live_number(live_bar.low)
+    if low_seed is None:
+        low_seed = existing_number("Low") if same_date else None
+    low_value = min(value for value in [low_seed, open_value, live_close] if value is not None)
+
+    volume_value = _finite_live_number(live_bar.volume)
+    if volume_value is None:
+        volume_value = existing_number("Volume") if same_date else 0.0
+    volume_value = max(0.0, volume_value or 0.0)
+
+    if same_date:
+        if "Open" in frame.columns:
+            frame.at[target_index, "Open"] = open_value
+        if "High" in frame.columns:
+            frame.at[target_index, "High"] = high_value
+        if "Low" in frame.columns:
+            frame.at[target_index, "Low"] = low_value
+        frame.at[target_index, "Close"] = live_close
+        if "Volume" in frame.columns:
+            frame.at[target_index, "Volume"] = volume_value
+        return frame, True
+
+    row = frame.iloc[-1].copy()
+    if "Open" in frame.columns:
+        row["Open"] = open_value
+    if "High" in frame.columns:
+        row["High"] = high_value
+    if "Low" in frame.columns:
+        row["Low"] = low_value
+    row["Close"] = live_close
+    if "Volume" in frame.columns:
+        row["Volume"] = volume_value
+    frame.loc[target_index] = row
+    return frame, True
 
 
 def _validate_volume_data(family: str, symbol: str, ohlcv, volume: np.ndarray | None) -> None:
@@ -968,6 +1066,20 @@ def _sr_build_base_methods(context: dict[str, Any]) -> list[dict[str, Any]]:
                     "max_levels": policy.max_levels,
                     "supports": swing_levels.get("supports") or [],
                     "resistances": swing_levels.get("resistances") or [],
+                    "support_lines": {
+                        f"S{idx}": round_number(entry.get("price"), 6)
+                        for idx, entry in enumerate(swing_levels.get("supports") or [], start=1)
+                        if isinstance(entry, dict)
+                        and round_number(entry.get("price"), 6) is not None
+                        and float(round_number(entry.get("price"), 6)) <= current_close
+                    },
+                    "resistance_lines": {
+                        f"R{idx}": round_number(entry.get("price"), 6)
+                        for idx, entry in enumerate(swing_levels.get("resistances") or [], start=1)
+                        if isinstance(entry, dict)
+                        and round_number(entry.get("price"), 6) is not None
+                        and float(round_number(entry.get("price"), 6)) >= current_close
+                    },
                 },
             }
         )
@@ -986,48 +1098,40 @@ def _sr_build_base_methods(context: dict[str, Any]) -> list[dict[str, Any]]:
             }
         )
 
-    pivot_method = {
-        "id": "pivot_points",
-        "label": "Pivots classiques",
-        "support": None,
-        "resistance": None,
-        "status": "unavailable",
-        "selected_for_support": False,
-        "selected_for_resistance": False,
-        "explanation": "Au moins deux barres (avec High/Low) sont requises pour les pivots.",
-        "inputs": {},
-    }
-    if len(ohlcv) >= 2 and high is not None and low is not None:
-        prev = ohlcv.iloc[-2]
-        pivot = PivotPoints(**compute_pivot_points(
-            prev_high=float(prev["High"]),
-            prev_low=float(prev["Low"]),
-            prev_close=float(prev["Close"]),
-        ))
-        support_candidates = [value for value in (pivot.s1, pivot.s2) if value <= current_close]
-        resistance_candidates = [value for value in (pivot.r1, pivot.r2) if value >= current_close]
-        pivot_method.update(
-            {
-                "support": max(support_candidates) if support_candidates else None,
-                "resistance": min(resistance_candidates) if resistance_candidates else None,
-                "status": "available" if support_candidates or resistance_candidates else "ignored",
-                "explanation": (
-                    "Calcul classique des points pivots (S1/S2, R1/R2) base sur "
-                    "le Haut, Bas, Cloture de la seance precedente."
-                ),
-                "inputs": {
-                    "pp": pivot.pp,
-                    "s1": pivot.s1,
-                    "s2": pivot.s2,
-                    "r1": pivot.r1,
-                    "r2": pivot.r2,
-                    "prev_high": float(prev["High"]),
-                    "prev_low": float(prev["Low"]),
-                    "prev_close": float(prev["Close"]),
-                },
-            }
-        )
-    methods.append(pivot_method)
+    methods.extend(
+        [
+            _sr_build_pivot_family_method(
+                context,
+                "pivot_points",
+                "Pivots classiques",
+                "Pivots classiques (P, S1-S3, R1-R3) bases sur le Haut, Bas, Cloture de la seance precedente.",
+            ),
+            _sr_build_pivot_family_method(
+                context,
+                "fibonacci_pivot",
+                "Pivots Fibonacci",
+                "Pivots Fibonacci: P classique puis extensions 38.2%, 61.8% et 100% de l'amplitude precedente.",
+            ),
+            _sr_build_pivot_family_method(
+                context,
+                "camarilla",
+                "Pivots Camarilla",
+                "Pivots Camarilla: niveaux S1-S3/R1-R3 construits autour de la cloture precedente.",
+            ),
+            _sr_build_pivot_family_method(
+                context,
+                "woodie",
+                "Pivots Woodie",
+                "Pivots Woodie: pivot pondere par la cloture precedente puis S1-S3/R1-R3.",
+            ),
+            _sr_build_pivot_family_method(
+                context,
+                "dm",
+                "Pivots DeMark",
+                "Pivots DeMark: P, S1 et R1 conditionnes par la relation entre ouverture et cloture precedentes.",
+            ),
+        ]
+    )
 
     quantile_method = {
         "id": "quantile_extrema_atr",
@@ -1066,7 +1170,21 @@ def _sr_build_base_methods(context: dict[str, Any]) -> list[dict[str, Any]]:
                     quantile_levels.get("explain")
                     or "Zones derivees des quantiles historiques extremes et de l'ATR."
                 ),
-                "inputs": dict(quantile_levels.get("inputs") or {}),
+                "inputs": {
+                    **dict(quantile_levels.get("inputs") or {}),
+                    "support_lines": (
+                        {"S1": round_number(quantile_levels.get("support"), 6)}
+                        if round_number(quantile_levels.get("support"), 6) is not None
+                        and float(round_number(quantile_levels.get("support"), 6)) <= current_close
+                        else {}
+                    ),
+                    "resistance_lines": (
+                        {"R1": round_number(quantile_levels.get("resistance"), 6)}
+                        if round_number(quantile_levels.get("resistance"), 6) is not None
+                        and float(round_number(quantile_levels.get("resistance"), 6)) >= current_close
+                        else {}
+                    ),
+                },
             }
         )
     methods.append(quantile_method)
@@ -1091,6 +1209,22 @@ def _sr_build_base_methods(context: dict[str, Any]) -> list[dict[str, Any]]:
             left_bars=policy.swing_left_bars,
             right_bars=policy.swing_right_bars,
         )
+        fib_level_map: dict[str, float] = {}
+        raw_fib_levels = fib.get("levels") if isinstance(fib.get("levels"), dict) else {}
+        for raw_ratio, raw_price in raw_fib_levels.items():
+            ratio_value = _sr_finite_float(raw_ratio)
+            price_value = round_number(raw_price, 6)
+            if ratio_value is None or price_value is None:
+                continue
+            fib_level_map[f"F{int(round(ratio_value * 1000)):03d}"] = price_value
+        fib_support_lines, fib_resistance_lines = split_support_resistance_lines(
+            fib_level_map,
+            current_close,
+        )
+        fib_inputs = dict(fib.get("inputs") or {})
+        fib_inputs["lines"] = fib_level_map
+        fib_inputs["support_lines"] = fib_support_lines
+        fib_inputs["resistance_lines"] = fib_resistance_lines
         fib_method.update(
             {
                 "support": fib.get("support"),
@@ -1101,17 +1235,174 @@ def _sr_build_base_methods(context: dict[str, Any]) -> list[dict[str, Any]]:
                     else "unavailable"
                 ),
                 "explanation": fib.get("explanation", "Retracements Fibonacci dérivés du swing dominant."),
-                "inputs": fib.get("inputs") or {},
+                "inputs": fib_inputs,
             }
         )
     methods.append(fib_method)
-    return methods
+    return [_sr_enrich_method_lines(method, current_close) for method in methods]
 
 
 def _sr_add_line(lines: dict[str, float], label: str, value: Any) -> None:
     numeric = round_number(value, 6)
     if numeric is not None:
         lines[label] = numeric
+
+
+def _sr_line_maps_from_method(
+    method: dict[str, Any],
+    current_close: float,
+) -> tuple[dict[str, float], dict[str, float], dict[str, float]]:
+    inputs = method.get("inputs") if isinstance(method.get("inputs"), dict) else {}
+    raw_lines = inputs.get("lines") if isinstance(inputs.get("lines"), dict) else {}
+    raw_support = inputs.get("support_lines") if isinstance(inputs.get("support_lines"), dict) else {}
+    raw_resistance = inputs.get("resistance_lines") if isinstance(inputs.get("resistance_lines"), dict) else {}
+
+    lines: dict[str, float] = {}
+    for raw_line, raw_value in raw_lines.items():
+        line = normalize_line_id(raw_line)
+        value = round_number(raw_value, 6)
+        if line and value is not None:
+            lines[line] = value
+
+    support_lines: dict[str, float] = {}
+    for raw_line, raw_value in raw_support.items():
+        line = normalize_line_id(raw_line)
+        value = round_number(raw_value, 6)
+        if line and value is not None and value <= current_close:
+            support_lines[line] = value
+
+    resistance_lines: dict[str, float] = {}
+    for raw_line, raw_value in raw_resistance.items():
+        line = normalize_line_id(raw_line)
+        value = round_number(raw_value, 6)
+        if line and value is not None and value >= current_close:
+            resistance_lines[line] = value
+
+    if lines and (not support_lines or not resistance_lines):
+        split_support, split_resistance = split_support_resistance_lines(lines, current_close)
+        support_lines = support_lines or split_support
+        resistance_lines = resistance_lines or split_resistance
+
+    raw_support_value = round_number(method.get("support"), 6)
+    raw_resistance_value = round_number(method.get("resistance"), 6)
+    if raw_support_value is not None and raw_support_value <= current_close and not support_lines:
+        support_lines["S1"] = raw_support_value
+    if raw_resistance_value is not None and raw_resistance_value >= current_close and not resistance_lines:
+        resistance_lines["R1"] = raw_resistance_value
+
+    return lines, support_lines, resistance_lines
+
+
+def _sr_enrich_method_lines(method: dict[str, Any], current_close: float) -> dict[str, Any]:
+    row = dict(method)
+    inputs = dict(row.get("inputs") or {})
+    row["inputs"] = inputs
+
+    lines, support_lines, resistance_lines = _sr_line_maps_from_method(row, current_close)
+    if lines:
+        inputs["lines"] = lines
+    if support_lines:
+        inputs["support_lines"] = support_lines
+    if resistance_lines:
+        inputs["resistance_lines"] = resistance_lines
+
+    support_line: str | None = None
+    support_value: float | None = None
+    if support_lines:
+        support_line, support_value = max(support_lines.items(), key=lambda item: item[1])
+
+    resistance_line: str | None = None
+    resistance_value: float | None = None
+    if resistance_lines:
+        resistance_line, resistance_value = min(resistance_lines.items(), key=lambda item: item[1])
+
+    if support_value is not None:
+        row["support"] = round_number(support_value, 6)
+        inputs["selected_support_line"] = support_line
+    if resistance_value is not None:
+        row["resistance"] = round_number(resistance_value, 6)
+        inputs["selected_resistance_line"] = resistance_line
+
+    if support_value is not None or resistance_value is not None:
+        if str(row.get("status") or "unavailable") == "unavailable":
+            row["status"] = "available"
+    return row
+
+
+def _sr_support_resistance_lines_for_levels(
+    levels: dict[str, Any],
+    current_close: float,
+) -> tuple[dict[str, float], dict[str, float], float | None, float | None, str | None, str | None]:
+    support_lines, resistance_lines = split_support_resistance_lines(levels, current_close)
+    support, resistance, support_line, resistance_line = nearest_support_resistance_from_lines(
+        levels,
+        current_close,
+    )
+    return support_lines, resistance_lines, support, resistance, support_line, resistance_line
+
+
+def _sr_build_pivot_family_method(
+    context: dict[str, Any],
+    method_id: str,
+    label: str,
+    explanation: str,
+) -> dict[str, Any]:
+    ohlcv = context["ohlcv"]
+    high = context["high"]
+    low = context["low"]
+    current_close = float(context["current_close"])
+    method = {
+        "id": method_id,
+        "label": label,
+        "support": None,
+        "resistance": None,
+        "status": "unavailable",
+        "selected_for_support": False,
+        "selected_for_resistance": False,
+        "explanation": "Au moins deux barres OHLC sont requises pour ce pivot.",
+        "inputs": {},
+    }
+    if len(ohlcv) < 2 or high is None or low is None:
+        return method
+
+    prev = ohlcv.iloc[-2]
+    prev_open = float(prev["Open"]) if "Open" in ohlcv.columns else None
+    levels = compute_pivot_family_levels(
+        method_id,
+        prev_high=float(prev["High"]),
+        prev_low=float(prev["Low"]),
+        prev_close=float(prev["Close"]),
+        prev_open=prev_open,
+    )
+    if not levels:
+        method["explanation"] = "Niveaux indisponibles pour cette famille de pivots."
+        return method
+
+    support_lines, resistance_lines, support, resistance, support_line, resistance_line = (
+        _sr_support_resistance_lines_for_levels(levels, current_close)
+    )
+    method.update(
+        {
+            "support": support,
+            "resistance": resistance,
+            "status": "available" if support_lines or resistance_lines else "ignored",
+            "explanation": explanation,
+            "inputs": {
+                "lines": levels,
+                "support_lines": support_lines,
+                "resistance_lines": resistance_lines,
+                "selected_support_line": support_line,
+                "selected_resistance_line": resistance_line,
+                "prev_open": prev_open,
+                "prev_high": float(prev["High"]),
+                "prev_low": float(prev["Low"]),
+                "prev_close": float(prev["Close"]),
+            },
+        }
+    )
+    for line, value in levels.items():
+        method["inputs"][line.lower()] = value
+    return method
 
 
 def _sr_build_ma_time_series(
@@ -1199,14 +1490,17 @@ def _sr_build_method_chart(
             for idx, entry in enumerate(resistances[:3], start=1):
                 if isinstance(entry, dict):
                     _sr_add_line(lines, f"Swing R{idx}", entry.get("price"))
-    elif method_id == "pivot_points":
+    elif method_id in {"pivot_points", "fibonacci_pivot", "camarilla", "woodie", "dm"}:
         tail_len = min(30, len(ohlcv))
         inputs = method.get("inputs", {})
-        _sr_add_line(lines, "PP", inputs.get("pp"))
-        _sr_add_line(lines, "S1", inputs.get("s1"))
-        _sr_add_line(lines, "S2", inputs.get("s2"))
-        _sr_add_line(lines, "R1", inputs.get("r1"))
-        _sr_add_line(lines, "R2", inputs.get("r2"))
+        raw_lines = inputs.get("lines") if isinstance(inputs.get("lines"), dict) else {}
+        if raw_lines:
+            for label, value in raw_lines.items():
+                _sr_add_line(lines, str(label), value)
+        else:
+            _sr_add_line(lines, "P", inputs.get("p") or inputs.get("pp"))
+            for label in ("S1", "S2", "S3", "R1", "R2", "R3"):
+                _sr_add_line(lines, label, inputs.get(label.lower()))
     elif method_id == "quantile_extrema_atr":
         tail_len = min(120, len(ohlcv))
         _sr_add_line(lines, "Support quantile", method.get("support"))
@@ -1214,6 +1508,14 @@ def _sr_build_method_chart(
         inputs = method.get("inputs", {})
         _sr_add_line(lines, "Q20 support", inputs.get("support_q20"))
         _sr_add_line(lines, "Q80 resistance", inputs.get("resistance_q80"))
+    elif method_id == "fibonacci_retracement":
+        tail_len = min(int(policy.structural_lookback), len(ohlcv))
+        inputs = method.get("inputs", {})
+        raw_lines = inputs.get("lines") if isinstance(inputs.get("lines"), dict) else {}
+        for label, value in raw_lines.items():
+            _sr_add_line(lines, str(label), value)
+        _sr_add_line(lines, "Support fib", method.get("support"))
+        _sr_add_line(lines, "Resistance fib", method.get("resistance"))
     else:
         return None
 
@@ -1306,6 +1608,21 @@ def _sr_summary_payload(context: dict[str, Any], finalized: dict[str, Any]) -> d
     optimal = _sr_cached_optimal_fields(context)
     final_support = optimal["optimal_support"] if optimal["optimal_status"] == "ready" else None
     final_resistance = optimal["optimal_resistance"] if optimal["optimal_status"] == "ready" else None
+    selected_support_method_id = None
+    selected_resistance_method_id = None
+    selected_support_line_id = None
+    selected_resistance_line_id = None
+    if optimal["optimal_status"] == "ready" and optimal["optimal_variant_id"]:
+        try:
+            (
+                selected_support_method_id,
+                selected_support_line_id,
+                selected_resistance_method_id,
+                selected_resistance_line_id,
+            ) = _sr_parse_variant_components(str(optimal["optimal_variant_id"]))
+        except HTTPException:
+            selected_support_method_id = None
+            selected_resistance_method_id = None
     return {
         "symbol": context["symbol"],
         "horizon": context["horizon"],
@@ -1325,16 +1642,10 @@ def _sr_summary_payload(context: dict[str, Any], finalized: dict[str, Any]) -> d
         "optimal_status": optimal["optimal_status"],
         "final_support": final_support,
         "final_resistance": final_resistance,
-        "selected_support_method_id": (
-            str(optimal["optimal_variant_id"]).split("sr:", 1)[-1].split("__", 1)[0]
-            if optimal["optimal_status"] == "ready" and optimal["optimal_variant_id"]
-            else None
-        ),
-        "selected_resistance_method_id": (
-            str(optimal["optimal_variant_id"]).split("__", 1)[1]
-            if optimal["optimal_status"] == "ready" and optimal["optimal_variant_id"] and "__" in str(optimal["optimal_variant_id"])
-            else None
-        ),
+        "selected_support_method_id": selected_support_method_id,
+        "selected_resistance_method_id": selected_resistance_method_id,
+        "selected_support_line_id": selected_support_line_id,
+        "selected_resistance_line_id": selected_resistance_line_id,
         "summary_explanation": (
             f"{summary} Optimal SR: {optimal['optimal_status']}."
         ),
@@ -1473,7 +1784,12 @@ _SR_VARIANT_METHOD_ORDER = (
     "score_inversion",
     "swing_levels",
     "pivot_points",
+    "fibonacci_pivot",
+    "camarilla",
+    "woodie",
+    "dm",
     "quantile_extrema_atr",
+    "fibonacci_retracement",
 )
 
 
@@ -1484,8 +1800,94 @@ def _sr_method_rank(method_id: str) -> int:
         return len(_SR_VARIANT_METHOD_ORDER)
 
 
-def _sr_variant_id(support_method_id: str, resistance_method_id: str) -> str:
-    return f"sr:{support_method_id}__{resistance_method_id}"
+def _sr_line_rank(line_id: str | None) -> int:
+    line = normalize_line_id(line_id)
+    order = {
+        "P": 0,
+        "S1": 1,
+        "R1": 1,
+        "S2": 2,
+        "R2": 2,
+        "S3": 3,
+        "R3": 3,
+    }
+    if line in order:
+        return order[line]
+    if line.startswith("F"):
+        return 10
+    return 99
+
+
+def _sr_method_line_options(method: dict[str, Any], side: str) -> list[dict[str, Any]]:
+    method_id = str(method.get("id") or "").strip()
+    if not method_id or str(method.get("status")) != "available":
+        return []
+    inputs = method.get("inputs") if isinstance(method.get("inputs"), dict) else {}
+    key = "support_lines" if side == "support" else "resistance_lines"
+    raw_lines = inputs.get(key) if isinstance(inputs.get(key), dict) else {}
+    options: list[dict[str, Any]] = []
+    for raw_line, raw_value in raw_lines.items():
+        line = normalize_line_id(raw_line)
+        value = round_number(raw_value, 6)
+        if not line or value is None:
+            continue
+        options.append(
+            {
+                "method_id": method_id,
+                "line_id": line,
+                "level": value,
+                "method_label": str(method.get("label") or method_id),
+                "line_label": line,
+            }
+        )
+    if not options:
+        fallback_value = round_number(method.get(side), 6)
+        if fallback_value is not None:
+            options.append(
+                {
+                    "method_id": method_id,
+                    "line_id": "S1" if side == "support" else "R1",
+                    "level": fallback_value,
+                    "method_label": str(method.get("label") or method_id),
+                    "line_label": "S1" if side == "support" else "R1",
+                }
+            )
+    options.sort(
+        key=lambda item: (
+            _sr_method_rank(str(item["method_id"])),
+            _sr_line_rank(str(item.get("line_id") or "")),
+            str(item.get("line_id") or ""),
+        )
+    )
+    return options
+
+
+def _sr_component_id(method_id: str, line_id: str | None = None) -> str:
+    method = str(method_id or "").strip()
+    line = normalize_line_id(line_id)
+    return f"{method}:{line}" if line else method
+
+
+def _sr_variant_id(
+    support_method_id: str,
+    resistance_method_id: str,
+    support_line_id: str | None = None,
+    resistance_line_id: str | None = None,
+) -> str:
+    return (
+        f"sr:{_sr_component_id(support_method_id, support_line_id)}"
+        f"__{_sr_component_id(resistance_method_id, resistance_line_id)}"
+    )
+
+
+def _sr_parse_component_id(component_id: str) -> tuple[str, str | None]:
+    raw = str(component_id or "").strip()
+    if not raw:
+        return "", None
+    if ":" not in raw:
+        return raw, None
+    method_id, line_id = raw.split(":", 1)
+    return method_id, normalize_line_id(line_id) or None
 
 
 def _sr_parse_variant_id(variant_id: str) -> tuple[str, str]:
@@ -1498,7 +1900,26 @@ def _sr_parse_variant_id(variant_id: str) -> tuple[str, str]:
     support_method_id, resistance_method_id = payload.split("__", 1)
     if not support_method_id or not resistance_method_id:
         raise HTTPException(status_code=422, detail=f"Invalid SR variant id: {variant_id!r}")
+    support_method_id, _support_line_id = _sr_parse_component_id(support_method_id)
+    resistance_method_id, _resistance_line_id = _sr_parse_component_id(resistance_method_id)
+    if not support_method_id or not resistance_method_id:
+        raise HTTPException(status_code=422, detail=f"Invalid SR variant id: {variant_id!r}")
     return support_method_id, resistance_method_id
+
+
+def _sr_parse_variant_components(variant_id: str) -> tuple[str, str | None, str, str | None]:
+    raw = str(variant_id or "").strip()
+    if not raw.startswith("sr:"):
+        raise HTTPException(status_code=422, detail=f"Invalid SR variant id: {variant_id!r}")
+    payload = raw[3:]
+    if "__" not in payload:
+        raise HTTPException(status_code=422, detail=f"Invalid SR variant id: {variant_id!r}")
+    support_component, resistance_component = payload.split("__", 1)
+    support_method_id, support_line_id = _sr_parse_component_id(support_component)
+    resistance_method_id, resistance_line_id = _sr_parse_component_id(resistance_component)
+    if not support_method_id or not resistance_method_id:
+        raise HTTPException(status_code=422, detail=f"Invalid SR variant id: {variant_id!r}")
+    return support_method_id, support_line_id, resistance_method_id, resistance_line_id
 
 
 def _sr_signal_from_levels(current_close: float, support: float | None, resistance: float | None) -> tuple[float, str]:
@@ -1655,9 +2076,11 @@ def _sr_direct_objective_summary(
 def _sr_simulate_pair_window(
     *,
     context: dict[str, Any],
-    method_series: dict[str, dict[str, np.ndarray]],
+    method_series: dict[str, dict[str, Any]],
     support_method_id: str,
     resistance_method_id: str,
+    support_line_id: str | None = None,
+    resistance_line_id: str | None = None,
     window: tuple[int, int, int, int, int],
     cost_bps: float,
     cooldown_bars: int,
@@ -1667,8 +2090,18 @@ def _sr_simulate_pair_window(
     low = context["low"]
     if high is None or low is None:
         return None, None
-    support_series = method_series.get(support_method_id, {}).get("support")
-    resistance_series = method_series.get(resistance_method_id, {}).get("resistance")
+    support_series = _sr_get_component_series(
+        method_series,
+        support_method_id,
+        support_line_id,
+        "support",
+    )
+    resistance_series = _sr_get_component_series(
+        method_series,
+        resistance_method_id,
+        resistance_line_id,
+        "resistance",
+    )
     if (
         not isinstance(support_series, np.ndarray)
         or not isinstance(resistance_series, np.ndarray)
@@ -1728,9 +2161,11 @@ def _sr_simulate_pair_window(
 def _sr_compute_variant_windows(
     *,
     context: dict[str, Any],
-    method_series: dict[str, dict[str, np.ndarray]],
+    method_series: dict[str, dict[str, Any]],
     support_method_id: str,
     resistance_method_id: str,
+    support_line_id: str | None = None,
+    resistance_line_id: str | None = None,
     horizon: str,
     cost_bps: float,
     cooldown_bars: int,
@@ -1748,6 +2183,8 @@ def _sr_compute_variant_windows(
             method_series=method_series,
             support_method_id=support_method_id,
             resistance_method_id=resistance_method_id,
+            support_line_id=support_line_id,
+            resistance_line_id=resistance_line_id,
             window=window,
             cost_bps=cost_bps,
             cooldown_bars=cooldown_bars,
@@ -1767,6 +2204,60 @@ def _sr_level_or_none(value: Any) -> float | None:
     if not np.isfinite(out):
         return None
     return out
+
+
+def _sr_line_series_bucket(
+    method_bucket: dict[str, Any],
+    side: str,
+) -> dict[str, np.ndarray]:
+    key = "support_lines" if side == "support" else "resistance_lines"
+    bucket = method_bucket.get(key)
+    if not isinstance(bucket, dict):
+        bucket = {}
+        method_bucket[key] = bucket
+    return bucket
+
+
+def _sr_store_line_series_value(
+    output: dict[str, dict[str, Any]],
+    method_id: str,
+    side: str,
+    line_id: str,
+    bar_index: int,
+    value: Any,
+    n_bars: int,
+) -> None:
+    method_bucket = output.get(method_id)
+    if method_bucket is None:
+        return
+    numeric = _sr_level_or_none(value)
+    line = normalize_line_id(line_id)
+    if numeric is None or not line:
+        return
+    side_bucket = _sr_line_series_bucket(method_bucket, side)
+    series = side_bucket.get(line)
+    if not isinstance(series, np.ndarray) or len(series) != n_bars:
+        series = np.full(n_bars, np.nan, dtype="float64")
+        side_bucket[line] = series
+    series[bar_index] = float(numeric)
+
+
+def _sr_get_component_series(
+    method_series: dict[str, dict[str, Any]],
+    method_id: str,
+    line_id: str | None,
+    side: str,
+) -> np.ndarray | None:
+    method_bucket = method_series.get(method_id)
+    if not isinstance(method_bucket, dict):
+        return None
+    line = normalize_line_id(line_id)
+    if line:
+        side_bucket = method_bucket.get("support_lines" if side == "support" else "resistance_lines")
+        if isinstance(side_bucket, dict) and isinstance(side_bucket.get(line), np.ndarray):
+            return side_bucket[line]
+    series = method_bucket.get(side)
+    return series if isinstance(series, np.ndarray) else None
 
 
 def _sr_build_trend_score_series(context: dict[str, Any]) -> np.ndarray:
@@ -1889,7 +2380,7 @@ def _sr_compute_ma_anchor_series(context: dict[str, Any], trend_score_series: np
 def _sr_compute_method_series(
     context: dict[str, Any],
     methods_by_id: dict[str, dict[str, Any]],
-) -> dict[str, dict[str, np.ndarray]]:
+) -> dict[str, dict[str, Any]]:
     close = context["close"]
     high = context["high"]
     low = context["low"]
@@ -1898,10 +2389,12 @@ def _sr_compute_method_series(
     policy = context["policy"]
     n = len(close)
 
-    output: dict[str, dict[str, np.ndarray]] = {
+    output: dict[str, dict[str, Any]] = {
         method_id: {
             "support": np.full(n, np.nan, dtype="float64"),
             "resistance": np.full(n, np.nan, dtype="float64"),
+            "support_lines": {},
+            "resistance_lines": {},
         }
         for method_id in methods_by_id
     }
@@ -1913,6 +2406,8 @@ def _sr_compute_method_series(
     if "ma_anchor" in output:
         output["ma_anchor"]["support"] = ma_series["support"]
         output["ma_anchor"]["resistance"] = ma_series["resistance"]
+        output["ma_anchor"]["support_lines"]["S1"] = ma_series["support"].copy()
+        output["ma_anchor"]["resistance_lines"]["R1"] = ma_series["resistance"].copy()
 
     if high is None or low is None:
         return output
@@ -1926,21 +2421,35 @@ def _sr_compute_method_series(
         if prev_close is None:
             continue
 
-        if "pivot_points" in output and bar_index >= 2:
+        for pivot_method_id in ("pivot_points", "fibonacci_pivot", "camarilla", "woodie", "dm"):
+            if pivot_method_id not in output or bar_index < 2:
+                continue
             prev_high = float(high[bar_index - 1])
             prev_low = float(low[bar_index - 1])
             prev_close_bar = float(close[bar_index - 1])
-            pivot = compute_pivot_points(
+            prev_open_bar = (
+                float(ohlcv["Open"].values[bar_index - 1])
+                if "Open" in ohlcv.columns
+                else None
+            )
+            pivot = compute_pivot_family_levels(
+                pivot_method_id,
                 prev_high=prev_high,
                 prev_low=prev_low,
                 prev_close=prev_close_bar,
+                prev_open=prev_open_bar,
             )
-            support_candidates = [float(v) for v in (pivot.get("s1"), pivot.get("s2")) if v is not None and float(v) <= prev_close]
-            resistance_candidates = [float(v) for v in (pivot.get("r1"), pivot.get("r2")) if v is not None and float(v) >= prev_close]
+            support_lines, resistance_lines = split_support_resistance_lines(pivot, prev_close)
+            support_candidates = list(support_lines.values())
+            resistance_candidates = list(resistance_lines.values())
             if support_candidates:
-                output["pivot_points"]["support"][bar_index] = max(support_candidates)
+                output[pivot_method_id]["support"][bar_index] = max(support_candidates)
             if resistance_candidates:
-                output["pivot_points"]["resistance"][bar_index] = min(resistance_candidates)
+                output[pivot_method_id]["resistance"][bar_index] = min(resistance_candidates)
+            for line, value in support_lines.items():
+                _sr_store_line_series_value(output, pivot_method_id, "support", line, bar_index, value, n)
+            for line, value in resistance_lines.items():
+                _sr_store_line_series_value(output, pivot_method_id, "resistance", line, bar_index, value, n)
 
         if "swing_levels" in output and bar_index >= 4:
             start = max(0, bar_index - swing_lookback)
@@ -1960,6 +2469,18 @@ def _sr_compute_method_series(
                 output["swing_levels"]["support"][bar_index] = support
             if resistance is not None and resistance >= prev_close:
                 output["swing_levels"]["resistance"][bar_index] = resistance
+            for idx, entry in enumerate(swing.get("supports") or [], start=1):
+                if not isinstance(entry, dict):
+                    continue
+                line_support = _sr_level_or_none(entry.get("price"))
+                if line_support is not None and line_support <= prev_close:
+                    _sr_store_line_series_value(output, "swing_levels", "support", f"S{idx}", bar_index, line_support, n)
+            for idx, entry in enumerate(swing.get("resistances") or [], start=1):
+                if not isinstance(entry, dict):
+                    continue
+                line_resistance = _sr_level_or_none(entry.get("price"))
+                if line_resistance is not None and line_resistance >= prev_close:
+                    _sr_store_line_series_value(output, "swing_levels", "resistance", f"R{idx}", bar_index, line_resistance, n)
 
         if "quantile_extrema_atr" in output and bar_index >= 30:
             start = max(0, bar_index - quantile_lookback)
@@ -1981,8 +2502,26 @@ def _sr_compute_method_series(
             resistance = _sr_level_or_none(levels.get("resistance"))
             if support is not None and support <= prev_close:
                 output["quantile_extrema_atr"]["support"][bar_index] = support
+                _sr_store_line_series_value(
+                    output,
+                    "quantile_extrema_atr",
+                    "support",
+                    "S1",
+                    bar_index,
+                    support,
+                    n,
+                )
             if resistance is not None and resistance >= prev_close:
                 output["quantile_extrema_atr"]["resistance"][bar_index] = resistance
+                _sr_store_line_series_value(
+                    output,
+                    "quantile_extrema_atr",
+                    "resistance",
+                    "R1",
+                    bar_index,
+                    resistance,
+                    n,
+                )
 
         if "fibonacci_retracement" in output and bar_index >= 30:
             fib_start = max(0, bar_index - int(policy.structural_lookback))
@@ -1996,10 +2535,23 @@ def _sr_compute_method_series(
             )
             fib_s = _sr_level_or_none(fib.get("support"))
             fib_r = _sr_level_or_none(fib.get("resistance"))
+            fib_line_map: dict[str, float] = {}
+            raw_fib_levels = fib.get("levels") if isinstance(fib.get("levels"), dict) else {}
+            for raw_ratio, raw_price in raw_fib_levels.items():
+                ratio_value = _sr_finite_float(raw_ratio)
+                price_value = _sr_level_or_none(raw_price)
+                if ratio_value is None or price_value is None:
+                    continue
+                fib_line_map[f"F{int(round(ratio_value * 1000)):03d}"] = float(price_value)
+            fib_support_lines, fib_resistance_lines = split_support_resistance_lines(fib_line_map, prev_close)
             if fib_s is not None and fib_s <= prev_close:
                 output["fibonacci_retracement"]["support"][bar_index] = fib_s
             if fib_r is not None and fib_r >= prev_close:
                 output["fibonacci_retracement"]["resistance"][bar_index] = fib_r
+            for line, value in fib_support_lines.items():
+                _sr_store_line_series_value(output, "fibonacci_retracement", "support", line, bar_index, value, n)
+            for line, value in fib_resistance_lines.items():
+                _sr_store_line_series_value(output, "fibonacci_retracement", "resistance", line, bar_index, value, n)
 
     return output
 
@@ -2411,27 +2963,26 @@ def _sr_get_or_compute_variants(
 
     methods = _sr_build_base_methods(context)
     finalized = finalize_support_resistance_methods(context["current_close"], methods)
-    support_methods = [
+    eligible_methods = [
         m
         for m in finalized["methods"]
         if str(m.get("id")) != "score_inversion"
-        and str(m.get("status")) == "available"
-        and _sr_level_or_none(m.get("support")) is not None
     ]
-    resistance_methods = [
-        m
-        for m in finalized["methods"]
-        if str(m.get("id")) != "score_inversion"
-        and str(m.get("status")) == "available"
-        and _sr_level_or_none(m.get("resistance")) is not None
+    support_options = [
+        option
+        for method in eligible_methods
+        for option in _sr_method_line_options(dict(method), "support")
     ]
-    support_methods.sort(key=lambda m: (_sr_method_rank(str(m.get("id"))), str(m.get("id"))))
-    resistance_methods.sort(key=lambda m: (_sr_method_rank(str(m.get("id"))), str(m.get("id"))))
+    resistance_options = [
+        option
+        for method in eligible_methods
+        for option in _sr_method_line_options(dict(method), "resistance")
+    ]
 
     candidate_method_ids = {
-        str(m.get("id"))
-        for m in [*support_methods, *resistance_methods]
-        if str(m.get("id") or "")
+        str(option.get("method_id"))
+        for option in [*support_options, *resistance_options]
+        if str(option.get("method_id") or "")
     }
     methods_by_id = {
         method_id: dict(method)
@@ -2448,22 +2999,34 @@ def _sr_get_or_compute_variants(
     tested_variant_ids: list[str] = []
 
     if high is not None and low is not None and ranking_window is not None:
-        for support_method in support_methods:
-            sid = str(support_method.get("id"))
-            support_current = _sr_level_or_none(support_method.get("support"))
-            support_label = str(support_method.get("label") or sid)
-            for resistance_method in resistance_methods:
-                rid = str(resistance_method.get("id"))
-                resistance_current = _sr_level_or_none(resistance_method.get("resistance"))
-                resistance_label = str(resistance_method.get("label") or rid)
-                variant_id = _sr_variant_id(sid, rid)
+        for support_option in support_options:
+            sid = str(support_option.get("method_id"))
+            support_line_id = normalize_line_id(support_option.get("line_id"))
+            support_current = _sr_level_or_none(support_option.get("level"))
+            support_label = str(support_option.get("method_label") or sid)
+            support_line_label = str(support_option.get("line_label") or support_line_id)
+            for resistance_option in resistance_options:
+                rid = str(resistance_option.get("method_id"))
+                resistance_line_id = normalize_line_id(resistance_option.get("line_id"))
+                resistance_current = _sr_level_or_none(resistance_option.get("level"))
+                resistance_label = str(resistance_option.get("method_label") or rid)
+                resistance_line_label = str(resistance_option.get("line_label") or resistance_line_id)
+                variant_id = _sr_variant_id(sid, rid, support_line_id, resistance_line_id)
                 tested_variant_ids.append(variant_id)
                 variant_def = VariantDef(
                     variant_id=variant_id,
                     family="sr",
                     archetype="sr_combo",
-                    params={"support_method_id": sid, "resistance_method_id": rid},
-                    description=f"Support {support_label} / Resistance {resistance_label}",
+                    params={
+                        "support_method_id": sid,
+                        "support_line_id": support_line_id,
+                        "resistance_method_id": rid,
+                        "resistance_line_id": resistance_line_id,
+                    },
+                    description=(
+                        f"Support {support_label} {support_line_label} / "
+                        f"Resistance {resistance_label} {resistance_line_label}"
+                    ),
                 )
 
                 invalid_pair = (
@@ -2509,6 +3072,8 @@ def _sr_get_or_compute_variants(
                         method_series=method_series,
                         support_method_id=sid,
                         resistance_method_id=rid,
+                        support_line_id=support_line_id,
+                        resistance_line_id=resistance_line_id,
                         window=ranking_window,
                         cost_bps=cost_bps,
                         cooldown_bars=cooldown_bars,
@@ -2531,6 +3096,8 @@ def _sr_get_or_compute_variants(
                     "variant": variant_def,
                     "support_method_id": sid,
                     "resistance_method_id": rid,
+                    "support_line_id": support_line_id,
+                    "resistance_line_id": resistance_line_id,
                     "support_current": round_number(support_current, 6),
                     "resistance_current": round_number(resistance_current, 6),
                     "invalid_pair": invalid_pair,
@@ -2555,6 +3122,8 @@ def _sr_get_or_compute_variants(
     best_variant_id = best_item["variant"].variant_id if best_item is not None else None
     selected_support_method_id = str(best_item["support_method_id"]) if best_item is not None else None
     selected_resistance_method_id = str(best_item["resistance_method_id"]) if best_item is not None else None
+    selected_support_line_id = str(best_item["support_line_id"]) if best_item is not None else None
+    selected_resistance_line_id = str(best_item["resistance_line_id"]) if best_item is not None else None
     final_support = round_number(best_item["support_current"], 6) if best_item is not None else None
     final_resistance = round_number(best_item["resistance_current"], 6) if best_item is not None else None
     competitive_count = 1 if best_item is not None else 0
@@ -2610,6 +3179,8 @@ def _sr_get_or_compute_variants(
                 "resistance_level": round_number(item["resistance_current"], 6),
                 "support_method_id": str(item["support_method_id"]),
                 "resistance_method_id": str(item["resistance_method_id"]),
+                "support_line_id": str(item.get("support_line_id") or ""),
+                "resistance_line_id": str(item.get("resistance_line_id") or ""),
             }
         )
 
@@ -2619,6 +3190,12 @@ def _sr_get_or_compute_variants(
         row = dict(method)
         row["selected_for_support"] = bool(row.get("id") == selected_support_method_id)
         row["selected_for_resistance"] = bool(row.get("id") == selected_resistance_method_id)
+        inputs = dict(row.get("inputs") or {})
+        if row["selected_for_support"] and selected_support_line_id:
+            inputs["optimal_support_line"] = selected_support_line_id
+        if row["selected_for_resistance"] and selected_resistance_line_id:
+            inputs["optimal_resistance_line"] = selected_resistance_line_id
+        row["inputs"] = inputs
         methods_for_response.append(row)
     response = {
         "family": "support_resistance",
@@ -2642,6 +3219,8 @@ def _sr_get_or_compute_variants(
         "final_resistance": final_resistance,
         "selected_support_method_id": selected_support_method_id,
         "selected_resistance_method_id": selected_resistance_method_id,
+        "selected_support_line_id": selected_support_line_id,
+        "selected_resistance_line_id": selected_resistance_line_id,
         "best_variant_id": best_variant_id,
         "funnel": {
             "tested": tested_count,
@@ -2720,12 +3299,16 @@ def signal_support_resistance_variant_detail(
     ohlcv = payload["context"]["ohlcv"]
     idx = ohlcv.index
     if not variant_data.get("windows"):
-        support_method_id, resistance_method_id = _sr_parse_variant_id(variant_id)
+        support_method_id, support_line_id, resistance_method_id, resistance_line_id = (
+            _sr_parse_variant_components(variant_id)
+        )
         detail_windows, total_realized = _sr_compute_variant_windows(
             context=payload["context"],
             method_series=payload["method_series"],
             support_method_id=support_method_id,
             resistance_method_id=resistance_method_id,
+            support_line_id=support_line_id,
+            resistance_line_id=resistance_line_id,
             horizon=body.horizon,
             cost_bps=body.cost_bps,
             cooldown_bars=body.cooldown_bars,
@@ -2809,10 +3392,10 @@ def signal_support_resistance_variant_backtest(
     if cached and (now - cached[0]) < _SR_VARIANT_BACKTEST_CACHE_TTL:
         return cached[1]
 
-    support_method_id, resistance_method_id = _sr_parse_variant_id(variant_id)
+    support_method_id, support_line_id, resistance_method_id, resistance_line_id = _sr_parse_variant_components(variant_id)
     method_series = payload["method_series"]
-    support_series = method_series.get(support_method_id, {}).get("support")
-    resistance_series = method_series.get(resistance_method_id, {}).get("resistance")
+    support_series = _sr_get_component_series(method_series, support_method_id, support_line_id, "support")
+    resistance_series = _sr_get_component_series(method_series, resistance_method_id, resistance_line_id, "resistance")
     if not isinstance(support_series, np.ndarray) or not isinstance(resistance_series, np.ndarray):
         raise HTTPException(status_code=422, detail=f"Missing series for SR variant {variant_id!r}")
 
@@ -2832,6 +3415,8 @@ def signal_support_resistance_variant_backtest(
             method_series=method_series,
             support_method_id=support_method_id,
             resistance_method_id=resistance_method_id,
+            support_line_id=support_line_id,
+            resistance_line_id=resistance_line_id,
             horizon=body.horizon,
             cost_bps=body.cost_bps,
             cooldown_bars=body.cooldown_bars,
@@ -3352,6 +3937,7 @@ def indicator_series(body: IndicatorSeriesRequest, db: Session = Depends(get_db)
     ohlcv = _clean_ohlcv(ohlcv)
     if len(ohlcv) == 0:
         raise HTTPException(status_code=422, detail=f"No usable OHLCV rows for {body.symbol}")
+    ohlcv, live_bar_applied = _apply_indicator_live_bar(ohlcv, body.live_bar)
 
     try:
         close = ohlcv["Close"].values.astype("float64")
@@ -3419,6 +4005,8 @@ def indicator_series(body: IndicatorSeriesRequest, db: Session = Depends(get_db)
         "current_score": round(float(latest_score), 4),
         "current_label": _current_label_for_family(body.indicator, latest_signal),
         "atr": round(atr_value, 4) if atr_value is not None else None,
+        "live_bar_applied": live_bar_applied,
+        "data_as_of": dates[-1] if dates else None,
     }
 
 
@@ -6235,6 +6823,433 @@ def _edge_with_stitched_evidence(edge: dict[str, Any], stitched: dict[str, Any] 
     return out
 
 
+def _sr_overlay_empty(status: str, reason: str, baseline_metrics: dict[str, Any] | None = None) -> dict[str, Any]:
+    return {
+        "status": status,
+        "reason": reason,
+        "best_variant_id": None,
+        "best_support_method": None,
+        "best_support_line": None,
+        "best_resistance_method": None,
+        "best_resistance_line": None,
+        "baseline_metrics": baseline_metrics or {},
+        "overlay_metrics": None,
+        "uplift": {},
+        "top_variants": [],
+        "tested_count": 0,
+        "viable_count": 0,
+        "invalid_pair_count": 0,
+        "unavailable_count": 0,
+    }
+
+
+def _sr_overlay_metric_value(metrics: dict[str, Any], key: str) -> float | None:
+    value = _evidence_float(metrics.get(key))
+    return float(value) if value is not None else None
+
+
+def _sr_overlay_uplift(
+    baseline_metrics: dict[str, Any],
+    overlay_metrics: dict[str, Any],
+) -> dict[str, float | None]:
+    out: dict[str, float | None] = {}
+    for key in ("total_return", "cagr", "sharpe", "win_rate"):
+        base = _sr_overlay_metric_value(baseline_metrics, key)
+        over = _sr_overlay_metric_value(overlay_metrics, key)
+        out[key] = (over - base) if base is not None and over is not None else None
+    base_dd = _sr_overlay_metric_value(baseline_metrics, "max_drawdown")
+    over_dd = _sr_overlay_metric_value(overlay_metrics, "max_drawdown")
+    out["max_drawdown"] = (base_dd - over_dd) if base_dd is not None and over_dd is not None else None
+    base_trades = _sr_overlay_metric_value(baseline_metrics, "n_trades")
+    over_trades = _sr_overlay_metric_value(overlay_metrics, "n_trades")
+    out["n_trades"] = (over_trades - base_trades) if base_trades is not None and over_trades is not None else None
+    return out
+
+
+def _sr_overlay_metrics_from_returns(returns: np.ndarray, trades: list[dict[str, Any]]) -> dict[str, Any]:
+    safe_returns = returns.astype("float64") if isinstance(returns, np.ndarray) else np.zeros(0, dtype="float64")
+    equity = np.concatenate(([1.0], np.cumprod(1.0 + safe_returns)))
+    total_return = float(equity[-1] - 1.0) if len(equity) else 0.0
+    years = max(len(safe_returns), 1) / 252.0
+    cagr = float((1.0 + total_return) ** (1.0 / years) - 1.0) if total_return > -1.0 else -1.0
+    sharpe = _evidence_sharpe([float(v) for v in safe_returns]) if safe_returns.size > 1 else 0.0
+    win_rate = float(np.mean([float(t.get("pnl_return", 0.0)) > 0.0 for t in trades])) if trades else 0.0
+    return {
+        "total_return": total_return,
+        "cagr": cagr,
+        "sharpe": sharpe,
+        "max_drawdown": _evidence_max_drawdown(equity.tolist()),
+        "win_rate": win_rate,
+        "n_trades": len(trades),
+    }
+
+
+def _sr_overlay_position_episodes(position: np.ndarray) -> list[tuple[int, int, int]]:
+    episodes: list[tuple[int, int, int]] = []
+    n = len(position)
+    idx = 0
+    while idx < n:
+        side = 1 if position[idx] > 0.0 else (-1 if position[idx] < 0.0 else 0)
+        if side == 0:
+            idx += 1
+            continue
+        start = idx
+        idx += 1
+        while idx < n:
+            next_side = 1 if position[idx] > 0.0 else (-1 if position[idx] < 0.0 else 0)
+            if next_side != side:
+                break
+            idx += 1
+        end = max(start, idx - 1)
+        episodes.append((start, end, side))
+    return episodes
+
+
+def _sr_simulate_signal_overlay(
+    *,
+    close: np.ndarray,
+    high: np.ndarray,
+    low: np.ndarray,
+    dates: list[str],
+    baseline_position: np.ndarray,
+    support_series: np.ndarray,
+    resistance_series: np.ndarray,
+    cost_bps: float,
+    slippage_bps: float,
+    cooldown_bars: int,
+    allow_short: bool,
+) -> dict[str, Any]:
+    n = min(
+        len(close),
+        len(high),
+        len(low),
+        len(dates),
+        len(baseline_position),
+        len(support_series),
+        len(resistance_series),
+    )
+    if n < 2:
+        returns = np.zeros(0, dtype="float64")
+        return {"returns": returns, "equity": [1.0], "trades": [], "position_series": [], "metrics": _sr_overlay_metrics_from_returns(returns, [])}
+
+    friction = (float(cost_bps) + float(slippage_bps)) / 10_000.0
+    returns = np.zeros(n - 1, dtype="float64")
+    overlay_position = np.zeros(n, dtype="float64")
+    trades: list[dict[str, Any]] = []
+    cooldown_until = -1
+
+    for start, end, side in _sr_overlay_position_episodes(baseline_position[:n]):
+        if side < 0 and not allow_short:
+            continue
+        if start <= cooldown_until:
+            continue
+        entry_idx: int | None = None
+        exit_idx: int | None = None
+        entry_price: float | None = None
+        exit_price: float | None = None
+        exit_reason = "horizon"
+
+        for bar_idx in range(start, end + 1):
+            support = _sr_level_or_none(support_series[bar_idx])
+            resistance = _sr_level_or_none(resistance_series[bar_idx])
+            if support is None or resistance is None or support >= resistance:
+                continue
+            if side > 0:
+                if float(low[bar_idx]) <= support:
+                    entry_idx = bar_idx
+                    entry_price = float(support)
+                    if float(high[bar_idx]) >= resistance:
+                        exit_idx = bar_idx
+                        exit_price = float(resistance)
+                        exit_reason = "resistance"
+                    break
+            else:
+                if float(high[bar_idx]) >= resistance:
+                    entry_idx = bar_idx
+                    entry_price = float(resistance)
+                    if float(low[bar_idx]) <= support:
+                        exit_idx = bar_idx
+                        exit_price = float(support)
+                        exit_reason = "support"
+                    break
+
+        if entry_idx is None or entry_price is None:
+            continue
+
+        if exit_idx is None:
+            for bar_idx in range(entry_idx + 1, end + 1):
+                support = _sr_level_or_none(support_series[bar_idx])
+                resistance = _sr_level_or_none(resistance_series[bar_idx])
+                if support is None or resistance is None or support >= resistance:
+                    continue
+                if side > 0 and float(high[bar_idx]) >= resistance:
+                    exit_idx = bar_idx
+                    exit_price = float(resistance)
+                    exit_reason = "resistance"
+                    break
+                if side < 0 and float(low[bar_idx]) <= support:
+                    exit_idx = bar_idx
+                    exit_price = float(support)
+                    exit_reason = "support"
+                    break
+
+        if exit_idx is None or exit_price is None:
+            exit_idx = end
+            exit_price = float(close[exit_idx])
+            exit_reason = "horizon"
+        if exit_idx < entry_idx:
+            continue
+
+        gross_return = (
+            (float(exit_price) / float(entry_price) - 1.0)
+            if side > 0
+            else (float(entry_price) / float(exit_price) - 1.0 if exit_price else 0.0)
+        )
+        net_return = float(gross_return - 2.0 * friction)
+        if exit_idx > 0:
+            returns[min(exit_idx - 1, len(returns) - 1)] += net_return
+        overlay_position[entry_idx:exit_idx + 1] = float(side)
+        trade = {
+            "open_idx": int(entry_idx),
+            "close_idx": int(exit_idx),
+            "open_date": dates[entry_idx],
+            "close_date": dates[exit_idx],
+            "open_price": float(entry_price),
+            "close_price": float(exit_price),
+            "bars_held": int(exit_idx - entry_idx),
+            "pnl_return": net_return,
+            "direction": float(side),
+            "entry_reason": "support" if side > 0 else "resistance",
+            "exit_reason": exit_reason,
+            "support_level": round_number(support_series[entry_idx], 6),
+            "resistance_level": round_number(resistance_series[entry_idx], 6),
+        }
+        trades.append(trade)
+        cooldown_until = exit_idx + max(0, int(cooldown_bars or 0))
+
+    equity = np.concatenate(([1.0], np.cumprod(1.0 + returns)))
+    return {
+        "returns": returns,
+        "equity": equity.tolist(),
+        "trades": trades,
+        "position_series": overlay_position.tolist(),
+        "metrics": _sr_overlay_metrics_from_returns(returns, trades),
+    }
+
+
+def _sr_align_position_to_context(
+    context: dict[str, Any],
+    dates: list[Any],
+    position: list[Any],
+) -> np.ndarray:
+    index = pd.DatetimeIndex(context["ohlcv"].index)
+    by_date: dict[str, float] = {}
+    for raw_date, raw_pos in zip(dates, position):
+        try:
+            key = pd.Timestamp(raw_date).date().isoformat()
+        except Exception:
+            continue
+        value = _evidence_float(raw_pos)
+        by_date[key] = float(value or 0.0)
+    aligned = np.zeros(len(index), dtype="float64")
+    for idx, ts in enumerate(index):
+        aligned[idx] = by_date.get(pd.Timestamp(ts).date().isoformat(), 0.0)
+    return aligned
+
+
+def _sr_overlay_context_payload(
+    db: Session,
+    *,
+    symbol: str,
+    horizon: str,
+    variant: str,
+    cost_bps: float,
+    cooldown_bars: int,
+) -> tuple[dict[str, Any], dict[str, dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    context = _sr_prepare_context(
+        db,
+        symbol=symbol,
+        horizon=horizon,
+        timeframe="1D",
+        cost_bps=cost_bps,
+        cooldown_bars=cooldown_bars,
+        variant=variant,
+    )
+    methods = _sr_build_base_methods(context)
+    finalized = finalize_support_resistance_methods(context["current_close"], methods)
+    eligible_methods = [
+        dict(method)
+        for method in finalized["methods"]
+        if str(method.get("id")) != "score_inversion"
+    ]
+    support_options = [
+        option
+        for method in eligible_methods
+        for option in _sr_method_line_options(method, "support")
+    ]
+    resistance_options = [
+        option
+        for method in eligible_methods
+        for option in _sr_method_line_options(method, "resistance")
+    ]
+    candidate_method_ids = {
+        str(option.get("method_id"))
+        for option in [*support_options, *resistance_options]
+        if str(option.get("method_id") or "")
+    }
+    methods_by_id = {
+        str(method.get("id")): dict(method)
+        for method in eligible_methods
+        if str(method.get("id")) in candidate_method_ids
+    }
+    return context, _sr_compute_method_series(context, methods_by_id), support_options, resistance_options
+
+
+def _sr_overlay_for_position_series(
+    db: Session,
+    *,
+    symbol: str,
+    horizon: str,
+    variant: str,
+    dates: list[Any],
+    baseline_position: list[Any],
+    baseline_metrics: dict[str, Any],
+    cost_bps: float,
+    slippage_bps: float = 0.0,
+    cooldown_bars: int = 0,
+    side_policy: str = "long_only",
+    top_n: int = 10,
+) -> dict[str, Any]:
+    if not dates or not baseline_position:
+        return _sr_overlay_empty("unavailable", "missing_baseline_position", baseline_metrics)
+
+    try:
+        context, method_series, support_options, resistance_options = _sr_overlay_context_payload(
+            db,
+            symbol=symbol,
+            horizon=horizon,
+            variant=variant,
+            cost_bps=cost_bps,
+            cooldown_bars=cooldown_bars,
+        )
+    except Exception:
+        logger.debug("SR overlay context unavailable", exc_info=True)
+        return _sr_overlay_empty("unavailable", "context_unavailable", baseline_metrics)
+
+    high = context["high"]
+    low = context["low"]
+    if high is None or low is None:
+        return _sr_overlay_empty("unavailable", "missing_high_low", baseline_metrics)
+
+    aligned_position = _sr_align_position_to_context(context, dates, baseline_position)
+    if not np.any(aligned_position != 0.0):
+        return _sr_overlay_empty("unavailable", "baseline_has_no_positions", baseline_metrics)
+
+    close = context["close"]
+    context_dates = [pd.Timestamp(ts).date().isoformat() for ts in context["ohlcv"].index]
+    allow_short = str(side_policy or "long_only").strip().lower() == "long_short"
+    top_rows: list[dict[str, Any]] = []
+    invalid_pair_count = 0
+    unavailable_count = 0
+    tested_count = 0
+
+    for support_option in support_options:
+        sid = str(support_option.get("method_id"))
+        support_line_id = normalize_line_id(support_option.get("line_id"))
+        support_current = _sr_level_or_none(support_option.get("level"))
+        for resistance_option in resistance_options:
+            rid = str(resistance_option.get("method_id"))
+            resistance_line_id = normalize_line_id(resistance_option.get("line_id"))
+            resistance_current = _sr_level_or_none(resistance_option.get("level"))
+            variant_id = _sr_variant_id(sid, rid, support_line_id, resistance_line_id)
+            tested_count += 1
+            if support_current is None or resistance_current is None or support_current >= resistance_current:
+                invalid_pair_count += 1
+                continue
+            support_series = _sr_get_component_series(method_series, sid, support_line_id, "support")
+            resistance_series = _sr_get_component_series(method_series, rid, resistance_line_id, "resistance")
+            if not isinstance(support_series, np.ndarray) or not isinstance(resistance_series, np.ndarray):
+                unavailable_count += 1
+                continue
+            sim = _sr_simulate_signal_overlay(
+                close=close,
+                high=high,
+                low=low,
+                dates=context_dates,
+                baseline_position=aligned_position,
+                support_series=support_series,
+                resistance_series=resistance_series,
+                cost_bps=cost_bps,
+                slippage_bps=slippage_bps,
+                cooldown_bars=cooldown_bars,
+                allow_short=allow_short,
+            )
+            metrics = sim["metrics"]
+            if int(metrics.get("n_trades") or 0) <= 0:
+                continue
+            uplift = _sr_overlay_uplift(baseline_metrics, metrics)
+            total_uplift = uplift.get("total_return")
+            sharpe_uplift = uplift.get("sharpe")
+            dd_uplift = uplift.get("max_drawdown")
+            rank_score = (
+                float(total_uplift or 0.0)
+                + 0.05 * float(sharpe_uplift or 0.0)
+                + 0.25 * float(dd_uplift or 0.0)
+            )
+            top_rows.append(
+                {
+                    "variant_id": variant_id,
+                    "support_method": sid,
+                    "support_line": support_line_id,
+                    "resistance_method": rid,
+                    "resistance_line": resistance_line_id,
+                    "support_level": round_number(support_current, 6),
+                    "resistance_level": round_number(resistance_current, 6),
+                    "metrics": metrics,
+                    "uplift": uplift,
+                    "rank_score": rank_score,
+                    "trade_count": int(metrics.get("n_trades") or 0),
+                    "trades": sim["trades"][-25:],
+                }
+            )
+
+    if not top_rows:
+        reason = "no_viable_overlay_trades" if tested_count else "no_candidate_pairs"
+        return {
+            **_sr_overlay_empty("unavailable", reason, baseline_metrics),
+            "tested_count": tested_count,
+            "invalid_pair_count": invalid_pair_count,
+            "unavailable_count": unavailable_count,
+        }
+
+    top_rows.sort(
+        key=lambda row: (
+            -float(row.get("rank_score") or 0.0),
+            -float((row.get("metrics") or {}).get("total_return") or 0.0),
+            str(row.get("variant_id") or ""),
+        )
+    )
+    best = top_rows[0]
+    overlay_metrics = dict(best.get("metrics") or {})
+    return {
+        "status": "ready",
+        "reason": "computed",
+        "best_variant_id": best["variant_id"],
+        "best_support_method": best["support_method"],
+        "best_support_line": best["support_line"],
+        "best_resistance_method": best["resistance_method"],
+        "best_resistance_line": best["resistance_line"],
+        "baseline_metrics": baseline_metrics,
+        "overlay_metrics": overlay_metrics,
+        "uplift": best.get("uplift") or {},
+        "top_variants": top_rows[: max(1, int(top_n))],
+        "tested_count": tested_count,
+        "viable_count": len(top_rows),
+        "invalid_pair_count": invalid_pair_count,
+        "unavailable_count": unavailable_count,
+    }
+
+
 @router.get("/signal/evidence", summary="Get auditable OOS evidence for today's selected signal")
 def get_signal_evidence(
     symbol: str,
@@ -6294,6 +7309,32 @@ def get_signal_evidence(
         proof_limit_label=proof_limit_label,
     )
     selected_edge = _edge_with_stitched_evidence(selected_edge, stitched_oos_backtest)
+    sr_overlay = _sr_overlay_empty("unavailable", "source_not_wfo")
+    if selected_source == "wfo" and isinstance(stitched_oos_backtest, dict):
+        stitched_metrics = stitched_oos_backtest.get("metrics")
+        baseline_metrics = dict(stitched_metrics) if isinstance(stitched_metrics, dict) else {}
+        sr_overlay = _sr_overlay_for_position_series(
+            db,
+            symbol=symbol_upper,
+            horizon=canonical_h,
+            variant=selected_variant,
+            dates=stitched_oos_backtest.get("dates") if isinstance(stitched_oos_backtest.get("dates"), list) else [],
+            baseline_position=(
+                stitched_oos_backtest.get("position_series")
+                if isinstance(stitched_oos_backtest.get("position_series"), list)
+                else []
+            ),
+            baseline_metrics=baseline_metrics,
+            cost_bps=float(settings.EDGE_COST_BPS_PER_SIDE if cost_bps is None else cost_bps),
+            slippage_bps=0.0,
+            cooldown_bars=cooldown,
+            side_policy=(
+                "long_short"
+                if str(stitched_oos_backtest.get("direction") or "").strip().lower() == "short"
+                else "long_only"
+            ),
+        )
+        stitched_oos_backtest["sr_overlay"] = sr_overlay
 
     return {
         "symbol": symbol_upper,
@@ -6327,6 +7368,7 @@ def get_signal_evidence(
         "oos_periods": oos_periods,
         "evidence_trade_count": evidence_trade_count,
         "stitched_oos_backtest": stitched_oos_backtest,
+        "sr_overlay": sr_overlay,
     }
 
 
@@ -6980,6 +8022,31 @@ def get_signal_backtest_results(
                 score_by_date=score_by_date,
             )
 
+        response_metrics_dict = dict(response_metrics or {})
+        sr_overlay = _sr_overlay_empty(
+            "unavailable",
+            "source_not_wfo",
+            response_metrics_dict,
+        )
+        if str(row.source or "") == "wfo":
+            sr_overlay = _sr_overlay_for_position_series(
+                db,
+                symbol=symbol,
+                horizon=horizon,
+                variant=variant,
+                dates=row.dates_json if isinstance(row.dates_json, list) else [],
+                baseline_position=response_position,
+                baseline_metrics=response_metrics_dict,
+                cost_bps=float(row.cost_bps or 0.0),
+                slippage_bps=float(row.slippage_bps or 0.0),
+                cooldown_bars=int(getattr(row, "cooldown_bars", 0) or 0),
+                side_policy=(
+                    "long_short"
+                    if direction_filter == "short"
+                    else str(row.side_policy or "long_only")
+                ),
+            )
+
         results.append({
             "source": row.source,
             "scope": row.scope,
@@ -7006,6 +8073,7 @@ def get_signal_backtest_results(
                 cache=representative_lookup_cache,
             ),
             "metrics": response_metrics,
+            "sr_overlay": sr_overlay,
             "mc": response_mc,
             "shuffle_stats": row.shuffle_stats_json,
             "computed_at": row.computed_at.isoformat() if row.computed_at else None,
