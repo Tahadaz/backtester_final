@@ -261,6 +261,47 @@ def _seed_auto_scenarios(SessionLocal):
         db.close()
 
 
+def test_stockanalysis_import_enqueue_selects_active_masi_symbols(monkeypatch) -> None:
+    app, engine, SessionLocal = _client_and_session()
+    try:
+        db = SessionLocal()
+        try:
+            db.add_all(
+                [
+                    models.StockMaster(symbol="AAA", display_name="Alpha", market_region="masi", is_active=True),
+                    models.StockMaster(symbol="SPY", display_name="SPY", market_region="us", is_active=True),
+                    models.StockMaster(symbol="MAJ", display_name="MAJ", market_region="masi", is_active=True),
+                ]
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        captured: dict = {}
+
+        class FakeQueue:
+            def enqueue(self, *args, **kwargs):
+                captured["args"] = args
+                captured["kwargs"] = kwargs
+                return type("Job", (), {"id": "stockanalysis-job"})()
+
+        monkeypatch.setattr(fundamentals_router, "get_queue", lambda: FakeQueue())
+
+        with TestClient(app) as client:
+            response = client.post("/fundamentals/imports/stockanalysis", json={})
+
+        assert response.status_code == 200
+        assert response.json()["enqueued_count"] == 1
+        assert captured["args"] == (
+            "services.worker.tasks.refresh_stockanalysis_fundamentals.refresh_stockanalysis_universe",
+        )
+        assert captured["kwargs"]["symbols"] == ["AAA"]
+        assert captured["kwargs"]["missing_only"] is False
+        assert captured["kwargs"]["job_timeout"] == 14400
+    finally:
+        engine.dispose()
+
+
 def test_integrity_thesis_catalyst_history_and_exports() -> None:
     app, engine, SessionLocal = _client_and_session()
     try:

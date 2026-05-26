@@ -58,6 +58,18 @@ def refresh_yfinance_for_symbol(*args, **kwargs):
     return _refresh_yfinance_for_symbol(*args, **kwargs)
 
 
+def refresh_stockanalysis_universe(*args, **kwargs):
+    from .refresh_stockanalysis_fundamentals import refresh_stockanalysis_universe as _refresh_stockanalysis_universe
+
+    return _refresh_stockanalysis_universe(*args, **kwargs)
+
+
+def refresh_stockanalysis_for_symbol(*args, **kwargs):
+    from .refresh_stockanalysis_fundamentals import refresh_stockanalysis_for_symbol as _refresh_stockanalysis_for_symbol
+
+    return _refresh_stockanalysis_for_symbol(*args, **kwargs)
+
+
 def execute_targeted_bvc_fundamental_import(*args, **kwargs):
     from .targeted_bvc_fundamentals import execute_targeted_bvc_fundamental_import as _execute_targeted_bvc_fundamental_import
 
@@ -117,6 +129,8 @@ __all__ = [
     "execute_fundamental_import",
     "refresh_yfinance_universe",
     "refresh_yfinance_for_symbol",
+    "refresh_stockanalysis_universe",
+    "refresh_stockanalysis_for_symbol",
     "execute_targeted_bvc_fundamental_import",
     "refresh_fundamental_catalysts",
     "compute_stat_arb_for_horizon",

@@ -51,6 +51,8 @@ from ..schemas.fundamentals import (
     IntegrityReportOut,
     PillarHistoryOut,
     PeriodMetricOut,
+    StockanalysisFundamentalImportIn,
+    StockanalysisFundamentalImportQueuedOut,
     FundamentalUniverseRow,
     QualityIssueOut,
     TargetedBvcFundamentalImportIn,
@@ -94,6 +96,7 @@ router = APIRouter(prefix="/fundamentals", tags=["fundamentals"])
 
 REQUIRED_COVERAGE_METRICS = ("Current_Price", "PER", "Price_to_Book", "ROE", "Debt_to_Equity", "FCF_Yield")
 TARGETED_BVC_IGNORED_SYMBOLS = {"INSTRUMENT", "MAJ"}
+FUNDAMENTAL_NON_STOCK_SYMBOLS = {"INSTRUMENT", "MAJ", "MAJJ", "WORKSHEET"}
 BVC_PERIOD_TYPES = {"annual", "semiannual", "quarterly"}
 DEFAULT_COMPARABLE_METRICS = (
     "PER",
@@ -994,6 +997,33 @@ def _targeted_bvc_targets(
     return out
 
 
+def _stockanalysis_candidate_symbols(db: Session, *, symbols: list[str], missing_only: bool) -> list[str]:
+    requested = sorted({item.strip().upper() for item in symbols if item and item.strip()} - FUNDAMENTAL_NON_STOCK_SYMBOLS)
+    query = db.query(models.StockMaster).filter(
+        models.StockMaster.is_active.is_(True),
+        models.StockMaster.market_region == "masi",
+        ~models.StockMaster.symbol.in_(FUNDAMENTAL_NON_STOCK_SYMBOLS),
+    )
+    if requested:
+        query = query.filter(models.StockMaster.symbol.in_(requested))
+    stock_rows = query.order_by(models.StockMaster.symbol.asc()).all()
+    out = [str(row.symbol).upper() for row in stock_rows]
+    if not missing_only or not out:
+        return out
+
+    snapshots = latest_snapshot_rows_by_symbol(db, symbols=out, scope="masi")
+    missing: list[str] = []
+    for symbol in out:
+        snapshot = snapshots.get(symbol)
+        if snapshot is None:
+            missing.append(symbol)
+            continue
+        metrics = dict(snapshot.metrics_json or {})
+        if any(metrics.get(metric) is None for metric in REQUIRED_COVERAGE_METRICS):
+            missing.append(symbol)
+    return missing
+
+
 @router.post("/import", response_model=FundamentalImportOut, status_code=201, dependencies=[Depends(require_admin)])
 def upload_and_import_fundamentals(
     file: UploadFile = File(...),
@@ -1066,12 +1096,48 @@ def get_fundamental_provider_status() -> FundamentalProviderStatusOut:
             base_url=settings.FUNDAMENTAL_LLM_BASE_URL or None,
             note="Secrets are read from server/worker environment variables only.",
         ),
+        stockanalysis={
+            "configured": True,
+            "source": "https://stockanalysis.com/quote/cbse/{symbol}",
+            "scope": "masi",
+        },
         bvc={
             "configured": True,
             "publications_max_pages": settings.BVC_PUBLICATIONS_MAX_PAGES,
             "supported_period_types": sorted(BVC_PERIOD_TYPES),
         },
     )
+
+
+@router.post(
+    "/imports/stockanalysis",
+    response_model=StockanalysisFundamentalImportQueuedOut,
+    dependencies=[Depends(require_admin)],
+)
+def enqueue_stockanalysis_fundamental_import(
+    body: StockanalysisFundamentalImportIn,
+    db: Session = Depends(get_db),
+) -> StockanalysisFundamentalImportQueuedOut:
+    symbols = _stockanalysis_candidate_symbols(
+        db,
+        symbols=body.symbols or [],
+        missing_only=body.missing_only,
+    )
+    if not symbols:
+        raise HTTPException(status_code=400, detail="No active MASI symbols selected for StockAnalysis fundamentals refresh")
+    batch_id = str(uuid.uuid4())
+    try:
+        job = get_queue().enqueue(
+            "services.worker.tasks.refresh_stockanalysis_fundamentals.refresh_stockanalysis_universe",
+            symbols=symbols,
+            missing_only=False,
+            triggered_by="api",
+            batch_id=batch_id,
+            job_timeout=14400,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Could not enqueue StockAnalysis fundamentals refresh: {exc}") from exc
+    return StockanalysisFundamentalImportQueuedOut(batch_id=batch_id, enqueued_count=len(symbols), rq_job_id=str(job.id))
 
 
 @router.post(

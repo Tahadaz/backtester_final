@@ -84,7 +84,7 @@ SCHEDULE_SPECS: tuple[ScheduleSpec, ...] = (
         queue="market_refresh",
         cron="0 20 * * sat",
         timezone="UTC",
-        description="Refresh non-MASI fundamentals via yfinance before weekly signal dispatch.",
+        description="Refresh MASI fundamentals from StockAnalysis before weekly signal dispatch.",
     ),
     ScheduleSpec(
         id="weekly_wfo_dispatch",

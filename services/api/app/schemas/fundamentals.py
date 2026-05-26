@@ -452,6 +452,17 @@ class YfinanceFundamentalImportQueuedOut(BaseModel):
     rq_job_id: str | None = None
 
 
+class StockanalysisFundamentalImportIn(BaseModel):
+    symbols: list[str] | None = None
+    missing_only: bool = False
+
+
+class StockanalysisFundamentalImportQueuedOut(BaseModel):
+    batch_id: str
+    enqueued_count: int
+    rq_job_id: str | None = None
+
+
 class TargetedBvcFundamentalImportIn(BaseModel):
     symbols: list[str] = Field(default_factory=list)
     sectors: list[str] = Field(default_factory=list)
@@ -478,6 +489,7 @@ class FundamentalProviderStatusItemOut(BaseModel):
 
 class FundamentalProviderStatusOut(BaseModel):
     llm: FundamentalProviderStatusItemOut
+    stockanalysis: dict[str, Any] = Field(default_factory=dict)
     bvc: dict[str, Any] = Field(default_factory=dict)
 
 

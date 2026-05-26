@@ -43,7 +43,7 @@ def test_weekly_fundamental_refresh_is_registered_on_market_refresh_queue() -> N
     assert spec.cron == "0 20 * * sat"
 
 
-def test_dispatch_fundamental_refresh_enqueues_yfinance_universe(monkeypatch) -> None:
+def test_dispatch_fundamental_refresh_enqueues_stockanalysis_universe(monkeypatch) -> None:
     queue = _CaptureQueue()
     monkeypatch.setattr(scheduler_dispatch, "_queue", lambda name: queue)
 
@@ -57,17 +57,18 @@ def test_dispatch_fundamental_refresh_enqueues_yfinance_universe(monkeypatch) ->
         "enqueued_jobs": 1,
         "rq_job_id": "fundamentals-job-1",
         "symbols_total": 12,
-        "market_regions": ["us", "european", "asian"],
-        "source": "yfinance",
+        "market_region": "masi",
+        "source": "stockanalysis",
     }
     assert queue.calls == [
         (
-            ("services.worker.tasks.refresh_yfinance_fundamentals.refresh_yfinance_universe",),
+            ("services.worker.tasks.refresh_stockanalysis_fundamentals.refresh_stockanalysis_universe",),
             {
-                "market_regions": ["us", "european", "asian"],
+                "symbols": None,
+                "missing_only": False,
                 "triggered_by": "scheduled",
                 "batch_id": "batch-123",
-                "job_timeout": 7200,
+                "job_timeout": 14400,
             },
         )
     ]

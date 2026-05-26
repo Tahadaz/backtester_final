@@ -40,8 +40,8 @@ logger = logging.getLogger(__name__)
 HORIZONS = ("weekly", "monthly", "quarterly")
 SCHEDULER_HEARTBEAT_KEY = "ops:scheduler:heartbeat"
 DASHBOARD_SNAPSHOT_JOB_TIMEOUT_SECONDS = 3600
-FUNDAMENTAL_REFRESH_MARKET_REGIONS = ("us", "european", "asian")
-FUNDAMENTAL_REFRESH_JOB_TIMEOUT_SECONDS = 7200
+FUNDAMENTAL_REFRESH_JOB_TIMEOUT_SECONDS = 14400
+FUNDAMENTAL_REFRESH_NON_STOCK_SYMBOLS = ("INSTRUMENT", "MAJ", "MAJJ", "WORKSHEET")
 
 
 def _redis() -> Redis:
@@ -240,7 +240,8 @@ def _dispatch_fundamental_refresh(
         db.query(models.StockMaster)
         .filter(
             models.StockMaster.is_active.is_(True),
-            models.StockMaster.market_region.in_(FUNDAMENTAL_REFRESH_MARKET_REGIONS),
+            models.StockMaster.market_region == "masi",
+            ~models.StockMaster.symbol.in_(FUNDAMENTAL_REFRESH_NON_STOCK_SYMBOLS),
         )
         .count()
         or 0
@@ -250,13 +251,14 @@ def _dispatch_fundamental_refresh(
             "enqueued_jobs": 0,
             "reason": "no_active_fundamental_symbols",
             "symbols_total": 0,
-            "market_regions": list(FUNDAMENTAL_REFRESH_MARKET_REGIONS),
-            "source": "yfinance",
+            "market_region": "masi",
+            "source": "stockanalysis",
         }
 
     job = _queue(settings.MARKET_REFRESH_QUEUE_NAME).enqueue(
-        "services.worker.tasks.refresh_yfinance_fundamentals.refresh_yfinance_universe",
-        market_regions=list(FUNDAMENTAL_REFRESH_MARKET_REGIONS),
+        "services.worker.tasks.refresh_stockanalysis_fundamentals.refresh_stockanalysis_universe",
+        symbols=None,
+        missing_only=False,
         triggered_by=trigger_source,
         batch_id=batch_id,
         job_timeout=FUNDAMENTAL_REFRESH_JOB_TIMEOUT_SECONDS,
@@ -265,8 +267,8 @@ def _dispatch_fundamental_refresh(
         "enqueued_jobs": 1,
         "rq_job_id": str(job.id),
         "symbols_total": active_count,
-        "market_regions": list(FUNDAMENTAL_REFRESH_MARKET_REGIONS),
-        "source": "yfinance",
+        "market_region": "masi",
+        "source": "stockanalysis",
     }
 
 
