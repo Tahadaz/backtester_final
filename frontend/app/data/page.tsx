@@ -38,6 +38,7 @@ import { RefreshStatusBar } from "@/components/data/refresh-status-bar"
 import { FreshnessBadge } from "@/components/data/freshness-badge"
 import { CategoryEditDialog } from "@/components/data/category-edit-dialog"
 import { AddFactorDialog } from "@/components/data/add-factor-dialog"
+import { FundamentalsCatalog } from "@/components/data/fundamentals-catalog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -96,7 +97,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 
-type CategoryTab = "equity" | "commodity" | "forex" | "bond" | "crypto" | "bloomberg"
+type CategoryTab = "equity" | "commodity" | "forex" | "bond" | "crypto" | "bloomberg" | "fundamentals"
 type SubcategoryTab = "all" | "masi" | "us" | "european" | "asian"
 
 const CATEGORY_TABS: { key: CategoryTab; label: string; icon: LucideIcon }[] = [
@@ -105,6 +106,7 @@ const CATEGORY_TABS: { key: CategoryTab; label: string; icon: LucideIcon }[] = [
   { key: "forex", label: "Devises", icon: Globe },
   { key: "bond", label: "Obligations", icon: Landmark },
   { key: "crypto", label: "Crypto", icon: Coins },
+  { key: "fundamentals", label: "Fondamental", icon: ShieldCheck },
   { key: "bloomberg", label: "Bloomberg", icon: Database },
 ]
 
@@ -193,6 +195,8 @@ function getCategoryLabel(tab: CategoryTab | string | null | undefined) {
       return "Crypto"
     case "bloomberg":
       return "Bloomberg"
+    case "fundamentals":
+      return "Fondamental"
     default:
       return tab || "Autre"
   }
@@ -313,6 +317,7 @@ function PrivateDataPage() {
   }, [visibleCatalog, bloombergSeries])
 
   const activeRows = useMemo(() => {
+    if (categoryTab === "fundamentals") return []
     const byType = visibleCatalog.filter((r) => (r.asset_type ?? "equity") === categoryTab)
     if (subcategoryTab === "all") return byType
     return byType.filter((r) => r.market_region === subcategoryTab)
@@ -510,7 +515,7 @@ function PrivateDataPage() {
               Ajouter un titre
             </Button>
           )}
-          {categoryTab !== "bloomberg" && (
+          {categoryTab !== "bloomberg" && categoryTab !== "fundamentals" && (
             <>
               <Button
                 variant="outline"
@@ -607,7 +612,9 @@ function PrivateDataPage() {
       {/* Indices data page content — kept for reference, tab no longer shown */}
       {/* IndicesTabContent removed: indices now surface in Actions/MASI subtab */}
 
-      {categoryTab === "bloomberg" ? (
+      {categoryTab === "fundamentals" ? (
+        <FundamentalsCatalog />
+      ) : categoryTab === "bloomberg" ? (
         <BloombergBridgePanel
           batches={bloombergBatches}
           bridges={bloombergBridges}

@@ -6305,6 +6305,7 @@ export const FundamentalProviderStatusSchema = z.object({
     base_url: z.string().nullable().optional(),
     note: z.string().nullable().optional(),
   }),
+  stockanalysis: z.record(z.unknown()).default({}),
   bvc: z.record(z.unknown()).default({}),
 })
 export type FundamentalProviderStatus = z.infer<typeof FundamentalProviderStatusSchema>
@@ -6336,6 +6337,13 @@ export const YfinanceFundamentalImportQueuedSchema = z.object({
   rq_job_id: z.string().nullable().optional(),
 })
 export type YfinanceFundamentalImportQueued = z.infer<typeof YfinanceFundamentalImportQueuedSchema>
+
+export const StockanalysisFundamentalImportQueuedSchema = z.object({
+  batch_id: z.string(),
+  enqueued_count: z.number(),
+  rq_job_id: z.string().nullable().optional(),
+})
+export type StockanalysisFundamentalImportQueued = z.infer<typeof StockanalysisFundamentalImportQueuedSchema>
 
 export const TargetedBvcFundamentalTargetSchema = z.object({
   symbol: z.string(),
@@ -6432,6 +6440,17 @@ export async function refreshYfinanceFundamentals(body: {
     body: JSON.stringify(body),
   })
   return YfinanceFundamentalImportQueuedSchema.parse(data)
+}
+
+export async function refreshStockanalysisFundamentals(body: {
+  symbols?: string[]
+  missing_only?: boolean
+}): Promise<StockanalysisFundamentalImportQueued> {
+  const data = await request<unknown>("/fundamentals/imports/stockanalysis", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+  return StockanalysisFundamentalImportQueuedSchema.parse(data)
 }
 
 export async function getFundamentalProviderStatus(): Promise<FundamentalProviderStatus> {
