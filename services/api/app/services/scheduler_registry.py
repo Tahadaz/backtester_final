@@ -15,6 +15,7 @@ ScheduleKind = Literal[
     "dashboard_snapshot",
     "factor_monitor",
     "factor_recalibration",
+    "fundamental_refresh",
     "wfo_dispatch",
     "signal_engine_dispatch",
     "signal_backtest_dispatch",
@@ -75,6 +76,15 @@ SCHEDULE_SPECS: tuple[ScheduleSpec, ...] = (
         cron="0 2 1 1,4,7,10 *",
         timezone="Africa/Casablanca",
         description="Run full factor-selection recalibration at quarter start.",
+    ),
+    ScheduleSpec(
+        id="weekly_fundamental_refresh",
+        label="Weekly fundamental refresh",
+        kind="fundamental_refresh",
+        queue="market_refresh",
+        cron="0 20 * * sat",
+        timezone="UTC",
+        description="Refresh non-MASI fundamentals via yfinance before weekly signal dispatch.",
     ),
     ScheduleSpec(
         id="weekly_wfo_dispatch",

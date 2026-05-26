@@ -10,10 +10,9 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from redis import Redis
-from rq import Queue
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -33,11 +32,16 @@ from services.worker.config import settings
 from services.worker.db import SessionLocal
 from services.worker.redis_utils import connect_redis_with_fallback
 
+if TYPE_CHECKING:
+    from rq import Queue
+
 logger = logging.getLogger(__name__)
 
 HORIZONS = ("weekly", "monthly", "quarterly")
 SCHEDULER_HEARTBEAT_KEY = "ops:scheduler:heartbeat"
 DASHBOARD_SNAPSHOT_JOB_TIMEOUT_SECONDS = 3600
+FUNDAMENTAL_REFRESH_MARKET_REGIONS = ("us", "european", "asian")
+FUNDAMENTAL_REFRESH_JOB_TIMEOUT_SECONDS = 7200
 
 
 def _redis() -> Redis:
@@ -45,6 +49,8 @@ def _redis() -> Redis:
 
 
 def _queue(name: str) -> Queue:
+    from rq import Queue
+
     return Queue(name, connection=_redis())
 
 
@@ -99,6 +105,8 @@ def dispatch_schedule(schedule_id: str, *, trigger_source: str = "scheduled") ->
             result = _dispatch_factor_monitor()
         elif spec.kind == "factor_recalibration":
             result = _dispatch_factor_recalibration()
+        elif spec.kind == "fundamental_refresh":
+            result = _dispatch_fundamental_refresh(db, trigger_source=trigger_source, batch_id=str(run.id))
         elif spec.kind == "signal_engine_dispatch":
             result = _dispatch_stale_signal_engine(db, trigger_source=trigger_source, batch_id=str(run.id))
         elif spec.kind == "wfo_dispatch":
@@ -220,6 +228,46 @@ def _dispatch_factor_recalibration() -> dict[str, Any]:
         job_timeout=7200,
     )
     return {"enqueued_jobs": 1, "rq_job_id": str(job.id)}
+
+
+def _dispatch_fundamental_refresh(
+    db: Session,
+    *,
+    trigger_source: str,
+    batch_id: str,
+) -> dict[str, Any]:
+    active_count = int(
+        db.query(models.StockMaster)
+        .filter(
+            models.StockMaster.is_active.is_(True),
+            models.StockMaster.market_region.in_(FUNDAMENTAL_REFRESH_MARKET_REGIONS),
+        )
+        .count()
+        or 0
+    )
+    if active_count == 0:
+        return {
+            "enqueued_jobs": 0,
+            "reason": "no_active_fundamental_symbols",
+            "symbols_total": 0,
+            "market_regions": list(FUNDAMENTAL_REFRESH_MARKET_REGIONS),
+            "source": "yfinance",
+        }
+
+    job = _queue(settings.MARKET_REFRESH_QUEUE_NAME).enqueue(
+        "services.worker.tasks.refresh_yfinance_fundamentals.refresh_yfinance_universe",
+        market_regions=list(FUNDAMENTAL_REFRESH_MARKET_REGIONS),
+        triggered_by=trigger_source,
+        batch_id=batch_id,
+        job_timeout=FUNDAMENTAL_REFRESH_JOB_TIMEOUT_SECONDS,
+    )
+    return {
+        "enqueued_jobs": 1,
+        "rq_job_id": str(job.id),
+        "symbols_total": active_count,
+        "market_regions": list(FUNDAMENTAL_REFRESH_MARKET_REGIONS),
+        "source": "yfinance",
+    }
 
 
 def _dispatch_stale_signal_engine(
