@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import sessionmaker
@@ -11,6 +11,7 @@ from sqlalchemy.pool import StaticPool
 from services.api.app import models
 from services.api.app.db import get_db
 from services.api.app.routers import fundamentals as fundamentals_router
+from services.api.app.services.fundamentals import make_bulk_overrides_loader
 
 
 @compiles(JSONB, "sqlite")
@@ -156,4 +157,47 @@ def test_assumption_override_validation(monkeypatch) -> None:
             assert non_float.status_code == 422
             assert "finite float" in non_float.text
     finally:
+        engine.dispose()
+
+
+def test_bulk_loader_one_query_for_many_symbols() -> None:
+    engine = create_engine(
+        "sqlite+pysqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+    models.FundamentalAssumptionOverride.__table__.create(engine)
+    db = SessionLocal()
+    try:
+        db.add(
+            models.FundamentalAssumptionOverride(
+                symbol="SYM001",
+                scenario="bull",
+                overrides={"wacc": 0.10},
+                note="test",
+                created_by="tester",
+                is_current=True,
+            )
+        )
+        db.commit()
+
+        statements: list[str] = []
+
+        def count_select(_conn, _cursor, statement, _parameters, _context, _executemany):
+            normalized = statement.lower()
+            if normalized.lstrip().startswith("select") and "fundamental_assumption_override" in normalized:
+                statements.append(statement)
+
+        event.listen(engine, "before_cursor_execute", count_select)
+        symbols = [f"SYM{index:03d}" for index in range(50)]
+        loader = make_bulk_overrides_loader(db, symbols)
+        for symbol in symbols:
+            for scenario in ("bear", "base", "bull"):
+                loader(symbol, scenario)
+
+        assert len(statements) == 1
+        assert loader("SYM001", "bull") == {"wacc": 0.10}
+    finally:
+        db.close()
         engine.dispose()

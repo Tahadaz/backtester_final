@@ -99,17 +99,17 @@ def test_discover_sma_defaults_rejects_cross_signal_mode() -> None:
         )
 
 
-def test_discover_sma_defaults_horizon_weekly_sets_meta_windows() -> None:
+def test_discover_sma_defaults_horizon_short_sets_meta_windows() -> None:
     bars = _make_bars(length=900)
     result = discover_sma_defaults(
         bars,
         buckets=_tiny_buckets(),
-        horizon="weekly",
+        horizon="short",
         signal_mode="level",
         snap_to_nice=False,
     )
     meta = dict(result.get("meta") or {})
-    assert meta.get("horizon") == "weekly"
+    assert meta.get("horizon") == "short"
     assert int(meta.get("train_window") or 0) == 252
     assert int(meta.get("test_window") or 0) == 63
     assert int(meta.get("step_size") or 0) == 63
@@ -120,13 +120,13 @@ def test_discover_sma_defaults_explicit_windows_override_horizon_defaults() -> N
     result = discover_sma_defaults(
         bars,
         buckets=_tiny_buckets(),
-        horizon="weekly",
+        horizon="short",
         test_window=63,
         signal_mode="level",
         snap_to_nice=False,
     )
     meta = dict(result.get("meta") or {})
-    assert meta.get("horizon") == "weekly"
+    assert meta.get("horizon") == "short"
     assert int(meta.get("test_window") or 0) == 63
 
 
@@ -135,22 +135,22 @@ def test_discover_sma_defaults_all_horizons_returns_switchable_payload() -> None
     result = discover_sma_defaults_all_horizons(
         bars,
         buckets=_tiny_buckets(),
-        primary_horizon="monthly",
+        primary_horizon="medium",
         signal_mode="level",
         snap_to_nice=False,
     )
 
-    assert result.get("active_horizon") == "monthly"
-    assert result.get("meta", {}).get("active_horizon") == "monthly"
+    assert result.get("active_horizon") == "medium"
+    assert result.get("meta", {}).get("active_horizon") == "medium"
     horizons = result.get("horizons")
     assert isinstance(horizons, dict)
-    for token in ("weekly", "monthly", "quarterly"):
+    for token in ("short", "medium", "long"):
         assert token in horizons
         assert isinstance(horizons[token], dict)
         assert len(list(horizons[token].get("defaults") or [])) == 9
     defaults_by_horizon = result.get("defaults_by_horizon")
     assert isinstance(defaults_by_horizon, dict)
-    assert len(list(defaults_by_horizon.get("monthly") or [])) == 9
+    assert len(list(defaults_by_horizon.get("medium") or [])) == 9
 
 
 def test_discover_sma_defaults_grid_results_has_multiple_n_per_bucket_window() -> None:
@@ -178,7 +178,7 @@ def test_discover_sma_defaults_uses_train_selection_when_test_window_enabled(mon
         bars_slice: pd.DataFrame,
         *,
         n: int,
-        allow_weekly: bool,
+        allow_short: bool,
         signal_mode: str,
         score_drawdown_weight: float,
         score_turnover_weight: float,
@@ -186,7 +186,7 @@ def test_discover_sma_defaults_uses_train_selection_when_test_window_enabled(mon
         cost_rate: float,
         **kwargs: object,
     ) -> dict[str, float]:
-        _ = (allow_weekly, signal_mode, score_drawdown_weight, score_turnover_weight, use_net_after_costs, cost_rate, kwargs)
+        _ = (allow_short, signal_mode, score_drawdown_weight, score_turnover_weight, use_net_after_costs, cost_rate, kwargs)
         is_test = len(bars_slice) < 60
         if is_test:
             score = 100.0 - abs(float(n) - 3.0) * 10.0
