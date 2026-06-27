@@ -162,6 +162,8 @@ function technicalHref(stock: DashboardStock, horizon: Horizon, mode: DashboardT
     view: variant,
     source: signal?.source ?? "auto",
     evidenceVariant: mode === "classic" ? undefined : signal?.variant,
+    scope: signal?.scope,
+    scopeKey: signal?.scope_key,
     tab: "technique",
   })
 }

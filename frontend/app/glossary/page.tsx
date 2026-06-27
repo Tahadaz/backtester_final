@@ -90,6 +90,7 @@ const categoryTone: Record<string, string> = {
   indicators: "bg-sky-500/10 text-sky-700",
   edge: "bg-amber-500/10 text-amber-800",
   analytics: "bg-indigo-500/10 text-indigo-700",
+  fundamentals: "bg-teal-500/10 text-teal-700",
   backtest: "bg-rose-500/10 text-rose-700",
   data: "bg-slate-500/10 text-slate-700",
 }
@@ -874,6 +875,147 @@ function BacktestFigure({ lang }: { lang: GlossaryLanguage }) {
   )
 }
 
+function DcfDiscountingFigure({ lang }: { lang: GlossaryLanguage }) {
+  const rate = 0.1
+  const years = [1, 2, 3, 4, 5]
+  const nominalHeight = 92
+  const baseline = 132
+  const columnWidth = 50
+  const barWidth = 30
+  const startX = 30
+
+  return (
+    <div className="space-y-3">
+      <a href="#dcf" className="block rounded-lg border border-line bg-bg2 p-3 transition hover:bg-accent">
+        <svg viewBox="0 0 300 170" className="h-[190px] w-full" role="img" aria-label="DCF discounting diagram">
+          <line x1="24" y1={baseline} x2="288" y2={baseline} stroke="currentColor" className="text-muted-foreground/40" />
+          {years.map((t, index) => {
+            const factor = 1 / (1 + rate) ** t
+            const pvHeight = nominalHeight * factor
+            const x = startX + index * columnWidth
+            return (
+              <g key={t}>
+                <rect x={x} y={baseline - nominalHeight} width={barWidth} height={nominalHeight} rx="3" className="fill-muted-foreground/15" />
+                <rect x={x} y={baseline - pvHeight} width={barWidth} height={pvHeight} rx="3" className="fill-teal-500/70" />
+                <text x={x + barWidth / 2} y={baseline - pvHeight - 4} textAnchor="middle" className="fill-teal-700 text-[8px] font-semibold">
+                  {factor.toFixed(2)}
+                </text>
+                <text x={x + barWidth / 2} y={baseline + 12} textAnchor="middle" className="fill-muted-foreground text-[9px]">
+                  t={t}
+                </text>
+              </g>
+            )
+          })}
+          <text x="156" y="158" textAnchor="middle" className="fill-muted-foreground text-[9px]">
+            {lang === "fr" ? "flux nominal (clair) -> valeur actuelle (foncé)" : "nominal flow (light) -> present value (dark)"}
+          </text>
+        </svg>
+      </a>
+      <div className="grid gap-2 sm:grid-cols-3">
+        <a href="#discount-period" className="rounded-lg border border-line bg-card p-3 transition hover:bg-accent">
+          <div className="text-sm font-semibold">t</div>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            {lang === "fr" ? "années avant le flux" : "years until the flow"}
+          </p>
+        </a>
+        <a href="#discount-factor" className="rounded-lg border border-line bg-card p-3 transition hover:bg-accent">
+          <div className="text-sm font-semibold">{lang === "fr" ? "Facteur" : "Factor"}</div>
+          <p className="mt-1 font-mono text-[11px] text-muted-foreground">1/(1+r)^t</p>
+        </a>
+        <a href="#present-value" className="rounded-lg border border-line bg-card p-3 transition hover:bg-accent">
+          <div className="text-sm font-semibold">PV</div>
+          <p className="mt-1 font-mono text-[11px] text-muted-foreground">{lang === "fr" ? "flux x facteur" : "flow x factor"}</p>
+        </a>
+      </div>
+    </div>
+  )
+}
+
+function ValuationEnsembleFigure({ lang }: { lang: GlossaryLanguage }) {
+  const models = [
+    { href: "#fcff", label: "DCF FCFF", low: 18, high: 62 },
+    { href: "#fcfe", label: "DCF FCFE", low: 24, high: 58 },
+    { href: "#ddm", label: "DDM", low: 30, high: 66 },
+    { href: "#relative-multiples", label: lang === "fr" ? "Multiples" : "Multiples", low: 22, high: 70 },
+  ]
+  const target = 45
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-2 rounded-lg border border-line bg-bg2 p-3">
+        {models.map((model) => (
+          <a key={model.href} href={model.href} className="grid grid-cols-[88px_minmax(0,1fr)] items-center gap-3 rounded-md p-1 transition hover:bg-accent">
+            <span className="truncate text-xs font-semibold">{model.label}</span>
+            <div className="relative h-4 rounded-full bg-card">
+              <div
+                className="absolute top-0 h-4 rounded-full bg-teal-500/40"
+                style={{ left: `${model.low}%`, width: `${model.high - model.low}%` }}
+              />
+            </div>
+          </a>
+        ))}
+        <div className="relative h-4">
+          <div className="absolute top-0 h-4 w-px bg-emerald-600" style={{ left: `${target}%` }} />
+          <span className="absolute -top-0.5 text-[10px] font-semibold text-emerald-700" style={{ left: `${target}%`, transform: "translateX(-50%)" }}>
+            {lang === "fr" ? "cible" : "target"}
+          </span>
+        </div>
+      </div>
+      <a href="#ic-weighting" className="block rounded-lg border border-teal-200 bg-teal-50 p-3 text-teal-900 transition hover:shadow-sm">
+        <div className="text-sm font-semibold">{lang === "fr" ? "Pondération: égale ou par IC" : "Weighting: equal or IC-based"}</div>
+        <p className="mt-1 text-xs leading-relaxed opacity-80">
+          {lang === "fr"
+            ? "La cible combine les modèles inclus. En égale chacun compte 1/N; par IC les méthodes les plus prédictives pèsent plus."
+            : "The target blends the included models. Equal counts each 1/N; IC gives more weight to the most predictive methods."}
+        </p>
+      </a>
+    </div>
+  )
+}
+
+function FundamentalsFigures({ lang }: { lang: GlossaryLanguage }) {
+  return (
+    <section id="figures-fondamental" className="scroll-mt-24 space-y-3">
+      <div>
+        <h2 className="text-base font-semibold tracking-tight">
+          {lang === "fr" ? "Figures - valorisation fondamentale" : "Figures - fundamental valuation"}
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {lang === "fr"
+            ? "Comment le mode fondamental transforme des flux futurs en une juste valeur, puis combine plusieurs modèles."
+            : "How fundamental mode turns future flows into a fair value, then blends several models."}
+        </p>
+      </div>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <FigureCard
+          id="figure-dcf"
+          title={lang === "fr" ? "DCF: actualiser les flux futurs" : "DCF: discounting future flows"}
+          caption={
+            lang === "fr"
+              ? "Chaque flux futur est multiplié par un facteur inférieur à 1: plus il est lointain, moins il vaut aujourd'hui."
+              : "Each future flow is multiplied by a factor below 1: the further away, the less it is worth today."
+          }
+          icon={LineChart}
+        >
+          <DcfDiscountingFigure lang={lang} />
+        </FigureCard>
+        <FigureCard
+          id="figure-ensemble"
+          title={lang === "fr" ? "Combiner les modèles" : "Blending the models"}
+          caption={
+            lang === "fr"
+              ? "La cible finale est une combinaison de plusieurs modèles, pondérés également ou par leur IC."
+              : "The final target blends several models, weighted equally or by their IC."
+          }
+          icon={Target}
+        >
+          <ValuationEnsembleFigure lang={lang} />
+        </FigureCard>
+      </div>
+    </section>
+  )
+}
+
 function ExplanationFigures({ lang }: { lang: GlossaryLanguage }) {
   return (
     <section id="figures-explication" className="scroll-mt-24 space-y-3">
@@ -1387,6 +1529,8 @@ export default function GlossaryPage() {
           </section>
 
           <ExplanationFigures lang={lang} />
+
+          <FundamentalsFigures lang={lang} />
 
           <section className="space-y-5">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">

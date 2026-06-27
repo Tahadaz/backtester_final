@@ -15,10 +15,12 @@ import {
   createDashboardPortfolio,
   createDashboardPortfolioFromHistory,
   fetchBourseLiveQuotes,
+  fetchBourseSessionStatus,
   fetchDashboardDailyBlotter,
+  fetchDashboardLiveRefresh,
   fetchDashboardNamedPortfolioSummary,
+  fetchDashboardPortfolioLoadState,
   fetchDashboardPortfolioPositions,
-  fetchDashboardPortfolios,
   fetchEdge,
   generateDashboardPortfolioHistory,
   recordDashboardNamedPortfolioTrade,
@@ -27,11 +29,14 @@ import {
   updateDashboardPortfolio,
   updateDashboardIndex,
   type BourseLiveQuote,
+  type BourseSessionStatus,
+  type DashboardLiveRefreshOverlay,
   type DashboardDailyBlotterResponse,
   type DashboardCustomIndexComponent,
   type DashboardManualPosition,
   type DashboardPortfolio,
   type DashboardPortfolioComponent,
+  type DashboardPortfolioLoadState,
   type DashboardPortfolioSummary,
   type DashboardPortfolioTicketResponse,
   type DashboardPortfolioTradeInput,
@@ -48,20 +53,27 @@ import type {
 } from "@/lib/dashboard-types"
 import {
   DEFAULT_DASHBOARD_PREFERENCES,
+  DEFAULT_DASHBOARD_FUNDAMENTAL_COLUMNS,
   DEFAULT_DASHBOARD_VISIBLE_FAMILIES,
   type DashboardAssetTab as AssetTab,
   type DashboardEdgeMode as EdgeMode,
   type DashboardFamilyColumn as FamilyColumn,
+  type DashboardFundamentalColumn as FundamentalColumn,
   type DashboardPreferences,
   type DashboardRegionTab as RegionTab,
   type DashboardViewMode as ViewMode,
 } from "@/lib/dashboard-preferences"
 import { resolveHorizonPreset } from "@/lib/horizon"
 import { signalEvidenceUrl } from "@/lib/signal-evidence-url"
-import { MASI20_FLOATING_SHARE_INDEX } from "@/lib/masi20-flottant-index"
+import {
+  BUILTIN_CUSTOM_DASHBOARD_INDICES,
+  BUILTIN_WEIGHTED_MASI_INDEX,
+} from "@/lib/builtin-dashboard-indices"
 import { IndexTab } from "@/components/dashboard-v1/index-tab"
 import { SectorTable } from "@/components/dashboard-v1/sector-table"
 import { StockTable } from "@/components/dashboard-v1/stock-table"
+import { FundamentalDirectionsTab, fundamentalDirectionForStock } from "@/components/dashboard-v1/fundamental-directions-tab"
+import { applyDashboardLiveOverlays } from "@/components/dashboard-v1/live-overlay-utils.mjs"
 import { displayVariantLabel, technicalSignalForDisplay } from "@/components/dashboard-v1/best-signal-cells"
 import { buildPortfolioWeightRows, summarizeWeightRows } from "@/components/dashboard-v1/sector-portfolio-utils.mjs"
 import { SetupStep } from "@/components/dashboard/setup-step"
@@ -101,6 +113,7 @@ type PerformancePeriod = "one_day" | "wtd" | "mtd" | "ytd" | "open_to_now"
 const DASHBOARD_MODE_OPTIONS = [
   { value: "trade_opportunities" as const, label: "Trade opportunities" },
   { value: "technical_directions" as const, label: "Technical directions" },
+  { value: "fundamental_directions" as const, label: "Fondamental" },
 ]
 
 const TECHNICAL_DIRECTION_MODE_OPTIONS = [
@@ -490,6 +503,9 @@ export default function DashboardV1Page() {
   const [visibleFamilies, setVisibleFamilies] = useState<Record<FamilyColumn, boolean>>({
     ...DEFAULT_DASHBOARD_VISIBLE_FAMILIES,
   })
+  const [fundamentalColumns, setFundamentalColumns] = useState<FundamentalColumn[]>([
+    ...DEFAULT_DASHBOARD_FUNDAMENTAL_COLUMNS,
+  ])
   const [edgeOnly, setEdgeOnly] = useState(DEFAULT_DASHBOARD_PREFERENCES.edgeOnly)
   const [edgeMode, setEdgeMode] = useState<EdgeMode>(DEFAULT_DASHBOARD_PREFERENCES.edgeMode)
   const [performancePeriod, setPerformancePeriod] = useState<PerformancePeriod>("one_day")
@@ -528,6 +544,7 @@ export default function DashboardV1Page() {
       dashboardMode,
       technicalDirectionMode,
       visibleFamilies,
+      fundamentalColumns,
       edgeOnly,
       edgeMode,
     }),
@@ -543,6 +560,7 @@ export default function DashboardV1Page() {
       dashboardMode,
       technicalDirectionMode,
       visibleFamilies,
+      fundamentalColumns,
       edgeOnly,
       edgeMode,
     ],
@@ -560,11 +578,18 @@ export default function DashboardV1Page() {
     setDashboardMode(next.dashboardMode)
     setTechnicalDirectionMode(next.technicalDirectionMode)
     setVisibleFamilies({ ...next.visibleFamilies })
+    setFundamentalColumns([...next.fundamentalColumns])
     setEdgeOnly(next.edgeOnly)
     setEdgeMode(next.edgeMode)
   }, [])
 
   useDashboardPreferences(!isPublicDashboardOnly, dashboardPreferences, applyDashboardPreferences)
+
+  useEffect(() => {
+    if (dashboardMode === "fundamental_directions" && view !== "stocks") {
+      setView("stocks")
+    }
+  }, [dashboardMode, view])
 
   const { data, error, isLoading, mutate } = useDashboardData(horizon)
   const {
@@ -707,6 +732,25 @@ export default function DashboardV1Page() {
     return out
   }, [catalogData])
 
+  const {
+    data: bourseSession,
+    mutate: mutateBourseSession,
+  } = useSWR<BourseSessionStatus>(
+    "bourse-session-status",
+    fetchBourseSessionStatus,
+    { refreshInterval: 60_000, revalidateOnFocus: true },
+  )
+  const [liveRefreshOverlays, setLiveRefreshOverlays] = useState<Record<string, DashboardLiveRefreshOverlay>>({})
+  const [liveRefreshRunning, setLiveRefreshRunning] = useState(false)
+  const [liveRefreshError, setLiveRefreshError] = useState<string | null>(null)
+  const [liveRefreshMessage, setLiveRefreshMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    setLiveRefreshOverlays({})
+    setLiveRefreshError(null)
+    setLiveRefreshMessage(null)
+  }, [horizon])
+
   const liveQuoteSymbols = useMemo(
     () =>
       (data?.stocks ?? [])
@@ -720,30 +764,21 @@ export default function DashboardV1Page() {
         .map((stock) => stock.symbol),
     [data?.stocks, taxonomyMap],
   )
-  const { data: liveQuotesData } = useSWR(
-    liveQuoteSymbols.length ? `bourse-live-${liveQuoteSymbols.join(",")}` : null,
-    () => fetchBourseLiveQuotes(liveQuoteSymbols, { maxAgeSeconds: 60 }),
+  const liveQuotePollingEnabled = Boolean(bourseSession?.is_live_session && liveQuoteSymbols.length)
+  const { data: liveQuotesData, mutate: mutateLiveQuotes } = useSWR(
+    liveQuotePollingEnabled ? `bourse-live-${liveQuoteSymbols.join(",")}` : null,
+    () => fetchBourseLiveQuotes(liveQuoteSymbols, { maxAgeSeconds: 60, persistHistory: false }),
     { refreshInterval: 60_000, revalidateOnFocus: false },
   )
   const liveQuoteMap = useMemo<Record<string, BourseLiveQuote>>(() => {
     const entries = (liveQuotesData?.quotes ?? []).map((quote) => [quote.symbol.toUpperCase(), quote] as const)
     return Object.fromEntries(entries)
   }, [liveQuotesData])
+  const liveOverlayMap = useMemo<Record<string, DashboardLiveRefreshOverlay>>(() => liveRefreshOverlays, [liveRefreshOverlays])
 
   const allStocks = useMemo(
-    () =>
-      (data?.stocks ?? []).map((stock) => ({
-        ...stock,
-        last_price:
-          liveQuoteMap[stock.symbol]?.is_fresh && liveQuoteMap[stock.symbol]?.last_price != null
-            ? liveQuoteMap[stock.symbol].last_price
-            : stock.last_price,
-        live_quote: liveQuoteMap[stock.symbol] ?? null,
-        asset_class: stock.asset_class ?? taxonomyMap[stock.symbol]?.asset_class ?? "equity",
-        asset_type: stock.asset_type ?? taxonomyMap[stock.symbol]?.asset_type ?? "equity",
-        market_region: stock.market_region ?? taxonomyMap[stock.symbol]?.market_region ?? null,
-      })),
-    [data?.stocks, liveQuoteMap, taxonomyMap],
+    () => applyDashboardLiveOverlays(data?.stocks ?? [], liveOverlayMap, liveQuoteMap, taxonomyMap) as DashboardStock[],
+    [data?.stocks, liveOverlayMap, liveQuoteMap, taxonomyMap],
   )
 
   const masiStocks = useMemo(
@@ -761,6 +796,7 @@ export default function DashboardV1Page() {
   const ticketSource = dashboardMode === "trade_opportunities" ? "wfo" : edgeSource
   const edgeHorizon = resolveHorizonPreset(horizon).value
   const horizonDays = horizon === "weekly" ? 5 : horizon === "monthly" ? 21 : 63
+  const edgeLookupEnabled = edgeEnabled && dashboardMode === "trade_opportunities"
 
   const stocksBeforeEdge = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -774,7 +810,7 @@ export default function DashboardV1Page() {
   }, [masiStocks, liquidityFilter, sectorFilter, search])
 
   const { data: edgeEntries = [] } = useSWR<[string, EdgeMetrics | null][]>(
-    edgeEnabled && view === "stocks" && stocksBeforeEdge.length
+    edgeLookupEnabled && view === "stocks" && stocksBeforeEdge.length
       ? `dashboard-edge-${edgeHorizon}-${edgeSource}-${edgeMode}-${stocksBeforeEdge.map((stock) => stock.symbol).join(",")}`
       : null,
     async () =>
@@ -798,7 +834,7 @@ export default function DashboardV1Page() {
     const modeFiltered = dashboardMode === "trade_opportunities"
       ? stocksBeforeEdge.filter((stock) => bestActionableSignal(stock) !== null)
       : stocksBeforeEdge
-    if (dashboardMode === "technical_directions" || !edgeEnabled || !edgeOnly) {
+    if (dashboardMode !== "trade_opportunities" || !edgeEnabled || !edgeOnly) {
       return modeFiltered
     }
     return modeFiltered.filter((stock) => {
@@ -863,6 +899,46 @@ export default function DashboardV1Page() {
     [basketOnly, filteredStocks, selectedBasketSet],
   )
 
+  const liveRefreshDisabled = liveRefreshRunning || !bourseSession?.is_live_session || visibleMasiStocks.length === 0
+  const bourseSessionLabel = bourseSession?.is_live_session
+    ? bourseSession.phase === "closing_auction"
+      ? "Closing"
+      : "Ouverte"
+    : bourseSession?.phase === "pre_open"
+      ? "Pre-open"
+      : "Fermee"
+  const runLiveDashboardRefresh = useCallback(async () => {
+    const symbols = Array.from(new Set(visibleMasiStocks.map((stock) => stock.symbol.toUpperCase()).filter(Boolean))).slice(0, 80)
+    if (!symbols.length) return
+    setLiveRefreshRunning(true)
+    setLiveRefreshError(null)
+    setLiveRefreshMessage(null)
+    try {
+      await mutateBourseSession()
+      const response = await fetchDashboardLiveRefresh({
+        symbols,
+        horizon,
+        maxAgeSeconds: 60,
+        persistHistory: true,
+      })
+      if (response.skipped) {
+        setLiveRefreshMessage("Bourse fermee")
+        return
+      }
+      const next: Record<string, DashboardLiveRefreshOverlay> = {}
+      for (const overlay of response.overlays) {
+        next[overlay.symbol.toUpperCase()] = overlay
+      }
+      setLiveRefreshOverlays((current) => ({ ...current, ...next }))
+      setLiveRefreshMessage(`${response.overlays.length} live`)
+      await mutateLiveQuotes()
+    } catch (err) {
+      setLiveRefreshError(err instanceof Error ? err.message : "Live refresh failed")
+    } finally {
+      setLiveRefreshRunning(false)
+    }
+  }, [horizon, mutateBourseSession, mutateLiveQuotes, visibleMasiStocks])
+
   const visibleSectorCounts = useMemo(() => {
     const counts = new Map<string, number>()
     for (const stock of visibleMasiStocks) {
@@ -885,15 +961,15 @@ export default function DashboardV1Page() {
 
   const customIndexDefinitions = useMemo<DashboardCustomIndexDefinition[]>(() => {
     const sourceDefinitions = dashboardIndices ?? data?.custom_index_definitions ?? []
-    const builtInName = MASI20_FLOATING_SHARE_INDEX.name.trim().toLowerCase()
-    const alreadyPresent = sourceDefinitions.some(
-      (definition) =>
-        definition.id === MASI20_FLOATING_SHARE_INDEX.id ||
-        definition.name.trim().toLowerCase() === builtInName,
-    )
-    return alreadyPresent
-      ? sourceDefinitions
-      : [MASI20_FLOATING_SHARE_INDEX, ...sourceDefinitions]
+    const builtIns = BUILTIN_CUSTOM_DASHBOARD_INDICES.filter((builtIn) => {
+      const builtInName = builtIn.name.trim().toLowerCase()
+      return !sourceDefinitions.some(
+        (definition) =>
+          definition.id === builtIn.id ||
+          definition.name.trim().toLowerCase() === builtInName,
+      )
+    })
+    return [...builtIns, ...sourceDefinitions]
   }, [dashboardIndices, data?.custom_index_definitions])
   const dashboardIndexErrorMessage =
     dashboardIndexActionError ??
@@ -911,12 +987,16 @@ export default function DashboardV1Page() {
   }, [allStocks, assetTab, regionTab])
 
   const completeBullishCount = completStocks.filter((stock) =>
-    dashboardMode === "technical_directions"
+    dashboardMode === "fundamental_directions"
+      ? fundamentalDirectionForStock(stock) === "long"
+      : dashboardMode === "technical_directions"
       ? technicalSignalForDisplay(stock, technicalDirectionMode)?.direction === "long"
       : bestActionableSignal(stock)?.direction === "long",
   ).length
   const completeBearishCount = completStocks.filter((stock) =>
-    dashboardMode === "technical_directions"
+    dashboardMode === "fundamental_directions"
+      ? fundamentalDirectionForStock(stock) === "short"
+      : dashboardMode === "technical_directions"
       ? technicalSignalForDisplay(stock, technicalDirectionMode)?.direction === "short"
       : bestActionableSignal(stock)?.direction === "short",
   ).length
@@ -928,17 +1008,29 @@ export default function DashboardV1Page() {
     [completStocks, technicalDirectionMode],
   )
   const medianCompleteTechnicalScore = median(completeTechnicalScoreValues)
+  const completeFundamentalUpsideValues = useMemo(
+    () =>
+      completStocks
+        .map((stock) => stock.fundamentals?.upside_pct ?? null)
+        .filter((value): value is number => typeof value === "number" && Number.isFinite(value)),
+    [completStocks],
+  )
+  const medianCompleteFundamentalUpside = median(completeFundamentalUpsideValues)
   const completeProvenEdgeCount = useMemo(() => {
     return completStocks.filter((stock) => hasProvenEdgeForMode(stock, edgeMap[stock.symbol], edgeMode)).length
   }, [completStocks, edgeMap, edgeMode])
 
   const bullishCount = visibleMasiStocks.filter((stock) =>
-    dashboardMode === "technical_directions"
+    dashboardMode === "fundamental_directions"
+      ? fundamentalDirectionForStock(stock) === "long"
+      : dashboardMode === "technical_directions"
       ? technicalSignalForDisplay(stock, technicalDirectionMode)?.direction === "long"
       : bestActionableSignal(stock)?.direction === "long",
   ).length
   const bearishCount = visibleMasiStocks.filter((stock) =>
-    dashboardMode === "technical_directions"
+    dashboardMode === "fundamental_directions"
+      ? fundamentalDirectionForStock(stock) === "short"
+      : dashboardMode === "technical_directions"
       ? technicalSignalForDisplay(stock, technicalDirectionMode)?.direction === "short"
       : bestActionableSignal(stock)?.direction === "short",
   ).length
@@ -961,6 +1053,14 @@ export default function DashboardV1Page() {
     [visibleMasiStocks, technicalDirectionMode],
   )
   const medianTechnicalScore = median(technicalScoreValues)
+  const fundamentalUpsideValues = useMemo(
+    () =>
+      visibleMasiStocks
+        .map((stock) => stock.fundamentals?.upside_pct ?? null)
+        .filter((value): value is number => typeof value === "number" && Number.isFinite(value)),
+    [visibleMasiStocks],
+  )
+  const medianFundamentalUpside = median(fundamentalUpsideValues)
   const optimizedHoldValues = useMemo(
     () =>
       visibleMasiStocks
@@ -1036,6 +1136,8 @@ export default function DashboardV1Page() {
 
   const visibleFamilyCount = Object.values(visibleFamilies).filter(Boolean).length
   const familyColumnsHidden = visibleFamilyCount === 0
+  const isTechnicalDashboardMode = dashboardMode === "technical_directions"
+  const isFundamentalDashboardMode = dashboardMode === "fundamental_directions"
 
   return (
     <div className="dashboard-claude space-y-4 px-0.5">
@@ -1092,7 +1194,7 @@ export default function DashboardV1Page() {
               {showTopActionableSignals ? "Masquer top signaux" : "Afficher top signaux"}
             </Button>
           ) : null}
-          {dashboardMode === "technical_directions" ? (
+          {isTechnicalDashboardMode ? (
             <Button
               variant="outline"
               size="sm"
@@ -1130,14 +1232,16 @@ export default function DashboardV1Page() {
             value={visibleMasiStocks.length.toLocaleString("fr-FR")}
             sub={basketOnly ? "titres du panier" : "titres après filtres"}
           />
-          <KpiTile label={dashboardMode === "technical_directions" ? "Directions haussieres" : "Opportunites long"} value={bullishCount.toLocaleString("fr-FR")} tone="positive" sub={dashboardMode === "technical_directions" ? `${technicalModeShortLabel(technicalDirectionMode)} technique > +15` : "edge eligible"} />
-          <KpiTile label={dashboardMode === "technical_directions" ? "Directions baissieres" : "Opportunites short"} value={bearishCount.toLocaleString("fr-FR")} tone="negative" sub={dashboardMode === "technical_directions" ? `${technicalModeShortLabel(technicalDirectionMode)} technique < -15` : "edge eligible"} />
+          <KpiTile label={isFundamentalDashboardMode ? "Sous-evaluees" : isTechnicalDashboardMode ? "Directions haussieres" : "Opportunites long"} value={bullishCount.toLocaleString("fr-FR")} tone="positive" sub={isFundamentalDashboardMode ? "upside > +6%" : isTechnicalDashboardMode ? `${technicalModeShortLabel(technicalDirectionMode)} technique > +15` : "edge eligible"} />
+          <KpiTile label={isFundamentalDashboardMode ? "Sur-evaluees" : isTechnicalDashboardMode ? "Directions baissieres" : "Opportunites short"} value={bearishCount.toLocaleString("fr-FR")} tone="negative" sub={isFundamentalDashboardMode ? "upside < -6%" : isTechnicalDashboardMode ? `${technicalModeShortLabel(technicalDirectionMode)} technique < -15` : "edge eligible"} />
           <KpiTile
-            label={dashboardMode === "technical_directions" ? "Score technique median" : "Action E[R] opt. median"}
-            value={dashboardMode === "technical_directions" ? (medianTechnicalScore != null ? formatDecimal(medianTechnicalScore, 1) : "--") : (medianEr != null ? formatPercent(medianEr) : "--")}
-            tone={dashboardMode === "technical_directions" ? undefined : medianEr != null && medianEr > 0 ? "positive" : medianEr != null && medianEr < 0 ? "negative" : undefined}
+            label={isFundamentalDashboardMode ? "Upside median" : isTechnicalDashboardMode ? "Score technique median" : "Action E[R] opt. median"}
+            value={isFundamentalDashboardMode ? (medianFundamentalUpside != null ? formatPercent(medianFundamentalUpside) : "--") : isTechnicalDashboardMode ? (medianTechnicalScore != null ? formatDecimal(medianTechnicalScore, 1) : "--") : (medianEr != null ? formatPercent(medianEr) : "--")}
+            tone={isFundamentalDashboardMode || isTechnicalDashboardMode ? undefined : medianEr != null && medianEr > 0 ? "positive" : medianEr != null && medianEr < 0 ? "negative" : undefined}
             sub={
-              dashboardMode === "technical_directions"
+              isFundamentalDashboardMode
+                ? `${fundamentalUpsideValues.length} valorisations`
+                : isTechnicalDashboardMode
                 ? `${technicalScoreValues.length} directions techniques`
                 : erValues.length > 0
                 ? `${erValues.length} titres · O/O · hold ${medianOptimizedHold != null ? `${Math.round(medianOptimizedHold)}j` : "opt."}`
@@ -1147,14 +1251,14 @@ export default function DashboardV1Page() {
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-2 md:grid-cols-2 xl:grid-cols-4">
-          <KpiTile label="Univers total" value={completStocks.length.toLocaleString("fr-FR")} sub={dashboardMode === "technical_directions" ? "directions techniques" : "instruments disponibles"} />
-          <KpiTile label={dashboardMode === "technical_directions" ? "Directions haussieres" : "Opportunites long"} value={completeBullishCount.toLocaleString("fr-FR")} tone="positive" sub={dashboardMode === "technical_directions" ? `${technicalModeShortLabel(technicalDirectionMode)} technique > +15` : "edge eligible"} />
-          <KpiTile label={dashboardMode === "technical_directions" ? "Directions baissieres" : "Opportunites short"} value={completeBearishCount.toLocaleString("fr-FR")} tone="negative" sub={dashboardMode === "technical_directions" ? `${technicalModeShortLabel(technicalDirectionMode)} technique < -15` : "edge eligible"} />
+          <KpiTile label="Univers total" value={completStocks.length.toLocaleString("fr-FR")} sub={isFundamentalDashboardMode ? "couverture fondamentale" : isTechnicalDashboardMode ? "directions techniques" : "instruments disponibles"} />
+          <KpiTile label={isFundamentalDashboardMode ? "Sous-evaluees" : isTechnicalDashboardMode ? "Directions haussieres" : "Opportunites long"} value={completeBullishCount.toLocaleString("fr-FR")} tone="positive" sub={isFundamentalDashboardMode ? "upside > +6%" : isTechnicalDashboardMode ? `${technicalModeShortLabel(technicalDirectionMode)} technique > +15` : "edge eligible"} />
+          <KpiTile label={isFundamentalDashboardMode ? "Sur-evaluees" : isTechnicalDashboardMode ? "Directions baissieres" : "Opportunites short"} value={completeBearishCount.toLocaleString("fr-FR")} tone="negative" sub={isFundamentalDashboardMode ? "upside < -6%" : isTechnicalDashboardMode ? `${technicalModeShortLabel(technicalDirectionMode)} technique < -15` : "edge eligible"} />
           <KpiTile
-            label={dashboardMode === "technical_directions" ? "Score technique median" : "Edge prouve"}
-            value={dashboardMode === "technical_directions" ? (medianCompleteTechnicalScore != null ? formatDecimal(medianCompleteTechnicalScore, 1) : "--") : completeProvenEdgeCount.toLocaleString("fr-FR")}
-            tone={dashboardMode === "technical_directions" ? undefined : "positive"}
-            sub={dashboardMode === "technical_directions" ? `${completeTechnicalScoreValues.length} directions techniques` : `sur ${completStocks.length} instruments`}
+            label={isFundamentalDashboardMode ? "Upside median" : isTechnicalDashboardMode ? "Score technique median" : "Edge prouve"}
+            value={isFundamentalDashboardMode ? (medianCompleteFundamentalUpside != null ? formatPercent(medianCompleteFundamentalUpside) : "--") : isTechnicalDashboardMode ? (medianCompleteTechnicalScore != null ? formatDecimal(medianCompleteTechnicalScore, 1) : "--") : completeProvenEdgeCount.toLocaleString("fr-FR")}
+            tone={isFundamentalDashboardMode || isTechnicalDashboardMode ? undefined : "positive"}
+            sub={isFundamentalDashboardMode ? `${completeFundamentalUpsideValues.length} valorisations` : isTechnicalDashboardMode ? `${completeTechnicalScoreValues.length} directions techniques` : `sur ${completStocks.length} instruments`}
           />
         </div>
       )}
@@ -1175,9 +1279,9 @@ export default function DashboardV1Page() {
               value={dashboardMode}
               onChange={setDashboardMode}
               options={DASHBOARD_MODE_OPTIONS}
-              hint="Edge tradable ou lecture technique"
+              hint="Edge tradable, technique ou fondamental"
               inlineAfter={
-                dashboardMode === "technical_directions" ? (
+                isTechnicalDashboardMode ? (
                   <div className="inline-flex rounded-md border border-border bg-bg2 p-0.5">
                     {TECHNICAL_DIRECTION_MODE_OPTIONS.map((option) => (
                       <button
@@ -1227,12 +1331,29 @@ export default function DashboardV1Page() {
                   <option key={option} value={option}>{option}</option>
                 ))}
               </select>
-              <Button variant="ghost" size="sm" className="ml-auto h-7 rounded-md px-2 text-[12px] text-muted-foreground" asChild>
-                <Link href="/glossary#dashboard">
-                  <BookOpen className="h-3.5 w-3.5" />
-                  Glossaire
-                </Link>
-              </Button>
+              <div className="ml-auto flex flex-wrap items-center gap-2">
+                <span className={cn("dashboard-chip h-7", bourseSession?.is_live_session && "dashboard-chip-active")}>
+                  <span className={cn("dashboard-chip-dot", bourseSession?.is_live_session ? "bg-[var(--success)]" : "bg-muted-foreground")} />
+                  Bourse {bourseSessionLabel}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 rounded-md px-2 text-[12px]"
+                  onClick={runLiveDashboardRefresh}
+                  disabled={liveRefreshDisabled}
+                  title={liveRefreshError ?? liveRefreshMessage ?? undefined}
+                >
+                  <RefreshCw className={cn("h-3.5 w-3.5", liveRefreshRunning && "animate-spin")} />
+                  Live
+                </Button>
+                <Button variant="ghost" size="sm" className="h-7 rounded-md px-2 text-[12px] text-muted-foreground" asChild>
+                  <Link href="/glossary#dashboard">
+                    <BookOpen className="h-3.5 w-3.5" />
+                    Glossaire
+                  </Link>
+                </Button>
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
@@ -1240,7 +1361,7 @@ export default function DashboardV1Page() {
                 <Switch checked={liquidityFilter} onCheckedChange={setLiquidityFilter} />
                 <span>Liquidité</span>
               </div>
-              {dashboardMode === "technical_directions" ? (
+              {isTechnicalDashboardMode ? (
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">Colonnes</span>
                 <label className="dashboard-chip h-7 cursor-pointer bg-background">
@@ -1350,7 +1471,13 @@ export default function DashboardV1Page() {
       {error && <ErrorCard message={error.message} />}
 
       {data ? (
-        viewMode === "masi" ? (
+        isFundamentalDashboardMode && viewMode === "masi" ? (
+          <FundamentalDirectionsTab
+            stocks={visibleMasiStocks}
+            columns={fundamentalColumns}
+            onColumnsChange={setFundamentalColumns}
+          />
+        ) : viewMode === "masi" ? (
           view === "portfolio" ? (
             <PortfolioTab
               readOnly={isPublicDashboardOnly}
@@ -1383,6 +1510,7 @@ export default function DashboardV1Page() {
           ) : view === "index" ? (
             <IndexTab
               baseIndex={data.index}
+              baseDefinition={BUILTIN_WEIGHTED_MASI_INDEX}
               stocks={masiStocks}
               customDefinitions={customIndexDefinitions}
               readOnly={isPublicDashboardOnly}
@@ -1440,6 +1568,8 @@ export default function DashboardV1Page() {
             edgeSource={edgeSource}
             edgeMap={edgeMap}
             visibleFamilies={visibleFamilies}
+            fundamentalColumns={fundamentalColumns}
+            onFundamentalColumnsChange={setFundamentalColumns}
             onOpenEdge={setSelectedStock}
             performancePeriod={performancePeriod}
             onPerformancePeriodChange={setPerformancePeriod}
@@ -1462,7 +1592,7 @@ export default function DashboardV1Page() {
       ) : null}
 
       <p className="text-[11px] text-muted-foreground">
-        Trade Opportunities sélectionne automatiquement le meilleur edge exploitable. Technical Directions affiche Best ou Classic par titre, avec détail Trend / Momentum / Oscillation / Volume. Liquidité = ADV20 (valeur moyenne échangée 20 j).
+        Trade Opportunities sélectionne automatiquement le meilleur edge exploitable. Technical Directions affiche Best ou Classic par titre. Fondamental classe les titres par score, upside et couverture. Liquidité = ADV20 (valeur moyenne échangée 20 j).
       </p>
 
       {edgeEnabled ? (
@@ -2073,14 +2203,17 @@ function PortfolioTab({
   const [errorText, setErrorText] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
-  const { data: portfolios = [], error, isLoading, mutate } = useSWR<DashboardPortfolio[]>(
+  const { data: portfolioState, error, isLoading, mutate } = useSWR<DashboardPortfolioLoadState>(
     readOnly ? null : "dashboard-portfolios",
-    fetchDashboardPortfolios,
+    fetchDashboardPortfolioLoadState,
     { refreshInterval: 60_000, revalidateOnFocus: false },
   )
+  const portfolios = portfolioState?.portfolios ?? []
+  const legacyFallback = portfolioState?.legacyFallback === true
+  const authRequired = portfolioState?.authRequired === true
   const selected = portfolios.find((portfolio) => portfolio.id === selectedId) ?? null
   const { data: liveSummary, mutate: mutateSummary } = useSWR<DashboardPortfolioSummary>(
-    selected && !readOnly ? `dashboard-portfolio-summary-${selected.id}` : null,
+    selected && !readOnly && !legacyFallback ? `dashboard-portfolio-summary-${selected.id}` : null,
     () => fetchDashboardNamedPortfolioSummary(selected!.id, { priceSource: "live_if_fresh", maxLiveQuoteAgeSeconds: 60 }),
     { refreshInterval: 60_000, revalidateOnFocus: false },
   )
@@ -2110,6 +2243,8 @@ function PortfolioTab({
   if (readOnly) {
     return <div className="dashboard-panel px-4 py-8 text-sm text-muted-foreground">Portfolio management is disabled in public dashboard mode.</div>
   }
+
+  const portfolioDisplayMode = displayMode === "fundamental_directions" ? "trade_opportunities" : displayMode
 
   const resetCreateForm = () => {
     setName("")
@@ -2147,7 +2282,7 @@ function PortfolioTab({
       cash_buffer_pct: 0,
       stop_loss_pct: stopLossPct.trim() ? Number(stopLossPct) : null,
       take_profit_pct: takeProfitPct.trim() ? Number(takeProfitPct) : null,
-      display_mode: displayMode,
+      display_mode: portfolioDisplayMode,
       technical_direction_mode: technicalDirectionMode,
       horizon,
     }
@@ -2155,6 +2290,10 @@ function PortfolioTab({
 
   const submitPortfolio = async () => {
     setErrorText(null)
+    if (legacyFallback) {
+      setErrorText("The deployed API is still on the legacy portfolio endpoint. Deploy the portfolio API to edit portfolios.")
+      return
+    }
     const payload = payloadFromForm()
     if (!payload.name || payload.components.length === 0) {
       setErrorText("Nom et composants requis.")
@@ -2188,6 +2327,10 @@ function PortfolioTab({
   const submitReplay = async () => {
     if (!selected) return
     setErrorText(null)
+    if (legacyFallback) {
+      setErrorText("Historical portfolio generation requires the new portfolio API.")
+      return
+    }
     setSaving(true)
     try {
       await generateDashboardPortfolioHistory(selected.id, {
@@ -2208,6 +2351,10 @@ function PortfolioTab({
   const submitTrade = async () => {
     if (!selected) return
     setErrorText(null)
+    if (legacyFallback) {
+      setErrorText("Trade recording is disabled until the deployed API has the new portfolio routes.")
+      return
+    }
     const normalized = symbol.trim().toUpperCase()
     const qty = Number(quantity)
     const px = Number(price)
@@ -2241,6 +2388,10 @@ function PortfolioTab({
   const launchBacktest = async () => {
     if (!selected) return
     setErrorText(null)
+    if (legacyFallback) {
+      setErrorText("Portfolio replay backtests require the new portfolio API.")
+      return
+    }
     setSaving(true)
     try {
       const run = await runDashboardPortfolioBacktest(selected.id)
@@ -2253,7 +2404,7 @@ function PortfolioTab({
   }
 
   const portfolioCard = (portfolio: DashboardPortfolio) => {
-    const weights = buildPortfolioWeightRows(stocks, portfolio.component_shares, { displayMode, technicalDirectionMode })
+    const weights = buildPortfolioWeightRows(stocks, portfolio.component_shares, { displayMode: portfolioDisplayMode, technicalDirectionMode })
     const signalSummary = summarizeWeightRows(weights.rows)
     const previewRows = weights.rows.slice(0, 5)
     return (
@@ -2337,12 +2488,25 @@ function PortfolioTab({
             <h2 className="text-base font-semibold">Portfolios</h2>
             <p className="text-[12px] text-muted-foreground">List view shows current component directions for the selected dashboard mode.</p>
           </div>
-          <Button onClick={() => { resetCreateForm(); setShowCreate((value) => !value) }}>
+          <Button
+            onClick={() => { resetCreateForm(); setShowCreate((value) => !value) }}
+            disabled={legacyFallback || authRequired}
+          >
             <Plus className="h-3.5 w-3.5" />
             New portfolio
           </Button>
         </div>
-        {showCreate ? (
+        {authRequired ? (
+          <div className="dashboard-panel px-4 py-6 text-sm text-muted-foreground">
+            Sign in to load and manage portfolios.
+          </div>
+        ) : null}
+        {legacyFallback ? (
+          <div className="dashboard-panel border-amber-500/30 bg-amber-500/5 px-4 py-3 text-[12px] text-muted-foreground">
+            This deployment is using the legacy portfolio API. The default portfolio is available in read-only compatibility mode; deploy the portfolio API migration/routes to enable multiple portfolios, history generation, and backtest handoff.
+          </div>
+        ) : null}
+        {showCreate && !legacyFallback && !authRequired ? (
           <div className="space-y-3">
             <div className="dashboard-panel p-3">
               <div className="grid gap-2 md:grid-cols-[1fr_auto_auto_auto_auto]">
@@ -2381,7 +2545,9 @@ function PortfolioTab({
         {isLoading ? <Skeleton className="h-40 rounded-md" /> : null}
         <div className="grid gap-3 xl:grid-cols-2">
           {portfolios.length ? portfolios.map(portfolioCard) : (
-            <div className="dashboard-panel px-4 py-8 text-center text-sm text-muted-foreground">No portfolios yet.</div>
+            !authRequired && !isLoading ? (
+              <div className="dashboard-panel px-4 py-8 text-center text-sm text-muted-foreground">No portfolios yet.</div>
+            ) : null
           )}
         </div>
       </div>
@@ -2402,11 +2568,11 @@ function PortfolioTab({
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={() => void mutateSummary()}>
+          <Button variant="outline" size="sm" onClick={() => legacyFallback ? void mutate() : void mutateSummary()}>
             <RefreshCw className="h-3.5 w-3.5" />
             Refresh
           </Button>
-          <Button size="sm" onClick={() => void launchBacktest()} disabled={saving || !selected.replay_start_date}>
+          <Button size="sm" onClick={() => void launchBacktest()} disabled={legacyFallback || saving || !selected.replay_start_date}>
             <ExternalLink className="h-3.5 w-3.5" />
             Run Backtest
           </Button>
@@ -2429,6 +2595,12 @@ function PortfolioTab({
         />
       </div>
 
+      {legacyFallback ? (
+        <div className="dashboard-panel border-amber-500/30 bg-amber-500/5 px-4 py-3 text-[12px] text-muted-foreground">
+          Read-only compatibility mode: the deployed API does not expose the new portfolio routes yet. Positions and recent trades are shown from the legacy summary endpoint.
+        </div>
+      ) : (
+        <>
       <div className="dashboard-panel p-3">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
@@ -2484,6 +2656,8 @@ function PortfolioTab({
       </div>
 
       {componentEditor}
+        </>
+      )}
 
       <div className="dashboard-panel overflow-hidden">
         <div className="border-b border-border bg-bg2 px-4 py-3">
@@ -2580,6 +2754,8 @@ function CompletView({
   edgeSource,
   edgeMap,
   visibleFamilies,
+  fundamentalColumns,
+  onFundamentalColumnsChange,
   onOpenEdge,
   performancePeriod,
   onPerformancePeriodChange,
@@ -2600,6 +2776,8 @@ function CompletView({
   edgeSource: "signal_engine" | "wfo"
   edgeMap: Record<string, import("@/lib/api").EdgeMetrics | null | undefined>
   visibleFamilies: Partial<Record<FamilyColumn, boolean>>
+  fundamentalColumns: FundamentalColumn[]
+  onFundamentalColumnsChange: (columns: FundamentalColumn[]) => void
   onOpenEdge: (stock: DashboardStock) => void
   performancePeriod: PerformancePeriod
   onPerformancePeriodChange: (value: PerformancePeriod) => void
@@ -2641,23 +2819,31 @@ function CompletView({
         </div>
       </div>
 
-      <StockTable
-        stocks={stocks}
-        horizon={horizon}
-        horizonDays={horizonDays}
-        signalView={signalView}
-        scoreSource={scoreSource}
-        displayMode={displayMode}
-        technicalDirectionMode={technicalDirectionMode}
-        edgeEnabled={edgeEnabled}
-        edgeMode={edgeMode}
-        edgeSource={edgeSource}
-        edgeMap={edgeMap}
-        visibleFamilies={visibleFamilies}
-        onOpenEdge={onOpenEdge}
-        performancePeriod={performancePeriod}
-        onPerformancePeriodChange={onPerformancePeriodChange}
-      />
+      {displayMode === "fundamental_directions" ? (
+        <FundamentalDirectionsTab
+          stocks={stocks}
+          columns={fundamentalColumns}
+          onColumnsChange={onFundamentalColumnsChange}
+        />
+      ) : (
+        <StockTable
+          stocks={stocks}
+          horizon={horizon}
+          horizonDays={horizonDays}
+          signalView={signalView}
+          scoreSource={scoreSource}
+          displayMode={displayMode}
+          technicalDirectionMode={technicalDirectionMode}
+          edgeEnabled={edgeEnabled}
+          edgeMode={edgeMode}
+          edgeSource={edgeSource}
+          edgeMap={edgeMap}
+          visibleFamilies={visibleFamilies}
+          onOpenEdge={onOpenEdge}
+          performancePeriod={performancePeriod}
+          onPerformancePeriodChange={onPerformancePeriodChange}
+        />
+      )}
     </div>
   )
 }

@@ -1,26 +1,9 @@
-import { redirect } from "next/navigation"
+import { FundamentalsCatalog } from "@/components/data/fundamentals-catalog"
 
-type SearchParams = Record<string, string | string[] | undefined>
-
-export default async function FundamentalsRedirect({
-  searchParams,
-}: {
-  searchParams?: SearchParams | Promise<SearchParams>
-}) {
-  const resolved = await Promise.resolve(searchParams ?? {})
-  const params = new URLSearchParams()
-
-  for (const [key, value] of Object.entries(resolved)) {
-    if (value == null || key === "mode") continue
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        params.append(key, item)
-      }
-    } else {
-      params.set(key, value)
-    }
-  }
-
-  params.set("mode", "fundamental")
-  redirect(`/signals?${params.toString()}`)
+export default function FundamentalsPage() {
+  return (
+    <main className="mx-auto w-full max-w-[1500px] px-4 py-5 sm:px-6">
+      <FundamentalsCatalog />
+    </main>
+  )
 }

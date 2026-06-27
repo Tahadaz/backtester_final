@@ -89,3 +89,15 @@ def get_holiday_info(day: dt.date, symbol: str | None = None) -> dict[str, Any] 
         if symbol_holiday is not None:
             return symbol_holiday
     return global_holidays.get(day)
+
+
+def load_holiday_lookup(symbol: str | None = None) -> dict[dt.date, dict[str, Any]]:
+    """Return global holidays merged with symbol-specific holidays for one symbol."""
+    global_holidays, symbol_holidays = _ensure_holiday_cache()
+    normalized_symbol = str(symbol or "").strip().upper()
+    if not normalized_symbol:
+        return dict(global_holidays)
+
+    lookup = dict(global_holidays)
+    lookup.update(symbol_holidays.get(normalized_symbol, {}))
+    return lookup

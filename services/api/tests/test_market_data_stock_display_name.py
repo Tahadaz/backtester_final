@@ -161,6 +161,17 @@ def test_add_tracked_stock_uses_official_masi_sector_by_default(client_and_sessi
         assert stock.sector == "Sociétés de financement"
 
 
+def test_add_tracked_stock_rejects_non_stock_placeholders(client_and_session) -> None:
+    client, SessionLocal = client_and_session
+
+    for symbol in ("INSTRUMENT", "MAJ"):
+        response = client.post("/market-data/stocks", json={"symbol": symbol})
+        assert response.status_code == 400
+
+    with SessionLocal() as db:
+        assert db.query(models.StockMaster).count() == 0
+
+
 def test_market_catalog_uses_official_masi_display_name_fallback_without_writing(client_and_session) -> None:
     client, SessionLocal = client_and_session
 

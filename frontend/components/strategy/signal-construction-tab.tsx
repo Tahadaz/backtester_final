@@ -198,7 +198,7 @@ export function SignalConstructionTab({
           </div>
           <div className="space-y-1">
             <Label className="text-xs text-muted-foreground">Strategy horizon</Label>
-            <HorizonSelector value={horizon} onChange={(value) => onHorizonChange(value as HorizonKey)} />
+            <HorizonSelector value={horizon} onChange={(value) => onHorizonChange(value as HorizonKey)} outputMode="legacy" />
           </div>
         </div>
       </CardHeader>

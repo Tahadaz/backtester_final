@@ -62,9 +62,9 @@ const SORT_OPTIONS: { value: SortKey; label: string }[] = [
 ]
 
 const HORIZON_LABELS: Record<string, string> = {
-  short: "Court terme",
-  medium: "Moyen terme",
-  long: "Long terme",
+  short: "Hebdomadaire",
+  medium: "Mensuel",
+  long: "Trimestriel",
 }
 
 const HORIZON_DETAIL: Record<string, string> = {
@@ -691,15 +691,15 @@ export default function ResultsPage() {
                       <span className="ml-1.5 rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-bold">{horizonCounts.all}</span>
                     </TabsTrigger>
                     <TabsTrigger value="short">
-                      Court terme
+                      {HORIZON_LABELS.short}
                       <span className="ml-1.5 rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-bold">{horizonCounts.short}</span>
                     </TabsTrigger>
                     <TabsTrigger value="medium">
-                      Moyen terme
+                      {HORIZON_LABELS.medium}
                       <span className="ml-1.5 rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-bold">{horizonCounts.medium}</span>
                     </TabsTrigger>
                     <TabsTrigger value="long">
-                      Long terme
+                      {HORIZON_LABELS.long}
                       <span className="ml-1.5 rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-bold">{horizonCounts.long}</span>
                     </TabsTrigger>
                   </TabsList>

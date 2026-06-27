@@ -5,6 +5,7 @@ import os
 import signal
 import socket
 import sys
+import uuid
 from typing import Iterable
 
 from redis import Redis
@@ -154,8 +155,11 @@ def main() -> None:
 
     # Fork N child processes — each builds its own Redis connection after forking.
     # Only available on Linux (the target deployment platform for this service).
-    # Use hostname (unique Docker container ID prefix) so names don't collide across containers.
-    base_name = os.getenv("WORKER_NAME") or f"worker-{socket.gethostname()}-{os.getpid()}"
+    # Name must be unique per container *boot*: hostname is stable across restarts and the
+    # parent PID is always 1 inside a container, so a deterministic name collides with the
+    # previous incarnation's still-registered (worker_ttl) entries in Redis on restart. A
+    # random per-boot suffix guarantees uniqueness across restarts and across containers.
+    base_name = os.getenv("WORKER_NAME") or f"worker-{socket.gethostname()}-{uuid.uuid4().hex[:8]}"
     pids: list[int] = []
     for i in range(concurrency):
         pid = os.fork()

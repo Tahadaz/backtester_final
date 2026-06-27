@@ -1519,6 +1519,20 @@ export async function fetchSignalEvidence(args: {
   return SignalEvidenceSchema.parse(payload)
 }
 
+export async function fetchBestSignalEvidence(args: {
+  symbol: string
+  horizon: string
+  cooldownBars?: number
+}): Promise<SignalEvidence> {
+  const params = new URLSearchParams({
+    symbol: args.symbol,
+    horizon: canonicalSignalHorizon(args.horizon),
+  })
+  if (args.cooldownBars != null) params.set("cooldown_bars", String(Math.max(0, Math.floor(args.cooldownBars))))
+  const payload = await request<unknown>(`/strategy/signal/best-evidence?${params.toString()}`)
+  return SignalEvidenceSchema.parse(payload)
+}
+
 export async function fetchDashboardPortfolioTicket(
   body: DashboardPortfolioTicketRequest,
 ): Promise<DashboardPortfolioTicketResponse> {
@@ -5321,6 +5335,8 @@ export const SignalBacktestResultSchema = z.object({
   source: z.string(),
   scope: z.string(),
   scope_key: z.string(),
+  score_scope: z.string().optional(),
+  score_scope_key: z.string().optional(),
   status: z.string(),
   warning_code: z.string().nullable().optional(),
   side_policy: z.string().default("long_only"),
@@ -5336,6 +5352,7 @@ export const SignalBacktestResultSchema = z.object({
   trade_ledger: z.array(z.record(z.unknown())).nullable().optional(),
   close_series: z.array(z.number()).nullable().optional(),
   position_series: z.array(z.number()).nullable().optional(),
+  score_series: z.array(z.number().nullable()).nullable().optional(),
   global_score_series: z.array(z.number().nullable()).nullable().optional(),
   signal_diagnostics: z.record(z.unknown()).nullable().optional(),
   metrics: BacktestMetricsSchema,
@@ -5365,6 +5382,9 @@ export type SignalBacktestResponse = z.infer<typeof SignalBacktestResponseSchema
 
 function signalModeReadAliases(variant: string): string[] {
   const aliases: Record<string, string[]> = {
+    legacy: ["legacy_ta_simple"],
+    expanded: ["expanded_ta_simple"],
+    factor_x_ta: ["expanded_factor_x_ta_simple"],
     legacy_ta_simple: ["legacy"],
     expanded_ta_simple: ["expanded"],
     expanded_factor_x_ta_simple: ["factor_x_ta"],
@@ -5457,6 +5477,20 @@ export async function fetchSignalBacktestResults(
   throw firstError instanceof Error ? firstError : new Error(String(firstError))
 }
 
+export async function fetchBestSignalBacktestChart(
+  symbol: string,
+  horizon: string,
+  opts?: { cooldownBars?: number },
+): Promise<SignalBacktestResponse> {
+  const params = new URLSearchParams({
+    symbol,
+    horizon: canonicalSignalHorizon(horizon),
+  })
+  if (opts?.cooldownBars != null) params.set("cooldown_bars", String(Math.max(0, Math.floor(opts.cooldownBars))))
+  const payload = await request<unknown>(`/strategy/backtest-mc/best-chart?${params.toString()}`)
+  return SignalBacktestResponseSchema.parse(payload)
+}
+
 export async function triggerSignalBacktest(body: {
   symbol: string
   horizon: string
@@ -5489,7 +5523,7 @@ export async function fetchSignalBacktestBatchStatus(
 function _shouldBootstrapSignalBacktestResults(error: unknown): boolean {
   if (!(error instanceof ApiError)) return false
   if (error.status !== 404) return false
-  return error.message.toLowerCase().includes("no backtest results")
+  return error.message.toLowerCase().includes("backtest results")
 }
 
 export async function fetchSignalBacktestResultsWithBootstrap(
@@ -5826,42 +5860,68 @@ export async function backfillOpsSignals(): Promise<OpsSchedulerDispatchResponse
 // Analytics - signal evaluation + macro factor
 // ---------------------------------------------------------------------------
 
+const AnalyticsNumber = z.preprocess(
+  (value) => (value == null ? Number.NaN : value),
+  z.union([z.number(), z.nan()]),
+)
+
 export const ICCurveSchema = z.object({
   horizons: z.array(z.number()),
-  ic_values: z.array(z.number()),
-  ic_se: z.array(z.number()),
-  ic_ci_lower: z.array(z.number()),
-  ic_ci_upper: z.array(z.number()),
+  ic_values: z.array(AnalyticsNumber),
+  ic_se: z.array(AnalyticsNumber),
+  ic_ci_lower: z.array(AnalyticsNumber),
+  ic_ci_upper: z.array(AnalyticsNumber),
   n_obs: z.array(z.number()),
 })
 export type ICCurve = z.infer<typeof ICCurveSchema>
 
 export const PortfolioStatsSchema = z.object({
-  sharpe: z.number(),
-  sortino: z.number(),
-  max_drawdown: z.number(),
-  calmar: z.number(),
-  turnover: z.number(),
-  hit_rate: z.number(),
-  profit_factor: z.number(),
-  avg_win: z.number(),
-  avg_loss: z.number(),
-  after_cost_sharpe: z.number(),
+  sharpe: AnalyticsNumber,
+  sortino: AnalyticsNumber,
+  max_drawdown: AnalyticsNumber,
+  calmar: AnalyticsNumber,
+  turnover: AnalyticsNumber,
+  hit_rate: AnalyticsNumber,
+  profit_factor: AnalyticsNumber,
+  avg_win: AnalyticsNumber,
+  avg_loss: AnalyticsNumber,
+  after_cost_sharpe: AnalyticsNumber,
   n_trades: z.number(),
-  total_return: z.number(),
+  total_return: AnalyticsNumber,
 })
 export type PortfolioStats = z.infer<typeof PortfolioStatsSchema>
 
 export const RobustnessSchema = z.object({
-  dsr: z.number(),
-  psr: z.number(),
-  sharpe_bootstrap_ci: z.array(z.number()),
-  ic_bootstrap_ci: z.array(z.number()),
-  ic_cv: z.number(),
-  sharpe_cv: z.number(),
+  dsr: AnalyticsNumber,
+  psr: AnalyticsNumber,
+  sharpe_bootstrap_ci: z.array(AnalyticsNumber),
+  ic_bootstrap_ci: z.array(AnalyticsNumber),
+  ic_cv: AnalyticsNumber,
+  sharpe_cv: AnalyticsNumber,
   n_variants: z.number(),
 })
 export type Robustness = z.infer<typeof RobustnessSchema>
+
+const AnalyticsOptionalNumber = AnalyticsNumber.nullable()
+
+export const MacroBacktestReplaySchema = z.object({
+  factor_id: z.string(),
+  signal_name: z.string(),
+  return_method: z.string(),
+  cost_bps: AnalyticsNumber,
+  dates: z.array(z.string()).default([]),
+  stock_close: z.array(AnalyticsOptionalNumber).default([]),
+  factor_close: z.array(AnalyticsOptionalNumber).default([]),
+  factor_return: z.array(AnalyticsOptionalNumber).default([]),
+  factor_close_by_id: z.record(z.array(AnalyticsOptionalNumber)).default({}),
+  signal: z.array(AnalyticsOptionalNumber).default([]),
+  position: z.array(AnalyticsOptionalNumber).default([]),
+  strategy_returns: z.array(AnalyticsOptionalNumber).default([]),
+  equity: z.array(AnalyticsOptionalNumber).default([]),
+  drawdown: z.array(AnalyticsOptionalNumber).default([]),
+  trade_ledger: z.array(z.record(z.unknown())).default([]),
+})
+export type MacroBacktestReplay = z.infer<typeof MacroBacktestReplaySchema>
 
 export const SignalEvaluationReportSchema = z.object({
   signal_id: z.string(),
@@ -5869,9 +5929,9 @@ export const SignalEvaluationReportSchema = z.object({
   n_obs: z.number(),
   horizons: z.array(z.number()),
   ic_curve: ICCurveSchema,
-  hit_rate_h1: z.number(),
-  hit_rate_ci: z.array(z.number()),
-  conditional_return_tstat: z.number(),
+  hit_rate_h1: AnalyticsNumber,
+  hit_rate_ci: z.array(AnalyticsNumber),
+  conditional_return_tstat: AnalyticsNumber,
   portfolio: PortfolioStatsSchema,
   robustness: RobustnessSchema,
 })
@@ -6014,8 +6074,25 @@ export const FundamentalEnsembleSchema = z.object({
   monte_carlo_low: z.number().nullable().optional(),
   monte_carlo_base: z.number().nullable().optional(),
   monte_carlo_high: z.number().nullable().optional(),
+  fair_value_mean: z.number().nullable().optional(),
+  model_dispersion_cv: z.number().nullable().optional(),
+  dispersion_factor: z.number().nullable().optional(),
 })
 export type FundamentalEnsemble = z.infer<typeof FundamentalEnsembleSchema>
+
+export const FundamentalHorizonPredictionSchema = z.object({
+  horizon: z.enum(["quarter", "semester", "year"]),
+  period_type: z.string().nullable().optional(),
+  periods_per_year: z.number().nullable().optional(),
+  forward_target: z.number().nullable().optional(),
+  upside: z.number().nullable().optional(),
+  target_date: z.string().nullable().optional(),
+  method: z.string().nullable().optional(),
+  confidence: z.string().nullable().optional(),
+  warnings: z.array(z.string()).default([]),
+  available: z.boolean().default(true),
+})
+export type FundamentalHorizonPrediction = z.infer<typeof FundamentalHorizonPredictionSchema>
 
 export const FundamentalUniverseRowSchema = z.object({
   symbol: z.string(),
@@ -6025,16 +6102,10 @@ export const FundamentalUniverseRowSchema = z.object({
   market_region: z.string().nullable().optional(),
   latest_statement_year: z.number().nullable().optional(),
   current_price: z.number().nullable().optional(),
+  adv20: z.number().nullable().optional(),
   market_cap: z.number().nullable().optional(),
-  overall_score: z.number().nullable().optional(),
   value_score: z.number().nullable().optional(),
   quality_score: z.number().nullable().optional(),
-  growth_score: z.number().nullable().optional(),
-  dividend_score: z.number().nullable().optional(),
-  risk_score: z.number().nullable().optional(),
-  cash_flow_score: z.number().nullable().optional(),
-  health_score: z.number().nullable().optional(),
-  accrual_quality_score: z.number().nullable().optional(),
   magic_formula_score: z.number().nullable().optional(),
   peg_value: z.number().nullable().optional(),
   peg_garp_score: z.number().nullable().optional(),
@@ -6043,12 +6114,20 @@ export const FundamentalUniverseRowSchema = z.object({
   eva_score: z.number().nullable().optional(),
   regression_adj_score: z.number().nullable().optional(),
   regression_richness_avg: z.number().nullable().optional(),
-  recommendation: z.enum(["BUY", "HOLD", "SELL"]).nullable().optional(),
+  recommendation: z.enum(["BUY", "ACCUMULATE", "HOLD", "REDUCE", "SELL", "NR"]).nullable().optional(),
   target_price: z.number().nullable().optional(),
   conviction: z.number().int().min(0).max(5).default(0),
   revision_direction: z.enum(["up", "down", "="]).default("="),
+  headline_scenario: z.string().default("base"),
+  viewed_scenario: z.string().nullable().optional(),
+  market_implied_scenario: z.string().nullable().optional(),
+  scenario_probabilities: z.record(z.number()).default({}),
+  assumption_warnings: z.array(z.string()).default([]),
   analyst: z.string().nullable().optional(),
   as_of_date: z.string().nullable().optional(),
+  valuation_date: z.string().nullable().optional(),
+  target_date: z.string().nullable().optional(),
+  horizon_predictions: z.array(FundamentalHorizonPredictionSchema).default([]),
   free_float_pct: z.number().nullable().optional(),
   screens: z.record(z.unknown()).default({}),
   coverage: z.record(z.unknown()).default({}),
@@ -6071,12 +6150,33 @@ export const FundamentalAnnualMetricRawSchema = z.object({
   statement_year: z.number(),
   metric_name: z.string(),
   metric_value: z.number().nullable().optional(),
+  original_metric_value: z.number().nullable().optional(),
   raw_metric_name: z.string().nullable().optional(),
   source_sheet: z.string().nullable().optional(),
   source_field: z.string().nullable().optional(),
+  as_of_date: z.string().nullable().optional(),
+  source_document_id: z.number().nullable().optional(),
   is_proxy: z.boolean().default(false),
+  is_overridden: z.boolean().default(false),
+  manual_override_id: z.number().nullable().optional(),
+  manual_override_note: z.string().nullable().optional(),
+  manual_override_created_by: z.string().nullable().optional(),
+  manual_override_created_at: z.string().nullable().optional(),
 })
 export type FundamentalAnnualMetricRaw = z.infer<typeof FundamentalAnnualMetricRawSchema>
+
+export const FundamentalMetricOverrideSchema = z.object({
+  id: z.number(),
+  symbol: z.string(),
+  statement_year: z.number(),
+  metric_name: z.string(),
+  metric_value: z.number().nullable().optional(),
+  note: z.string().nullable().optional(),
+  created_by: z.string(),
+  created_at: z.string().nullable().optional(),
+  is_current: z.boolean().default(true),
+})
+export type FundamentalMetricOverride = z.infer<typeof FundamentalMetricOverrideSchema>
 
 export const FundamentalPeriodMetricSchema = z.object({
   fiscal_year: z.number(),
@@ -6088,6 +6188,7 @@ export const FundamentalPeriodMetricSchema = z.object({
   period_end_date: z.string().nullable().optional(),
   source_url: z.string().nullable().optional(),
   document_title: z.string().nullable().optional(),
+  source_document_id: z.number().nullable().optional(),
   is_proxy: z.boolean().default(false),
 })
 export type FundamentalPeriodMetric = z.infer<typeof FundamentalPeriodMetricSchema>
@@ -6114,6 +6215,48 @@ export const FundamentalValuationResultSchema = z.object({
 })
 export type FundamentalValuationResult = z.infer<typeof FundamentalValuationResultSchema>
 
+export const FundamentalIntegrityCheckSchema = z.object({
+  name: z.string(),
+  status: z.string(),
+  delta: z.number().nullable().optional(),
+  rel_delta: z.number().nullable().optional(),
+  inputs: z.record(z.number().nullable()).default({}),
+  message: z.string().nullable().optional(),
+})
+export type FundamentalIntegrityCheck = z.infer<typeof FundamentalIntegrityCheckSchema>
+
+export const FundamentalIntegrityReportSchema = z.object({
+  symbol: z.string(),
+  statement_year: z.number(),
+  checks: z.array(FundamentalIntegrityCheckSchema).default([]),
+  overall_status: z.string(),
+  confidence_haircut: z.number().default(0),
+  projected_statements: z.array(z.record(z.unknown())).default([]),
+  projection_checks: z.array(FundamentalIntegrityCheckSchema).default([]),
+})
+export type FundamentalIntegrityReport = z.infer<typeof FundamentalIntegrityReportSchema>
+
+export const FundamentalMissingFinancialMetricSchema = z.object({
+  statement_year: z.number().nullable().optional(),
+  metric_name: z.string(),
+  label: z.string(),
+  category: z.string().default("summary"),
+  scope: z.enum(["latest", "annual"]).default("annual"),
+  aliases: z.array(z.string()).default([]),
+  reason: z.string().default("missing_value"),
+})
+export type FundamentalMissingFinancialMetric = z.infer<typeof FundamentalMissingFinancialMetricSchema>
+
+export const FundamentalMissingFinancialDataSummarySchema = z.object({
+  statement_year: z.number().nullable().optional(),
+  total_missing: z.number().default(0),
+  latest_missing: z.number().default(0),
+  annual_missing: z.number().default(0),
+  categories: z.record(z.number()).default({}),
+  items: z.array(FundamentalMissingFinancialMetricSchema).default([]),
+})
+export type FundamentalMissingFinancialDataSummary = z.infer<typeof FundamentalMissingFinancialDataSummarySchema>
+
 export const FundamentalStockDetailSchema = z.object({
   symbol: z.string(),
   company_name: z.string(),
@@ -6126,22 +6269,33 @@ export const FundamentalStockDetailSchema = z.object({
   screens: z.record(z.unknown()).default({}),
   coverage: z.record(z.unknown()).default({}),
   model_eligibility: z.record(z.unknown()).default({}),
+  missing_financial_data: FundamentalMissingFinancialDataSummarySchema.default({}),
   annual: z.array(FundamentalAnnualMetricSchema).default([]),
   annual_raw: z.array(FundamentalAnnualMetricRawSchema).default([]),
+  metric_overrides: z.array(FundamentalMetricOverrideSchema).default([]),
   period_metrics: z.array(FundamentalPeriodMetricSchema).default([]),
   valuations: z.array(FundamentalValuationResultSchema).default([]),
   ensemble: FundamentalEnsembleSchema.nullable().optional(),
   ensembles: z.record(FundamentalEnsembleSchema).default({}),
   assumptions: z.record(z.unknown()).default({}),
   assumption_provenance: z.record(z.record(z.string())).default({}),
+  integrity: FundamentalIntegrityReportSchema.nullable().optional(),
   quality_issues: z.array(FundamentalQualityIssueSchema).default([]),
   technical: FundamentalTechnicalContextSchema.nullable().optional(),
-  recommendation: z.enum(["BUY", "HOLD", "SELL"]).nullable().optional(),
+  recommendation: z.enum(["BUY", "ACCUMULATE", "HOLD", "REDUCE", "SELL", "NR"]).nullable().optional(),
   target_price: z.number().nullable().optional(),
   conviction: z.number().int().min(0).max(5).default(0),
   revision_direction: z.enum(["up", "down", "="]).default("="),
+  headline_scenario: z.string().default("base"),
+  viewed_scenario: z.string().nullable().optional(),
+  market_implied_scenario: z.string().nullable().optional(),
+  scenario_probabilities: z.record(z.number()).default({}),
+  assumption_warnings: z.array(z.string()).default([]),
   analyst: z.string().nullable().optional(),
   as_of_date: z.string().nullable().optional(),
+  valuation_date: z.string().nullable().optional(),
+  target_date: z.string().nullable().optional(),
+  horizon_predictions: z.array(FundamentalHorizonPredictionSchema).default([]),
   free_float_pct: z.number().nullable().optional(),
   data_source: z.string().nullable().optional(),
   imported_at: z.string().nullable().optional(),
@@ -6226,7 +6380,7 @@ export const FundamentalScreenRankedRowSchema = z.object({
   score: z.number().nullable().optional(),
   screen_name: z.string(),
   screen: z.record(z.unknown()).default({}),
-  recommendation: z.enum(["BUY", "HOLD", "SELL"]).nullable().optional(),
+  recommendation: z.enum(["BUY", "ACCUMULATE", "HOLD", "REDUCE", "SELL", "NR"]).nullable().optional(),
   target_price: z.number().nullable().optional(),
   upside_pct: z.number().nullable().optional(),
   conviction: z.number().int().min(0).max(5).default(0),
@@ -6251,6 +6405,8 @@ export const FundamentalAssumptionResolvedSchema = z.object({
   scenario: z.string(),
   assumptions: z.record(z.unknown()).default({}),
   provenance: z.record(z.string()).default({}),
+  scenario_probabilities: z.record(z.number()).default({}),
+  warnings: z.array(z.string()).default([]),
 })
 export type FundamentalAssumptionResolved = z.infer<typeof FundamentalAssumptionResolvedSchema>
 
@@ -6265,6 +6421,27 @@ export const FundamentalAssumptionOverrideSchema = z.object({
   is_current: z.boolean().default(true),
 })
 export type FundamentalAssumptionOverride = z.infer<typeof FundamentalAssumptionOverrideSchema>
+
+export const FundamentalAssumptionMetaSchema = z.object({
+  value: z.unknown().nullable().optional(),
+  label: z.string(),
+  unit: z.string().default("number"),
+  group: z.string().default("general"),
+  derivation: z.string().nullable().optional(),
+  source: z.string().nullable().optional(),
+  plausible_range: z.array(z.number()).nullable().optional(),
+  scope: z.string().default("desk"),
+  editable: z.boolean().default(true),
+})
+export type FundamentalAssumptionMeta = z.infer<typeof FundamentalAssumptionMetaSchema>
+
+export const FundamentalMethodologySchema = z.object({
+  version: z.string(),
+  assumptions: z.record(FundamentalAssumptionMetaSchema).default({}),
+  models: z.record(z.unknown()).default({}),
+  cost_of_capital: z.record(z.unknown()).default({}),
+})
+export type FundamentalMethodology = z.infer<typeof FundamentalMethodologySchema>
 
 export const FundamentalCoverageRowSchema = z.object({
   symbol: z.string(),
@@ -6312,13 +6489,8 @@ export type FundamentalProviderStatus = z.infer<typeof FundamentalProviderStatus
 
 export const FundamentalLightSnapshotSchema = z.object({
   symbol: z.string(),
-  overall_score: z.number().nullable().optional(),
   value_score: z.number().nullable().optional(),
   quality_score: z.number().nullable().optional(),
-  growth_score: z.number().nullable().optional(),
-  risk_score: z.number().nullable().optional(),
-  cash_flow_score: z.number().nullable().optional(),
-  health_score: z.number().nullable().optional(),
   fair_value: z.number().nullable().optional(),
   upside_pct: z.number().nullable().optional(),
   confidence: z.string().nullable().optional(),
@@ -6378,8 +6550,56 @@ export const FundamentalSensitivitySchema = z.object({
   xs: z.array(z.number()),
   ys: z.array(z.number()),
   matrix: z.array(z.array(z.number().nullable())),
+  model_grids: z.record(z.unknown()).default({}),
+  default_grids: z.record(z.unknown()).default({}),
 })
 export type FundamentalSensitivity = z.infer<typeof FundamentalSensitivitySchema>
+
+export const FundamentalSignalBacktestInputSchema = z.object({
+  signal: z.enum(["upside_pct", "pillar_score"]).default("upside_pct"),
+  universe: z.enum(["masi20", "full_masi", "custom"]).default("masi20"),
+  start: z.string().nullable().optional(),
+  end: z.string().nullable().optional(),
+  transaction_cost_bps: z.number().default(25),
+  long_short: z.boolean().default(false),
+  symbols: z.array(z.string()).default([]),
+  scenario: z.string().default("base"),
+})
+export type FundamentalSignalBacktestInput = z.infer<typeof FundamentalSignalBacktestInputSchema>
+
+export const FundamentalSignalBacktestResultSchema = z.object({
+  run_id: z.string(),
+  signal: z.string(),
+  universe: z.string(),
+  rebalance: z.string().default("M"),
+  as_of: z.string().nullable().optional(),
+  status: z.string(),
+  error_message: z.string().nullable().optional(),
+  quintile_returns: z.array(z.record(z.unknown())).default([]),
+  ic: z.record(z.unknown()).default({}),
+  equity_curve: z.array(z.record(z.unknown())).default([]),
+  turnover: z.array(z.record(z.unknown())).default([]),
+  holdings: z.array(z.record(z.unknown())).default([]),
+  params: z.record(z.unknown()).default({}),
+  warnings: z.array(z.string()).default([]),
+})
+export type FundamentalSignalBacktestResult = z.infer<typeof FundamentalSignalBacktestResultSchema>
+
+export const FundamentalSignalRecomputeResultSchema = z.object({
+  symbol_count: z.number().default(0),
+  scenario: z.string(),
+  scenarios: z.array(z.string()).default([]),
+  snapshot_count: z.number().default(0),
+  pillar_history_count: z.number().default(0),
+  valuation_count: z.number().default(0),
+  signal_summary: z.record(z.number()).default({}),
+  failures: z.array(z.object({
+    symbol: z.string(),
+    scenario: z.string().nullable().optional(),
+    error: z.string(),
+  })).default([]),
+})
+export type FundamentalSignalRecomputeResult = z.infer<typeof FundamentalSignalRecomputeResultSchema>
 
 export async function uploadFundamentalsWorkbook(file: File): Promise<FundamentalImport> {
   const form = new FormData()
@@ -6493,6 +6713,43 @@ export async function getFundamentalStockDetail(symbol: string, scenario = "auto
   return FundamentalStockDetailSchema.parse(data)
 }
 
+export async function getFundamentalMetricOverrides(symbol: string): Promise<FundamentalMetricOverride[]> {
+  const data = await request<unknown>(`/fundamentals/stocks/${encodeURIComponent(symbol)}/metric-overrides`)
+  return z.array(FundamentalMetricOverrideSchema).parse(data)
+}
+
+export async function putFundamentalMetricOverride(
+  symbol: string,
+  body: {
+    statement_year: number
+    metric_name: string
+    metric_value: number | null
+    note?: string | null
+  },
+): Promise<FundamentalMetricOverride> {
+  const data = await request<unknown>(`/fundamentals/stocks/${encodeURIComponent(symbol)}/metric-overrides`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  })
+  return FundamentalMetricOverrideSchema.parse(data)
+}
+
+export async function deleteFundamentalMetricOverride(
+  symbol: string,
+  statementYear: number,
+  metricName: string,
+): Promise<void> {
+  await request<void>(
+    `/fundamentals/stocks/${encodeURIComponent(symbol)}/metric-overrides/${encodeURIComponent(String(statementYear))}/${encodeURIComponent(metricName)}`,
+    { method: "DELETE" },
+  )
+}
+
+export async function getFundamentalMethodology(): Promise<FundamentalMethodology> {
+  const data = await request<unknown>("/fundamentals/methodology")
+  return FundamentalMethodologySchema.parse(data)
+}
+
 export async function getFundamentalComparables(
   symbol: string,
   body: FundamentalComparablesRequest,
@@ -6516,6 +6773,140 @@ export async function getFundamentalSensitivity(
   return FundamentalSensitivitySchema.parse(data)
 }
 
+// ---------------------------------------------------------------------------
+// Portfolio signal backtest (WFO OOS long trades)
+// ---------------------------------------------------------------------------
+
+export interface PortfolioBacktestSymbolStats {
+  symbol: string
+  kelly_fraction: number
+  kelly_pct: number
+  n_trades: number
+  n_long?: number
+  n_short?: number
+  win_rate: number
+  avg_win_pct: number
+  avg_loss_pct: number
+}
+
+export interface PortfolioBacktestTrade {
+  symbol: string
+  direction: number
+  open_date: string
+  close_date: string
+  open_price: number
+  close_price: number
+  pnl_return: number
+  effective_return: number
+  tp_applied: boolean
+  position_size: number
+  pnl_mad: number
+  executed: boolean
+}
+
+export interface PortfolioBacktestResult {
+  equity_curve: Array<{ date: string; equity: number }>
+  metrics: {
+    total_return?: number
+    cagr?: number
+    sharpe?: number
+    max_drawdown?: number
+    final_equity?: number
+    n_symbols?: number
+    n_trades?: number
+    tp_applied_pct?: number
+  }
+  per_symbol: PortfolioBacktestSymbolStats[]
+  n_symbols_qualified: number
+  warnings: string[]
+  trades?: PortfolioBacktestTrade[]
+  trades_truncated?: boolean
+  period?: {
+    start: string | null
+    end: string | null
+    requested_start: string | null
+    requested_end: string | null
+  }
+}
+
+export async function runPortfolioBacktest(body: {
+  symbols?: string[]
+  horizon?: string
+  variant?: string
+  initial_capital?: number
+  take_profit_pct?: number
+  kelly_multiplier?: number
+  long_only?: boolean
+  start_date?: string
+  end_date?: string
+}): Promise<PortfolioBacktestResult> {
+  const data = await request<unknown>("/strategy/signal/portfolio-backtest", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+  return data as PortfolioBacktestResult
+}
+
+export interface PortfolioBacktestUniverseSymbol {
+  symbol: string
+  n_trades: number
+  n_long: number
+  n_short: number
+}
+
+export interface PortfolioBacktestUniverseResult {
+  symbols: PortfolioBacktestUniverseSymbol[]
+  date_range: { min: string | null; max: string | null }
+}
+
+export async function getPortfolioBacktestUniverse(params: {
+  horizon?: string
+  variant?: string
+  long_only?: boolean
+}): Promise<PortfolioBacktestUniverseResult> {
+  const qs = new URLSearchParams()
+  if (params.horizon) qs.set("horizon", params.horizon)
+  if (params.variant) qs.set("variant", params.variant)
+  if (params.long_only != null) qs.set("long_only", String(params.long_only))
+  const q = qs.toString()
+  const data = await request<PortfolioBacktestUniverseResult>(
+    `/strategy/signal/portfolio-backtest/universe${q ? `?${q}` : ""}`,
+  )
+  return { symbols: data.symbols ?? [], date_range: data.date_range ?? { min: null, max: null } }
+}
+
+export async function runFundamentalSignalBacktest(
+  body: FundamentalSignalBacktestInput,
+): Promise<FundamentalSignalBacktestResult> {
+  const payload = FundamentalSignalBacktestInputSchema.parse(body)
+  const data = await request<unknown>("/fundamentals/signal-backtest", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+  return FundamentalSignalBacktestResultSchema.parse(data)
+}
+
+export async function getFundamentalSignalBacktest(runId: string): Promise<FundamentalSignalBacktestResult> {
+  const data = await request<unknown>(`/fundamentals/signal-backtest/${encodeURIComponent(runId)}`)
+  return FundamentalSignalBacktestResultSchema.parse(data)
+}
+
+export async function recomputeFundamentalSignals(body: {
+  symbol?: string | null
+  scenario?: "all" | "bear" | "base" | "bull"
+  refresh_scores?: boolean
+} = {}): Promise<FundamentalSignalRecomputeResult> {
+  const data = await request<unknown>("/fundamentals/recompute-signals", {
+    method: "POST",
+    body: JSON.stringify({
+      scenario: body.scenario ?? "all",
+      refresh_scores: body.refresh_scores ?? true,
+      ...(body.symbol ? { symbol: body.symbol } : {}),
+    }),
+  })
+  return FundamentalSignalRecomputeResultSchema.parse(data)
+}
+
 export async function updateFundamentalAssumptions(
   symbol: string,
   scenario: string,
@@ -6524,6 +6915,17 @@ export async function updateFundamentalAssumptions(
   const data = await request<unknown>(`/fundamentals/stocks/${encodeURIComponent(symbol)}/assumptions/${encodeURIComponent(scenario)}`, {
     method: "PUT",
     body: JSON.stringify({ assumptions }),
+  })
+  return FundamentalAssumptionSetSchema.parse(data)
+}
+
+export async function updateFundamentalDeskAssumptions(
+  scenario: string,
+  assumptions: Record<string, number | string>,
+): Promise<FundamentalAssumptionSet> {
+  const data = await request<unknown>(`/fundamentals/assumptions/${encodeURIComponent(scenario)}`, {
+    method: "PUT",
+    body: JSON.stringify({ assumptions, scope_type: "desk", scope_key: "GLOBAL" }),
   })
   return FundamentalAssumptionSetSchema.parse(data)
 }
@@ -6642,19 +7044,20 @@ export const FactorSignalEvalSchema = z.object({
   citation: z.string(),
   channel_filter: z.array(z.string()),
   applicable: z.boolean(),
-  ic_h1: z.number(),
-  ic_h5: z.number(),
-  hit_rate: z.number(),
-  sharpe: z.number(),
-  after_cost_sharpe: z.number(),
-  dsr: z.number(),
-  psr: z.number(),
-  conditional_return_tstat: z.number(),
+  ic_h1: AnalyticsNumber,
+  ic_h5: AnalyticsNumber,
+  hit_rate: AnalyticsNumber,
+  sharpe: AnalyticsNumber,
+  after_cost_sharpe: AnalyticsNumber,
+  dsr: AnalyticsNumber,
+  psr: AnalyticsNumber,
+  conditional_return_tstat: AnalyticsNumber,
   n_obs: z.number(),
   fdr_pass: z.boolean(),
   ic_curve: ICCurveSchema,
   portfolio: PortfolioStatsSchema,
   robustness: RobustnessSchema,
+  backtest: MacroBacktestReplaySchema.nullable().optional(),
 })
 export type FactorSignalEval = z.infer<typeof FactorSignalEvalSchema>
 

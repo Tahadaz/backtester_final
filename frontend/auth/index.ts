@@ -8,9 +8,15 @@ import authConfig from "@/auth.config"
 import { db } from "./db"
 import { users, accounts, sessions, verificationTokens } from "./schema"
 
+const relaxedLocalCredentials =
+  process.env.LOCAL_AUTH_ALLOW_USERNAME_PASSWORD === "true" ||
+  (process.env.AUTH_REQUIRED == null
+    ? process.env.NODE_ENV !== "production" || process.env.NEXT_BUILD_TARGET === "pages"
+    : process.env.AUTH_REQUIRED !== "true")
+
 const CredsSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(8),
+  email: relaxedLocalCredentials ? z.string().trim().min(1) : z.string().trim().email(),
+  password: z.string().min(relaxedLocalCredentials ? 1 : 8),
 })
 
 export const { auth, handlers, signIn, signOut } = NextAuth({

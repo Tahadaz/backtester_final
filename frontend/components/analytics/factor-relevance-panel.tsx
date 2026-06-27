@@ -4,6 +4,7 @@ import { useMemo } from "react"
 import { useFactorSelectionActive, useFactorSelectionStage1 } from "@/hooks/use-api"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
+import { horizonLabel } from "@/lib/horizon"
 import {
   Table,
   TableBody,
@@ -12,13 +13,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-
-const HORIZON_LABELS: Record<string, string> = {
-  short: "Court",
-  mid: "Moyen",
-  medium: "Moyen",
-  long: "Long",
-}
 
 function fmtNumber(value: number | null | undefined, digits = 3) {
   if (value == null || Number.isNaN(value)) return "—"
@@ -76,7 +70,7 @@ export function FactorRelevancePanel({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <Badge variant="outline">{symbol}</Badge>
-        <Badge variant="outline">{HORIZON_LABELS[horizon] ?? horizon}</Badge>
+        <Badge variant="outline">{horizonLabel(horizon)}</Badge>
         {firstActive?.history_n_days != null && (
           <Badge variant="outline">Historique {firstActive.history_n_days}j</Badge>
         )}

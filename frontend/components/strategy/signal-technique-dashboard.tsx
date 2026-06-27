@@ -1,10 +1,11 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Activity, BarChart3, ExternalLink, TrendingUp } from "lucide-react"
 import { useWfoSummary } from "@/hooks/use-wfo-summary"
 import {
+  fetchBestSignalBacktestChart,
   fetchIndicatorSeries,
   fetchSignalBacktestResultsWithBootstrap,
   fetchSignalEngineResultWithBootstrap,
@@ -29,6 +30,15 @@ import {
 type CategoryId = "tendance" | "momentum" | "oscillation" | "volume"
 type RangeKey = "1J" | "5J" | "1M" | "6M" | "1A" | "Tout"
 type TechniqueSource = "engine" | "wfo"
+type TechniqueScope = {
+  scope: string
+  scopeKey: string
+}
+type TechniqueScopeOption = TechniqueScope & {
+  id: string
+  label: string
+  rowCount: number
+}
 
 type FamilySignalRow = {
   key: string
@@ -162,6 +172,11 @@ function sourceLabel(source: string | null | undefined): string {
   return source === "wfo" ? "WFO" : "Signal Engine"
 }
 
+function techniqueSourceFromQuery(value: string | null): TechniqueSource {
+  const token = String(value ?? "").trim().toLowerCase()
+  return token === "engine" || token === "signal_engine" ? "engine" : "wfo"
+}
+
 function sidePolicyLabel(sidePolicy: string | null | undefined): string {
   return sidePolicy === "long_short" ? "Long/Short directionnel" : "Long-only"
 }
@@ -169,6 +184,44 @@ function sidePolicyLabel(sidePolicy: string | null | undefined): string {
 function rowMatchesTechniqueSource(row: SignalBacktestResult, source: TechniqueSource): boolean {
   if (source === "wfo") return row.source === "wfo"
   return row.source === "engine" || row.source === "signal_engine"
+}
+
+function scopeOptionId(scope: string | null | undefined, scopeKey: string | null | undefined): string {
+  return `${String(scope || "global")}:${String(scopeKey || "global")}`
+}
+
+function scopeFromQuery(scope: string | null, scopeKey: string | null): TechniqueScope {
+  const normalizedScope = String(scope ?? "").trim() || "global"
+  const normalizedKey = String(scopeKey ?? "").trim() || (normalizedScope === "global" ? "global" : "")
+  return {
+    scope: normalizedScope,
+    scopeKey: normalizedKey || "global",
+  }
+}
+
+function categoryLabel(category: string): string {
+  return CATEGORY_META.find((item) => item.id === category)?.label ?? category
+}
+
+function scopeLabel(scope: string | null | undefined, scopeKey: string | null | undefined): string {
+  const normalizedScope = String(scope || "global")
+  const normalizedKey = String(scopeKey || "global")
+  if (normalizedScope === "global") return "Global"
+  if (normalizedScope === "per_category") return categoryLabel(normalizedKey)
+  if (normalizedScope === "combination") {
+    return normalizedKey.split("+").filter(Boolean).map(categoryLabel).join(" + ") || normalizedKey
+  }
+  return normalizedKey
+}
+
+function scopeSortKey(option: TechniqueScopeOption): string {
+  if (option.scope === "global") return "0:global"
+  if (option.scope === "per_category") {
+    const index = CATEGORY_META.findIndex((item) => item.id === option.scopeKey)
+    return `1:${index < 0 ? 99 : index}:${option.scopeKey}`
+  }
+  const categories = option.scopeKey.split("+").filter(Boolean)
+  return `2:${categories.length}:${categories.join("+")}`
 }
 
 function signalScoreTone(score: number | null | undefined): string {
@@ -613,8 +666,18 @@ export function SignalTechniqueDashboard({
   variant: string
   cooldownBars: number
 }) {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const querySource = searchParams.get("source")
+  const queryScope = searchParams.get("scope")
+  const queryScopeKey = searchParams.get("scope_key")
   const [range, setRange] = useState<RangeKey>("6M")
-  const [selectedSource, setSelectedSource] = useState<TechniqueSource>("engine")
+  const [selectedSource, setSelectedSource] = useState<TechniqueSource>(() => techniqueSourceFromQuery(querySource))
+  const [selectedScopeId, setSelectedScopeId] = useState(() => {
+    const initialScope = scopeFromQuery(queryScope, queryScopeKey)
+    return scopeOptionId(initialScope.scope, initialScope.scopeKey)
+  })
   const { data: wfoData } = useWfoSummary(symbol, horizon, variant)
   const [engineResult, setEngineResult] = useState<SignalEngineResult | null>(null)
   const [engineLoading, setEngineLoading] = useState(false)
@@ -624,6 +687,28 @@ export function SignalTechniqueDashboard({
   const [indicatorSeries, setIndicatorSeries] = useState<IndicatorOverlaySeries[]>([])
   const [indicatorLoading, setIndicatorLoading] = useState(false)
   const requestTokenRef = useRef(0)
+
+  useEffect(() => {
+    setSelectedSource(techniqueSourceFromQuery(querySource))
+  }, [horizon, querySource, symbol, variant])
+
+  useEffect(() => {
+    const nextScope = scopeFromQuery(queryScope, queryScopeKey)
+    setSelectedScopeId(scopeOptionId(nextScope.scope, nextScope.scopeKey))
+  }, [horizon, queryScope, queryScopeKey, symbol, variant])
+
+  function updateTechniqueQuery(updates: Record<string, string | null | undefined>) {
+    const params = new URLSearchParams(searchParams.toString())
+    for (const [key, value] of Object.entries(updates)) {
+      if (value == null || value === "") {
+        params.delete(key)
+      } else {
+        params.set(key, value)
+      }
+    }
+    const query = params.toString()
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
+  }
 
   useEffect(() => {
     const token = ++requestTokenRef.current
@@ -651,13 +736,15 @@ export function SignalTechniqueDashboard({
     setBacktestError(null)
     setBacktestRows([])
 
-    fetchSignalBacktestResultsWithBootstrap(symbol, horizon, variant, {
-      requireChartPayload: true,
-      sidePolicy: "long_short",
-      cooldownBars,
-      timeoutMs: 180_000,
-      pollMs: 3_000,
-    })
+    const request =
+      selectedSource === "wfo"
+        ? fetchBestSignalBacktestChart(symbol, horizon, { cooldownBars })
+        : fetchSignalBacktestResultsWithBootstrap(symbol, horizon, variant, {
+            source: "engine",
+            cooldownBars,
+          })
+
+    request
       .then((res) => {
         if (cancelled) return
         const rows = res.results.filter((row) => row.status === "succeeded")
@@ -675,14 +762,50 @@ export function SignalTechniqueDashboard({
     return () => {
       cancelled = true
     }
-  }, [cooldownBars, horizon, symbol, variant])
+  }, [cooldownBars, horizon, selectedSource, symbol, variant])
 
+  const sourceBacktestRows = useMemo(
+    () => backtestRows.filter((row) => rowMatchesTechniqueSource(row, selectedSource)),
+    [backtestRows, selectedSource],
+  )
+  const scopeOptions = useMemo<TechniqueScopeOption[]>(() => {
+    const byId = new Map<string, TechniqueScopeOption>()
+    for (const row of sourceBacktestRows) {
+      const id = scopeOptionId(row.scope, row.scope_key)
+      const existing = byId.get(id)
+      if (existing) {
+        existing.rowCount += 1
+        continue
+      }
+      byId.set(id, {
+        id,
+        scope: row.scope,
+        scopeKey: row.scope_key,
+        label: scopeLabel(row.scope, row.scope_key),
+        rowCount: 1,
+      })
+    }
+    return Array.from(byId.values()).sort((left, right) => scopeSortKey(left).localeCompare(scopeSortKey(right)))
+  }, [sourceBacktestRows])
+  const activeScopeId = useMemo(() => {
+    if (scopeOptions.some((option) => option.id === selectedScopeId)) return selectedScopeId
+    return (
+      scopeOptions.find((option) => option.scope === "global")?.id
+      ?? scopeOptions[0]?.id
+      ?? selectedScopeId
+    )
+  }, [scopeOptions, selectedScopeId])
+  const activeScopeOption = useMemo(
+    () => scopeOptions.find((option) => option.id === activeScopeId) ?? null,
+    [activeScopeId, scopeOptions],
+  )
   const backtestRow = useMemo(
     () =>
-      backtestRows.find((row) => row.scope === "global" && rowMatchesTechniqueSource(row, selectedSource))
-      ?? backtestRows.find((row) => rowMatchesTechniqueSource(row, selectedSource))
+      sourceBacktestRows.find((row) => scopeOptionId(row.scope, row.scope_key) === activeScopeId)
+      ?? sourceBacktestRows.find((row) => row.scope === "global")
+      ?? sourceBacktestRows[0]
       ?? null,
-    [backtestRows, selectedSource],
+    [activeScopeId, sourceBacktestRows],
   )
 
   const representatives = useMemo(() => extractRepresentativeIndicators(backtestRow), [backtestRow])
@@ -769,7 +892,7 @@ export function SignalTechniqueDashboard({
             <div>
               <CardTitle className="text-sm">Backtest directionnel du signal</CardTitle>
               <p className="text-[11px] text-muted-foreground">
-                Source: {sourceLabel(backtestRow?.source ?? selectedSource)} / {backtestRow?.scope_key ?? "global"}
+                Source: {sourceLabel(backtestRow?.source ?? selectedSource)} / {activeScopeOption?.label ?? scopeLabel(backtestRow?.scope, backtestRow?.scope_key)}
                 {backtestRow?.side_policy ? ` / ${sidePolicyLabel(backtestRow.side_policy)}` : ""}
                 {backtestLoading ? " / calcul OOS automatique..." : ""}
                 {indicatorLoading ? " / chargement indicateurs..." : ""}
@@ -781,7 +904,10 @@ export function SignalTechniqueDashboard({
                   <button
                     key={item.key}
                     type="button"
-                    onClick={() => setSelectedSource(item.key)}
+                    onClick={() => {
+                      setSelectedSource(item.key)
+                      updateTechniqueQuery({ source: item.key === "wfo" ? "wfo" : "signal_engine" })
+                    }}
                     className={cn(
                       "h-[22px] rounded px-2 text-[11px] text-muted-foreground",
                       selectedSource === item.key && "bg-card font-semibold text-foreground",
@@ -791,6 +917,29 @@ export function SignalTechniqueDashboard({
                   </button>
                 ))}
               </span>
+              {scopeOptions.length > 0 ? (
+                <span className="signals-scrollbar inline-flex max-w-[460px] overflow-x-auto rounded-md border border-line bg-bg2 p-0.5">
+                  {scopeOptions.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedScopeId(option.id)
+                        updateTechniqueQuery({
+                          scope: option.scope,
+                          scope_key: option.scopeKey,
+                        })
+                      }}
+                      className={cn(
+                        "h-[22px] shrink-0 rounded px-2 text-[11px] text-muted-foreground",
+                        activeScopeId === option.id && "bg-card font-semibold text-foreground",
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </span>
+              ) : null}
               <span className="inline-flex rounded-md border border-line bg-bg2 p-0.5">
                 {(Object.keys(RANGE_TO_BARS) as RangeKey[]).map((key) => (
                   <button

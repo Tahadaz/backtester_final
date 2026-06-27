@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import {
   fetchIndicatorSeries,
   fetchEdge,
-  fetchSignalBacktestResults,
+  fetchSignalBacktestResultsWithBootstrap,
   triggerSignalBacktest,
   type EdgeMetrics,
   type SignalBacktestResult,
@@ -743,8 +743,7 @@ export function BacktestMCPanel({ symbol, horizon, variant, cooldownBars = 0 }: 
     setLoading(true)
     setError(null)
     try {
-      const res = await fetchSignalBacktestResults(symbol, horizon, {
-        variant: variant ?? "expanded",
+      const res = await fetchSignalBacktestResultsWithBootstrap(symbol, horizon, variant ?? "expanded", {
         cooldownBars,
       })
       setData(res)

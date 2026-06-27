@@ -25,27 +25,36 @@ Use this when the Bloomberg computer has Jupyter but you do not want to run an E
    - Expected result: HTTP 200.
    - If it times out, the bank network is still blocking the domain or route.
    - If it returns 403, the bridge key is wrong.
-8. Run the upload helpers cell.
-9. Run the mock upload test.
+8. Run the register bridge cell.
+   - Expected result: HTTP 200.
+   - The app's Bloomberg tab should now show this bridge as connected.
+9. Run the upload helpers cell.
+10. Run the mock upload test.
    - Expected result: HTTP 200 or 201 and a JSON response with batch details.
    - This proves Jupyter can send data to the deployed app before using Bloomberg.
-10. Run the Bloomberg access cell.
+11. Run the Bloomberg access cell.
     - Expected result: `OK: xbbg imported` and a small table for `ATW MA Equity`.
     - If it fails, Bloomberg is not available from this Jupyter Python kernel.
-11. Run the normalization helper cell.
-12. Run the one-security daily upload cell.
+12. Run the normalization helper cell.
+13. Run the one-security daily upload cell.
     - Start with `ATW MA Equity`.
     - Default Bloomberg OHLCV fields are `PX_OPEN`, `PX_HIGH`, `PX_LOW`, `PX_LAST`, and `VOLUME`.
+    - If combined OHLCV returns no rows, the notebook tries each field one by one and uploads only working fields.
     - Confirm rows are shown before upload.
-13. Probe MASI availability.
+14. Probe MASI availability.
     - Edit `MASI_SYMBOLS` if you have a fuller ticker list.
     - The notebook tests `MA Equity` and `MC Equity` suffixes.
-14. Upload available MASI daily data.
+15. Upload available MASI daily data.
     - Keep the first run small.
     - After confirming the app displays the data, expand the date range or ticker list.
-15. Optional: run intraday and BQL cells.
+16. Optional: run intraday and BQL cells.
     - Intraday availability depends on entitlements and history limits.
     - BQL availability depends on the local Bloomberg Python setup.
+17. To control jobs from the website, run the `Website job listener` setup cell, then run `Start website job listener`.
+    - Keep that Jupyter cell running while using the app's Bloomberg tab.
+    - Stop the cell to disconnect the Bloomberg computer.
+    - `Discovery` checks availability. `Backfill` uploads data. `Discovery` with mode `Discover then backfill` does both.
+    - Intraday website jobs are limited to 5 business days by the notebook listener.
 
 ## What to expect
 
@@ -62,3 +71,4 @@ Use this when the Bloomberg computer has Jupyter but you do not want to run an E
 - Upload timeout: batch is too large or network is unstable. Use fewer tickers or a shorter date range.
 - HTTP 403: wrong bridge key.
 - HTTP 404: wrong app URL or the deployed app version does not include the Bloomberg bridge routes.
+- Queued website jobs do not run: the notebook listener cell is not running, or the bridge key/app URL is wrong.

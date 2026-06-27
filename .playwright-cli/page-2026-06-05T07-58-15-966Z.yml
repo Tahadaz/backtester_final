@@ -1,0 +1,1520 @@
+- generic [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - link "RDT Alpha" [ref=e4] [cursor=pointer]:
+        - /url: /dashboard
+        - generic [ref=e5]: RDT
+        - generic [ref=e6]:
+          - generic [ref=e7]: RDT Alpha
+          - generic [ref=e8]: Road to Alpha
+      - navigation [ref=e9]:
+        - link "Tableau de Bord" [ref=e10] [cursor=pointer]:
+          - /url: /dashboard
+          - img
+          - text: Tableau de Bord
+        - link "Data" [ref=e11] [cursor=pointer]:
+          - /url: /data
+          - img
+          - text: Data
+        - link "Signals" [ref=e12] [cursor=pointer]:
+          - /url: /signals
+          - img
+          - text: Signals
+        - link "Strategy" [ref=e13] [cursor=pointer]:
+          - /url: /strategy
+          - img
+          - text: Strategy
+        - link "Backtest" [ref=e14] [cursor=pointer]:
+          - /url: /backtest
+          - img
+          - text: Backtest
+        - link "Analytics" [ref=e15] [cursor=pointer]:
+          - /url: /analytics
+          - img
+          - text: Analytics
+        - link "Glossaire" [ref=e16] [cursor=pointer]:
+          - /url: /glossary
+          - img
+          - text: Glossaire
+      - generic [ref=e17]:
+        - generic [ref=e18]: MASI · live
+        - button "Refresh" [ref=e20]:
+          - img
+        - link "Se connecter" [ref=e21] [cursor=pointer]:
+          - /url: /login
+          - img
+          - generic [ref=e22]: Se connecter
+  - main [ref=e23]:
+    - generic [ref=e24]:
+      - generic [ref=e25]:
+        - generic [ref=e26]:
+          - heading "Tableau de Bord v1" [level=1] [ref=e27]
+          - paragraph [ref=e28]:
+            - text: Signaux techniques · Univers multi-actifs
+            - generic [ref=e134]: Mis à jour le 05/06/2026
+        - generic [ref=e29]:
+          - generic [ref=e30]:
+            - button "Complet" [ref=e31]:
+              - img [ref=e32]
+              - text: Complet
+            - button "MASI Actions" [ref=e37]:
+              - img [ref=e38]
+              - text: MASI Actions
+          - button "Filtres" [ref=e40]:
+            - img
+            - text: Filtres
+          - button "Masquer top signaux" [pressed] [ref=e41]:
+            - img
+            - text: Masquer top signaux
+          - button "Exporter" [ref=e42]:
+            - img
+            - text: Exporter
+          - button "Recalculer" [ref=e43]:
+            - img
+            - text: Recalculer
+      - generic [ref=e135]:
+        - generic [ref=e136]:
+          - generic [ref=e137]:
+            - heading "Top signaux actionnables" [level=2] [ref=e138]
+            - paragraph [ref=e139]: Classement par edge prouvé, score puis retour attendu net.
+          - generic [ref=e140]: 6 setups prêts à justifier
+        - generic [ref=e141]:
+          - 'link "Voir la preuve OOS MNG: WFO - Expanded TA Combo" [ref=e142] [cursor=pointer]':
+            - /url: /signals?symbol=MNG&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+            - generic [ref=e143]:
+              - generic [ref=e144]: MNG
+              - generic [ref=e145]: Managem
+            - generic [ref=e146]:
+              - generic [ref=e147]: WFO - Expanded TA Combo
+              - generic [ref=e148]: WFO · expanded_ta_combo
+            - generic [ref=e149]:
+              - generic [ref=e150]: Action
+              - generic [ref=e151]: Long
+            - generic [ref=e152]:
+              - generic [ref=e153]: retour attendu
+              - generic [ref=e154]: 17.25%
+            - generic [ref=e155]:
+              - generic [ref=e156]: Preuve
+              - generic [ref=e157]:
+                - generic [ref=e158]: Watch
+                - generic [ref=e159]: "%succés 78.00% · 21j"
+                - generic [ref=e160]: n=100
+                - img [ref=e161]
+          - 'link "Voir la preuve OOS CMT: WFO - Expanded TA Combo" [ref=e165] [cursor=pointer]':
+            - /url: /signals?symbol=CMT&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+            - generic [ref=e166]:
+              - generic [ref=e167]: CMT
+              - generic [ref=e168]: Compagnie Minière de Touissit
+            - generic [ref=e169]:
+              - generic [ref=e170]: WFO - Expanded TA Combo
+              - generic [ref=e171]: WFO · expanded_ta_combo
+            - generic [ref=e172]:
+              - generic [ref=e173]: Action
+              - generic [ref=e174]: Long
+            - generic [ref=e175]:
+              - generic [ref=e176]: retour attendu
+              - generic [ref=e177]: 11.59%
+            - generic [ref=e178]:
+              - generic [ref=e179]: Preuve
+              - generic [ref=e180]:
+                - generic [ref=e181]: Watch
+                - generic [ref=e182]: "%succés 75.00% · 21j"
+                - generic [ref=e183]: n=100
+                - img [ref=e184]
+          - 'link "Voir la preuve OOS FBR: WFO - Expanded TA Combo" [ref=e188] [cursor=pointer]':
+            - /url: /signals?symbol=FBR&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+            - generic [ref=e189]:
+              - generic [ref=e190]: FBR
+              - generic [ref=e191]: Fenie Brossette
+            - generic [ref=e192]:
+              - generic [ref=e193]: WFO - Expanded TA Combo
+              - generic [ref=e194]: WFO · expanded_ta_combo
+            - generic [ref=e195]:
+              - generic [ref=e196]: Action
+              - generic [ref=e197]: Long
+            - generic [ref=e198]:
+              - generic [ref=e199]: retour attendu
+              - generic [ref=e200]: 11.55%
+            - generic [ref=e201]:
+              - generic [ref=e202]: Preuve
+              - generic [ref=e203]:
+                - generic [ref=e204]: Watch
+                - generic [ref=e205]: "%succés 70.15% · 21j"
+                - generic [ref=e206]: n=67
+                - img [ref=e207]
+          - 'link "Voir la preuve OOS NKL: WFO - Legacy TA Simple" [ref=e211] [cursor=pointer]':
+            - /url: /signals?symbol=NKL&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+            - generic [ref=e212]:
+              - generic [ref=e213]: NKL
+              - generic [ref=e214]: Ennakl
+            - generic [ref=e215]:
+              - generic [ref=e216]: WFO - Legacy TA Simple
+              - generic [ref=e217]: WFO · legacy_ta_simple
+            - generic [ref=e218]:
+              - generic [ref=e219]: Action
+              - generic [ref=e220]: Long
+            - generic [ref=e221]:
+              - generic [ref=e222]: retour attendu
+              - generic [ref=e223]: 9.69%
+            - generic [ref=e224]:
+              - generic [ref=e225]: Preuve
+              - generic [ref=e226]:
+                - generic [ref=e227]: Watch
+                - generic [ref=e228]: "%succés 53.00% · 21j"
+                - generic [ref=e229]: n=100
+                - img [ref=e230]
+          - 'link "Voir la preuve OOS SID: WFO - Expanded TA Combo" [ref=e234] [cursor=pointer]':
+            - /url: /signals?symbol=SID&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+            - generic [ref=e235]:
+              - generic [ref=e236]: SID
+              - generic [ref=e237]: Sonasid
+            - generic [ref=e238]:
+              - generic [ref=e239]: WFO - Expanded TA Combo
+              - generic [ref=e240]: WFO · expanded_ta_combo
+            - generic [ref=e241]:
+              - generic [ref=e242]: Action
+              - generic [ref=e243]: Long
+            - generic [ref=e244]:
+              - generic [ref=e245]: retour attendu
+              - generic [ref=e246]: 7.48%
+            - generic [ref=e247]:
+              - generic [ref=e248]: Preuve
+              - generic [ref=e249]:
+                - generic [ref=e250]: Watch
+                - generic [ref=e251]: "%succés 62.50% · 21j"
+                - generic [ref=e252]: n=64
+                - img [ref=e253]
+          - 'link "Voir la preuve OOS CDM: WFO - Expanded TA Combo" [ref=e257] [cursor=pointer]':
+            - /url: /signals?symbol=CDM&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+            - generic [ref=e258]:
+              - generic [ref=e259]: CDM
+              - generic [ref=e260]: Crédit du Maroc
+            - generic [ref=e261]:
+              - generic [ref=e262]: WFO - Expanded TA Combo
+              - generic [ref=e263]: WFO · expanded_ta_combo
+            - generic [ref=e264]:
+              - generic [ref=e265]: Action
+              - generic [ref=e266]: Long
+            - generic [ref=e267]:
+              - generic [ref=e268]: retour attendu
+              - generic [ref=e269]: 4.99%
+            - generic [ref=e270]:
+              - generic [ref=e271]: Preuve
+              - generic [ref=e272]:
+                - generic [ref=e273]: Watch
+                - generic [ref=e274]: "%succés 70.97% · 21j"
+                - generic [ref=e275]: n=62
+                - img [ref=e276]
+      - generic [ref=e44]:
+        - generic [ref=e45]:
+          - paragraph [ref=e46]: Univers actif
+          - generic [ref=e47]: "24"
+          - paragraph [ref=e48]: titres après filtres
+        - generic [ref=e49]:
+          - paragraph [ref=e50]: Opportunites long
+          - generic [ref=e51]: "9"
+          - paragraph [ref=e52]: edge eligible
+        - generic [ref=e53]:
+          - paragraph [ref=e54]: Opportunites short
+          - generic [ref=e55]: "15"
+          - paragraph [ref=e56]: edge eligible
+        - generic [ref=e57]:
+          - paragraph [ref=e58]: Action E[R] opt. median
+          - generic [ref=e59]: 1.70%
+          - paragraph [ref=e60]: 24 titres · O/O · hold 21j
+      - generic [ref=e61]:
+        - generic [ref=e62]:
+          - heading "Configurez l'analyse" [level=2] [ref=e63]
+          - paragraph [ref=e64]: 3 paramètres · valeurs par défaut MASI
+        - generic [ref=e65]:
+          - generic [ref=e66]:
+            - paragraph [ref=e67]:
+              - generic [ref=e68]: "1."
+              - text: Horizon de temps
+            - generic [ref=e70]:
+              - button "Hebdomadaire" [ref=e71]
+              - button "Mensuel" [ref=e72]
+              - button "Trimestriel" [ref=e73]
+            - paragraph [ref=e74]: 5 j · 21 j · 63 j
+          - generic [ref=e75]:
+            - paragraph [ref=e76]:
+              - generic [ref=e77]: "2."
+              - text: Univers d'analyse
+            - generic [ref=e79]:
+              - button "Stocks" [ref=e80]
+              - button "Sectors" [ref=e81]
+              - button "Indices" [ref=e82]
+              - button "Portfolio" [ref=e83]
+            - paragraph [ref=e84]: 73 titres MASI
+          - generic [ref=e85]:
+            - paragraph [ref=e86]:
+              - generic [ref=e87]: "3."
+              - text: Mode dashboard
+            - generic [ref=e89]:
+              - button "Trade opportunities" [ref=e90]
+              - button "Technical directions" [ref=e91]
+              - button "Fondamental" [ref=e92]
+            - paragraph [ref=e93]: Edge tradable, technique ou fondamental
+        - generic [ref=e94]:
+          - generic [ref=e95]:
+            - generic [ref=e96]: Secteur · Tous
+            - generic [ref=e98]:
+              - img [ref=e99]
+              - textbox "Rechercher ticker ou nom..." [ref=e102]
+            - generic [ref=e103]:
+              - generic [ref=e104]: Bourse Pre-open
+              - button "Live" [disabled]:
+                - img
+                - text: Live
+              - link "Glossaire" [ref=e106] [cursor=pointer]:
+                - /url: /glossary#dashboard
+                - img
+                - text: Glossaire
+          - generic [ref=e107]:
+            - generic [ref=e108]:
+              - switch [ref=e109]
+              - generic [ref=e110]: Liquidité
+            - generic [ref=e111]:
+              - button "Coûts inclus" [ref=e112]
+              - button "Coûts exclus" [ref=e113]
+            - generic [ref=e114]:
+              - checkbox "Edge prouvé seulement" [ref=e115]
+              - text: Edge prouvé seulement
+      - generic [ref=e280]:
+        - generic [ref=e281]:
+          - heading "Signaux par titre · Horizon mensuel (21 j)" [level=3] [ref=e282]
+          - generic [ref=e283]: 24 lignes · triées par retour attendu
+        - table [ref=e286]:
+          - rowgroup [ref=e287]:
+            - row "Ticker Nom Prix Var. 1j 1D ADV20 MAD Definition ADV20 Signal Definition Badge signal Methode auto Definition Meilleure methode auto retour attendu Definition Action E[R] %succés Definition Hit rate Edge Definition Edge" [ref=e288]:
+              - columnheader [ref=e289]
+              - columnheader "Ticker" [ref=e290]:
+                - button "Ticker" [ref=e291]:
+                  - text: Ticker
+                  - img [ref=e1372]
+              - columnheader "Nom" [ref=e295]
+              - columnheader "Prix" [ref=e296]:
+                - button "Prix" [ref=e297]:
+                  - text: Prix
+                  - img [ref=e1375]
+              - columnheader "Var. 1j 1D" [ref=e301]:
+                - generic [ref=e302]:
+                  - button "Var. 1j" [ref=e303]:
+                    - text: Var. 1j
+                    - img [ref=e1378]
+                  - combobox "Performance period" [ref=e307]:
+                    - option "1D" [selected]
+                    - option "WTD"
+                    - option "MTD"
+                    - option "YTD"
+                    - option "O/N"
+              - columnheader "ADV20 MAD Definition ADV20" [ref=e308]:
+                - generic [ref=e309]:
+                  - button "ADV20 MAD" [ref=e310]:
+                    - text: ADV20 MAD
+                    - img [ref=e1381]
+                  - link "Definition ADV20" [ref=e314] [cursor=pointer]:
+                    - /url: /glossary#adv20
+                    - img [ref=e315]
+              - columnheader "Signal Definition Badge signal" [ref=e317]:
+                - generic [ref=e318]:
+                  - button "Signal" [ref=e319]:
+                    - text: Signal
+                    - img [ref=e1384]
+                  - link "Definition Badge signal" [ref=e323] [cursor=pointer]:
+                    - /url: /glossary#signal-badge
+                    - img [ref=e324]
+              - columnheader "Methode auto Definition Meilleure methode auto" [ref=e326]:
+                - generic [ref=e327]:
+                  - button "Methode auto" [ref=e328]:
+                    - text: Methode auto
+                    - img [ref=e1387]
+                  - link "Definition Meilleure methode auto" [ref=e332] [cursor=pointer]:
+                    - /url: /glossary#best-signal
+                    - img [ref=e333]
+              - columnheader "retour attendu Definition Action E[R]" [ref=e335]:
+                - generic [ref=e336]:
+                  - button "retour attendu" [ref=e337]:
+                    - text: retour attendu
+                    - img [ref=e1390]
+                  - link "Definition Action E[R]" [ref=e340] [cursor=pointer]:
+                    - /url: /glossary#action-er
+                    - img [ref=e341]
+              - columnheader "%succés Definition Hit rate" [ref=e343]:
+                - generic [ref=e344]:
+                  - button "%succés" [ref=e345]:
+                    - text: "%succés"
+                    - img [ref=e1392]
+                  - link "Definition Hit rate" [ref=e349] [cursor=pointer]:
+                    - /url: /glossary#hit-rate
+                    - img [ref=e350]
+              - columnheader "Edge Definition Edge" [ref=e352]:
+                - generic [ref=e353]:
+                  - button "Edge" [ref=e354]:
+                    - text: Edge
+                    - img [ref=e1395]
+                  - link "Definition Edge" [ref=e358] [cursor=pointer]:
+                    - /url: /glossary#edge
+                    - img [ref=e359]
+              - columnheader [ref=e361]
+          - rowgroup [ref=e362]:
+            - row "Select MNG MNG Managem 16 550,00 Close -8.55% 43 160 301 Achat fort WFO - Expanded TA Combo À surveiller n=100 17.25% Long J+21 Close [12.83%, 22.26%] 78.00% [0.69, 0.85] À surveiller Score 74 Afficher le graphique MNG Voir la preuve OOS MNG" [ref=e363]:
+              - cell "Select MNG" [ref=e364]:
+                - checkbox "Select MNG" [ref=e365]
+              - cell "MNG" [ref=e366]:
+                - link "MNG" [ref=e367] [cursor=pointer]:
+                  - /url: /signals?symbol=MNG&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+              - cell "Managem" [ref=e368]:
+                - link "Managem" [ref=e369] [cursor=pointer]:
+                  - /url: /signals?symbol=MNG&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+                  - generic [ref=e370]: Managem
+              - cell "16 550,00 Close" [ref=e371]:
+                - generic [ref=e372]: 16 550,00
+                - generic [ref=e373]: Close
+              - cell "-8.55%" [ref=e374]
+              - cell "43 160 301" [ref=e375]
+              - cell "Achat fort" [ref=e376]:
+                - generic [ref=e377]: Achat fort
+              - cell "WFO - Expanded TA Combo À surveiller n=100" [ref=e378]:
+                - generic [ref=e379]:
+                  - generic "WFO - Expanded TA Combo" [ref=e380]
+                  - generic [ref=e381]:
+                    - generic [ref=e382]: À surveiller
+                    - generic [ref=e383]: n=100
+              - cell "17.25% Long J+21 Close [12.83%, 22.26%]" [ref=e384]:
+                - link "17.25% Long J+21 Close [12.83%, 22.26%]" [ref=e385] [cursor=pointer]:
+                  - /url: /signals?symbol=MNG&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+                  - generic [ref=e386]:
+                    - generic [ref=e387]: 17.25%
+                    - generic [ref=e388]: Long J+21 Close [12.83%, 22.26%]
+              - cell "78.00% [0.69, 0.85]" [ref=e389]:
+                - generic [ref=e390]:
+                  - generic [ref=e391]: 78.00%
+                  - generic [ref=e392]: "[0.69, 0.85]"
+              - cell "À surveiller Score 74" [ref=e393]:
+                - generic [ref=e394]:
+                  - generic [ref=e395]: À surveiller
+                  - generic [ref=e396]: Score 74
+              - cell "Afficher le graphique MNG Voir la preuve OOS MNG" [ref=e397]:
+                - generic [ref=e398]:
+                  - button "Afficher le graphique MNG" [expanded] [active] [ref=e399]:
+                    - img [ref=e400]
+                  - link "Voir la preuve OOS MNG" [ref=e402] [cursor=pointer]:
+                    - /url: /signals?symbol=MNG&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+                    - img [ref=e403]
+            - row "MNG Long Close Achat fort · 16 550 · 21 j 3M 6M 1Y All MNG Long Buy Tendance Momentum Oscillation Volume EMA(16,50) (monthly) price overlay TRIX-29 (monthly) indicator pane ROC-66 (monthly) indicator pane UO(13,27,28) (monthly) threshold pane CMF-50 (monthly) indicator pane AD-EMA-64 (monthly) indicator pane VWAP(67,1.0) (monthly) price overlay 7 indicateurs Voir detail" [ref=e1398]:
+              - cell "MNG Long Close Achat fort · 16 550 · 21 j 3M 6M 1Y All MNG Long Buy Tendance Momentum Oscillation Volume EMA(16,50) (monthly) price overlay TRIX-29 (monthly) indicator pane ROC-66 (monthly) indicator pane UO(13,27,28) (monthly) threshold pane CMF-50 (monthly) indicator pane AD-EMA-64 (monthly) indicator pane VWAP(67,1.0) (monthly) price overlay 7 indicateurs Voir detail" [ref=e1399]:
+                - generic [ref=e1400]:
+                  - generic [ref=e1401]:
+                    - generic [ref=e1402]:
+                      - generic [ref=e1403]:
+                        - generic [ref=e1404]: MNG
+                        - generic [ref=e1405]: Long
+                        - generic [ref=e1406]: Close
+                      - generic [ref=e1407]: Achat fort · 16 550 · 21 j
+                    - generic [ref=e1408]:
+                      - button "3M" [ref=e1409]
+                      - button "6M" [ref=e1410]
+                      - button "1Y" [ref=e1411]
+                      - button "All" [ref=e1412]
+                  - generic [ref=e1413]:
+                    - generic [ref=e1414]: MNG Long
+                    - button "Buy" [ref=e1416]:
+                      - generic [ref=e1418]: Buy
+                    - generic [ref=e1419]:
+                      - button "Tendance" [ref=e1420]
+                      - button "Momentum" [ref=e1421]
+                      - button "Oscillation" [ref=e1422]
+                      - button "Volume" [ref=e1423]
+                    - generic [ref=e1424]:
+                      - button "EMA(16,50) (monthly) price overlay" [ref=e1425]:
+                        - generic [ref=e1427]:
+                          - generic [ref=e1428]: EMA(16,50) (monthly)
+                          - generic [ref=e1429]: price overlay
+                      - button "TRIX-29 (monthly) indicator pane" [ref=e1430]:
+                        - generic [ref=e1432]:
+                          - generic [ref=e1433]: TRIX-29 (monthly)
+                          - generic [ref=e1434]: indicator pane
+                      - button "ROC-66 (monthly) indicator pane" [ref=e1435]:
+                        - generic [ref=e1437]:
+                          - generic [ref=e1438]: ROC-66 (monthly)
+                          - generic [ref=e1439]: indicator pane
+                      - button "UO(13,27,28) (monthly) threshold pane" [ref=e1440]:
+                        - generic [ref=e1442]:
+                          - generic [ref=e1443]: UO(13,27,28) (monthly)
+                          - generic [ref=e1444]: threshold pane
+                      - button "CMF-50 (monthly) indicator pane" [ref=e1445]:
+                        - generic [ref=e1447]:
+                          - generic [ref=e1448]: CMF-50 (monthly)
+                          - generic [ref=e1449]: indicator pane
+                      - button "AD-EMA-64 (monthly) indicator pane" [ref=e1450]:
+                        - generic [ref=e1452]:
+                          - generic [ref=e1453]: AD-EMA-64 (monthly)
+                          - generic [ref=e1454]: indicator pane
+                      - button "VWAP(67,1.0) (monthly) price overlay" [ref=e1455]:
+                        - generic [ref=e1457]:
+                          - generic [ref=e1458]: VWAP(67,1.0) (monthly)
+                          - generic [ref=e1459]: price overlay
+                    - table [ref=e1462]:
+                      - row [ref=e1463]:
+                        - cell
+                        - cell [ref=e1464]
+                        - cell [ref=e1468]
+                      - row [ref=e1472]:
+                        - cell [ref=e1473]
+                      - row [ref=e1475]:
+                        - cell
+                        - cell [ref=e1476]
+                        - cell [ref=e1480]
+                      - row [ref=e1484]:
+                        - cell [ref=e1485]
+                      - row [ref=e1487]:
+                        - cell
+                        - cell [ref=e1488]
+                        - cell [ref=e1492]
+                      - row [ref=e1496]:
+                        - cell [ref=e1497]
+                      - row [ref=e1499]:
+                        - cell
+                        - cell [ref=e1500]
+                        - cell [ref=e1504]
+                      - row [ref=e1508]:
+                        - cell [ref=e1509]
+                      - row [ref=e1511]:
+                        - cell
+                        - cell [ref=e1512]
+                        - cell [ref=e1516]
+                      - row [ref=e1520]:
+                        - cell [ref=e1521]
+                      - row [ref=e1523]:
+                        - cell
+                        - cell [ref=e1524]:
+                          - link "Charting by TradingView" [ref=e1528] [cursor=pointer]:
+                            - /url: https://www.tradingview.com/?utm_medium=lwc-link&utm_campaign=lwc-chart&utm_source=127.0.0.1/dashboard
+                            - img [ref=e1529]
+                        - cell [ref=e1533]
+                      - row [ref=e1537]:
+                        - cell
+                        - cell [ref=e1538]
+                        - cell [ref=e1542]
+                  - generic [ref=e1545]:
+                    - generic [ref=e1546]: 7 indicateurs
+                    - link "Voir detail" [ref=e1547] [cursor=pointer]:
+                      - /url: /signals?symbol=MNG&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+            - row "Select CMT CMT Compagnie Minière de Touissit 5 133,00 Close -6.66% 15 095 521 Achat fort WFO - Expanded TA Combo À surveiller n=100 11.59% Long J+21 Close [7.87%, 15.55%] 75.00% [0.66, 0.82] À surveiller Score 76 Afficher le graphique CMT Voir la preuve OOS CMT" [ref=e405]:
+              - cell "Select CMT" [ref=e406]:
+                - checkbox "Select CMT" [ref=e407]
+              - cell "CMT" [ref=e408]:
+                - link "CMT" [ref=e409] [cursor=pointer]:
+                  - /url: /signals?symbol=CMT&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+              - cell "Compagnie Minière de Touissit" [ref=e410]:
+                - link "Compagnie Minière de Touissit" [ref=e411] [cursor=pointer]:
+                  - /url: /signals?symbol=CMT&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+                  - generic [ref=e412]: Compagnie Minière de Touissit
+              - cell "5 133,00 Close" [ref=e413]:
+                - generic [ref=e414]: 5 133,00
+                - generic [ref=e415]: Close
+              - cell "-6.66%" [ref=e416]
+              - cell "15 095 521" [ref=e417]
+              - cell "Achat fort" [ref=e418]:
+                - generic [ref=e419]: Achat fort
+              - cell "WFO - Expanded TA Combo À surveiller n=100" [ref=e420]:
+                - generic [ref=e421]:
+                  - generic "WFO - Expanded TA Combo" [ref=e422]
+                  - generic [ref=e423]:
+                    - generic [ref=e424]: À surveiller
+                    - generic [ref=e425]: n=100
+              - cell "11.59% Long J+21 Close [7.87%, 15.55%]" [ref=e426]:
+                - link "11.59% Long J+21 Close [7.87%, 15.55%]" [ref=e427] [cursor=pointer]:
+                  - /url: /signals?symbol=CMT&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+                  - generic [ref=e428]:
+                    - generic [ref=e429]: 11.59%
+                    - generic [ref=e430]: Long J+21 Close [7.87%, 15.55%]
+              - cell "75.00% [0.66, 0.82]" [ref=e431]:
+                - generic [ref=e432]:
+                  - generic [ref=e433]: 75.00%
+                  - generic [ref=e434]: "[0.66, 0.82]"
+              - cell "À surveiller Score 76" [ref=e435]:
+                - generic [ref=e436]:
+                  - generic [ref=e437]: À surveiller
+                  - generic [ref=e438]: Score 76
+              - cell "Afficher le graphique CMT Voir la preuve OOS CMT" [ref=e439]:
+                - generic [ref=e440]:
+                  - button "Afficher le graphique CMT" [ref=e441]:
+                    - img [ref=e442]
+                  - link "Voir la preuve OOS CMT" [ref=e444] [cursor=pointer]:
+                    - /url: /signals?symbol=CMT&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+                    - img [ref=e445]
+            - row "Select FBR FBR Fenie Brossette 300,00 Close +1.35% 289 314 Achat WFO - Expanded TA Combo À surveiller n=67 11.55% Long J+21 Close [7.26%, 15.46%] 70.15% [0.58, 0.80] À surveiller Score 46 Afficher le graphique FBR Voir la preuve OOS FBR" [ref=e447]:
+              - cell "Select FBR" [ref=e448]:
+                - checkbox "Select FBR" [ref=e449]
+              - cell "FBR" [ref=e450]:
+                - link "FBR" [ref=e451] [cursor=pointer]:
+                  - /url: /signals?symbol=FBR&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+              - cell "Fenie Brossette" [ref=e452]:
+                - link "Fenie Brossette" [ref=e453] [cursor=pointer]:
+                  - /url: /signals?symbol=FBR&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+                  - generic [ref=e454]: Fenie Brossette
+              - cell "300,00 Close" [ref=e455]:
+                - generic [ref=e456]: 300,00
+                - generic [ref=e457]: Close
+              - cell "+1.35%" [ref=e458]
+              - cell "289 314" [ref=e459]
+              - cell "Achat" [ref=e460]:
+                - generic [ref=e461]: Achat
+              - cell "WFO - Expanded TA Combo À surveiller n=67" [ref=e462]:
+                - generic [ref=e463]:
+                  - generic "WFO - Expanded TA Combo" [ref=e464]
+                  - generic [ref=e465]:
+                    - generic [ref=e466]: À surveiller
+                    - generic [ref=e467]: n=67
+              - cell "11.55% Long J+21 Close [7.26%, 15.46%]" [ref=e468]:
+                - link "11.55% Long J+21 Close [7.26%, 15.46%]" [ref=e469] [cursor=pointer]:
+                  - /url: /signals?symbol=FBR&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+                  - generic [ref=e470]:
+                    - generic [ref=e471]: 11.55%
+                    - generic [ref=e472]: Long J+21 Close [7.26%, 15.46%]
+              - cell "70.15% [0.58, 0.80]" [ref=e473]:
+                - generic [ref=e474]:
+                  - generic [ref=e475]: 70.15%
+                  - generic [ref=e476]: "[0.58, 0.80]"
+              - cell "À surveiller Score 46" [ref=e477]:
+                - generic [ref=e478]:
+                  - generic [ref=e479]: À surveiller
+                  - generic [ref=e480]: Score 46
+              - cell "Afficher le graphique FBR Voir la preuve OOS FBR" [ref=e481]:
+                - generic [ref=e482]:
+                  - button "Afficher le graphique FBR" [ref=e483]:
+                    - img [ref=e484]
+                  - link "Voir la preuve OOS FBR" [ref=e486] [cursor=pointer]:
+                    - /url: /signals?symbol=FBR&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+                    - img [ref=e487]
+            - row "Select NKL NKL Ennakl 52,99 Close -0.02% 228 397 Achat WFO - Legacy TA À surveiller n=100 9.69% Long J+21 Open [5.32%, 14.40%] 53.00% [0.43, 0.62] À surveiller Score 42 Afficher le graphique NKL Voir la preuve OOS NKL" [ref=e489]:
+              - cell "Select NKL" [ref=e490]:
+                - checkbox "Select NKL" [ref=e491]
+              - cell "NKL" [ref=e492]:
+                - link "NKL" [ref=e493] [cursor=pointer]:
+                  - /url: /signals?symbol=NKL&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+              - cell "Ennakl" [ref=e494]:
+                - link "Ennakl" [ref=e495] [cursor=pointer]:
+                  - /url: /signals?symbol=NKL&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e496]: Ennakl
+              - cell "52,99 Close" [ref=e497]:
+                - generic [ref=e498]: 52,99
+                - generic [ref=e499]: Close
+              - cell "-0.02%" [ref=e500]
+              - cell "228 397" [ref=e501]
+              - cell "Achat" [ref=e502]:
+                - generic [ref=e503]: Achat
+              - cell "WFO - Legacy TA À surveiller n=100" [ref=e504]:
+                - generic [ref=e505]:
+                  - generic "WFO - Legacy TA Simple" [ref=e506]: WFO - Legacy TA
+                  - generic [ref=e507]:
+                    - generic [ref=e508]: À surveiller
+                    - generic [ref=e509]: n=100
+              - cell "9.69% Long J+21 Open [5.32%, 14.40%]" [ref=e510]:
+                - link "9.69% Long J+21 Open [5.32%, 14.40%]" [ref=e511] [cursor=pointer]:
+                  - /url: /signals?symbol=NKL&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e512]:
+                    - generic [ref=e513]: 9.69%
+                    - generic [ref=e514]: Long J+21 Open [5.32%, 14.40%]
+              - cell "53.00% [0.43, 0.62]" [ref=e515]:
+                - generic [ref=e516]:
+                  - generic [ref=e517]: 53.00%
+                  - generic [ref=e518]: "[0.43, 0.62]"
+              - cell "À surveiller Score 42" [ref=e519]:
+                - generic [ref=e520]:
+                  - generic [ref=e521]: À surveiller
+                  - generic [ref=e522]: Score 42
+              - cell "Afficher le graphique NKL Voir la preuve OOS NKL" [ref=e523]:
+                - generic [ref=e524]:
+                  - button "Afficher le graphique NKL" [ref=e525]:
+                    - img [ref=e526]
+                  - link "Voir la preuve OOS NKL" [ref=e528] [cursor=pointer]:
+                    - /url: /signals?symbol=NKL&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                    - img [ref=e529]
+            - row "Select SID SID Sonasid 1 950,00 Close -3.23% 2 952 600 Achat WFO - Expanded TA Combo À surveiller n=64 7.48% Long J+21 Close [4.41%, 10.83%] 62.50% [0.50, 0.73] À surveiller Score 43 Afficher le graphique SID Voir la preuve OOS SID" [ref=e531]:
+              - cell "Select SID" [ref=e532]:
+                - checkbox "Select SID" [ref=e533]
+              - cell "SID" [ref=e534]:
+                - link "SID" [ref=e535] [cursor=pointer]:
+                  - /url: /signals?symbol=SID&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+              - cell "Sonasid" [ref=e536]:
+                - link "Sonasid" [ref=e537] [cursor=pointer]:
+                  - /url: /signals?symbol=SID&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+                  - generic [ref=e538]: Sonasid
+              - cell "1 950,00 Close" [ref=e539]:
+                - generic [ref=e540]: 1 950,00
+                - generic [ref=e541]: Close
+              - cell "-3.23%" [ref=e542]
+              - cell "2 952 600" [ref=e543]
+              - cell "Achat" [ref=e544]:
+                - generic [ref=e545]: Achat
+              - cell "WFO - Expanded TA Combo À surveiller n=64" [ref=e546]:
+                - generic [ref=e547]:
+                  - generic "WFO - Expanded TA Combo" [ref=e548]
+                  - generic [ref=e549]:
+                    - generic [ref=e550]: À surveiller
+                    - generic [ref=e551]: n=64
+              - cell "7.48% Long J+21 Close [4.41%, 10.83%]" [ref=e552]:
+                - link "7.48% Long J+21 Close [4.41%, 10.83%]" [ref=e553] [cursor=pointer]:
+                  - /url: /signals?symbol=SID&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+                  - generic [ref=e554]:
+                    - generic [ref=e555]: 7.48%
+                    - generic [ref=e556]: Long J+21 Close [4.41%, 10.83%]
+              - cell "62.50% [0.50, 0.73]" [ref=e557]:
+                - generic [ref=e558]:
+                  - generic [ref=e559]: 62.50%
+                  - generic [ref=e560]: "[0.50, 0.73]"
+              - cell "À surveiller Score 43" [ref=e561]:
+                - generic [ref=e562]:
+                  - generic [ref=e563]: À surveiller
+                  - generic [ref=e564]: Score 43
+              - cell "Afficher le graphique SID Voir la preuve OOS SID" [ref=e565]:
+                - generic [ref=e566]:
+                  - button "Afficher le graphique SID" [ref=e567]:
+                    - img [ref=e568]
+                  - link "Voir la preuve OOS SID" [ref=e570] [cursor=pointer]:
+                    - /url: /signals?symbol=SID&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+                    - img [ref=e571]
+            - row "Select CDM CDM Crédit du Maroc 1 001,00 Close -0.79% 3 886 155 Achat fort WFO - Expanded TA Combo À surveiller n=62 4.99% Long J+21 Close [3.10%, 6.81%] 70.97% [0.59, 0.81] À surveiller Score 56 Afficher le graphique CDM Voir la preuve OOS CDM" [ref=e573]:
+              - cell "Select CDM" [ref=e574]:
+                - checkbox "Select CDM" [ref=e575]
+              - cell "CDM" [ref=e576]:
+                - link "CDM" [ref=e577] [cursor=pointer]:
+                  - /url: /signals?symbol=CDM&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+              - cell "Crédit du Maroc" [ref=e578]:
+                - link "Crédit du Maroc" [ref=e579] [cursor=pointer]:
+                  - /url: /signals?symbol=CDM&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+                  - generic [ref=e580]: Crédit du Maroc
+              - cell "1 001,00 Close" [ref=e581]:
+                - generic [ref=e582]: 1 001,00
+                - generic [ref=e583]: Close
+              - cell "-0.79%" [ref=e584]
+              - cell "3 886 155" [ref=e585]
+              - cell "Achat fort" [ref=e586]:
+                - generic [ref=e587]: Achat fort
+              - cell "WFO - Expanded TA Combo À surveiller n=62" [ref=e588]:
+                - generic [ref=e589]:
+                  - generic "WFO - Expanded TA Combo" [ref=e590]
+                  - generic [ref=e591]:
+                    - generic [ref=e592]: À surveiller
+                    - generic [ref=e593]: n=62
+              - cell "4.99% Long J+21 Close [3.10%, 6.81%]" [ref=e594]:
+                - link "4.99% Long J+21 Close [3.10%, 6.81%]" [ref=e595] [cursor=pointer]:
+                  - /url: /signals?symbol=CDM&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+                  - generic [ref=e596]:
+                    - generic [ref=e597]: 4.99%
+                    - generic [ref=e598]: Long J+21 Close [3.10%, 6.81%]
+              - cell "70.97% [0.59, 0.81]" [ref=e599]:
+                - generic [ref=e600]:
+                  - generic [ref=e601]: 70.97%
+                  - generic [ref=e602]: "[0.59, 0.81]"
+              - cell "À surveiller Score 56" [ref=e603]:
+                - generic [ref=e604]:
+                  - generic [ref=e605]: À surveiller
+                  - generic [ref=e606]: Score 56
+              - cell "Afficher le graphique CDM Voir la preuve OOS CDM" [ref=e607]:
+                - generic [ref=e608]:
+                  - button "Afficher le graphique CDM" [ref=e609]:
+                    - img [ref=e610]
+                  - link "Voir la preuve OOS CDM" [ref=e612] [cursor=pointer]:
+                    - /url: /signals?symbol=CDM&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+                    - img [ref=e613]
+            - row "Select SNA SNA Stokvis Nord Afrique 77,50 Close -3.73% 1 884 614 Achat fort WFO - Expanded TA À surveiller n=100 4.70% Long J+6 Close [2.54%, 6.98%] 61.00% [0.51, 0.70] À surveiller Score 54 Afficher le graphique SNA Voir la preuve OOS SNA" [ref=e615]:
+              - cell "Select SNA" [ref=e616]:
+                - checkbox "Select SNA" [ref=e617]
+              - cell "SNA" [ref=e618]:
+                - link "SNA" [ref=e619] [cursor=pointer]:
+                  - /url: /signals?symbol=SNA&horizon=monthly&view=expanded_ta_simple&source=wfo&tab=evidence
+              - cell "Stokvis Nord Afrique" [ref=e620]:
+                - link "Stokvis Nord Afrique" [ref=e621] [cursor=pointer]:
+                  - /url: /signals?symbol=SNA&horizon=monthly&view=expanded_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e622]: Stokvis Nord Afrique
+              - cell "77,50 Close" [ref=e623]:
+                - generic [ref=e624]: 77,50
+                - generic [ref=e625]: Close
+              - cell "-3.73%" [ref=e626]
+              - cell "1 884 614" [ref=e627]
+              - cell "Achat fort" [ref=e628]:
+                - generic [ref=e629]: Achat fort
+              - cell "WFO - Expanded TA À surveiller n=100" [ref=e630]:
+                - generic [ref=e631]:
+                  - generic "WFO - Expanded TA Simple" [ref=e632]: WFO - Expanded TA
+                  - generic [ref=e633]:
+                    - generic [ref=e634]: À surveiller
+                    - generic [ref=e635]: n=100
+              - cell "4.70% Long J+6 Close [2.54%, 6.98%]" [ref=e636]:
+                - link "4.70% Long J+6 Close [2.54%, 6.98%]" [ref=e637] [cursor=pointer]:
+                  - /url: /signals?symbol=SNA&horizon=monthly&view=expanded_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e638]:
+                    - generic [ref=e639]: 4.70%
+                    - generic [ref=e640]: Long J+6 Close [2.54%, 6.98%]
+              - cell "61.00% [0.51, 0.70]" [ref=e641]:
+                - generic [ref=e642]:
+                  - generic [ref=e643]: 61.00%
+                  - generic [ref=e644]: "[0.51, 0.70]"
+              - cell "À surveiller Score 54" [ref=e645]:
+                - generic [ref=e646]:
+                  - generic [ref=e647]: À surveiller
+                  - generic [ref=e648]: Score 54
+              - cell "Afficher le graphique SNA Voir la preuve OOS SNA" [ref=e649]:
+                - generic [ref=e650]:
+                  - button "Afficher le graphique SNA" [ref=e651]:
+                    - img [ref=e652]
+                  - link "Voir la preuve OOS SNA" [ref=e654] [cursor=pointer]:
+                    - /url: /signals?symbol=SNA&horizon=monthly&view=expanded_ta_simple&source=wfo&tab=evidence
+                    - img [ref=e655]
+            - row "Select RIS RIS Risma 335,00 Close -2.87% 7 313 646 Vente forte WFO - Legacy TA À surveiller n=58 4.69% Short J+20 Close [2.68%, 6.68%] 74.14% [0.62, 0.84] À surveiller Score 62 Afficher le graphique RIS Voir la preuve OOS RIS" [ref=e657]:
+              - cell "Select RIS" [ref=e658]:
+                - checkbox "Select RIS" [ref=e659]
+              - cell "RIS" [ref=e660]:
+                - link "RIS" [ref=e661] [cursor=pointer]:
+                  - /url: /signals?symbol=RIS&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+              - cell "Risma" [ref=e662]:
+                - link "Risma" [ref=e663] [cursor=pointer]:
+                  - /url: /signals?symbol=RIS&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e664]: Risma
+              - cell "335,00 Close" [ref=e665]:
+                - generic [ref=e666]: 335,00
+                - generic [ref=e667]: Close
+              - cell "-2.87%" [ref=e668]
+              - cell "7 313 646" [ref=e669]
+              - cell "Vente forte" [ref=e670]:
+                - generic [ref=e671]: Vente forte
+              - cell "WFO - Legacy TA À surveiller n=58" [ref=e672]:
+                - generic [ref=e673]:
+                  - generic "WFO - Legacy TA Simple" [ref=e674]: WFO - Legacy TA
+                  - generic [ref=e675]:
+                    - generic [ref=e676]: À surveiller
+                    - generic [ref=e677]: n=58
+              - cell "4.69% Short J+20 Close [2.68%, 6.68%]" [ref=e678]:
+                - link "4.69% Short J+20 Close [2.68%, 6.68%]" [ref=e679] [cursor=pointer]:
+                  - /url: /signals?symbol=RIS&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e680]:
+                    - generic [ref=e681]: 4.69%
+                    - generic [ref=e682]: Short J+20 Close [2.68%, 6.68%]
+              - cell "74.14% [0.62, 0.84]" [ref=e683]:
+                - generic [ref=e684]:
+                  - generic [ref=e685]: 74.14%
+                  - generic [ref=e686]: "[0.62, 0.84]"
+              - cell "À surveiller Score 62" [ref=e687]:
+                - generic [ref=e688]:
+                  - generic [ref=e689]: À surveiller
+                  - generic [ref=e690]: Score 62
+              - cell "Afficher le graphique RIS Voir la preuve OOS RIS" [ref=e691]:
+                - generic [ref=e692]:
+                  - button "Afficher le graphique RIS" [ref=e693]:
+                    - img [ref=e694]
+                  - link "Voir la preuve OOS RIS" [ref=e696] [cursor=pointer]:
+                    - /url: /signals?symbol=RIS&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                    - img [ref=e697]
+            - row "Select SNP SNP SNEP 372,00 Close +0.40% 622 135 Vente WFO - Legacy TA À surveiller n=100 4.17% Short J+21 Close [2.77%, 5.55%] 69.00% [0.59, 0.77] À surveiller Score 79 Afficher le graphique SNP Voir la preuve OOS SNP" [ref=e699]:
+              - cell "Select SNP" [ref=e700]:
+                - checkbox "Select SNP" [ref=e701]
+              - cell "SNP" [ref=e702]:
+                - link "SNP" [ref=e703] [cursor=pointer]:
+                  - /url: /signals?symbol=SNP&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+              - cell "SNEP" [ref=e704]:
+                - link "SNEP" [ref=e705] [cursor=pointer]:
+                  - /url: /signals?symbol=SNP&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e706]: SNEP
+              - cell "372,00 Close" [ref=e707]:
+                - generic [ref=e708]: 372,00
+                - generic [ref=e709]: Close
+              - cell "+0.40%" [ref=e710]
+              - cell "622 135" [ref=e711]
+              - cell "Vente" [ref=e712]:
+                - generic [ref=e713]: Vente
+              - cell "WFO - Legacy TA À surveiller n=100" [ref=e714]:
+                - generic [ref=e715]:
+                  - generic "WFO - Legacy TA Simple" [ref=e716]: WFO - Legacy TA
+                  - generic [ref=e717]:
+                    - generic [ref=e718]: À surveiller
+                    - generic [ref=e719]: n=100
+              - cell "4.17% Short J+21 Close [2.77%, 5.55%]" [ref=e720]:
+                - link "4.17% Short J+21 Close [2.77%, 5.55%]" [ref=e721] [cursor=pointer]:
+                  - /url: /signals?symbol=SNP&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e722]:
+                    - generic [ref=e723]: 4.17%
+                    - generic [ref=e724]: Short J+21 Close [2.77%, 5.55%]
+              - cell "69.00% [0.59, 0.77]" [ref=e725]:
+                - generic [ref=e726]:
+                  - generic [ref=e727]: 69.00%
+                  - generic [ref=e728]: "[0.59, 0.77]"
+              - cell "À surveiller Score 79" [ref=e729]:
+                - generic [ref=e730]:
+                  - generic [ref=e731]: À surveiller
+                  - generic [ref=e732]: Score 79
+              - cell "Afficher le graphique SNP Voir la preuve OOS SNP" [ref=e733]:
+                - generic [ref=e734]:
+                  - button "Afficher le graphique SNP" [ref=e735]:
+                    - img [ref=e736]
+                  - link "Voir la preuve OOS SNP" [ref=e738] [cursor=pointer]:
+                    - /url: /signals?symbol=SNP&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                    - img [ref=e739]
+            - row "Select RDS RDS Résidences Dar Saada 167,00 Close +0.91% 12 791 596 Vente WFO - Legacy TA À surveiller n=53 2.84% Short J+20 Close [0.59%, 4.75%] 81.13% [0.69, 0.89] À surveiller Score 61 Afficher le graphique RDS Voir la preuve OOS RDS" [ref=e741]:
+              - cell "Select RDS" [ref=e742]:
+                - checkbox "Select RDS" [ref=e743]
+              - cell "RDS" [ref=e744]:
+                - link "RDS" [ref=e745] [cursor=pointer]:
+                  - /url: /signals?symbol=RDS&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+              - cell "Résidences Dar Saada" [ref=e746]:
+                - link "Résidences Dar Saada" [ref=e747] [cursor=pointer]:
+                  - /url: /signals?symbol=RDS&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e748]: Résidences Dar Saada
+              - cell "167,00 Close" [ref=e749]:
+                - generic [ref=e750]: 167,00
+                - generic [ref=e751]: Close
+              - cell "+0.91%" [ref=e752]
+              - cell "12 791 596" [ref=e753]
+              - cell "Vente" [ref=e754]:
+                - generic [ref=e755]: Vente
+              - cell "WFO - Legacy TA À surveiller n=53" [ref=e756]:
+                - generic [ref=e757]:
+                  - generic "WFO - Legacy TA Simple" [ref=e758]: WFO - Legacy TA
+                  - generic [ref=e759]:
+                    - generic [ref=e760]: À surveiller
+                    - generic [ref=e761]: n=53
+              - cell "2.84% Short J+20 Close [0.59%, 4.75%]" [ref=e762]:
+                - link "2.84% Short J+20 Close [0.59%, 4.75%]" [ref=e763] [cursor=pointer]:
+                  - /url: /signals?symbol=RDS&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e764]:
+                    - generic [ref=e765]: 2.84%
+                    - generic [ref=e766]: Short J+20 Close [0.59%, 4.75%]
+              - cell "81.13% [0.69, 0.89]" [ref=e767]:
+                - generic [ref=e768]:
+                  - generic [ref=e769]: 81.13%
+                  - generic [ref=e770]: "[0.69, 0.89]"
+              - cell "À surveiller Score 61" [ref=e771]:
+                - generic [ref=e772]:
+                  - generic [ref=e773]: À surveiller
+                  - generic [ref=e774]: Score 61
+              - cell "Afficher le graphique RDS Voir la preuve OOS RDS" [ref=e775]:
+                - generic [ref=e776]:
+                  - button "Afficher le graphique RDS" [ref=e777]:
+                    - img [ref=e778]
+                  - link "Voir la preuve OOS RDS" [ref=e780] [cursor=pointer]:
+                    - /url: /signals?symbol=RDS&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                    - img [ref=e781]
+            - row "Select TQM TQM TAQA Morocco 1 750,00 Close -0.57% 6 075 120 Vente forte WFO - Legacy TA À surveiller n=60 2.21% Short J+21 Close [0.98%, 3.49%] 73.33% [0.61, 0.83] À surveiller Score 62 Afficher le graphique TQM Voir la preuve OOS TQM" [ref=e783]:
+              - cell "Select TQM" [ref=e784]:
+                - checkbox "Select TQM" [ref=e785]
+              - cell "TQM" [ref=e786]:
+                - link "TQM" [ref=e787] [cursor=pointer]:
+                  - /url: /signals?symbol=TQM&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+              - cell "TAQA Morocco" [ref=e788]:
+                - link "TAQA Morocco" [ref=e789] [cursor=pointer]:
+                  - /url: /signals?symbol=TQM&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e790]: TAQA Morocco
+              - cell "1 750,00 Close" [ref=e791]:
+                - generic [ref=e792]: 1 750,00
+                - generic [ref=e793]: Close
+              - cell "-0.57%" [ref=e794]
+              - cell "6 075 120" [ref=e795]
+              - cell "Vente forte" [ref=e796]:
+                - generic [ref=e797]: Vente forte
+              - cell "WFO - Legacy TA À surveiller n=60" [ref=e798]:
+                - generic [ref=e799]:
+                  - generic "WFO - Legacy TA Simple" [ref=e800]: WFO - Legacy TA
+                  - generic [ref=e801]:
+                    - generic [ref=e802]: À surveiller
+                    - generic [ref=e803]: n=60
+              - cell "2.21% Short J+21 Close [0.98%, 3.49%]" [ref=e804]:
+                - link "2.21% Short J+21 Close [0.98%, 3.49%]" [ref=e805] [cursor=pointer]:
+                  - /url: /signals?symbol=TQM&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e806]:
+                    - generic [ref=e807]: 2.21%
+                    - generic [ref=e808]: Short J+21 Close [0.98%, 3.49%]
+              - cell "73.33% [0.61, 0.83]" [ref=e809]:
+                - generic [ref=e810]:
+                  - generic [ref=e811]: 73.33%
+                  - generic [ref=e812]: "[0.61, 0.83]"
+              - cell "À surveiller Score 62" [ref=e813]:
+                - generic [ref=e814]:
+                  - generic [ref=e815]: À surveiller
+                  - generic [ref=e816]: Score 62
+              - cell "Afficher le graphique TQM Voir la preuve OOS TQM" [ref=e817]:
+                - generic [ref=e818]:
+                  - button "Afficher le graphique TQM" [ref=e819]:
+                    - img [ref=e820]
+                  - link "Voir la preuve OOS TQM" [ref=e822] [cursor=pointer]:
+                    - /url: /signals?symbol=TQM&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                    - img [ref=e823]
+            - row "Select BOA BOA Bank of Africa 200,70 Close -0.67% 5 159 782 Vente WFO - Legacy TA À surveiller n=100 1.76% Short J+21 Close [0.95%, 2.60%] 70.00% [0.60, 0.78] À surveiller Score 60 Afficher le graphique BOA Voir la preuve OOS BOA" [ref=e825]:
+              - cell "Select BOA" [ref=e826]:
+                - checkbox "Select BOA" [ref=e827]
+              - cell "BOA" [ref=e828]:
+                - link "BOA" [ref=e829] [cursor=pointer]:
+                  - /url: /signals?symbol=BOA&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+              - cell "Bank of Africa" [ref=e830]:
+                - link "Bank of Africa" [ref=e831] [cursor=pointer]:
+                  - /url: /signals?symbol=BOA&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e832]: Bank of Africa
+              - cell "200,70 Close" [ref=e833]:
+                - generic [ref=e834]: 200,70
+                - generic [ref=e835]: Close
+              - cell "-0.67%" [ref=e836]
+              - cell "5 159 782" [ref=e837]
+              - cell "Vente" [ref=e838]:
+                - generic [ref=e839]: Vente
+              - cell "WFO - Legacy TA À surveiller n=100" [ref=e840]:
+                - generic [ref=e841]:
+                  - generic "WFO - Legacy TA Simple" [ref=e842]: WFO - Legacy TA
+                  - generic [ref=e843]:
+                    - generic [ref=e844]: À surveiller
+                    - generic [ref=e845]: n=100
+              - cell "1.76% Short J+21 Close [0.95%, 2.60%]" [ref=e846]:
+                - link "1.76% Short J+21 Close [0.95%, 2.60%]" [ref=e847] [cursor=pointer]:
+                  - /url: /signals?symbol=BOA&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e848]:
+                    - generic [ref=e849]: 1.76%
+                    - generic [ref=e850]: Short J+21 Close [0.95%, 2.60%]
+              - cell "70.00% [0.60, 0.78]" [ref=e851]:
+                - generic [ref=e852]:
+                  - generic [ref=e853]: 70.00%
+                  - generic [ref=e854]: "[0.60, 0.78]"
+              - cell "À surveiller Score 60" [ref=e855]:
+                - generic [ref=e856]:
+                  - generic [ref=e857]: À surveiller
+                  - generic [ref=e858]: Score 60
+              - cell "Afficher le graphique BOA Voir la preuve OOS BOA" [ref=e859]:
+                - generic [ref=e860]:
+                  - button "Afficher le graphique BOA" [ref=e861]:
+                    - img [ref=e862]
+                  - link "Voir la preuve OOS BOA" [ref=e864] [cursor=pointer]:
+                    - /url: /signals?symbol=BOA&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                    - img [ref=e865]
+            - row "Select HPS HPS HPS 603,60 Close -2.65% 14 447 907 Vente WFO - Legacy TA À surveiller n=62 1.63% Short J+20 Close [0.07%, 3.30%] 62.90% [0.50, 0.74] À surveiller Score 48 Afficher le graphique HPS Voir la preuve OOS HPS" [ref=e867]:
+              - cell "Select HPS" [ref=e868]:
+                - checkbox "Select HPS" [ref=e869]
+              - cell "HPS" [ref=e870]:
+                - link "HPS" [ref=e871] [cursor=pointer]:
+                  - /url: /signals?symbol=HPS&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+              - cell "HPS" [ref=e872]:
+                - link "HPS" [ref=e873] [cursor=pointer]:
+                  - /url: /signals?symbol=HPS&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e874]: HPS
+              - cell "603,60 Close" [ref=e875]:
+                - generic [ref=e876]: 603,60
+                - generic [ref=e877]: Close
+              - cell "-2.65%" [ref=e878]
+              - cell "14 447 907" [ref=e879]
+              - cell "Vente" [ref=e880]:
+                - generic [ref=e881]: Vente
+              - cell "WFO - Legacy TA À surveiller n=62" [ref=e882]:
+                - generic [ref=e883]:
+                  - generic "WFO - Legacy TA Simple" [ref=e884]: WFO - Legacy TA
+                  - generic [ref=e885]:
+                    - generic [ref=e886]: À surveiller
+                    - generic [ref=e887]: n=62
+              - cell "1.63% Short J+20 Close [0.07%, 3.30%]" [ref=e888]:
+                - link "1.63% Short J+20 Close [0.07%, 3.30%]" [ref=e889] [cursor=pointer]:
+                  - /url: /signals?symbol=HPS&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e890]:
+                    - generic [ref=e891]: 1.63%
+                    - generic [ref=e892]: Short J+20 Close [0.07%, 3.30%]
+              - cell "62.90% [0.50, 0.74]" [ref=e893]:
+                - generic [ref=e894]:
+                  - generic [ref=e895]: 62.90%
+                  - generic [ref=e896]: "[0.50, 0.74]"
+              - cell "À surveiller Score 48" [ref=e897]:
+                - generic [ref=e898]:
+                  - generic [ref=e899]: À surveiller
+                  - generic [ref=e900]: Score 48
+              - cell "Afficher le graphique HPS Voir la preuve OOS HPS" [ref=e901]:
+                - generic [ref=e902]:
+                  - button "Afficher le graphique HPS" [ref=e903]:
+                    - img [ref=e904]
+                  - link "Voir la preuve OOS HPS" [ref=e906] [cursor=pointer]:
+                    - /url: /signals?symbol=HPS&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                    - img [ref=e907]
+            - row "Select CSR CSR Cosumar 182,00 Close -1.09% 3 931 267 Vente forte WFO - Expanded TA À surveiller n=85 1.46% Short J+21 Close [0.72%, 2.24%] 80.00% [0.70, 0.87] À surveiller Score 69 Afficher le graphique CSR Voir la preuve OOS CSR" [ref=e909]:
+              - cell "Select CSR" [ref=e910]:
+                - checkbox "Select CSR" [ref=e911]
+              - cell "CSR" [ref=e912]:
+                - link "CSR" [ref=e913] [cursor=pointer]:
+                  - /url: /signals?symbol=CSR&horizon=monthly&view=expanded_ta_simple&source=wfo&tab=evidence
+              - cell "Cosumar" [ref=e914]:
+                - link "Cosumar" [ref=e915] [cursor=pointer]:
+                  - /url: /signals?symbol=CSR&horizon=monthly&view=expanded_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e916]: Cosumar
+              - cell "182,00 Close" [ref=e917]:
+                - generic [ref=e918]: 182,00
+                - generic [ref=e919]: Close
+              - cell "-1.09%" [ref=e920]
+              - cell "3 931 267" [ref=e921]
+              - cell "Vente forte" [ref=e922]:
+                - generic [ref=e923]: Vente forte
+              - cell "WFO - Expanded TA À surveiller n=85" [ref=e924]:
+                - generic [ref=e925]:
+                  - generic "WFO - Expanded TA Simple" [ref=e926]: WFO - Expanded TA
+                  - generic [ref=e927]:
+                    - generic [ref=e928]: À surveiller
+                    - generic [ref=e929]: n=85
+              - cell "1.46% Short J+21 Close [0.72%, 2.24%]" [ref=e930]:
+                - link "1.46% Short J+21 Close [0.72%, 2.24%]" [ref=e931] [cursor=pointer]:
+                  - /url: /signals?symbol=CSR&horizon=monthly&view=expanded_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e932]:
+                    - generic [ref=e933]: 1.46%
+                    - generic [ref=e934]: Short J+21 Close [0.72%, 2.24%]
+              - cell "80.00% [0.70, 0.87]" [ref=e935]:
+                - generic [ref=e936]:
+                  - generic [ref=e937]: 80.00%
+                  - generic [ref=e938]: "[0.70, 0.87]"
+              - cell "À surveiller Score 69" [ref=e939]:
+                - generic [ref=e940]:
+                  - generic [ref=e941]: À surveiller
+                  - generic [ref=e942]: Score 69
+              - cell "Afficher le graphique CSR Voir la preuve OOS CSR" [ref=e943]:
+                - generic [ref=e944]:
+                  - button "Afficher le graphique CSR" [ref=e945]:
+                    - img [ref=e946]
+                  - link "Voir la preuve OOS CSR" [ref=e948] [cursor=pointer]:
+                    - /url: /signals?symbol=CSR&horizon=monthly&view=expanded_ta_simple&source=wfo&tab=evidence
+                    - img [ref=e949]
+            - row "Select BCP BCP Banque Centrale Populaire 243,50 Close +3.18% 9 330 829 Vente forte WFO - Expanded TA À surveiller n=80 1.14% Short J+9 Close [0.37%, 1.91%] 65.00% [0.54, 0.75] À surveiller Score 66 Afficher le graphique BCP Voir la preuve OOS BCP" [ref=e951]:
+              - cell "Select BCP" [ref=e952]:
+                - checkbox "Select BCP" [ref=e953]
+              - cell "BCP" [ref=e954]:
+                - link "BCP" [ref=e955] [cursor=pointer]:
+                  - /url: /signals?symbol=BCP&horizon=monthly&view=expanded_ta_simple&source=wfo&tab=evidence
+              - cell "Banque Centrale Populaire" [ref=e956]:
+                - link "Banque Centrale Populaire" [ref=e957] [cursor=pointer]:
+                  - /url: /signals?symbol=BCP&horizon=monthly&view=expanded_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e958]: Banque Centrale Populaire
+              - cell "243,50 Close" [ref=e959]:
+                - generic [ref=e960]: 243,50
+                - generic [ref=e961]: Close
+              - cell "+3.18%" [ref=e962]
+              - cell "9 330 829" [ref=e963]
+              - cell "Vente forte" [ref=e964]:
+                - generic [ref=e965]: Vente forte
+              - cell "WFO - Expanded TA À surveiller n=80" [ref=e966]:
+                - generic [ref=e967]:
+                  - generic "WFO - Expanded TA Simple" [ref=e968]: WFO - Expanded TA
+                  - generic [ref=e969]:
+                    - generic [ref=e970]: À surveiller
+                    - generic [ref=e971]: n=80
+              - cell "1.14% Short J+9 Close [0.37%, 1.91%]" [ref=e972]:
+                - link "1.14% Short J+9 Close [0.37%, 1.91%]" [ref=e973] [cursor=pointer]:
+                  - /url: /signals?symbol=BCP&horizon=monthly&view=expanded_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e974]:
+                    - generic [ref=e975]: 1.14%
+                    - generic [ref=e976]: Short J+9 Close [0.37%, 1.91%]
+              - cell "65.00% [0.54, 0.75]" [ref=e977]:
+                - generic [ref=e978]:
+                  - generic [ref=e979]: 65.00%
+                  - generic [ref=e980]: "[0.54, 0.75]"
+              - cell "À surveiller Score 66" [ref=e981]:
+                - generic [ref=e982]:
+                  - generic [ref=e983]: À surveiller
+                  - generic [ref=e984]: Score 66
+              - cell "Afficher le graphique BCP Voir la preuve OOS BCP" [ref=e985]:
+                - generic [ref=e986]:
+                  - button "Afficher le graphique BCP" [ref=e987]:
+                    - img [ref=e988]
+                  - link "Voir la preuve OOS BCP" [ref=e990] [cursor=pointer]:
+                    - /url: /signals?symbol=BCP&horizon=monthly&view=expanded_ta_simple&source=wfo&tab=evidence
+                    - img [ref=e991]
+            - row "Select ARD ARD Aradei Capital 433,65 Close -0.31% 777 909 Vente WFO - Legacy TA À surveiller n=88 0.87% Short J+21 Close [0.26%, 1.43%] 76.14% [0.66, 0.84] À surveiller Score 64 Afficher le graphique ARD Voir la preuve OOS ARD" [ref=e993]:
+              - cell "Select ARD" [ref=e994]:
+                - checkbox "Select ARD" [ref=e995]
+              - cell "ARD" [ref=e996]:
+                - link "ARD" [ref=e997] [cursor=pointer]:
+                  - /url: /signals?symbol=ARD&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+              - cell "Aradei Capital" [ref=e998]:
+                - link "Aradei Capital" [ref=e999] [cursor=pointer]:
+                  - /url: /signals?symbol=ARD&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e1000]: Aradei Capital
+              - cell "433,65 Close" [ref=e1001]:
+                - generic [ref=e1002]: 433,65
+                - generic [ref=e1003]: Close
+              - cell "-0.31%" [ref=e1004]
+              - cell "777 909" [ref=e1005]
+              - cell "Vente" [ref=e1006]:
+                - generic [ref=e1007]: Vente
+              - cell "WFO - Legacy TA À surveiller n=88" [ref=e1008]:
+                - generic [ref=e1009]:
+                  - generic "WFO - Legacy TA Simple" [ref=e1010]: WFO - Legacy TA
+                  - generic [ref=e1011]:
+                    - generic [ref=e1012]: À surveiller
+                    - generic [ref=e1013]: n=88
+              - cell "0.87% Short J+21 Close [0.26%, 1.43%]" [ref=e1014]:
+                - link "0.87% Short J+21 Close [0.26%, 1.43%]" [ref=e1015] [cursor=pointer]:
+                  - /url: /signals?symbol=ARD&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e1016]:
+                    - generic [ref=e1017]: 0.87%
+                    - generic [ref=e1018]: Short J+21 Close [0.26%, 1.43%]
+              - cell "76.14% [0.66, 0.84]" [ref=e1019]:
+                - generic [ref=e1020]:
+                  - generic [ref=e1021]: 76.14%
+                  - generic [ref=e1022]: "[0.66, 0.84]"
+              - cell "À surveiller Score 64" [ref=e1023]:
+                - generic [ref=e1024]:
+                  - generic [ref=e1025]: À surveiller
+                  - generic [ref=e1026]: Score 64
+              - cell "Afficher le graphique ARD Voir la preuve OOS ARD" [ref=e1027]:
+                - generic [ref=e1028]:
+                  - button "Afficher le graphique ARD" [ref=e1029]:
+                    - img [ref=e1030]
+                  - link "Voir la preuve OOS ARD" [ref=e1032] [cursor=pointer]:
+                    - /url: /signals?symbol=ARD&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                    - img [ref=e1033]
+            - row "Select MUT MUT Mutandis 230,00 Close -0.95% 833 848 Vente forte WFO - Legacy TA À surveiller n=70 0.80% Short J+21 Close [-0.15%, 1.62%] 71.43% [0.60, 0.81] À surveiller Score 56 Afficher le graphique MUT Voir la preuve OOS MUT" [ref=e1035]:
+              - cell "Select MUT" [ref=e1036]:
+                - checkbox "Select MUT" [ref=e1037]
+              - cell "MUT" [ref=e1038]:
+                - link "MUT" [ref=e1039] [cursor=pointer]:
+                  - /url: /signals?symbol=MUT&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+              - cell "Mutandis" [ref=e1040]:
+                - link "Mutandis" [ref=e1041] [cursor=pointer]:
+                  - /url: /signals?symbol=MUT&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e1042]: Mutandis
+              - cell "230,00 Close" [ref=e1043]:
+                - generic [ref=e1044]: 230,00
+                - generic [ref=e1045]: Close
+              - cell "-0.95%" [ref=e1046]
+              - cell "833 848" [ref=e1047]
+              - cell "Vente forte" [ref=e1048]:
+                - generic [ref=e1049]: Vente forte
+              - cell "WFO - Legacy TA À surveiller n=70" [ref=e1050]:
+                - generic [ref=e1051]:
+                  - generic "WFO - Legacy TA Simple" [ref=e1052]: WFO - Legacy TA
+                  - generic [ref=e1053]:
+                    - generic [ref=e1054]: À surveiller
+                    - generic [ref=e1055]: n=70
+              - cell "0.80% Short J+21 Close [-0.15%, 1.62%]" [ref=e1056]:
+                - link "0.80% Short J+21 Close [-0.15%, 1.62%]" [ref=e1057] [cursor=pointer]:
+                  - /url: /signals?symbol=MUT&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e1058]:
+                    - generic [ref=e1059]: 0.80%
+                    - generic [ref=e1060]: Short J+21 Close [-0.15%, 1.62%]
+              - cell "71.43% [0.60, 0.81]" [ref=e1061]:
+                - generic [ref=e1062]:
+                  - generic [ref=e1063]: 71.43%
+                  - generic [ref=e1064]: "[0.60, 0.81]"
+              - cell "À surveiller Score 56" [ref=e1065]:
+                - generic [ref=e1066]:
+                  - generic [ref=e1067]: À surveiller
+                  - generic [ref=e1068]: Score 56
+              - cell "Afficher le graphique MUT Voir la preuve OOS MUT" [ref=e1069]:
+                - generic [ref=e1070]:
+                  - button "Afficher le graphique MUT" [ref=e1071]:
+                    - img [ref=e1072]
+                  - link "Voir la preuve OOS MUT" [ref=e1074] [cursor=pointer]:
+                    - /url: /signals?symbol=MUT&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                    - img [ref=e1075]
+            - row "Select AKT AKT Akdital 1 160,00 Close -1.69% 13 231 793 Achat WFO - Expanded TA Combo À surveiller n=100 0.80% Long J+21 Open [-1.22%, 2.61%] 65.00% [0.55, 0.74] À surveiller Score 62 Afficher le graphique AKT Voir la preuve OOS AKT" [ref=e1077]:
+              - cell "Select AKT" [ref=e1078]:
+                - checkbox "Select AKT" [ref=e1079]
+              - cell "AKT" [ref=e1080]:
+                - link "AKT" [ref=e1081] [cursor=pointer]:
+                  - /url: /signals?symbol=AKT&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+              - cell "Akdital" [ref=e1082]:
+                - link "Akdital" [ref=e1083] [cursor=pointer]:
+                  - /url: /signals?symbol=AKT&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+                  - generic [ref=e1084]: Akdital
+              - cell "1 160,00 Close" [ref=e1085]:
+                - generic [ref=e1086]: 1 160,00
+                - generic [ref=e1087]: Close
+              - cell "-1.69%" [ref=e1088]
+              - cell "13 231 793" [ref=e1089]
+              - cell "Achat" [ref=e1090]:
+                - generic [ref=e1091]: Achat
+              - cell "WFO - Expanded TA Combo À surveiller n=100" [ref=e1092]:
+                - generic [ref=e1093]:
+                  - generic "WFO - Expanded TA Combo" [ref=e1094]
+                  - generic [ref=e1095]:
+                    - generic [ref=e1096]: À surveiller
+                    - generic [ref=e1097]: n=100
+              - cell "0.80% Long J+21 Open [-1.22%, 2.61%]" [ref=e1098]:
+                - link "0.80% Long J+21 Open [-1.22%, 2.61%]" [ref=e1099] [cursor=pointer]:
+                  - /url: /signals?symbol=AKT&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+                  - generic [ref=e1100]:
+                    - generic [ref=e1101]: 0.80%
+                    - generic [ref=e1102]: Long J+21 Open [-1.22%, 2.61%]
+              - cell "65.00% [0.55, 0.74]" [ref=e1103]:
+                - generic [ref=e1104]:
+                  - generic [ref=e1105]: 65.00%
+                  - generic [ref=e1106]: "[0.55, 0.74]"
+              - cell "À surveiller Score 62" [ref=e1107]:
+                - generic [ref=e1108]:
+                  - generic [ref=e1109]: À surveiller
+                  - generic [ref=e1110]: Score 62
+              - cell "Afficher le graphique AKT Voir la preuve OOS AKT" [ref=e1111]:
+                - generic [ref=e1112]:
+                  - button "Afficher le graphique AKT" [ref=e1113]:
+                    - img [ref=e1114]
+                  - link "Voir la preuve OOS AKT" [ref=e1116] [cursor=pointer]:
+                    - /url: /signals?symbol=AKT&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+                    - img [ref=e1117]
+            - row "Select MSA MSA Marsa Maroc 820,30 Close -2.23% 27 462 122 Achat WFO - Legacy TA À surveiller n=100 0.51% Long J+8 Open [-0.68%, 1.68%] 67.00% [0.57, 0.75] À surveiller Score 41 Afficher le graphique MSA Voir la preuve OOS MSA" [ref=e1119]:
+              - cell "Select MSA" [ref=e1120]:
+                - checkbox "Select MSA" [ref=e1121]
+              - cell "MSA" [ref=e1122]:
+                - link "MSA" [ref=e1123] [cursor=pointer]:
+                  - /url: /signals?symbol=MSA&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+              - cell "Marsa Maroc" [ref=e1124]:
+                - link "Marsa Maroc" [ref=e1125] [cursor=pointer]:
+                  - /url: /signals?symbol=MSA&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e1126]: Marsa Maroc
+              - cell "820,30 Close" [ref=e1127]:
+                - generic [ref=e1128]: 820,30
+                - generic [ref=e1129]: Close
+              - cell "-2.23%" [ref=e1130]
+              - cell "27 462 122" [ref=e1131]
+              - cell "Achat" [ref=e1132]:
+                - generic [ref=e1133]: Achat
+              - cell "WFO - Legacy TA À surveiller n=100" [ref=e1134]:
+                - generic [ref=e1135]:
+                  - generic "WFO - Legacy TA Simple" [ref=e1136]: WFO - Legacy TA
+                  - generic [ref=e1137]:
+                    - generic [ref=e1138]: À surveiller
+                    - generic [ref=e1139]: n=100
+              - cell "0.51% Long J+8 Open [-0.68%, 1.68%]" [ref=e1140]:
+                - link "0.51% Long J+8 Open [-0.68%, 1.68%]" [ref=e1141] [cursor=pointer]:
+                  - /url: /signals?symbol=MSA&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e1142]:
+                    - generic [ref=e1143]: 0.51%
+                    - generic [ref=e1144]: Long J+8 Open [-0.68%, 1.68%]
+              - cell "67.00% [0.57, 0.75]" [ref=e1145]:
+                - generic [ref=e1146]:
+                  - generic [ref=e1147]: 67.00%
+                  - generic [ref=e1148]: "[0.57, 0.75]"
+              - cell "À surveiller Score 41" [ref=e1149]:
+                - generic [ref=e1150]:
+                  - generic [ref=e1151]: À surveiller
+                  - generic [ref=e1152]: Score 41
+              - cell "Afficher le graphique MSA Voir la preuve OOS MSA" [ref=e1153]:
+                - generic [ref=e1154]:
+                  - button "Afficher le graphique MSA" [ref=e1155]:
+                    - img [ref=e1156]
+                  - link "Voir la preuve OOS MSA" [ref=e1158] [cursor=pointer]:
+                    - /url: /signals?symbol=MSA&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                    - img [ref=e1159]
+            - row "Select IAM IAM Maroc Telecom 92,00 Close -1.29% 12 443 354 Vente forte WFO - Expanded TA À surveiller n=100 0.49% Short J+6 Close [-0.12%, 1.11%] 69.00% [0.59, 0.77] À surveiller Score 62 Afficher le graphique IAM Voir la preuve OOS IAM" [ref=e1161]:
+              - cell "Select IAM" [ref=e1162]:
+                - checkbox "Select IAM" [ref=e1163]
+              - cell "IAM" [ref=e1164]:
+                - link "IAM" [ref=e1165] [cursor=pointer]:
+                  - /url: /signals?symbol=IAM&horizon=monthly&view=expanded_ta_simple&source=wfo&tab=evidence
+              - cell "Maroc Telecom" [ref=e1166]:
+                - link "Maroc Telecom" [ref=e1167] [cursor=pointer]:
+                  - /url: /signals?symbol=IAM&horizon=monthly&view=expanded_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e1168]: Maroc Telecom
+              - cell "92,00 Close" [ref=e1169]:
+                - generic [ref=e1170]: 92,00
+                - generic [ref=e1171]: Close
+              - cell "-1.29%" [ref=e1172]
+              - cell "12 443 354" [ref=e1173]
+              - cell "Vente forte" [ref=e1174]:
+                - generic [ref=e1175]: Vente forte
+              - cell "WFO - Expanded TA À surveiller n=100" [ref=e1176]:
+                - generic [ref=e1177]:
+                  - generic "WFO - Expanded TA Simple" [ref=e1178]: WFO - Expanded TA
+                  - generic [ref=e1179]:
+                    - generic [ref=e1180]: À surveiller
+                    - generic [ref=e1181]: n=100
+              - cell "0.49% Short J+6 Close [-0.12%, 1.11%]" [ref=e1182]:
+                - link "0.49% Short J+6 Close [-0.12%, 1.11%]" [ref=e1183] [cursor=pointer]:
+                  - /url: /signals?symbol=IAM&horizon=monthly&view=expanded_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e1184]:
+                    - generic [ref=e1185]: 0.49%
+                    - generic [ref=e1186]: Short J+6 Close [-0.12%, 1.11%]
+              - cell "69.00% [0.59, 0.77]" [ref=e1187]:
+                - generic [ref=e1188]:
+                  - generic [ref=e1189]: 69.00%
+                  - generic [ref=e1190]: "[0.59, 0.77]"
+              - cell "À surveiller Score 62" [ref=e1191]:
+                - generic [ref=e1192]:
+                  - generic [ref=e1193]: À surveiller
+                  - generic [ref=e1194]: Score 62
+              - cell "Afficher le graphique IAM Voir la preuve OOS IAM" [ref=e1195]:
+                - generic [ref=e1196]:
+                  - button "Afficher le graphique IAM" [ref=e1197]:
+                    - img [ref=e1198]
+                  - link "Voir la preuve OOS IAM" [ref=e1200] [cursor=pointer]:
+                    - /url: /signals?symbol=IAM&horizon=monthly&view=expanded_ta_simple&source=wfo&tab=evidence
+                    - img [ref=e1201]
+            - row "Select ADH ADH Douja Promotion Groupe Addoha 32,50 Close -1.22% 10 053 451 Vente WFO - Legacy TA À surveiller n=100 0.48% Short J+6 Close [-0.35%, 1.33%] 60.00% [0.50, 0.69] À surveiller Score 53 Afficher le graphique ADH Voir la preuve OOS ADH" [ref=e1203]:
+              - cell "Select ADH" [ref=e1204]:
+                - checkbox "Select ADH" [ref=e1205]
+              - cell "ADH" [ref=e1206]:
+                - link "ADH" [ref=e1207] [cursor=pointer]:
+                  - /url: /signals?symbol=ADH&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+              - cell "Douja Promotion Groupe Addoha" [ref=e1208]:
+                - link "Douja Promotion Groupe Addoha" [ref=e1209] [cursor=pointer]:
+                  - /url: /signals?symbol=ADH&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e1210]: Douja Promotion Groupe Addoha
+              - cell "32,50 Close" [ref=e1211]:
+                - generic [ref=e1212]: 32,50
+                - generic [ref=e1213]: Close
+              - cell "-1.22%" [ref=e1214]
+              - cell "10 053 451" [ref=e1215]
+              - cell "Vente" [ref=e1216]:
+                - generic [ref=e1217]: Vente
+              - cell "WFO - Legacy TA À surveiller n=100" [ref=e1218]:
+                - generic [ref=e1219]:
+                  - generic "WFO - Legacy TA Simple" [ref=e1220]: WFO - Legacy TA
+                  - generic [ref=e1221]:
+                    - generic [ref=e1222]: À surveiller
+                    - generic [ref=e1223]: n=100
+              - cell "0.48% Short J+6 Close [-0.35%, 1.33%]" [ref=e1224]:
+                - link "0.48% Short J+6 Close [-0.35%, 1.33%]" [ref=e1225] [cursor=pointer]:
+                  - /url: /signals?symbol=ADH&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e1226]:
+                    - generic [ref=e1227]: 0.48%
+                    - generic [ref=e1228]: Short J+6 Close [-0.35%, 1.33%]
+              - cell "60.00% [0.50, 0.69]" [ref=e1229]:
+                - generic [ref=e1230]:
+                  - generic [ref=e1231]: 60.00%
+                  - generic [ref=e1232]: "[0.50, 0.69]"
+              - cell "À surveiller Score 53" [ref=e1233]:
+                - generic [ref=e1234]:
+                  - generic [ref=e1235]: À surveiller
+                  - generic [ref=e1236]: Score 53
+              - cell "Afficher le graphique ADH Voir la preuve OOS ADH" [ref=e1237]:
+                - generic [ref=e1238]:
+                  - button "Afficher le graphique ADH" [ref=e1239]:
+                    - img [ref=e1240]
+                  - link "Voir la preuve OOS ADH" [ref=e1242] [cursor=pointer]:
+                    - /url: /signals?symbol=ADH&horizon=monthly&view=legacy_ta_simple&source=wfo&tab=evidence
+                    - img [ref=e1243]
+            - row "Select DHO DHO Delta Holding 58,00 Close -2.19% 948 505 Vente WFO - Expanded TA Combo À surveiller n=68 0.35% Short J+20 Close [-1.46%, 2.10%] 58.82% [0.47, 0.70] À surveiller Score 40 Afficher le graphique DHO Voir la preuve OOS DHO" [ref=e1245]:
+              - cell "Select DHO" [ref=e1246]:
+                - checkbox "Select DHO" [ref=e1247]
+              - cell "DHO" [ref=e1248]:
+                - link "DHO" [ref=e1249] [cursor=pointer]:
+                  - /url: /signals?symbol=DHO&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+              - cell "Delta Holding" [ref=e1250]:
+                - link "Delta Holding" [ref=e1251] [cursor=pointer]:
+                  - /url: /signals?symbol=DHO&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+                  - generic [ref=e1252]: Delta Holding
+              - cell "58,00 Close" [ref=e1253]:
+                - generic [ref=e1254]: 58,00
+                - generic [ref=e1255]: Close
+              - cell "-2.19%" [ref=e1256]
+              - cell "948 505" [ref=e1257]
+              - cell "Vente" [ref=e1258]:
+                - generic [ref=e1259]: Vente
+              - cell "WFO - Expanded TA Combo À surveiller n=68" [ref=e1260]:
+                - generic [ref=e1261]:
+                  - generic "WFO - Expanded TA Combo" [ref=e1262]
+                  - generic [ref=e1263]:
+                    - generic [ref=e1264]: À surveiller
+                    - generic [ref=e1265]: n=68
+              - cell "0.35% Short J+20 Close [-1.46%, 2.10%]" [ref=e1266]:
+                - link "0.35% Short J+20 Close [-1.46%, 2.10%]" [ref=e1267] [cursor=pointer]:
+                  - /url: /signals?symbol=DHO&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+                  - generic [ref=e1268]:
+                    - generic [ref=e1269]: 0.35%
+                    - generic [ref=e1270]: Short J+20 Close [-1.46%, 2.10%]
+              - cell "58.82% [0.47, 0.70]" [ref=e1271]:
+                - generic [ref=e1272]:
+                  - generic [ref=e1273]: 58.82%
+                  - generic [ref=e1274]: "[0.47, 0.70]"
+              - cell "À surveiller Score 40" [ref=e1275]:
+                - generic [ref=e1276]:
+                  - generic [ref=e1277]: À surveiller
+                  - generic [ref=e1278]: Score 40
+              - cell "Afficher le graphique DHO Voir la preuve OOS DHO" [ref=e1279]:
+                - generic [ref=e1280]:
+                  - button "Afficher le graphique DHO" [ref=e1281]:
+                    - img [ref=e1282]
+                  - link "Voir la preuve OOS DHO" [ref=e1284] [cursor=pointer]:
+                    - /url: /signals?symbol=DHO&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+                    - img [ref=e1285]
+            - row "Select LHM LHM LafargeHolcim Maroc 1 840,00 Close +1.88% 8 244 322 Vente WFO - Expanded TA À surveiller n=100 0.29% Short J+18 Close [-0.84%, 1.40%] 64.00% [0.54, 0.73] À surveiller Score 47 Afficher le graphique LHM Voir la preuve OOS LHM" [ref=e1287]:
+              - cell "Select LHM" [ref=e1288]:
+                - checkbox "Select LHM" [ref=e1289]
+              - cell "LHM" [ref=e1290]:
+                - link "LHM" [ref=e1291] [cursor=pointer]:
+                  - /url: /signals?symbol=LHM&horizon=monthly&view=expanded_ta_simple&source=wfo&tab=evidence
+              - cell "LafargeHolcim Maroc" [ref=e1292]:
+                - link "LafargeHolcim Maroc" [ref=e1293] [cursor=pointer]:
+                  - /url: /signals?symbol=LHM&horizon=monthly&view=expanded_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e1294]: LafargeHolcim Maroc
+              - cell "1 840,00 Close" [ref=e1295]:
+                - generic [ref=e1296]: 1 840,00
+                - generic [ref=e1297]: Close
+              - cell "+1.88%" [ref=e1298]
+              - cell "8 244 322" [ref=e1299]
+              - cell "Vente" [ref=e1300]:
+                - generic [ref=e1301]: Vente
+              - cell "WFO - Expanded TA À surveiller n=100" [ref=e1302]:
+                - generic [ref=e1303]:
+                  - generic "WFO - Expanded TA Simple" [ref=e1304]: WFO - Expanded TA
+                  - generic [ref=e1305]:
+                    - generic [ref=e1306]: À surveiller
+                    - generic [ref=e1307]: n=100
+              - cell "0.29% Short J+18 Close [-0.84%, 1.40%]" [ref=e1308]:
+                - link "0.29% Short J+18 Close [-0.84%, 1.40%]" [ref=e1309] [cursor=pointer]:
+                  - /url: /signals?symbol=LHM&horizon=monthly&view=expanded_ta_simple&source=wfo&tab=evidence
+                  - generic [ref=e1310]:
+                    - generic [ref=e1311]: 0.29%
+                    - generic [ref=e1312]: Short J+18 Close [-0.84%, 1.40%]
+              - cell "64.00% [0.54, 0.73]" [ref=e1313]:
+                - generic [ref=e1314]:
+                  - generic [ref=e1315]: 64.00%
+                  - generic [ref=e1316]: "[0.54, 0.73]"
+              - cell "À surveiller Score 47" [ref=e1317]:
+                - generic [ref=e1318]:
+                  - generic [ref=e1319]: À surveiller
+                  - generic [ref=e1320]: Score 47
+              - cell "Afficher le graphique LHM Voir la preuve OOS LHM" [ref=e1321]:
+                - generic [ref=e1322]:
+                  - button "Afficher le graphique LHM" [ref=e1323]:
+                    - img [ref=e1324]
+                  - link "Voir la preuve OOS LHM" [ref=e1326] [cursor=pointer]:
+                    - /url: /signals?symbol=LHM&horizon=monthly&view=expanded_ta_simple&source=wfo&tab=evidence
+                    - img [ref=e1327]
+            - row "Select ATH ATH Auto Hall 69,68 Close -1.85% 1 508 179 Vente forte WFO - Expanded TA Combo À surveiller n=34 0.22% Short J+6 Open [-0.93%, 1.38%] 61.76% [0.45, 0.76] À surveiller Score 33 Afficher le graphique ATH Voir la preuve OOS ATH" [ref=e1329]:
+              - cell "Select ATH" [ref=e1330]:
+                - checkbox "Select ATH" [ref=e1331]
+              - cell "ATH" [ref=e1332]:
+                - link "ATH" [ref=e1333] [cursor=pointer]:
+                  - /url: /signals?symbol=ATH&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+              - cell "Auto Hall" [ref=e1334]:
+                - link "Auto Hall" [ref=e1335] [cursor=pointer]:
+                  - /url: /signals?symbol=ATH&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+                  - generic [ref=e1336]: Auto Hall
+              - cell "69,68 Close" [ref=e1337]:
+                - generic [ref=e1338]: 69,68
+                - generic [ref=e1339]: Close
+              - cell "-1.85%" [ref=e1340]
+              - cell "1 508 179" [ref=e1341]
+              - cell "Vente forte" [ref=e1342]:
+                - generic [ref=e1343]: Vente forte
+              - cell "WFO - Expanded TA Combo À surveiller n=34" [ref=e1344]:
+                - generic [ref=e1345]:
+                  - generic "WFO - Expanded TA Combo" [ref=e1346]
+                  - generic [ref=e1347]:
+                    - generic [ref=e1348]: À surveiller
+                    - generic [ref=e1349]: n=34
+              - cell "0.22% Short J+6 Open [-0.93%, 1.38%]" [ref=e1350]:
+                - link "0.22% Short J+6 Open [-0.93%, 1.38%]" [ref=e1351] [cursor=pointer]:
+                  - /url: /signals?symbol=ATH&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+                  - generic [ref=e1352]:
+                    - generic [ref=e1353]: 0.22%
+                    - generic [ref=e1354]: Short J+6 Open [-0.93%, 1.38%]
+              - cell "61.76% [0.45, 0.76]" [ref=e1355]:
+                - generic [ref=e1356]:
+                  - generic [ref=e1357]: 61.76%
+                  - generic [ref=e1358]: "[0.45, 0.76]"
+              - cell "À surveiller Score 33" [ref=e1359]:
+                - generic [ref=e1360]:
+                  - generic [ref=e1361]: À surveiller
+                  - generic [ref=e1362]: Score 33
+              - cell "Afficher le graphique ATH Voir la preuve OOS ATH" [ref=e1363]:
+                - generic [ref=e1364]:
+                  - button "Afficher le graphique ATH" [ref=e1365]:
+                    - img [ref=e1366]
+                  - link "Voir la preuve OOS ATH" [ref=e1368] [cursor=pointer]:
+                    - /url: /signals?symbol=ATH&horizon=monthly&view=expanded_ta_combo&source=wfo&tab=evidence
+                    - img [ref=e1369]
+      - paragraph [ref=e124]: Trade Opportunities sélectionne automatiquement le meilleur edge exploitable. Technical Directions affiche Best ou Classic par titre. Fondamental classe les titres par score, upside et couverture. Liquidité = ADV20 (valeur moyenne échangée 20 j).
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=e130] [cursor=pointer]:
+    - img [ref=e131]
+  - alert [ref=e1371]

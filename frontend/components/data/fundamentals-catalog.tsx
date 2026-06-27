@@ -2,12 +2,14 @@
 
 import { useMemo, useRef, useState } from "react"
 import useSWR from "swr"
-import { Eye, FileSpreadsheet, KeyRound, LinkIcon, RefreshCw, Search, TableProperties } from "lucide-react"
+import { Eye, FileSpreadsheet, KeyRound, LinkIcon, RefreshCw, Save, Search, TableProperties, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import {
   getFundamentalCoverage,
   getFundamentalProviderStatus,
   getFundamentalStockDetail,
+  deleteFundamentalMetricOverride,
+  putFundamentalMetricOverride,
   refreshStockanalysisFundamentals,
   refreshTargetedBvcFundamentals,
   refreshYfinanceFundamentals,
@@ -23,6 +25,7 @@ import {
   buildFinancialStatementTable,
   buildFinancialSummary,
   financialPeriodLabel,
+  isAliasMetricName,
 } from "@/lib/fundamental-statement-utils.js"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -185,7 +188,10 @@ function annualRawRowsWithData(detail: FundamentalStockDetail) {
 }
 
 function AnnualRawRowsTable({ detail }: { detail: FundamentalStockDetail }) {
-  const rows = useMemo(() => annualRawRowsWithData(detail), [detail])
+  const rows = useMemo(
+    () => annualRawRowsWithData(detail).filter((row) => !isAliasMetricName(row.metric_name)),
+    [detail],
+  )
   return (
     <div className="overflow-x-auto rounded-md border border-line">
       <Table className="claude-table min-w-[920px]">
@@ -220,6 +226,367 @@ function AnnualRawRowsTable({ detail }: { detail: FundamentalStockDetail }) {
           ))}
         </TableBody>
       </Table>
+    </div>
+  )
+}
+
+function metricEditKey(row: { statement_year: number; metric_name: string }) {
+  return `${row.statement_year}:${row.metric_name}`
+}
+
+function inputValueForMetric(value: number | null | undefined) {
+  return value == null || Number.isNaN(value) ? "" : String(value)
+}
+
+type EditableAnnualMetricRow = FundamentalStockDetail["annual_raw"][number] & {
+  missing_label?: string
+  missing_category?: string
+  missing_scope?: string
+  missing_aliases?: string[]
+}
+
+function missingCategoryLabel(value: string | null | undefined) {
+  if (value === "coverage") return "Couverture"
+  if (value === "income") return "Resultat"
+  if (value === "balance") return "Bilan"
+  if (value === "cashflow") return "Tresorerie"
+  if (value === "ratios") return "Ratios"
+  return value || "Autre"
+}
+
+function missingScopeLabel(value: string | null | undefined) {
+  if (value === "latest") return "Snapshot"
+  if (value === "annual") return "Annuel"
+  return value || "-"
+}
+
+function missingMetricRows(detail: FundamentalStockDetail): EditableAnnualMetricRow[] {
+  const existing = new Set(detail.annual_raw.map((row) => metricEditKey(row)))
+  return detail.missing_financial_data.items
+    .filter((item) => item.statement_year != null && !existing.has(`${item.statement_year}:${item.metric_name}`))
+    .map((item) => ({
+      statement_year: item.statement_year ?? detail.latest_statement_year ?? new Date().getFullYear(),
+      metric_name: item.metric_name,
+      metric_value: null,
+      original_metric_value: null,
+      raw_metric_name: item.aliases.join(", ") || item.metric_name,
+      source_sheet: "missing_summary",
+      source_field: item.reason,
+      is_proxy: false,
+      as_of_date: null,
+      source_document_id: null,
+      is_overridden: false,
+      manual_override_id: null,
+      manual_override_note: null,
+      manual_override_created_by: null,
+      manual_override_created_at: null,
+      missing_label: item.label,
+      missing_category: item.category,
+      missing_scope: item.scope,
+      missing_aliases: item.aliases,
+    }))
+}
+
+function IntegrityDiagnostics({ detail }: { detail: FundamentalStockDetail }) {
+  const sourceChecks = detail.integrity?.checks ?? []
+  const projectionChecks = detail.integrity?.projection_checks ?? []
+  const gapChecks = projectionChecks.filter((check) => check.name.includes("financing_gap") || check.name.includes("bs_balance"))
+  return (
+    <div className="grid gap-3 lg:grid-cols-2">
+      <div className="rounded-md border border-line bg-card p-3">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div className="text-sm font-semibold">Integrite source</div>
+          <Badge variant="outline" className="text-[10px]">{detail.integrity?.overall_status ?? "unavailable"}</Badge>
+        </div>
+        <div className="space-y-1">
+          {sourceChecks.length === 0 ? (
+            <div className="text-xs text-muted-foreground">Aucun controle source disponible.</div>
+          ) : sourceChecks.map((check) => (
+            <div key={check.name} className="grid grid-cols-[1fr_72px_92px] gap-2 text-xs">
+              <span className="truncate font-mono">{check.name}</span>
+              <span className="font-mono">{check.status}</span>
+              <span className="text-right font-mono">{check.rel_delta == null ? "-" : `${(check.rel_delta * 100).toFixed(2)}%`}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-md border border-line bg-card p-3">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div className="text-sm font-semibold">Projection</div>
+          <Badge variant="outline" className="text-[10px]">{projectionChecks.length} controles</Badge>
+        </div>
+        <div className="space-y-1">
+          {gapChecks.length === 0 ? (
+            <div className="text-xs text-muted-foreground">Aucun ecart de projection disponible.</div>
+          ) : gapChecks.slice(0, 8).map((check) => (
+            <div key={check.name} className="grid grid-cols-[1fr_72px_92px] gap-2 text-xs">
+              <span className="truncate font-mono">{check.name}</span>
+              <span className="font-mono">{check.status}</span>
+              <span className="text-right font-mono">{check.rel_delta == null ? "-" : `${(check.rel_delta * 100).toFixed(2)}%`}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function MetricOverrideEditor({
+  detail,
+  onAfterOverride,
+  focusMissingOnly = false,
+  showAddForm = true,
+}: {
+  detail: FundamentalStockDetail
+  onAfterOverride: () => Promise<void>
+  focusMissingOnly?: boolean
+  showAddForm?: boolean
+}) {
+  const rows = useMemo(
+    () => {
+      const missingRows = missingMetricRows(detail)
+      if (focusMissingOnly) {
+        return missingRows.sort((a, b) => a.metric_name.localeCompare(b.metric_name))
+      }
+      const sourceRows = [...detail.annual_raw]
+        .filter((row) => row.metric_value != null || row.is_overridden)
+        .map((row): EditableAnnualMetricRow => ({ ...row }))
+      return [...missingRows, ...sourceRows].sort((a, b) => {
+        const missingDelta = Number(Boolean(b.missing_label)) - Number(Boolean(a.missing_label))
+        if (missingDelta !== 0) return missingDelta
+        return b.statement_year - a.statement_year || a.metric_name.localeCompare(b.metric_name)
+      })
+    },
+    [detail, focusMissingOnly],
+  )
+  const latestYear = detail.latest_statement_year ?? rows[0]?.statement_year ?? new Date().getFullYear()
+  const [drafts, setDrafts] = useState<Record<string, { value: string; note: string }>>({})
+  const [newYear, setNewYear] = useState(String(latestYear))
+  const [newMetric, setNewMetric] = useState("")
+  const [newValue, setNewValue] = useState("")
+  const [newNote, setNewNote] = useState("")
+  const [savingKey, setSavingKey] = useState<string | null>(null)
+
+  function draftFor(row: EditableAnnualMetricRow) {
+    const key = metricEditKey(row)
+    return drafts[key] ?? {
+      value: inputValueForMetric(row.metric_value),
+      note: row.manual_override_note ?? "",
+    }
+  }
+
+  function updateDraft(row: EditableAnnualMetricRow, patch: Partial<{ value: string; note: string }>) {
+    const key = metricEditKey(row)
+    setDrafts((current) => ({ ...current, [key]: { ...draftFor(row), ...patch } }))
+  }
+
+  async function saveOverride(row: EditableAnnualMetricRow) {
+    const key = metricEditKey(row)
+    const draft = draftFor(row)
+    const trimmed = draft.value.trim()
+    const metricValue = trimmed === "" ? null : Number(trimmed)
+    if (metricValue !== null && !Number.isFinite(metricValue)) {
+      toast.error("Valeur invalide")
+      return
+    }
+    setSavingKey(key)
+    try {
+      await putFundamentalMetricOverride(detail.symbol, {
+        statement_year: row.statement_year,
+        metric_name: row.metric_name,
+        metric_value: metricValue,
+        note: draft.note.trim() || null,
+      })
+      toast.success(`${row.metric_name} modifie`)
+      setDrafts((current) => {
+        const next = { ...current }
+        delete next[key]
+        return next
+      })
+      await onAfterOverride()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Echec de l'override")
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  async function clearOverride(row: EditableAnnualMetricRow) {
+    const key = metricEditKey(row)
+    setSavingKey(key)
+    try {
+      await deleteFundamentalMetricOverride(detail.symbol, row.statement_year, row.metric_name)
+      toast.success(`${row.metric_name} restaure`)
+      await onAfterOverride()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Echec de la restauration")
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  async function addOverride() {
+    const year = Number(newYear)
+    const metric = newMetric.trim()
+    const trimmed = newValue.trim()
+    const metricValue = trimmed === "" ? null : Number(trimmed)
+    if (!Number.isInteger(year) || year < 1900 || year > 2200 || !metric) {
+      toast.error("Annee ou metrique invalide")
+      return
+    }
+    if (metricValue !== null && !Number.isFinite(metricValue)) {
+      toast.error("Valeur invalide")
+      return
+    }
+    const key = `new:${year}:${metric}`
+    setSavingKey(key)
+    try {
+      await putFundamentalMetricOverride(detail.symbol, {
+        statement_year: year,
+        metric_name: metric,
+        metric_value: metricValue,
+        note: newNote.trim() || null,
+      })
+      toast.success(`${metric} ajoute`)
+      setNewMetric("")
+      setNewValue("")
+      setNewNote("")
+      await onAfterOverride()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Echec de l'ajout")
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      {showAddForm ? (
+        <div className="grid gap-2 rounded-md border border-line bg-card p-3 md:grid-cols-[90px_1fr_160px_1fr_auto]">
+          <input value={newYear} onChange={(event) => setNewYear(event.target.value.replace(/[^0-9]/g, "").slice(0, 4))} className="h-8 rounded-md border border-line bg-bg2 px-2 text-sm font-mono outline-none focus:border-primary" />
+          <input value={newMetric} onChange={(event) => setNewMetric(event.target.value)} className="h-8 rounded-md border border-line bg-bg2 px-2 text-sm font-mono outline-none focus:border-primary" placeholder="Metric_Name" />
+          <input value={newValue} onChange={(event) => setNewValue(event.target.value)} className="h-8 rounded-md border border-line bg-bg2 px-2 text-right text-sm font-mono outline-none focus:border-primary" placeholder="Valeur" />
+          <input value={newNote} onChange={(event) => setNewNote(event.target.value)} className="h-8 rounded-md border border-line bg-bg2 px-2 text-sm outline-none focus:border-primary" placeholder="Note" />
+          <Button size="sm" className="gap-1.5" disabled={savingKey?.startsWith("new:")} onClick={addOverride}>
+            <Save className="h-3.5 w-3.5" />
+            Ajouter
+          </Button>
+        </div>
+      ) : null}
+
+      <div className="overflow-x-auto rounded-md border border-line">
+        <Table className="claude-table min-w-[1040px]">
+          <TableHeader>
+            <TableRow>
+              <TableHead>Annee</TableHead>
+              <TableHead>Metrique</TableHead>
+              <TableHead className="text-right">Source</TableHead>
+              <TableHead className="text-right">Valeur effective</TableHead>
+              <TableHead>Note</TableHead>
+              <TableHead>Override</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">{focusMissingOnly ? "Aucun champ manquant editable." : "Aucune metrique annuelle editable."}</TableCell>
+              </TableRow>
+            ) : rows.map((row, index) => {
+              const key = metricEditKey(row)
+              const draft = draftFor(row)
+              const busy = savingKey === key
+              return (
+                <TableRow key={`${key}-${index}`} className={row.missing_label ? "bg-amber-50/50" : undefined}>
+                  <TableCell className="font-mono">{row.statement_year}</TableCell>
+                  <TableCell>
+                    <div className="font-mono text-xs">{row.metric_name}</div>
+                    {row.missing_label ? <div className="mt-1 text-[11px] text-muted-foreground">{row.missing_label}</div> : null}
+                  </TableCell>
+                  <TableCell className="text-right font-mono">{row.missing_label ? "-" : fmtValue(row.original_metric_value ?? row.metric_value)}</TableCell>
+                  <TableCell>
+                    <input
+                      value={draft.value}
+                      onChange={(event) => updateDraft(row, { value: event.target.value })}
+                      className="h-8 w-full rounded-md border border-line bg-card px-2 text-right font-mono text-xs outline-none focus:border-primary"
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <input
+                      value={draft.note}
+                      onChange={(event) => updateDraft(row, { note: event.target.value })}
+                      className="h-8 w-full rounded-md border border-line bg-card px-2 text-xs outline-none focus:border-primary"
+                    />
+                  </TableCell>
+                  <TableCell>
+                    {row.is_overridden ? (
+                      <div className="text-xs">
+                        <Badge variant="outline" className="text-[10px]">Actif</Badge>
+                        <div className="mt-1 text-muted-foreground">{row.manual_override_created_by ?? "-"}</div>
+                      </div>
+                    ) : row.missing_label ? (
+                      <div className="text-xs">
+                        <Badge variant="outline" className="text-[10px]">{missingScopeLabel(row.missing_scope)}</Badge>
+                        <div className="mt-1 text-muted-foreground">{missingCategoryLabel(row.missing_category)}</div>
+                      </div>
+                    ) : <span className="text-xs text-muted-foreground">-</span>}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-1">
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0" disabled={busy} onClick={() => saveOverride(row)}>
+                        <Save className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0" disabled={busy || !row.is_overridden} onClick={() => clearOverride(row)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )
+            })}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  )
+}
+
+function MissingFinancialDataPanel({
+  detail,
+  onAfterOverride,
+}: {
+  detail: FundamentalStockDetail
+  onAfterOverride: () => Promise<void>
+}) {
+  const summary = detail.missing_financial_data
+  const categories = Object.entries(summary.categories)
+    .sort((a, b) => b[1] - a[1] || missingCategoryLabel(a[0]).localeCompare(missingCategoryLabel(b[0])))
+    .map(([category, count]) => `${missingCategoryLabel(category)} ${count}`)
+
+  return (
+    <div className="rounded-md border border-line bg-bg2 p-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold">Donnees financieres manquantes</div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            {summary.statement_year ? `Exercice ${summary.statement_year}` : "Aucun exercice cible"}
+          </div>
+        </div>
+        <Badge variant={summary.total_missing > 0 ? "outline" : "secondary"} className="text-[10px]">
+          {summary.total_missing > 0 ? `${summary.total_missing} champ(s)` : "Complet"}
+        </Badge>
+      </div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-3">
+        <RawDataKpi label="Total manquant" value={formatCount(summary.total_missing)} sub={categories.slice(0, 2).join(" - ") || "Aucun ecart"} />
+        <RawDataKpi label="Snapshot" value={formatCount(summary.latest_missing)} sub="cours et ratios" />
+        <RawDataKpi label="Etats annuels" value={formatCount(summary.annual_missing)} sub="resultat, bilan, tresorerie" />
+      </div>
+      {summary.total_missing > 0 ? (
+        <div className="mt-3">
+          <MetricOverrideEditor detail={detail} onAfterOverride={onAfterOverride} focusMissingOnly showAddForm={false} />
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -346,7 +713,13 @@ function StatementContent({
   return <FinancialStatementTable table={table} emptyLabel={`Aucune donnee disponible pour ${FINANCIAL_TABS.find((item) => item.value === tab)?.label ?? "les etats financiers"}.`} />
 }
 
-function FinancialLineage({ detail }: { detail: FundamentalStockDetail }) {
+function FinancialLineage({
+  detail,
+  onAfterOverride,
+}: {
+  detail: FundamentalStockDetail
+  onAfterOverride: () => Promise<void>
+}) {
   const annualRows = annualRowsWithData(detail.annual)
   const rawRows = annualRawRowsWithData(detail)
   const metricNames = metricNamesFromAnnual(annualRows)
@@ -371,6 +744,9 @@ function FinancialLineage({ detail }: { detail: FundamentalStockDetail }) {
           <RawDataKpi label="Source" value={sourceLabel(detail.data_source)} sub={dateOnly(detail.imported_at) ?? "Aucune date d'import"} />
         </div>
 
+        <IntegrityDiagnostics detail={detail} />
+        <MetricOverrideEditor detail={detail} onAfterOverride={onAfterOverride} />
+
         {detail.coverage && Object.keys(detail.coverage).length > 0 ? (
           <div className="rounded-md border border-line bg-card p-3">
             <div className="text-sm font-semibold">Metadonnees de couverture</div>
@@ -392,12 +768,14 @@ function FinancialFundamentalDetailContent({
   onTabChange,
   periodType,
   onPeriodTypeChange,
+  onAfterOverride,
 }: {
   detail: FundamentalStockDetail
   tab: FundamentalFinancialTab
   onTabChange: (tab: FundamentalFinancialTab) => void
   periodType: string
   onPeriodTypeChange: (periodType: string) => void
+  onAfterOverride: () => Promise<void>
 }) {
   const periodTypes = useMemo(() => availableFinancialPeriodTypes(detail), [detail]) as string[]
   const activePeriodType = periodTypes.includes(periodType) ? periodType : periodTypes[0] ?? "annual"
@@ -420,8 +798,9 @@ function FinancialFundamentalDetailContent({
         </div>
       </div>
 
+      <MissingFinancialDataPanel detail={detail} onAfterOverride={onAfterOverride} />
       {tab === "summary" ? <FinancialSummary detail={detail} periodType={activePeriodType} /> : <StatementContent detail={detail} tab={tab} periodType={activePeriodType} />}
-      <FinancialLineage detail={detail} />
+      <FinancialLineage detail={detail} onAfterOverride={onAfterOverride} />
     </div>
   )
 }
@@ -435,6 +814,7 @@ function FinancialFundamentalDetailSheet({
   onTabChange,
   periodType,
   onPeriodTypeChange,
+  onAfterOverride,
   onClose,
 }: {
   symbol: string | null
@@ -445,6 +825,7 @@ function FinancialFundamentalDetailSheet({
   onTabChange: (tab: FundamentalFinancialTab) => void
   periodType: string
   onPeriodTypeChange: (periodType: string) => void
+  onAfterOverride: () => Promise<void>
   onClose: () => void
 }) {
   const title = detail?.display_name ?? detail?.company_name ?? symbol ?? "Titre"
@@ -491,6 +872,7 @@ function FinancialFundamentalDetailSheet({
               onTabChange={onTabChange}
               periodType={periodType}
               onPeriodTypeChange={onPeriodTypeChange}
+              onAfterOverride={onAfterOverride}
             />
           ) : (
             <div className="rounded-md border border-line bg-bg2 px-3 py-4 text-sm text-muted-foreground">
@@ -651,7 +1033,7 @@ export function FundamentalsCatalog() {
   function openBvcDialog(symbols?: string[]) {
     const selected = symbols !== undefined ? symbols : Array.from(selectedBackfillSymbols).sort()
     setBvcSymbols(selected.join("\n"))
-    setBvcPeriodTypes(selected.length === 0 ? ["annual", "semiannual", "quarterly"] : ["annual"])
+    setBvcPeriodTypes(["annual", "semiannual", "quarterly"])
     setBvcOpen(true)
   }
 
@@ -970,6 +1352,7 @@ export function FundamentalsCatalog() {
         onTabChange={setDetailTab}
         periodType={detailPeriodType}
         onPeriodTypeChange={setDetailPeriodType}
+        onAfterOverride={refreshCatalog}
         onClose={() => setDetailSymbol(null)}
       />
 

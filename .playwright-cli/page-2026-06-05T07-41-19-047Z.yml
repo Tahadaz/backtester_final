@@ -1,0 +1,133 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - link "RDT Alpha" [ref=e4] [cursor=pointer]:
+        - /url: /dashboard
+        - generic [ref=e5]: RDT
+        - generic [ref=e6]:
+          - generic [ref=e7]: RDT Alpha
+          - generic [ref=e8]: Road to Alpha
+      - navigation [ref=e9]:
+        - link "Tableau de Bord" [ref=e10] [cursor=pointer]:
+          - /url: /dashboard
+          - img
+          - text: Tableau de Bord
+        - link "Data" [ref=e11] [cursor=pointer]:
+          - /url: /data
+          - img
+          - text: Data
+        - link "Signals" [ref=e12] [cursor=pointer]:
+          - /url: /signals
+          - img
+          - text: Signals
+        - link "Strategy" [ref=e13] [cursor=pointer]:
+          - /url: /strategy
+          - img
+          - text: Strategy
+        - link "Backtest" [ref=e14] [cursor=pointer]:
+          - /url: /backtest
+          - img
+          - text: Backtest
+        - link "Analytics" [ref=e15] [cursor=pointer]:
+          - /url: /analytics
+          - img
+          - text: Analytics
+        - link "Glossaire" [ref=e16] [cursor=pointer]:
+          - /url: /glossary
+          - img
+          - text: Glossaire
+      - generic [ref=e17]:
+        - generic [ref=e18]: MASI · live
+        - button "Refresh" [ref=e20]:
+          - img
+        - link "Se connecter" [ref=e21] [cursor=pointer]:
+          - /url: /login
+          - img
+          - generic [ref=e22]: Se connecter
+  - main [ref=e23]:
+    - generic [ref=e24]:
+      - generic [ref=e25]:
+        - generic [ref=e26]: Analyse
+        - button "Analyse Technique Signaux TA, evidence, WFO" [ref=e27]:
+          - img [ref=e29]
+          - generic [ref=e31]:
+            - generic [ref=e32]: Analyse Technique
+            - generic [ref=e33]: Signaux TA, evidence, WFO
+        - button "Analyse Fondamentale Valorisation, qualite, financiers" [ref=e34]:
+          - img [ref=e36]
+          - generic [ref=e38]:
+            - generic [ref=e39]: Analyse Fondamentale
+            - generic [ref=e40]: Valorisation, qualite, financiers
+        - button "Analyse Quantitative IC, facteurs, macro, stat-arb" [pressed] [ref=e41]:
+          - img [ref=e43]
+          - generic [ref=e45]:
+            - generic [ref=e46]: Analyse Quantitative
+            - generic [ref=e47]: IC, facteurs, macro, stat-arb
+      - generic [ref=e50]:
+        - generic [ref=e51]:
+          - generic [ref=e53]:
+            - img [ref=e55]
+            - generic [ref=e58]:
+              - heading "Quantitative signal desk" [level=1] [ref=e59]
+              - paragraph [ref=e60]: Classic signal families from IC, factor relevance, liquidity and pairs evidence.
+          - generic [ref=e61]:
+            - generic [ref=e62]:
+              - button "Hebdomadaire" [ref=e63]
+              - button "Mensuel" [ref=e64]
+              - button "Trimestriel" [ref=e65]
+            - combobox [ref=e66]:
+              - option "Liquid ADV gate" [selected]
+              - option "All symbols"
+            - generic [ref=e67]:
+              - button "All sides" [ref=e68]
+              - button "Long only" [ref=e69]
+              - button "Short only" [ref=e70]
+            - generic [ref=e71]:
+              - img [ref=e72]
+              - textbox "Search symbol or signal" [ref=e75]
+        - generic [ref=e76]:
+          - generic [ref=e77]:
+            - generic [ref=e78]: Universe IC
+            - generic [ref=e79]: "--"
+            - generic [ref=e80]: 0 signal rows - Mensuel
+          - generic [ref=e81]:
+            - generic [ref=e82]: FDR discipline
+            - generic [ref=e83]: "--"
+            - generic [ref=e84]: Rows passing multiple-test gate
+          - generic [ref=e85]:
+            - generic [ref=e86]: Actionable
+            - generic [ref=e87]: "0"
+            - generic [ref=e88]: 0 long-biased - 0 short-biased
+          - generic [ref=e89]:
+            - generic [ref=e90]: Pairs book
+            - generic [ref=e91]: "0"
+            - generic [ref=e92]: Stat-arb job idle
+          - generic [ref=e93]:
+            - generic [ref=e94]: Best idea
+            - generic [ref=e95]: "--"
+            - generic [ref=e96]: No candidate
+        - generic [ref=e104]: Select a signal, macro factor, or pair to load the validation pack.
+        - generic [ref=e106]:
+          - generic [ref=e108]:
+            - generic [ref=e109]:
+              - img [ref=e110]
+              - text: Actionable quant blotter
+            - generic [ref=e113]: Ranked by evidence strength, cost-adjusted quality and validation gates.
+          - table [ref=e117]:
+            - rowgroup [ref=e118]:
+              - row "Signal Sleeve Bias Edge IC Validation Backtest ADV Status" [ref=e119]:
+                - columnheader "Signal" [ref=e120]
+                - columnheader "Sleeve" [ref=e121]
+                - columnheader "Bias" [ref=e122]
+                - columnheader "Edge" [ref=e123]
+                - columnheader "IC" [ref=e124]
+                - columnheader "Validation" [ref=e125]
+                - columnheader "Backtest" [ref=e126]
+                - columnheader "ADV" [ref=e127]
+                - columnheader "Status" [ref=e128]
+            - rowgroup [ref=e129]:
+              - row "No rows match the current filters." [ref=e130]:
+                - cell "No rows match the current filters." [ref=e131]
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=e137] [cursor=pointer]:
+    - img [ref=e138]

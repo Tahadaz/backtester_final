@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -28,6 +29,8 @@ class AnnualMetricRow:
     source_sheet: str | None = None
     source_field: str | None = None
     is_proxy: bool = False
+    as_of_date: dt.date | None = None
+    source_document_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -69,6 +72,8 @@ class FundamentalSnapshot:
     coverage: dict[str, Any] = field(default_factory=dict)
     model_eligibility: dict[str, Any] = field(default_factory=dict)
     source: dict[str, Any] = field(default_factory=dict)
+    as_of_date: dt.date | None = None
+    source_document_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -124,6 +129,9 @@ class EnsembleResult:
     monte_carlo_low: float | None = None
     monte_carlo_base: float | None = None
     monte_carlo_high: float | None = None
+    fair_value_mean: float | None = None
+    model_dispersion_cv: float | None = None
+    dispersion_factor: float | None = None
     sensitivity_grids: dict[str, Any] | None = None
 
 
@@ -154,6 +162,20 @@ class IntegrityReport:
     confidence_haircut: float
     projected_statements: list[dict[str, Any]] = field(default_factory=list)
     projection_checks: list[IntegrityCheck] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class DataTieOutReport:
+    symbol: str
+    statement_year: int
+    status: str
+    checks: list[IntegrityCheck]
+    failed_checks: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    offending_metrics: dict[str, Any] = field(default_factory=dict)
+    recomputed_metrics: dict[str, float | None] = field(default_factory=dict)
+    provenance: dict[str, Any] = field(default_factory=dict)
+    reason: str | None = None
 
 
 @dataclass(frozen=True)

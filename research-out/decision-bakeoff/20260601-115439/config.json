@@ -1,0 +1,25 @@
+{
+  "categories": [
+    "tendance",
+    "momentum",
+    "oscillation",
+    "volume"
+  ],
+  "cost_bps": 10.0,
+  "fwd_horizons": [
+    6,
+    10,
+    15,
+    21
+  ],
+  "horizon": "monthly",
+  "include_optional_ml": false,
+  "min_action_obs": 8,
+  "min_test_dates": 30,
+  "min_train_dates": 120,
+  "n_splits": 5,
+  "random_seed": 42,
+  "source": "wfo:expanded_ta_simple",
+  "symbols": null,
+  "use_oos_only": true
+}

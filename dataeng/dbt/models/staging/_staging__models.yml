@@ -1,0 +1,77 @@
+# Column-level docs + data tests for the staging models.
+# These run with `dbt test`. Each test is a SQL assertion dbt generates and runs;
+# a test "passes" when the query returns ZERO failing rows.
+# Values below are grounded in the ACTUAL data, not assumptions.
+#
+# Note: parametrized tests put their parameters under an `arguments:` key. This is
+# dbt's current standard (older dbt let you inline them; that form is deprecated).
+version: 2
+
+models:
+  - name: stg_stock_master
+    description: "Cleaned 1:1 view of stock_master — the MASI equity universe. One row per symbol."
+    columns:
+      - name: symbol
+        description: "Canonical ticker (upper/trimmed). Natural key of the stock dimension."
+        data_tests:
+          - not_null
+          - unique
+      - name: asset_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['equity', 'commodity', 'forex', 'bond', 'crypto']
+
+  - name: stg_signal_score_history
+    description: >
+      Cleaned per-bar signal scores. Grain = (score_date, symbol, source_raw, category, horizon).
+      `source` decomposed into source_base + source_method.
+    columns:
+      - name: score_date
+        data_tests: [not_null]
+      - name: symbol
+        data_tests: [not_null]
+      - name: source_base
+        description: "Engine family before the ':' — verified set from 6.6M rows."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['engine', 'engine_expanded', 'engine_legacy', 'wfo']
+      - name: category
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['momentum', 'oscillation', 'tendance', 'volume']
+      - name: horizon
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['short', 'medium', 'long', 'weekly', 'monthly', 'quarterly']
+      - name: score_pct
+        description: "Signal strength in [-100, +100]. Nulls allowed (missing bar)."
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: -100
+                max_value: 100
+
+  - name: stg_fundamental_pillar_scores
+    description: "Cleaned per-symbol fundamental pillar scores history (0-100 scale). Grain = symbol x as_of_date."
+    columns:
+      - name: symbol
+        data_tests: [not_null]
+      - name: overall_score
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 100
+
+  - name: stg_macro_factor_meta
+    description: "Cleaned registry of macro factor symbols (commodities, forex, ...)."
+    columns:
+      - name: symbol
+        data_tests:
+          - not_null
+          - unique

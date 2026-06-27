@@ -1,0 +1,1495 @@
+﻿
+==== ATW ====
+-- PAGE 14 --
+MuPDF error: format error: No common ancestor in structure tree
+
+MuPDF error: format error: No common ancestor in structure tree
+
+MuPDF error: format error: No common ancestor in structure tree
+
+MuPDF error: format error: No common ancestor in structure tree
+
+MuPDF error: format error: No common ancestor in structure tree
+
+MuPDF error: format error: No common ancestor in structure tree
+
+MuPDF error: format error: No common ancestor in structure tree
+
+MuPDF error: format error: No common ancestor in structure tree
+
+MuPDF error: format error: No common ancestor in structure tree
+
+MuPDF error: format error: No common ancestor in structure tree
+
+TABLE 0 rows=17 cols=6
+00: BILAN | Banque Maroc, / Europe et Zone / Offshore | Filiales / de Financement / Spécialisées | Assurance / et Immobilier | Banque de Détail / à l'International | TOTAL
+01:  |  |  |  |  | 
+02:  |  |  |  |  | 795 461 302
+03:  |  |  |  |  | 
+04:  |  |  |  |  | 
+05:  |  |  |  |  | 91 201 321
+06:  |  |  |  |  | 29 166 954
+07:  |  |  |  |  | 33 356 440
+08:  |  |  |  |  | 43 790 990
+09:  |  |  |  |  | 447 885 567
+10:  |  |  |  |  | 10 274 829
+11:  |  |  |  |  | 
+12:  |  |  |  |  | 63 464 380
+13:  |  |  |  |  | 527 233 608
+14:  |  |  |  |  | 50 815 903
+15:  |  |  |  |  | 17 256 823
+16:  |  |  |  |  | 80 490 370
+TABLE 1 rows=9 cols=7
+00: COMPTE DE RÉSULTAT | Banque Maroc, / Europe et Zone / Offshore | Filiales de / Financement / Spécialisées | Assurance / et Immobilier | Banque de Détail / à l'International | Eliminations | TOTAL
+01:  |  |  |  |  |  | 
+02:  |  |  |  |  |  | 21 112 312
+03:  |  |  |  |  |  | 7 126 450
+04:  |  |  |  |  |  | 34 921 384
+05:  |  |  |  |  |  | 11 799 244
+06:  |  |  |  |  |  | 18 034 254
+07:  |  |  |  |  |  | 12 368 271
+08:  |  |  |  |  |  | 10 644 852
+TABLE 2 rows=4 cols=3
+00:  | 31/12/2025 | 31/12/2024
+01:  |  | 
+02:  | 145 782 694 | 
+03:  | 2 639 400 | 
+TABLE 3 rows=4 cols=3
+00:  | 31/12/2025 | 31/12/2024
+01:  |  | 
+02:  | 118 029 758 | 
+03:  | 84 206 741 | 
+TABLE 4 rows=2 cols=3
+00:  | 31/12/2025 | 31/12/2024
+01:  |  | 
+TABLE 5 rows=1 cols=3
+00:  | Tranche A | Tranche B
+TABLE 6 rows=2 cols=3
+00:  | Tranche A | Tranche B
+01:  |  | 
+
+==== BCP ====
+-- PAGE 14 --
+TABLE 0 rows=7 cols=4
+00: GROUPE BANQUE CENTRALE POPULAIRE / COMPTES CONSOLIDÉS AUX NORMES IFRS AU 31 DÉCEMBRE 2025 / v(en milliers de DH) / 3.4.2 VENTILATION DES PRÊTS ET CRÉANCES SUR LES ÉTABLISSEMENTS DE CRÉDIT AU COÛT AMORTI PAR ZONE GÉOGRAPHIQUE 31/12/2025 31/12/2024 / Maroc 24 745 192 17 337 624 / Zone off shore 732 906 1 415 829 / Afrique 10 117 559 8 528 040 / Europe 472 695 328 734 / TOTAL DES PRÊTS ET CRÉANCES SUR LES ÉTABLISSEMENTS DE CRÉDIT NETS DE DÉPRÉCIATION (*) 36 068 352 27 610 227 / (*) Voir note 3 11 Répartition des dépréciations par Bucket sous IFRS9 / 3.5 PRÊTS ET CRÉANCES SUR LA CLIENTÈLE AU COÛT AMORTI / (en milliers de DH) / 3.5.1 PRÊTS ET CRÉANCES SUR LA CLIENTÈLE AU COÛT AMORTI 31/12/2025 31/12/2024 / Comptes ordinaires débiteurs 22 709 283 23 298 845 / Prêts consentis à la clientèle 281 432 189 273 021 590 / Opérations de pension 3 895 530 3 841 637 / Opérations de location-financement 21 867 233 19 918 044 / TOTAL DES PRÊTS CONSENTIS ET CRÉANCES SUR LA CLIENTÈLE AU COÛT AMORTI AVANT DÉPRÉCIATION 329 904 235 320 080 116 / Dépréciation des prêts et créances sur la clientèle (*) 31 103 372 32 839 303 / TOTAL DES PRÊTS CONSENTIS ET CRÉANCES SUR LA CLIENTÈLE AU COÛT AMORTI NETS DE DÉPRÉCIATION 298 800 863 287 240 813 / (*) Voir note 3 11 Répartition des dépréciations par Bucket sous IFRS9 / (en milliers de DH) / 3.5.2 Ventilation des créances sur la clientèle au coût amorti par zone géographique 31/12/2025 31/12/2024 / Maroc 236 292 337 230 198 272 / Zone off shore 6 809 967 3 258 177 |  |  | 
+01: 3.5.2 Ventilation des créances sur la clientèle au coût amorti par zone géographique | 31/12/2025 | 31/12/2024 | 
+02: Maroc | 236 292 337 | 230 198 272 | 
+03: Zone off shore | 6 809 967 | 3 258 177 | 
+04: Afrique | 53 207 416 | 51 224 629 | 
+05: Europe | 2 491 143 | 2 559 735 | 
+06: TOTAL DES PRÊTS CONSENTIS ET CRÉANCES SUR LA CLIENTÈLE AU COÛT AMORTI | 298 800 863 | 287 240 813 | 
+TABLE 1 rows=6 cols=3
+00: 3.4.2 VENTILATION DES PRÊTS ET CRÉANCES SUR LES ÉTABLISSEMENTS DE CRÉDIT AU COÛT AMORTI PAR ZONE GÉOGRAPHIQUE | 31/12/2025 | 31/12/2024
+01: Maroc | 24 745 192 | 17 337 624
+02: Zone off shore | 732 906 | 1 415 829
+03: Afrique | 10 117 559 | 8 528 040
+04: Europe | 472 695 | 328 734
+05: TOTAL DES PRÊTS ET CRÉANCES SUR LES ÉTABLISSEMENTS DE CRÉDIT NETS DE DÉPRÉCIATION (*) | 36 068 352 | 27 610 227
+TABLE 2 rows=8 cols=3
+00: 3.5.1 PRÊTS ET CRÉANCES SUR LA CLIENTÈLE AU COÛT AMORTI | 31/12/2025 | 31/12/2024
+01: Comptes ordinaires débiteurs | 22 709 283 | 23 298 845
+02: Prêts consentis à la clientèle | 281 432 189 | 273 021 590
+03: Opérations de pension | 3 895 530 | 3 841 637
+04: Opérations de location-financement | 21 867 233 | 19 918 044
+05: TOTAL DES PRÊTS CONSENTIS ET CRÉANCES SUR LA CLIENTÈLE AU COÛT AMORTI AVANT DÉPRÉCIATION | 329 904 235 | 320 080 116
+06: Dépréciation des prêts et créances sur la clientèle (*) | 31 103 372 | 32 839 303
+07: TOTAL DES PRÊTS CONSENTIS ET CRÉANCES SUR LA CLIENTÈLE AU COÛT AMORTI NETS DE DÉPRÉCIATION | 298 800 863 | 287 240 813
+TABLE 3 rows=15 cols=7
+00:  | 31/12/2025 |  |  | 31/12/2024 |  | 
+01:  | Valeur brute / comptable | Cumul des / amortissements et / pertes de valeur | Valeur nette / comptable | Valeur brute / comptable | Cumul des / amortissements et / pertes de valeur | Valeur nette / comptable
+02: IMMOBILISATIONS CORPORELLES | 23 678 128 | 12 473 634 | 11 204 494 | 22 197 106 | 11 725 746 | 10 471 360
+03: Terrains et constructions | 10 644 200 | 4 267 464 | 6 376 736 | 9 015 854 | 3 974 758 | 5 041 096
+04: Equipement, Mobilier, Installations | 5 908 853 | 3 628 383 | 2 280 470 | 5 454 590 | 3 423 403 | 2 031 187
+05: Biens mobiliers donnés en location |  |  |  |  |  | 
+06: Autres immobilisations | 4 042 829 | 2 732 064 | 1 310 765 | 5 188 617 | 2 772 675 | 2 415 942
+07: Droit d'utilisation | 3 082 246 | 1 845 723 | 1 236 523 | 2 538 045 | 1 554 910 | 983 135
+08: IMMOBILISATIONS INCORPORELLES | 3 506 763 | 2 429 963 | 1 076 800 | 3 278 103 | 2 175 067 | 1 103 036
+09: Droit au bail | 307 957 |  | 307 957 | 310 533 |  | 310 533
+10: Brevets et marque | 309 360 |  | 309 360 | 172 877 |  | 172 877
+11: Logiciels informatiques acquis | 2 662 719 | 2 429 963 | 232 756 | 2 564 913 | 2 175 067 | 389 846
+12: Autres immobilisations incorporelles | 226 727 |  | 226 727 | 229 780 |  | 229 780
+13: Droit d'utilisation |  |  |  |  |  | 
+14: TOTAL DES IMMOBILISATIONS | 27 184 891 | 14 903 597 | 12 281 294 | 25 475 209 | 13 900 813 | 11 574 396
+-- PAGE 15 --
+TABLE 0 rows=7 cols=4
+00: GROUPE BANQUE CENTRALE POPULAIRE / COMPTES CONSOLIDÉS AUX NORMES IFRS AU 31 DÉCEMBRE 2025 / CONTRATS DE LOCATION : DROITS D’UTILISATION - PRENEUR / (en milliers de DH) / Variation de / CONTRATS DE LOCATION : DROITS D'UTILISATION - PRENEUR 31/12/2024 Augmentation Diminution Autres 31/12/2025 / périmètre / DROIT D'UTILISATION D'IMMEUBLES D'EXPLOITATION 918 541 245 802 -48 298 49 150 7 411 1 172 606 / Valeur Brute 2 421 896 543 522 -113 017 87 664 14 809 2 954 874 / Amortissements et dépréciations -1 503 355 -297 720 64 719 -38 514 -7 398 -1 782 268 / DROIT D'UTILISATION DU MOBILIER ET MATÉRIEL D'EXPLOITATION 27 953 -6 327 -929 168 20 865 / Valeur Brute 39 979 3 211 -2 319 233 41 104 / Amortissements et dépréciations -12 026 -9 538 1 390 -65 -20 239 / DROIT D'UTILISATION DES AUTRES IMMOBILISATIONS CORPORELLES D'EXPLOITATION 36 641 11 194 -4 540 -243 43 052 / Valeur Brute 76 170 21 084 -10 133 -853 86 268 / Amortissements et dépréciations -39 529 -9 890 5 593 610 -43 216 / TOTAL DROITS D'UTILISATION 983 135 250 669 -53 767 49 150 7 336 1 236 523 / ACTIFS AU TITRE DE DROITS D’UTILISATION - PRENEUR / (en milliers de DH) / ACTIFS AU TITRE DE DROITS D'UTILISATION - PRENEUR 31/12/2025 31/12/2024 / Immobilisations corporelles 11 204 494 10 471 360 / Dont : Droits d'utilisation 1 236 523 983 135 |  |  | 
+01: ACTIFS AU TITRE DE DROITS D'UTILISATION - PRENEUR | 31/12/2025 | 31/12/2024 | 
+02: Immobilisations corporelles | 11 204 494 | 10 471 360 | 
+03: Dont : Droits d'utilisation | 1 236 523 | 983 135 | 
+04:  |  |  | 
+05: Immobilisations Incorporelles | 1 076 800 | 1 103 036 | 
+06: Dont : Droits d'utilisation |  |  | 
+TABLE 1 rows=11 cols=7
+00: CONTRATS DE LOCATION : DROITS D'UTILISATION - PRENEUR | 31/12/2024 | Augmentation | Diminution | Variation de / périmètre | Autres | 31/12/2025
+01: DROIT D'UTILISATION D'IMMEUBLES D'EXPLOITATION | 918 541 | 245 802 | -48 298 | 49 150 | 7 411 | 1 172 606
+02: Valeur Brute | 2 421 896 | 543 522 | -113 017 | 87 664 | 14 809 | 2 954 874
+03: Amortissements et dépréciations | -1 503 355 | -297 720 | 64 719 | -38 514 | -7 398 | -1 782 268
+04: DROIT D'UTILISATION DU MOBILIER ET MATÉRIEL D'EXPLOITATION | 27 953 | -6 327 | -929 |  | 168 | 20 865
+05: Valeur Brute | 39 979 | 3 211 | -2 319 |  | 233 | 41 104
+06: Amortissements et dépréciations | -12 026 | -9 538 | 1 390 |  | -65 | -20 239
+07: DROIT D'UTILISATION DES AUTRES IMMOBILISATIONS CORPORELLES D'EXPLOITATION | 36 641 | 11 194 | -4 540 |  | -243 | 43 052
+08: Valeur Brute | 76 170 | 21 084 | -10 133 |  | -853 | 86 268
+09: Amortissements et dépréciations | -39 529 | -9 890 | 5 593 |  | 610 | -43 216
+10: TOTAL DROITS D'UTILISATION | 983 135 | 250 669 | -53 767 | 49 150 | 7 336 | 1 236 523
+TABLE 2 rows=3 cols=3
+00: PASSIFS AU TITRE DE LA DETTE LOCATIVE | 31/12/2025 | 31/12/2024
+01: Comptes de régularisation et autres passifs | 18 287 394 | 14 956 553
+02: Dont : Dettes locatives | 1 251 661 | 1 003 363
+TABLE 3 rows=3 cols=3
+00: DÉTAIL DES CHARGES DE CONTRATS DE LOCATION | 31/12/2025 | 31/12/2024
+01: Charges d'intérêts sur dettes locatives | -53 738 | -52 168
+02: Dotations aux amortissements sur droits d'utilisation | -317 148 | -310 464
+TABLE 4 rows=4 cols=6
+00:  | 31/12/2024 | Variation / périmètre | Écart de / conversion | Autres mouvements | 31/12/2025
+01: Valeur Brute | 2 343 738 |  | 2 254 |  | 2 345 992
+02: Cumul des pertes de valeur |  |  |  |  | 
+03: Valeur nette au bilan | 2 343 738 |  | 2 254 |  | 2 345 992
+TABLE 5 rows=5 cols=3
+00:  | 31/12/2025 | 31/12/2024
+01: Comptes à vue | 3 694 591 | 3 275 024
+02: Emprunts | 11 460 840 | 12 841 567
+03: opérations de pension | 34 689 871 | 33 449 483
+04: TOTAL DES DETTES ENVERS LES ÉTABLISSEMENTS DE CRÉDIT | 49 845 302 | 49 566 074
+-- PAGE 16 --
+TABLE 0 rows=15 cols=11
+00: GROUPE BANQUE CENTRALE POPULAIRE / COMPTES CONSOLIDÉS AUX NORMES IFRS AU 31 DÉCEMBRE 2025 / 3.9 DETTES ENVERS LA CLIENTÈLE / (en milliers de DH) / 3.9.1 Dettes envers la clientèle 31/12/2025 31/12/2024 / Comptes ordinaires créditeurs 304 250 299 280 517 763 / Comptes à terme 43 632 996 45 249 800 / Comptes d'épargne à taux administré 51 974 714 49 831 788 / Bons de caisse 722 558 912 434 / Opérations de pension 54 317 680 138 / Autres dettes envers la clientèle 11 244 206 11 799 451 / TOTAL DES DETTES ENVERS LA CLIENTÈLE 411 879 090 388 991 374 / (en milliers de DH) / 3.9.2 Ventilation des dettes sur la clientèle par zone géographique 31/12/2025 31/12/2024 / Maroc 332 099 335 318 001 718 / Zone off shore 2 802 501 1 498 734 / Afrique 75 363 623 67 881 595 / Europe 1 613 631 1 609 327 / TOTAL DES DETTES ENVERS LA CLIENTÈLE 411 879 090 388 991 374 / 3.10 PROVISIONS POUR RISQUES ET CHARGES / (en milliers de DH) / Provisions pour risques d'exécution des Provisions pour engagements Autres provisions pour Valeur comptable / engagements par signature (*) sociaux risques et charges au bilan / MONTANT AU 31/12/2024 3 323 114 1 692 390 2 792 521 7 808 025 / Dotations 135 501 18 690 1 335 473 1 489 664 / Reprises 364 888 113 662 562 445 1 040 995 / Autres mouvements -36 194 238 861 -43 034 159 633 / MONTANT AU 31/12/2025 3 057 533 1 836 279 3 522 515 8 416 327 / 3.11 VENTILATION DES ACTIFS ET PASSIFS FINANCIERS PAR BUCKET / (en milliers de DH) / ENCOURS PROVISIONS TAUX DE COUVERTURE / Au 31 Décembre 2025 / Bucket 1 Bucket 2 Bucket 3 Bucket 1 Bucket 2 Bucket 3 Bucket 1 Bucket 2 Bucket 3 / BANQUES CENTRALES, TRÉSOR PUBLIC, SERVICES DES / 17 812 169 / CHÈQUES POSTAUX |  |  |  |  |  |  |  |  |  | 
+01: Au 31 Décembre 2025 | ENCOURS |  |  | PROVISIONS |  |  | TAUX DE COUVERTURE |  |  | 
+02:  | Bucket 1 | Bucket 2 | Bucket 3 | Bucket 1 | Bucket 2 | Bucket 3 | Bucket 1 | Bucket 2 | Bucket 3 | 
+03: BANQUES CENTRALES, TRÉSOR PUBLIC, SERVICES DES / CHÈQUES POSTAUX | 17 812 169 |  |  |  |  |  |  |  |  | 
+04: ACTIFS FINANCIERS À LA JUSTE VALEUR PAR CAPITAUX / PROPRES | 26 710 154 | 4 497 303 |  | 1 752 476 | 1 050 624 |  | 6,56% | 23,36% |  | 
+05: Instruments de dettes comptabilisés à la juste valeur par / capitaux propres recyclables |  |  |  |  |  |  |  |  |  | 
+06: Instruments de capitaux propres comptabilisés à la juste valeur / par capitaux propres non recyclables |  |  |  |  |  |  |  |  |  | 
+07: Titres de dettes | 26 710 154 | 4 497 303 |  | 1 752 476 | 1 050 624 |  | 6,56% | 23,36% |  | 
+08: ACTIFS FINANCIERS AU COÛT AMORTI | 338 336 948 | 26 468 593 | 30 661 722 | 4 019 525 | 5 859 707 | 21 595 927 | 1,19% | 22,14% | 70,43% | 
+09: Prêts et créances sur les établissements de crédit | 36 416 294 |  | 19 923 | 362 541 |  | 5 324 | 1,00% |  | 26,72% | 
+10: Prêts et créances sur la clientèle | 272 793 843 | 26 468 593 | 30 641 799 | 3 653 062 | 5 859 707 | 21 590 603 | 1,34% | 22,14% | 70,46% | 
+11: Titres de dettes | 29 126 811 |  |  | 3 922 |  |  | 0,01% |  |  | 
+12: TOTAL DES ACTIFS FINANCIERS | 382 859 271 | 30 965 896 | 30 661 722 | 5 772 001 | 6 910 331 | 21 595 927 | 1,51% | 22,32% | 70,43% | 
+13: PASSIFS FINANCIERS | 90 157 680 | 5 102 792 | 2 705 159 | 690 884 | 465 746 | 1 900 903 | 0,77% | 9,13% | 70,27% | 
+14: Engagements hors bilan | 90 157 680 | 5 102 792 | 2 705 159 | 690 884 | 465 746 | 1 900 903 | 0,77% | 9,13% | 70,27% | 
+TABLE 1 rows=8 cols=3
+00: 3.9.1 Dettes envers la clientèle | 31/12/2025 | 31/12/2024
+01: Comptes ordinaires créditeurs | 304 250 299 | 280 517 763
+02: Comptes à terme | 43 632 996 | 45 249 800
+03: Comptes d'épargne à taux administré | 51 974 714 | 49 831 788
+04: Bons de caisse | 722 558 | 912 434
+05: Opérations de pension | 54 317 | 680 138
+06: Autres dettes envers la clientèle | 11 244 206 | 11 799 451
+07: TOTAL DES DETTES ENVERS LA CLIENTÈLE | 411 879 090 | 388 991 374
+TABLE 2 rows=6 cols=3
+00: 3.9.2 Ventilation des dettes sur la clientèle par zone géographique | 31/12/2025 | 31/12/2024
+01: Maroc | 332 099 335 | 318 001 718
+02: Zone off shore | 2 802 501 | 1 498 734
+03: Afrique | 75 363 623 | 67 881 595
+04: Europe | 1 613 631 | 1 609 327
+05: TOTAL DES DETTES ENVERS LA CLIENTÈLE | 411 879 090 | 388 991 374
+TABLE 3 rows=6 cols=5
+00:  | Provisions pour risques d'exécution des / engagements par signature (*) | Provisions pour engagements / sociaux | Autres provisions pour / risques et charges | Valeur comptable / au bilan
+01: MONTANT AU 31/12/2024 | 3 323 114 | 1 692 390 | 2 792 521 | 7 808 025
+02: Dotations | 135 501 | 18 690 | 1 335 473 | 1 489 664
+03: Reprises | 364 888 | 113 662 | 562 445 | 1 040 995
+04: Autres mouvements | -36 194 | 238 861 | -43 034 | 159 633
+05: MONTANT AU 31/12/2025 | 3 057 533 | 1 836 279 | 3 522 515 | 8 416 327
+TABLE 4 rows=14 cols=10
+00: Au 31 Décembre 2024 | ENCOURS |  |  | PROVISIONS |  |  | TAUX DE COUVERTURE |  | 
+01:  | Bucket 1 | Bucket 2 | Bucket 3 | Bucket 1 | Bucket 2 | Bucket 3 | Bucket 1 | Bucket 2 | Bucket 3
+02: BANQUES CENTRALES, TRÉSOR PUBLIC, SERVICES DES / CHÈQUES POSTAUX | 10 690 221 |  |  |  |  |  |  |  | 
+03: ACTIFS FINANCIERS À LA JUSTE VALEUR PAR CAPITAUX / PROPRES | 29 607 143 | 805 064 |  | 2 183 889 | 158 042 |  | 7,38% | 19,63% | 
+04: Instruments de dettes comptabilisés à la juste valeur par / capitaux propres recyclables |  |  |  |  |  |  |  |  | 
+05: Instruments de capitaux propres comptabilisés à la juste / valeur par capitaux propres non recyclables |  |  |  |  |  |  |  |  | 
+06: Titres de dettes | 29 607 143 | 805 064 |  | 2 183 889 | 158 042 |  | 7,38% | 19,63% | 
+07: ACTIFS FINANCIERS AU COÛT AMORTI | 319 888 773 | 26 304 779 | 31 958 016 | 3 419 917 | 5 211 670 | 24 417 317 | 1,07% | 19,81% | 76,40%
+08: Prêts et créances sur les établissements de crédit | 27 803 118 |  | 11 520 | 194 124 |  | 10 287 | 0,70% |  | 89,30%
+09: Prêts et créances sur la clientèle | 261 828 841 | 26 304 779 | 31 946 496 | 3 220 603 | 5 211 670 | 24 407 030 | 1,23% | 19,81% | 76,40%
+10: Titres de dettes | 30 256 814 |  |  | 5 190 |  |  | 0,02% |  | 
+11: TOTAL DES ACTIFS FINANCIERS | 360 186 137 | 27 109 843 | 31 958 016 | 5 603 806 | 5 369 711 | 24 417 317 | 1,56% | 19,81% | 76,40%
+12: PASSIFS FINANCIERS | 74 726 129 | 4 645 792 | 2 850 032 | 753 172 | 662 091 | 1 907 850 | 1,01% | 14,25% | 66,94%
+13: Engagements hors bilan | 74 726 129 | 4 645 792 | 2 850 032 | 753 172 | 662 091 | 1 907 850 | 1,01% | 14,25% | 66,94%
+TABLE 5 rows=8 cols=3
+00:  | 31/12/2025 | 31/12/2024
+01: Instruments financiers dérivés |  | 
+02: Instruments dérivés de couverture |  | 
+03: Actifs financiers en valeur de marché par résultat | 149 055 | 6 712
+04: Actifs financiers en valeur de marché par capitaux propres recyclables | 1 782 625 | 1 664 481
+05: Actifs financiers en valeur de marché par capitaux propres non recyclable | 459 437 | 228 352
+06: Actifs financiers au coût amorti | 416 367 | 375 247
+07: Placements des activités d'assurance | 2 807 484 | 2 274 792
+-- PAGE 17 --
+TABLE 0 rows=27 cols=4
+00: GROUPE BANQUE CENTRALE POPULAIRE / COMPTES CONSOLIDÉS AUX NORMES IFRS AU 31 DÉCEMBRE 2025 / 4.1 MARGE D’INTÉRÊT / (en milliers de DH) / 31/12/2025 31/12/2024 / Produits Charges Net Produits Charges Net / Opérations avec la clientèle 17 323 330 3 756 974 13 566 356 16 618 362 3 901 055 12 717 307 / Comptes et prêts/emprunts 16 232 137 3 536 468 12 695 669 15 614 341 3 657 004 11 957 337 / Opérations de pensions 72 215 37 256 34 959 46 056 63 218 -17 162 / Opérations de location-financement 1 018 978 183 250 835 728 957 965 180 833 777 132 / Opérations interbancaires 1 349 529 1 781 924 -432 395 1 341 939 1 933 520 -591 581 / Comptes et prêts/emprunts 892 467 670 776 221 691 910 208 642 699 267 509 / Opérations de pensions 457 062 1 111 148 -654 086 431 731 1 290 821 -859 090 / Emprunts émis par le Groupe 477 109 -477 109 504 166 -504 166 / Instruments à la juste valeur sur capitaux propres 1 811 259 4 1 811 255 1 867 089 9 1 867 080 / Actifs financiers au coût amorti 1 075 129 1 075 129 1 130 283 1 130 283 / TOTAL DES PRODUITS ET CHARGES D’INTÉRÊTS OU ASSIMILÉS 21 559 247 6 016 011 15 543 236 20 957 673 6 338 750 14 618 923 / 4.2 COMMISSIONS NETTES 4.3 PRODUITS NETS DES ACTIVITÉS D’ASSURANCE / (en milliers de DH) (en milliers de DH) / 31/12/2025 31/12/2024 31/12/2025 31/12/2024 / Produits Charges Net Produits Charges Net Produits des activités d'assurance 1 533 450 1 383 441 / Commissions sur titres 607 739 47 142 560 597 484 865 56 167 428 698 Charges afférentes aux contrats d'assurance -1 145 502 -1 088 423 / Produits nets sur moyen de 884 154 155 713 728 441 889 512 89 054 800 458 Produits nets des placements liés aux activités d'assurance 158 557 150 337 / paiement / Produits ou charges financiers afférents aux contrats d'assurance -1 667 4 164 / Autres commissions 3 549 503 454 411 3 095 092 3 407 088 474 707 2 932 381 / PRODUITS NETS DE COMMISSIONS 5 041 396 657 266 4 384 130 4 781 465 619 928 4 161 537 Produit nets des activités d'assurance 544 838 449 519 / 4.4 COÛT DU RISQUE / (en milliers de DH) |  |  | 
+01:  |  |  | 
+02:  | 31/12/2025 | 31/12/2024 | 
+03: Dotations nettes de reprises des dépréciations | -373 170 | 3 842 060 | 
+04: Bucket 1 : Pertes évaluées au montant des pertes de crédit attendues pour les 12 mois à venir | 8 547 | 409 558 | 
+05: Instruments de dettes comptabilisés à la juste valeur par capitaux propres recyclables |  |  | 
+06: Instruments de dettes comptabilisés au coût amorti | 71 852 | 336 233 | 
+07: Engagements par signature | -63 305 | 73 325 | 
+08: Bucket 2 : Pertes évaluées au montant des pertes de crédit attendues pour la durée de vie | 1 306 221 | 1 092 236 | 
+09: Instruments de dettes comptabilisés à la juste valeur par capitaux propres recyclables |  |  | 
+10: Instruments de dettes comptabilisés au coût amorti | 1 502 613 | 1 215 415 | 
+11: Engagements par signature | -196 392 | -123 179 | 
+12: Bucket 3 : Dotations nettes de reprises des dépréciations sur actifs dépréciés | -1 687 938 | 2 340 266 | 
+13: Instruments de dettes comptabilisés à la juste valeur par capitaux propres recyclables |  |  | 
+14: Instruments de dettes comptabilisés au coût amorti | -1 718 248 | 2 480 948 | 
+15: Engagements par signature | 30 310 | -140 682 | 
+16: Autres provisions pour risques et charges | 871 237 | 841 695 | 
+17: Autres variations des provisions | 4 864 557 | 1 512 684 | 
+18: Plus ou moins-values de cessions réalisées sur instruments de dettes comptabilisés en capitaux propres recyclables dépréciés |  |  | 
+19: Gains ou pertes réalisés sur instruments de dettes comptabilisés au coût amorti dépréciés |  |  | 
+20: Pertes sur prêts et créances irrécouvrables | 5 095 233 | 1 746 052 | 
+21: Récupérations sur prêts et créances comptabilisés au coût amorti | 230 676 | 233 368 | 
+22: Décotes sur crédits restructurés |  |  | 
+23: Pertes sur engagements par signature |  |  | 
+24: Autres pertes |  |  | 
+25: Autres produits |  |  | 
+26: Coût du risque | 5 362 624 | 6 196 439 | 
+TABLE 1 rows=13 cols=7
+00:  | 31/12/2025 |  |  | 31/12/2024 |  | 
+01:  | Produits | Charges | Net | Produits | Charges | Net
+02: Opérations avec la clientèle | 17 323 330 | 3 756 974 | 13 566 356 | 16 618 362 | 3 901 055 | 12 717 307
+03: Comptes et prêts/emprunts | 16 232 137 | 3 536 468 | 12 695 669 | 15 614 341 | 3 657 004 | 11 957 337
+04: Opérations de pensions | 72 215 | 37 256 | 34 959 | 46 056 | 63 218 | -17 162
+05: Opérations de location-financement | 1 018 978 | 183 250 | 835 728 | 957 965 | 180 833 | 777 132
+06: Opérations interbancaires | 1 349 529 | 1 781 924 | -432 395 | 1 341 939 | 1 933 520 | -591 581
+07: Comptes et prêts/emprunts | 892 467 | 670 776 | 221 691 | 910 208 | 642 699 | 267 509
+08: Opérations de pensions | 457 062 | 1 111 148 | -654 086 | 431 731 | 1 290 821 | -859 090
+09: Emprunts émis par le Groupe |  | 477 109 | -477 109 |  | 504 166 | -504 166
+10: Instruments à la juste valeur sur capitaux propres | 1 811 259 | 4 | 1 811 255 | 1 867 089 | 9 | 1 867 080
+11: Actifs financiers au coût amorti | 1 075 129 |  | 1 075 129 | 1 130 283 |  | 1 130 283
+12: TOTAL DES PRODUITS ET CHARGES D’INTÉRÊTS OU ASSIMILÉS | 21 559 247 | 6 016 011 | 15 543 236 | 20 957 673 | 6 338 750 | 14 618 923
+TABLE 2 rows=6 cols=7
+00:  | 31/12/2025 |  |  | 31/12/2024 |  | 
+01:  | Produits | Charges | Net | Produits | Charges | Net
+02: Commissions sur titres | 607 739 | 47 142 | 560 597 | 484 865 | 56 167 | 428 698
+03: Produits nets sur moyen de / paiement | 884 154 | 155 713 | 728 441 | 889 512 | 89 054 | 800 458
+04: Autres commissions | 3 549 503 | 454 411 | 3 095 092 | 3 407 088 | 474 707 | 2 932 381
+05: PRODUITS NETS DE COMMISSIONS | 5 041 396 | 657 266 | 4 384 130 | 4 781 465 | 619 928 | 4 161 537
+TABLE 3 rows=6 cols=3
+00:  | 31/12/2025 | 31/12/2024
+01: Produits des activités d'assurance | 1 533 450 | 1 383 441
+02: Charges afférentes aux contrats d'assurance | -1 145 502 | -1 088 423
+03: Produits nets des placements liés aux activités d'assurance | 158 557 | 150 337
+04: Produits ou charges financiers afférents aux contrats d'assurance | -1 667 | 4 164
+05: Produit nets des activités d'assurance | 544 838 | 449 519
+TABLE 4 rows=13 cols=6
+00: 5.1 BILAN AU 31 DECEMRBE 2025 | Banque Maroc & banque / off shore | Sociétés de financement / spécialisées | Banque de détail & / Assurance à l'international | Interco | Total
+01: Total Bilan | 465 512 906 | 34 734 949 | 108 486 221 | -37 489 866 | 571 244 210
+02: dont |  |  |  |  | 
+03: Eléments d'Actifs |  |  |  |  | 
+04: Actifs financiers à la juste valeur par résultat | 104 218 964 |  | 2 774 979 |  | 106 993 943
+05: Actifs financiers à la juste valeur par capitaux propres | 23 213 427 | 8 049 | 21 392 091 | -9 177 040 | 35 436 527
+06: Placements détenus jusqu'à leur échéance | 29 596 992 |  | 225 897 | -700 000 | 29 122 889
+07: Prêts et créances sur les Etablissements de crédit et assimilés | 52 630 856 | 154 388 | 10 702 028 | -27 418 920 | 36 068 352
+08: Prêts et créances sur la clientèle | 215 584 024 | 31 358 133 | 53 207 416 | -1 348 710 | 298 800 863
+09: Eléments du Passif |  |  |  |  | 
+10: Dettes envers les EC et assimilés | 36 357 454 | 27 327 760 | 14 213 886 | -28 053 798 | 49 845 302
+11: Dettes envers la clientèle | 335 957 966 | 710 487 | 75 440 731 | -230 094 | 411 879 090
+12: Capitaux propres | 57 582 860 | 2 432 450 | 9 605 425 | -7 187 662 | 62 433 073
+
+==== BOA ====
+-- PAGE 14 --
+TABLE 0 rows=33 cols=7
+00:  |  |  |  |  |  | 
+01: BIL |  | AN |  |  | En milliers de DH | 
+02: ACTIF |  |  | 31/12/2025 |  |  | 31/12/2024
+03:  |  |  |  |  |  | 
+04: Valeurs en caisse, Banques centrales, Trésor public, Service des chéques postaux |  |  | 6 055 746 | 6 094 414 |  | 
+05: Créances sur les établissements de crédit et assimilés |  |  | 26 082 327 | 26 946 771 |  | 
+06: . A vue |  |  | 9 269 008 | 8 124 129 |  | 
+07: . A terme |  |  | 16 813 319 | 18 822 641 |  | 
+08: Créances sur la clientèle |  |  | 151 400 795 | 147 404 686 |  | 
+09: . Crédits et financements participatifs de trésorerie et à la consommation / . Crédits et financements participatifs à l'équipement |  |  | 45 396 547 / 41 728 700 | 42 450 884 / 34 074 735 |  | 
+10: . Crédits et financements participatifs immobiliers |  |  | 39 150 584 | 39 814 816 |  | 
+11: . Autres crédits et financements participatifs |  |  | 25 124 965 | 31 064 250 |  | 
+12: Créances acquises par affacturage |  |  | 3 164 618 | 2 738 363 |  | 
+13: Titres de transaction et de placement |  |  | 58 049 620 | 59 868 143 |  | 
+14: . Bons du Trésor et valeurs assimilées |  |  | 36 976 917 | 40 411 234 |  | 
+15: . Autres titres de créance |  |  | 264 028 | 248 348 |  | 
+16: . Titres de propriété |  |  | 20 808 676 | 19 208 562 |  | 
+17: . Certificats de Sukuks |  |  | - | - |  | 
+18: Autres actifs |  |  | 9 414 675 | 8 162 050 |  | 
+19: Titres d'investissement / . Bons du Trésor et valeurs assimilées |  |  | 10 938 676 / 8 718 879 | 10 988 955 / 8 705 033 |  | 
+20: . Autres titres de créance |  |  | 2 219 796 | 2 283 922 |  | 
+21: . Certificats de Sukuks |  |  | - | - |  | 
+22: Titres de participation et emplois assimilés |  |  | 14 014 009 | 13 661 852 |  | 
+23: . Participation dans les entreprises liées |  |  | 11 281 271 | 10 747 084 |  | 
+24: . Autres titres de participation et emplois assimilés |  |  | 2 732 738 | 2 914 768 |  | 
+25: . Titres de Moudaraba et Moucharaka |  |  | - | - |  | 
+26: Créances subordonnées |  |  | 195 703 | 188 400 |  | 
+27: Dépôts d'investissement placés |  |  | 1 780 646 | 251 550 |  | 
+28: Immobilisations données en crédit-bail et en location |  |  | 490 075 | 363 298 |  | 
+29: Immobilisations données en Ijara |  |  | - | - |  | 
+30: Immobilisations incorporelles |  |  | 1 174 576 | 981 947 |  | 
+31:  |  |  | 3 176 656 |  |  | 
+32:  |  |  | 285 938 123 |  |  | 
+TABLE 1 rows=31 cols=6
+00:  |  |  |  | En milliers de DH | 
+01: PASSIF |  | 31/12/2025 |  |  | 31/12/2024
+02:  |  |  |  |  | 
+03: Banques centrales, Trésor public, Service des chèques postaux |  | - | - |  | 
+04: Dettes envers les établissements de crédit et assimilés |  | 55 036 753 | 59 087 344 |  | 
+05: . A vue |  | 16 940 930 | 5 745 853 |  | 
+06: . A terme |  | 38 095 823 | 53 341 492 |  | 
+07: Dépôts de la clientèle |  | 175 640 201 | 163 213 170 |  | 
+08: . Comptes à vue créditeurs |  | 132 132 064 | 116 980 318 |  | 
+09: . Comptes d'épargne |  | 27 616 834 | 27 765 858 |  | 
+10: . Dépôts à terme |  | 10 392 335 | 13 853 315 |  | 
+11: . Autres comptes créditeurs |  | 5 498 967 | 4 613 680 |  | 
+12: Dettes envers la clientèle sur produits participatifs |  | - | - |  | 
+13: Titres de créance émis |  | 5 598 148 | 7 888 099 |  | 
+14: . Titres de créance négociables émis |  | 5 598 148 | 7 888 099 |  | 
+15: . Emprunts obligataires émis |  | - | - |  | 
+16: . Autres titres de créance émis |  | - | - |  | 
+17: Autres passifs |  | 10 839 420 | 12 677 501 |  | 
+18: Provisions pour risques et charges |  | 2 332 241 | 2 026 454 |  | 
+19: Provisions réglementées |  | 54 473 | 85 305 |  | 
+20: Subventions, fonds publics affectés et fonds spéciaux de garantie |  | - | - |  | 
+21: Dettes subordonnées |  | 12 088 543 | 12 145 994 |  | 
+22: Dépôts d'investissement reçus |  | - | - |  | 
+23: Ecarts de réévaluation |  | - | - |  | 
+24: Réserves et primes liées au capital |  | 19 974 709 | 19 218 005 |  | 
+25: Capital |  | 2 202 819 | 2 157 863 |  | 
+26: Actionnaires.Capital non versé (-) |  | - | - |  | 
+27: Report à nouveau (+/-) |  | 53 | 89 |  | 
+28: Résultats nets en instance d'affectation (+/-) |  | - | - |  | 
+29:  |  | 2 170 762 |  |  | 
+30:  |  | 285 938 123 |  |  | 
+TABLE 2 rows=34 cols=4
+00:  | 31/12/2025 |  | 31/12/2024
+01: (+) Intérêts et produits assimilés | 8 944 288 | 8 763 398 | 
+02: (-) Intérêts et charges assimilées | 3 505 540 | 3 924 954 | 
+03: MARGE D'INTERET | 5 438 748 | 4 838 444 | 
+04: (+) Produits sur financements participatifs | - | - | 
+05: (-) Charges sur financements participatifs | - | - | 
+06: MARGE SUR FINANCEMENTS PARTICIPATIFS | - | - | 
+07: (+) Produits sur immobilisations en crédit-bail et location | 38 283 | 47 968 | 
+08: (-) Charges sur immobilisations en crédit-bail et location | 33 204 | 30 726 | 
+09: RÉSULTAT DES OPÉRATIONS DE CRÉDIT-BAIL ET LOCATION | 5 079 | 17 241 | 
+10: (+) Produits sur immobilisations données en Ijara | - | - | 
+11: (-) Charges sur immobilisations données en Ijara | - | - | 
+12: RÉSULTAT DES OPÉRATIONS D'IJARA | - | - | 
+13: (+) Commissions perçues | 2 166 642 | 2 018 099 | 
+14: (-) Commissions servies / MARGE SUR COMMISSIONS | 684 044 / 1 482 598 | 688 781 / 1 329 319 | 
+15:  | 818 955 |  | 
+16:  | 111 804 / 957 475 |  | 
+17:  | - 14 261 / 1 873 972 |  | 
+18:  | - |  | 
+19:  | 991 861 |  | 
+20:  | 358 917 |  | 
+21:  | - |  | 
+22:  | 9 433 341 |  | 
+23:  | 35 938 |  | 
+24:  | 75 109 |  | 
+25:  | 42 222 |  | 
+26:  | 3 988 624 |  | 
+27:  | 5 513 542 |  | 
+28:  | -1 801 628 |  | 
+29:  | -293 818 |  | 
+30:  | 3 418 096 |  | 
+31:  | -136 640 |  | 
+32:  | 1 110 694 |  | 
+33:  | 2 170 762 |  | 
+TABLE 3 rows=61 cols=7
+00:  |  |  |  |  |  | 
+01: ENGAGEMENTS DONNES |  |  | 58 000 550 | 40 563 241 |  | 
+02: Engagements de financement donnés en faveur d'établissements de crédit et assimilés |  |  | 857 184 | 203 349 |  | 
+03: Engagements de financement donnés en faveur de la clientèle |  |  | 11 485 345 | 8 361 243 |  | 
+04: Engagements de garantie d'ordre d'établissements de crédit et assimilés |  |  | 11 976 131 | 6 761 501 |  | 
+05: Engagements de garantie d'ordre de la clientèle |  |  | 17 440 901 | 13 669 615 |  | 
+06: Titres achetés à réméré |  |  | - | - |  | 
+07: Autres titres à livrer |  |  | 16 240 990 | 11 567 533 |  | 
+08: ENGAGEMENTS RECUS |  |  | 24 130 239 | 22 821 781 |  | 
+09: Engagements de financement reçus d'établissements de crédit et assimilés |  |  | - | - |  | 
+10: Engagements de garantie reçus d'établissements de crédit et assimilés |  |  | 19 834 967 | 18 062 761 |  | 
+11: Engagements de garantie reçus de l'Etat et d'organismes de garantie divers |  |  | 3 774 373 | 3 966 781 |  | 
+12: Titres vendus à réméré |  |  | - | - |  | 
+13: Autres titres à recevoir |  |  | 520 899 | 792 239 |  | 
+14: Titres de Moucharaka et Moudaraba à recevoir |  |  | - | - |  | 
+15:  |  |  |  |  |  | 
+16: COMPTE DE PRODUITS ET CHARGES |  |  |  |  | En milliers de DH | 
+17:  |  |  | 31/12/2025 |  |  | 31/12/2024
+18: PRODUITS D'EXPLOITATION BANCAIRE |  |  | 17 656 387 | 16 703 481 |  | 
+19: Intérêts, rémunérations et produits assimilés sur opérations avec les établissements de crédit |  |  | 558 206 | 650 976 |  | 
+20: Intérêts, rémunérations et produits assimilés sur opérations avec la clientèe |  |  | 6 908 092 | 6 758 609 |  | 
+21: Intérêts et produits assimilés sur titres de créance |  |  | 1 477 990 | 1 353 813 |  | 
+22: Produits sur titres de propriété (1) et certificats de Sukuks |  |  | 974 041 | 730 801 |  | 
+23: Produits sur titres de Moudaraba et Moucharaka |  |  | - | - |  | 
+24: Produits sur immobilisations en crédit-bail et en location |  |  | 38 283 | 47 968 |  | 
+25: Produits sur immobilisations données en Ijara |  |  | - | - |  | 
+26: Commissions sur prestations de service |  |  | 1 749 373 | 1 550 551 |  | 
+27: Autres produits bancaires |  |  | 5 950 401 | 5 610 763 |  | 
+28: Transfert de charges sur dépôts d'investissement reçus |  |  | - | - |  | 
+29: CHARGES D'EXPLOITATION BANCAIRE |  |  | 8 223 046 | 8 388 957 |  | 
+30: Intérêts et charges sur opérations avec les établissements de crédit et assimilés |  |  | 1 608 277 | 1 815 277 |  | 
+31: Intérêts et charges sur opérations avec la clientèle |  |  | 1 152 178 | 1 238 556 |  | 
+32: Intérêts et charges assimilées sur titres de créance émis |  |  | 745 085 | 871 121 |  | 
+33:  |  |  | - |  |  | 
+34:  |  |  | 33 204 |  |  | 
+35:  |  |  | - |  |  | 
+36:  |  |  | 4 684 302 |  |  | 
+37:  |  |  | - |  |  | 
+38:  |  |  | 9 433 341 |  |  | 
+39:  |  |  | 102 617 |  |  | 
+40:  |  |  | 71 272 |  |  | 
+41:  |  |  | 3 988 624 |  |  | 
+42:  |  |  | 1 808 409 |  |  | 
+43:  |  |  | 77 599 |  |  | 
+44:  |  |  | 1 708 720 |  |  | 
+45:  |  |  | 466 |  |  | 
+46:  |  |  | 393 430 |  |  | 
+47:  |  |  | 2 489 839 |  |  | 
+48:  |  |  | 2 055 835 |  |  | 
+49:  |  |  | 119 778 |  |  | 
+50:  |  |  | 314 225 |  |  | 
+51:  |  |  | 431 873 |  |  | 
+52:  |  |  | 336 881 |  |  | 
+53:  |  |  | 37 104 |  |  | 
+54:  |  |  | 57 888 |  |  | 
+55:  |  |  | 3 418 096 |  |  | 
+56:  |  |  | 30 832 |  |  | 
+57:  |  |  | 167 472 |  |  | 
+58:  |  |  | 3 281 456 |  |  | 
+59:  |  |  | 1 110 694 |  |  | 
+60:  |  |  | 2 170 762 |  |  | 
+TABLE 4 rows=17 cols=4
+00:  |  |  | 
+01:  | 31/12/2025 |  | 31/12/2024
+02: (+) RESULTAT NET DE L'EXERCICE | 2 170 762 | 1 886 195 | 
+03: (+) Dotations aux amortissements et aux provisions des immobilisations incorporelles et corporelles | 393 430 | 303 417 | 
+04: (+) Dotations aux provisions pour dépréciation des immobilisations financières (1) | 460 | 90 512 | 
+05: (+) Dotations aux provisions pour risques généraux | 25 283 | 311 190 | 
+06: (+) Dotations aux provisions réglementées | - | - | 
+07: (+) Dotations non courantes | - | - | 
+08: (-) Reprises de provisions | 68 773 | 191 674 | 
+09: (-) Plus-values de cession des immobilisations incorporelles et corporelles | 11 037 | 797 | 
+10: (+) Moins-values de cession des immobilisations incorporelles et corporelles | 119 | 59 | 
+11: (-) Plus-values de cession des immobilisations financières | 27 508 | 140 065 | 
+12: (+) Moins-values de cession des immobilisations financières | 29 050 | - | 
+13: (-) Reprises de subventions d'investissement reçues | - | - | 
+14: (+) CAPACITE D'AUTOFINANCEMENT | 2 511 787 | 2 258 837 | 
+15: (-) Bénéfices distribués | 1 078 932 | 850 263 | 
+16: (+) AUTOFINANCEMENT | 1 432 855 | 1 408 574 | 
+TABLE 5 rows=2 cols=3
+00:  |  | 
+01: TABLEAU DES F |  | LUX DE TRÉSORERIE
+TABLE 6 rows=47 cols=5
+00:  |  |  | En milliers de DH | 
+01:  | 31/12/2025 |  |  | 31/12/2024
+02:  |  |  |  | 
+03: (+) Produits d'exploitation bancaire perçus | 17 240 468 | 16 443 922 |  | 
+04: (+) Récupérations sur créances amorties | 37 104 | 33 130 |  | 
+05: (+) Produits d'exploitation non bancaire perçus | 55 523 | 63 249 |  | 
+06: (-) Charges d'exploitation bancaire versées | 9 971 759 | 9 999 762 |  | 
+07: (-) Charges d'exploitation non bancaire versées | 71 272 | 19 145 |  | 
+08: (-) Charges générales d'exploitation versées | 3 595 194 | 3 453 270 |  | 
+09: (-) Impôts sur les résultats versés | 1 110 694 | 919 542 |  | 
+10: I.FLUX DE TRÉSORERIE NETS PROVENANT DU COMPTE DE PRODUITS ET CHARGES | 2 584 178 | 2 148 582 |  | 
+11: Variation des : |  |  |  | 
+12: (+) Créances sur les établissements de crédit et assimilés | 864 444 | -2 089 878 |  | 
+13: (+) Créances sur la clientèle | -4 422 364 | -13 478 298 |  | 
+14: (+) Titres de transaction et de placement | 1 818 523 | -12 373 500 |  | 
+15: (+) Autres actifs | -1 220 830 | -115 103 |  | 
+16: (-) Titres Moudaraba et Moucharaka | - | - |  | 
+17: (+) Immobilisations données en crédit-bail et en location | -126 777 | 15 765 |  | 
+18:  | - |  |  | 
+19:  | -1 513 000 |  |  | 
+20:  | -4 050 592 |  |  | 
+21:  | 12 427 031 |  |  | 
+22:  | - |  |  | 
+23:  | -2 289 951 |  |  | 
+24:  | -1 836 759 |  |  | 
+25:  | -350 275 |  |  | 
+26:  | 2 233 903 |  |  | 
+27:  | 343 085 |  |  | 
+28:  | 18 254 |  |  | 
+29:  | 585 451 |  |  | 
+30:  | 1 218 641 |  |  | 
+31:  | 27 895 |  |  | 
+32:  | 665 267 |  |  | 
+33:  | -749 590 |  |  | 
+34:  | - |  |  | 
+35:  | - |  |  | 
+36:  | - |  |  | 
+37:  | - |  |  | 
+38:  | - |  |  | 
+39:  | - |  |  | 
+40:  | 444 050 |  |  | 
+41:  | - |  |  | 
+42:  | 1 078 932 |  |  | 
+43:  | -1 522 982 |  |  | 
+44:  | -38 669 |  |  | 
+45:  | 6 094 414 |  |  | 
+46:  | 6 055 746 |  |  | 
+TABLE 7 rows=2 cols=2
+00: BANK OF AFRICA S.A / ATTESTATION D'EXAMEN LIMITE DES COMMISSAIRES AUX COMPTES / SUR LA SITUATION PROVISOIRE DES COMPTES SOCIAUX EXERCICE DU 1er JANVIER AU 31 DECEMBRE 2025 | 
+01:  | 
+-- PAGE 15 --
+TABLE 0 rows=2 cols=3
+00:  |  | 
+01: CRÉANCES SUR LES ÉTABLI |  | SSEMENTS DE CRÉDIT ET ASSIMILÉS
+TABLE 1 rows=13 cols=3
+00:  | Total / 31/12/2025 | 
+01:  | 12 198 958 | 
+02: Valeurs reçues en pension - - - - | - | 120 208
+03: Au jour le jour - - - - | - | -
+04: A terme - - - - | - | 120 208
+05: Prêts de trésorerie - 2 071 500 632 585 1 381 366 | 4 085 451 | 4 732 177
+06: Au jour le jour - 500 000 - - | 500 000 | 475 741
+07: A terme - 1 571 500 632 585 1 381 366 | 3 585 451 | 4 256 436
+08: Prêts financiers - 3 986 851 8 118 722 190 540 | 12 296 113 | 13 662 014
+09: Autres créances - 961 791 - - | 961 791 | 724 674
+10: Intérêts courus à recevoir - 37 415 - 4 080 | 41 495 | 86 384
+11:  | - | 
+12:  | 29 583 808 | 
+TABLE 2 rows=2 cols=3
+00:  |  | 
+01: CRÉANCES S |  | UR LA CLIENTÈLE
+TABLE 3 rows=2 cols=5
+00: Secteur privé |  |  |  | 
+01: Entreprises / financières |  | Entreprises non / financières |  | Autres clientèles
+TABLE 4 rows=18 cols=4
+00:  | Total |  | Total / 31/12/2024
+01:  | 31/12/2025 |  | 
+02: Crédits de trésorerie 1 818 257 3 512 774 28 085 942 3 176 208 | 36 593 181 | 33 660 178 | 
+03: Comptes à vue débiteurs 268 425 3 512 774 10 638 869 1 718 897 | 16 138 965 | 14 292 268 | 
+04: Créances commerciales sur le Maroc 43 806 - 5 075 204 719 | 5 119 729 | 4 225 008 | 
+05: Crédits à l'exportation - - 241 290 1 372 833 | 1 614 123 | 1 228 676 | 
+06: Autres crédits de trésorerie 1 506 026 - 12 130 579 83 759 | 13 720 364 | 13 914 226 | 
+07: Crédits à la consommation - - 53 259 8 381 989 | 8 435 248 | 8 411 543 | 
+08: Crédits à l'équipement 6 077 684 12 212 720 16 263 557 6 612 163 | 41 166 124 | 33 531 007 | 
+09: Crédits Immobiliers 205 498 - 5 812 284 32 999 656 | 39 017 438 | 39 712 310 | 
+10: Autres crédits 600 000 18 568 460 374 159 180 936 | 19 723 555 | 25 946 800 | 
+11:  | 3 164 618 |  | 
+12:  | 1 063 840 |  | 
+13:  | 5 401 410 |  | 
+14:  | 460 162 |  | 
+15:  | 520 092 |  | 
+16:  | 4 421 156 |  | 
+17:  | 154 565 414 |  | 
+TABLE 5 rows=2 cols=3
+00: VENTILATION DES | TITRES DE TRANSACTION ET DE PLACEMENT | 
+01: ET DES TITRES D'INVESTISSE |  | MENT PAR CATÉGORIE D'ÉMETTEUR
+TABLE 6 rows=15 cols=12
+00:  |  |  |  |  | Emetteurs privés |  |  |  |  |  | 
+01:  | Ets de crédit / et assimilés |  | Emetteurs / publics |  | Financiers |  | Non / Financiers |  | Total / 31/12/2025 |  | Total / 31/12/2024
+02: Titres côtés 415 085 5 208 274 - 476 198 / Bons du Trésor et valeurs assimilées 415 085 4 623 063 - 47 242 |  |  |  |  |  |  |  |  | 6 099 557 / 5 085 390 | 6 854 534 / 5 947 254 | 
+03: Obligations - 585 211 - 428 956 |  |  |  |  |  |  |  |  | 1 014 167 | 907 279 | 
+04: Autres titres de créance - - - - |  |  |  |  |  |  |  |  | - | - | 
+05: Titres de propriété - - - - |  |  |  |  |  |  |  |  | - | - | 
+06: Certificats de Sukuks - - - - |  |  |  |  |  |  |  |  | - | - | 
+07: Titres non côtés 5 793 40 626 563 14 852 016 7 404 367 |  |  |  |  |  |  |  |  | 62 888 739 | 64 002 564 | 
+08: Bons du Trésor et valeurs assimilées - 40 187 037 - - |  |  |  |  |  |  |  |  | 40 187 037 | 42 489 231 | 
+09: Obligations - - 219 947 969 953 |  |  |  |  |  |  |  |  | 1 189 900 | 1 528 554 | 
+10: Autres titres de créance 5 793 - 46 125 79 882 |  |  |  |  |  |  |  |  | 131 800 | 91 879 | 
+11: Titres de propriété - - 14 474 724 6 333 952 |  |  |  |  |  |  |  |  | 20 808 676 | 19 113 436 | 
+12: Certificats de Sukuks - - - - |  |  |  |  |  |  |  |  | - | - | 
+13: Intérêts courus - 439 526 111 220 20 581 |  |  |  |  |  |  |  |  | 571 326 | 779 463 | 
+14: TOTAL 420 878 45 834 837 14 852 016 7 880 565 |  |  |  |  |  |  |  |  | 68 988 296 | 70 857 098 | 
+TABLE 7 rows=16 cols=4
+00:  | Plus-values / latentes | Moins-values / latentes | Provisions
+01: Titres de transaction 47 931 032 47 931 032 - - - |  |  | -
+02: Bons du Trésor et valeurs assimilées 32 436 219 32 436 219 - - - / Obligations 132 228 132 228 - - - |  |  | - / -
+03: Autres titres de créance - - - - - |  |  | -
+04: Titres de propriété 15 362 585 15 362 585 - - - |  |  | -
+05: Certificats de Sukuks - - - - - |  |  | -
+06: Titres de placement 10 142 587 10 118 589 10 118 589 - - |  |  | 23 998
+07: Bons du Trésor et valeurs assimilées 4 540 697 4 540 697 4 540 697 - - |  |  | -
+08: Obligations - - - - - |  |  | -
+09: Autres titres de créance 131 800 131 800 131 800 - - |  |  | -
+10: Titres de propriété 5 470 090 5 446 091 5 446 091 - - |  |  | 23 998
+11: Titres d'investissement 10 938 676 10 938 676 11 590 462 699 428 47 641 |  |  | -
+12: Bons du Trésor et valeurs assimilées 8 718 879 8 718 879 8 716 086 - 2 794 |  |  | -
+13: Obligations 2 203 640 2 203 640 2 874 377 699 428 28 691 |  |  | -
+14: Autres titres de créance 16 157 16 157 - - 16 157 |  |  | -
+15:  |  |  | 23 998
+TABLE 8 rows=2 cols=3
+00: CRÉANCES EN S | OUFFRANCE SUR LA CLIENTÈLE SOCIALE | 
+01:  |  | 
+TABLE 9 rows=30 cols=12
+00:  |  |  |  | 31/12/2025 / Créances Provisions |  |  |  | 31/12/2024 / Créances Provisisons |  |  | 
+01: Créances pré-douteuses 506 914 |  |  |  |  | 46 753 | 506 598 |  |  |  |  | 33 370
+02: Créances douteuses 1 519 047 / Créances compromises 14 226 003 |  |  |  |  | 998 955 / 9 804 847 | 1 711 109 / 12 036 321 |  |  |  |  | 947 227 / 8 160 447
+03: TOTAL 16 251 965 |  |  |  |  | 10 850 555 | 14 254 028 |  |  |  |  | 9 141 044
+04:  |  |  |  |  |  |  |  |  |  |  | 
+05:  |  |  |  |  |  |  |  |  |  |  | 
+06: DÉTAIL DES |  |  | AUTRES ACTIFS |  |  |  |  |  |  | En milliers de DH | 
+07: ACTIF |  |  |  |  |  |  | 31/12/2025 |  |  |  | 31/12/2024
+08: Instruments optionnels achetés / Opérations diverses sur titres |  |  |  |  |  |  | -1 481 / 289 616 |  | -2 309 / 318 513 |  | 
+09: Débiteurs divers |  |  |  |  |  |  | 2 071 090 |  | 1 643 076 |  | 
+10: Sommes dues par l'Etat / Sommes dues par les organismes de prévoyance |  |  |  |  |  |  | 1 827 347 / - |  | 1 429 360 / - |  | 
+11: Sommes diverses dues par le personnel |  |  |  |  |  |  | 161 043 |  | 139 663 |  | 
+12: Comptes clients de prestations non bancaires |  |  |  |  |  |  | - |  | - |  | 
+13: Divers autres débiteurs |  |  |  |  |  |  | 82 700 |  | 74 053 |  | 
+14: Valeurs et emplois divers |  |  |  |  |  |  | 3 052 328 |  | 3 108 290 |  | 
+15: Comptes de régularisation |  |  |  |  |  |  | 4 003 121 |  | 3 094 479 |  | 
+16: Comptes d'ajustement des opérations de hors bilan |  |  |  |  |  |  | 290 181 |  | 25 197 |  | 
+17: Contrepartie du résultat de change de hors bilan |  |  |  |  |  |  | 290 181 |  | 25 197 |  | 
+18: Contrepartie du résultat sur produits dérivés de hors bilan |  |  |  |  |  |  | - |  | - |  | 
+19: Contrepartie du résultat sur titres de hors bilan |  |  |  |  |  |  | - |  | - |  | 
+20: Comptes d'écart sur devises et titres |  |  |  |  |  |  | - |  | - |  | 
+21: Résultats sur produits dérivés de couverture |  |  |  |  |  |  | - |  | - |  | 
+22: Charges à répartir sur plusieurs exercices |  |  |  |  |  |  | 59 212 |  | 43 749 |  | 
+23:  |  |  |  |  |  |  | 12 614 |  |  |  | 
+24:  |  |  |  |  |  |  | 578 678 |  |  |  | 
+25:  |  |  |  |  |  |  | 477 144 / 101 534 |  |  |  | 
+26:  |  |  |  |  |  |  | 3 062 435 |  |  |  | 
+27:  |  |  |  |  |  |  | - |  |  |  | 
+28:  |  |  |  |  |  |  | - |  |  |  | 
+29:  |  |  |  |  |  |  | 9 414 675 |  |  |  | 
+TABLE 10 rows=1 cols=2
+00: CRÉANC | ES SUBORDONNÉES
+TABLE 11 rows=4 cols=8
+00:  | 31/12/2025 / Brut Provisions Net |  | 31/12/2024 / Net |  | 31/12/2025 / Net |  | 31/12/2024 / Net
+01: Créances subordonnées aux établissements / de crédit et assimilés 1 976 350 1 976 350 439 950 |  |  |  |  | 1 976 350 | 439 950 | 
+02: Créances subordonnées à la clientèle - - - / TOTAL 1 976 350 - 1 976 350 439 950 |  |  |  |  | 1 976 350 | 439 950 | 
+03:  |  |  |  |  |  |  | 
+TABLE 12 rows=2 cols=3
+00: PLUS OU MOINS VAL | UES SUR CESSIONS OU RETRAITS D'IMMOBILISATIONS | 
+01:  |  | 
+TABLE 13 rows=11 cols=2
+00: Date de cession / ou de retrait | Moins-values / de cession
+01: 01/01/2025 Divers / materiels roulants 42 42 - 253 253 | 
+02: 02/01/2025 Divers / materiels roulants 54 0 53 54 - | 
+03: 03/03/2025 Immeubles | 
+04:  | 
+05:  | 
+06:  | 
+07:  | 
+08:  | 
+09:  | 
+10:  | -
+TABLE 14 rows=1 cols=2
+00: Amortissements / cumulés | Valeur nett / comptable
+TABLE 15 rows=8 cols=5
+00: ENGAG | EMENTS SUR TITRES |  |  | 
+01:  |  |  | En milliers de DH | 
+02: ENGAGEMENTS |  |  |  | Montant
+03: Engagements donnés |  |  |  | 16 240 990
+04: Titres achetés à réméré |  |  |  | -
+05: Autres titres à livrer |  |  |  | 16 240 990
+06: Engagements reçus |  |  |  | 520 899
+07: Titres vendus à réméré / Autres titres à recevoir |  |  |  | - / 520 899
+TABLE 16 rows=4 cols=8
+00:  |  |  |  |  |  |  | 
+01: DÉPÔTS DE |  | LA CLIENTÈLE |  |  |  |  | 
+02:  |  |  | Secteur Privé |  |  |  | 
+03:  |  |  | Entreprises / Financières |  | Entreprises / non Financières |  | Autre / clientèle
+TABLE 17 rows=2 cols=3
+00:  |  | 
+01: IMMOBILISATIONS INCO |  | RPORELLES ET CORPORELLES
+TABLE 18 rows=27 cols=22
+00:  |  |  |  |  |  |  |  |  |  |  | Amortissements et/ou provisions |  |  |  |  |  |  |  |  |  | 
+01:  | Montant brut / au début de |  |  |  | Montant des / acquisitions |  | Montant des / cessions ou |  | Montant / brut à la |  | Montant des / amortissements |  | Reclassement / amortissement |  | Dotation / au titre |  | Montant des / amortissements |  |  |  | Montant
+02:  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | net à
+03:  | l'exercice |  | cours de / l'exercice/Autres / variations |  | au cours de / l'exercice |  | retraits au / cours de / l'exercice |  | fin de / l'exercice |  | et/ou provisions / au début de / l'exercice |  | au cours de / l'exercice / / Autres variations |  | de / l'exercice |  | sur / immobilisations / sorties |  | Cumul |  | la fin de / l'exercice
+04: Immobilisations incorporelles 1 674 810 -4 545 785 140 146 2 080 445 692 863 137 212 869 - 905 869 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | 1 174 576
+05: Droit au bail 97 150 18 - - 97 168 - - - - - |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | 97 168
+06: Immobilisations en recherches et développement - - - - - - - - - - |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | -
+07: Autres immobilisations incorporelles d'exploitation 1 577 660 -22 545 785 140 146 1 983 277 692 863 137 212 869 - 905 869 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | 1 077 408
+08: Immobilisations incorporelles hors exploitation - - - - - - - - - - |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | -
+09: Immobilisations corporelles 7 381 261 -576 673 590 58 181 7 996 095 4 645 669 -299 180 556 6 488 4 819 438 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | 3 176 656
+10:  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | 2 258 852
+11:  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | 233 622
+12:  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | 2 025 230
+13:  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | -
+14:  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | 425 480
+15:  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | 202 342
+16:  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | 10 535
+17:  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | 201 920
+18:  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | 3 546
+19:  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | 7 136
+20:  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | 312 486
+21:  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | 179 838
+22:  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | 46 803
+23:  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | 85 745
+24:  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | 12 408
+25:  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | 34 883
+26:  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | 4 351 233
+
+==== BCI ====
+-- PAGE 1 --
+TABLE 0 rows=2 cols=2
+00: 12M24 | 12M25
+01:  | 
+TABLE 1 rows=3 cols=2
+00:  | 12M25
+01: 12M24 | 
+02:  | 
+
+==== CDM ====
+-- PAGE 14 --
+TABLE 0 rows=1 cols=6
+00: Prénom et nom | Fonction | Première / élection | Dernier / renouvellement | Echéance du mandat en cours | Membre / d’un Comité
+TABLE 1 rows=1 cols=5
+00: Nom | Fonction | Première / élection | Dernier / renouvel- / lement | Echéance du mandat / en cours
+-- PAGE 15 --
+
+==== CFG ====
+-- PAGE 9 --
+-- PAGE 10 --
+TABLE 0 rows=31 cols=3
+00: ACTIF | 31/12/2025 | 31/12/2024
+01:  | 638.123 | 
+02:  | 471.799 | 
+03:  | 166.324 | 
+04:  | 992.268 | 
+05:  | 885.147 | 
+06:  | 107.121 | 
+07:  | 19.594.688 | 
+08:  | 9.350.634 | 
+09:  | 3.033.587 | 
+10:  | 4.891.245 | 
+11:  | 2.319.222 | 
+12:  | - | 
+13:  | 3.124.383 | 
+14:  | 2.880.706 | 
+15:  | 183.516 | 
+16:  | 60.161 | 
+17:  | 462.392 | 
+18:  | 720.750 | 
+19:  |  | 
+20:  | 720.750 | 
+21:  | 355.872 | 
+22:  | - | 
+23:  |  | 
+24:  |  | 
+25:  |  | 
+26:  | 2.321.340 | 
+27:  | 637.643 | 
+28:  | 728.978 | 
+29:  |  | 
+30: TOTAL DE L'ACTIF | 29.576.438 | 24.292.562
+TABLE 1 rows=28 cols=3
+00: PASSIF | 31/12/2025 | 31/12/2024
+01:  | - | 
+02:  | 4.216.040 | 
+03:  | - | 
+04:  | 4.216.040 | 
+05:  | 12.042.882 | 
+06:  | 10.141.597 | 
+07:  | 990.613 | 
+08:  | 724.416 | 
+09:  | 186.256 | 
+10:  | 8.833.107 | 
+11:  | 8.833.107 | 
+12:  | - | 
+13:  | - | 
+14:  | 1.142.309 | 
+15:  | 66.703 | 
+16:  |  | 
+17:  |  | 
+18:  | 1.410.657 | 
+19:  |  | 
+20:  | 645.290 | 
+21:  | 700.159 | 
+22:  |  | 
+23:  | 205.065 | 
+24:  |  | 
+25:  | 314.225 | 
+26:  |  | 
+27: TOTAL DU PASSIF | 29.576.438 | 24.292.562
+TABLE 2 rows=40 cols=3
+00:  | 31/12/2025 | 31/12/2024
+01:  | 1.896.063 | 
+02:  | 39.636 | 
+03:  | 728.911 | 
+04:  | 158.954 | 
+05:  | 67.218 | 
+06:  | 236.611 | 
+07:  | 209.545 | 
+08:  | 455.188 | 
+09:  | 968.319 | 
+10:  | 132.699 | 
+11:  | 75.907 | 
+12:  | 274.773 | 
+13:  | 162.729 | 
+14:  | 322.213 | 
+15:  | 927.743 | 
+16:  | 8.091 | 
+17:  | 209 | 
+18:  | 510.820 | 
+19:  | 247.708 | 
+20:  | 9.808 | 
+21:  | 124.118 | 
+22:  | 51.258 | 
+23:  | 77.928 | 
+24:  |  | 
+25:  |  | 
+26:  | 99.015 | 
+27:  | 53.980 | 
+28:  | 167 | 
+29:  | 44.868 | 
+30:  | 44.424 | 
+31:  | 31.692 | 
+32:  | 21 | 
+33:  | 12.711 | 
+34:  | 370.214 | 
+35:  | 2.651 | 
+36:  | 3.117 | 
+37:  | 369.748 | 
+38:  | 55.522 | 
+39:  | 314.225 | 
+TABLE 3 rows=30 cols=3
+00: TABLEAU DE FORMATION DES RESULTATS | 31/12/2025 | 31/12/2024
+01:  | 927.501 | 
+02:  | 483.378 | 
+03:  | 444.122 | 
+04:  | 236.611 | 
+05:  | 162.729 | 
+06:  | 73.883 | 
+07:  | 221.002 | 
+08:  | 54.956 | 
+09:  | 166.046 | 
+10:  | -800 | 
+11:  | 88.474 | 
+12:  | 106.574 | 
+13:  |  | 
+14:  | 194.248 | 
+15:  | 69.336 | 
+16:  | 19.892 | 
+17:  | 927.743 | 
+18:  | -8.066 | 
+19:  | 7.197 | 
+20:  | 209 | 
+21:  | 510.820 | 
+22:  | 415.846 | 
+23:  | -22.434 | 
+24:  | -23.198 | 
+25:  |  | 
+26:  | 370.214 | 
+27:  | -466 | 
+28:  | 55.522 | 
+29:  | 314.225 | 
+TABLE 4 rows=16 cols=3
+00: II- CAPACITE D'AUTOFINANCEMENT | 31/12/2025 | 31/12/2024
+01:  | 314.225 | 
+02:  | 77.928 | 
+03:  | 11.149 | 
+04:  | 33.719 | 
+05:  | - | 
+06:  | - | 
+07:  | 12.711 | 
+08:  | 199 | 
+09:  | 209 | 
+10:  | 893 | 
+11:  | - | 
+12:  | - | 
+13:  | 423.427 | 
+14:  | 115.526 | 
+15:  | 307.901 | 
+TABLE 5 rows=15 cols=3
+00:  | 31/12/2025 | 31/12/2024
+01:  | 4.825.992 | 
+02:  |  | 
+03:  | 4.452.383 | 
+04:  |  | 
+05:  | 373.609 | 
+06:  |  | 
+07:  |  | 
+08:  | 6.383.844 | 
+09:  |  | 
+10:  |  | 
+11:  | 6.383.844 | 
+12:  |  | 
+13:  |  | 
+14:  |  | 
+-- PAGE 11 --
+TABLE 0 rows=41 cols=3
+00:  | 31/12/2025 | 31/12/2024
+01:  | 1.812.141 | 
+02:  |  | 
+03:  | 9.649 | 
+04:  | -772.010 | 
+05:  | - | 
+06:  | -436.009 | 
+07:  | -55.522 | 
+08:  | 558.248 | 
+09:  |  | 
+10:  | -31.785 | 
+11:  | -3.727.041 | 
+12:  | -600.425 | 
+13:  | 85.870 | 
+14:  | -752.602 | 
+15:  |  | 
+16:  |  | 
+17:  | 1.506.368 | 
+18:  | 1.527.071 | 
+19:  | 652.374 | 
+20:  | 362.355 | 
+21:  |  | 
+22:  | -977.816 | 
+23:  | -419.568 | 
+24:  | 893 | 
+25:  | 199 | 
+26:  | -30.329 | 
+27:  | -379.065 | 
+28:  | 15.101 | 
+29:  | 66.856 | 
+30:  | -326.344 | 
+31:  |  | 
+32:  | 1.000.000 | 
+33:  | - | 
+34:  | -115.526 | 
+35:  | -16.135 | 
+36:  | 868.339 | 
+37:  |  | 
+38:  | 122.427 | 
+39:  | 1.400.843 | 
+40:  | 1.523.270 | 
+TABLE 1 rows=1 cols=3
+00: INDICATIONS DES / DEROGATIONS | JUSTIFICATIONS DES / DEROGATIONS | INFLUENCE DES DEROGATIONS / SUR LE PATRIMOINE, LA SITUATION / FINANCIERE ET LES RESULTATS
+TABLE 2 rows=1 cols=3
+00: INDICATIONS DES / DEROGATIONS | JUSTIFICATIONS DES / DEROGATIONS | INFLUENCE DES DEROGATIONS / SUR LE PATRIMOINE, LA SITUATION / FINANCIERE ET LES RESULTATS
+TABLE 3 rows=13 cols=7
+00: CREANCES | Bank Al Maghrib, Trésor Public et Services / des Chèques Postaux | Banques au Maroc | Autres établissements de crédit et / assimilés au Maroc | Etablissements de crédit à / l’étranger | Total au / 31/12/2025 | Total au 31/12/2024
+01:  |  |  |  |  | 1.249.825 | 
+02:  |  |  |  |  |  | 
+03:  |  |  |  |  |  | 
+04:  |  |  |  |  |  | 
+05:  |  |  |  |  | 214.242 | 
+06:  |  |  |  |  | 107.121 | 
+07:  |  |  |  |  | 107.121 | 
+08:  |  |  |  |  |  | 
+09:  |  |  |  |  |  | 
+10:  |  |  |  |  | - | 
+11:  |  |  |  |  |  | 
+12: TOTAL | 471.799 | 217.905 | - | 774.363 | 1.464.067 | 1.205.891
+TABLE 4 rows=18 cols=7
+00: CREANCES | Secteur public | Secteur privé |  |  | Total au 31/12/2025 | Total au 31/12/2024
+01:  |  | Entreprises financières | Entreprises non financières | Autre clientèle |  | 
+02:  |  |  |  |  | 9.192.462 | 
+03:  |  |  |  |  | 4.254.334 | 
+04:  |  |  |  |  | - | 
+05:  |  |  |  |  | - | 
+06:  |  |  |  |  | 4.938.128 | 
+07:  |  |  |  |  | 68.957 | 
+08:  |  |  |  |  | 2.977.522 | 
+09:  |  |  |  |  | 4.865.618 | 
+10:  |  |  |  |  | 2.220.442 | 
+11:  |  |  |  |  | - | 
+12:  |  |  |  |  | 171.808 | 
+13:  |  |  |  |  | 97.879 | 
+14:  |  |  |  |  | 18.080 | 
+15:  |  |  |  |  | 10.043 | 
+16:  |  |  |  |  | 69.756 | 
+17: TOTAL |  | 3.449.090 | 8.880.091 | 7.265.507 | 19.594.688 | 15.890.081
+TABLE 5 rows=13 cols=7
+00: TITRES | Etablissements de crédit et / assimilés | Emetteurs publics | Emetteurs privés |  | Total 31/12/2025 | Total 31/12/2024
+01:  |  |  | Financiers | non financiers |  | 
+02:  |  |  |  |  | 60.161 | 
+03:  |  |  |  |  | - | 
+04:  |  |  |  |  | - | 
+05:  |  |  |  |  | - | 
+06:  |  |  |  |  | 60.161 | 
+07:  |  |  |  |  | 3.784.973 | 
+08:  |  |  |  |  | 2.880.706 | 
+09:  |  |  |  |  | 828.138 | 
+10:  |  |  |  |  | 76.129 | 
+11:  |  |  |  |  | - | 
+12: TOTAL | 83.416 | 2.880.706 | 748.428 | 132.584 | 3.845.134 | 3.247.676
+
+==== CIH ====
+-- PAGE 10 --
+TABLE 0 rows=24 cols=3
+00: ACTIF IFRS | déc-25 | déc-24
+01:  | 5 491 398 | 
+02:  | 9 140 882 | 
+03:  | 7 426 958 | 
+04:  | 1 713 924 | 
+05:  | - | 
+06:  | 918 302 | 
+07:  | 44 655 | 
+08:  | 873 647 | 
+09:  | 11 410 454 | 
+10:  | 6 268 533 | 
+11:  | 118 137 266 | 
+12:  | - | 
+13:  | - | 
+14:  | 700 375 | 
+15:  | 854 041 | 
+16:  | 3 478 256 | 
+17:  | - | 
+18:  | 66 232 | 
+19:  | 2 073 482 | 
+20:  | 3 991 476 | 
+21:  | 860 965 | 
+22:  | 296 531 | 
+23: TOTAL ACTIF | 163 688 195 | 140 971 389
+TABLE 1 rows=30 cols=3
+00: PASSIF IFRS | déc-25 | déc-24
+01:  | - | 
+02:  | - | 
+03:  | - | 
+04:  | - | 
+05:  | - | 
+06:  | 23 593 538 | 
+07:  | 99 499 965 | 
+08:  | 14 096 216 | 
+09:  | - | 
+10:  | 752 381 | 
+11:  | 438 708 | 
+12:  | 8 063 077 | 
+13:  | - | 
+14:  | - | 
+15:  | 640 111 | 
+16:  | - | 
+17:  | 5 872 712 | 
+18:  | 10 731 487 | 
+19:  | 3 560 562 | 
+20:  | 5 677 750 | 
+21:  | 4 845 848 | 
+22:  | 831 902 | 
+23:  | 272 696 | 
+24:  | 272 696 | 
+25:  | - | 
+26:  | 1 220 478 | 
+27:  | 1 089 362 | 
+28:  | 131 117 | 
+29: TOTAL PASSIF | 163 688 195 | 140 971 3
+TABLE 2 rows=38 cols=3
+00: COMPTE DE PRODUITS ET CHARGES IFRS CONSOLIDES | déc-25 | déc-24
+01:  | 5 433 142 | 
+02:  | -2 051 030 | 
+03:  | 3 382 112 | 
+04:  | 1 251 142 | 
+05:  | -786 649 | 
+06:  | 464 492 | 
+07:  | - | 
+08:  | 1 111 689 | 
+09:  | 367 929 | 
+10:  | 743 760 | 
+11:  | 38 361 | 
+12:  | - | 
+13:  | 38 361 | 
+14:  | - | 
+15:  | - | 
+16:  | - | 
+17:  | - | 
+18:  | - | 
+19:  | 783 090 | 
+20:  | -357 219 | 
+21:  | 5 422 526 | 
+22:  | -2 088 001 | 
+23:  | -240 029 | 
+24:  | 3 094 496 | 
+25:  | -1 209 369 | 
+26:  | 1 885 127 | 
+27:  | 64 016 | 
+28:  | 93 035 | 
+29:  | - | 
+30:  | 2 042 179 | 
+31:  | -821 700 | 
+32:  | - | 
+33:  | 1 220 478 | 
+34:  | 131 117 | 
+35: RESULTAT NET PART DU GROUPE | 1 089 362 | 875 878
+36:  | 30,6 | 
+37:  | 3,7 | 
+TABLE 3 rows=32 cols=3
+00:  | déc-25 | déc-24
+01:  | 2 042 179 | 
+02:  | 305 118 | 
+03:  | 905 587 | 
+04:  | 22 078 | 
+05:  | (64 016) | 
+06:  | (12 362) | 
+07:  | (9 711) | 
+08:  | 1 146 692 | 
+09:  | 1 775 056 | 
+10:  | (2 992 772) | 
+11:  | (184 881) | 
+12:  | (1 668 625) | 
+13:  | (832 147) | 
+14:  | (3 903 369) | 
+15:  | (714 499) | 
+16:  | (130 198) | 
+17:  | (547 501) | 
+18:  | (677 699) | 
+19:  | 1 280 731 | 
+20:  | 180 743 | 
+21:  | 1 461 474 | 
+22:  | - | 
+23:  | 69 277 | 
+24:  | - | 
+25:  | 5 422 122 | 
+26:  | 5 422 122 | 
+27:  |  | 
+28:  | 5 491 398 | 
+29:  | 5 491 398 | 
+30:  | - | 
+31:  | 69 277 | 
+-- PAGE 11 --
+TABLE 0 rows=17 cols=9
+00:  | Capital | Réserves liés / au capital | Actions / propres | Réserves / et résultats / consolidés | Gains et pertes / comptabilisés / directement en / capitaux propres | Capitaux / propres / part du groupe | Intérêts / minoritaires | Total / capitaux propres
+01:  |  |  |  |  |  |  |  | 8 259 763
+02:  |  |  |  |  |  |  |  | 177 685
+03:  |  |  |  |  |  |  |  | 8 437 448
+04:  |  |  |  |  |  |  |  | 1 766 150
+05:  |  |  |  |  |  |  |  | -
+06:  |  |  |  |  |  |  |  | -
+07:  |  |  |  |  |  |  |  | -485 420
+08:  |  |  |  |  |  |  |  | 1 220 478
+09:  |  |  |  |  |  |  |  | -
+10:  |  |  |  |  |  |  |  | 51 765
+11:  |  |  |  |  |  |  |  | -
+12:  |  |  |  |  |  |  |  | 51 765
+13:  |  |  |  |  |  |  |  | -208 065
+14:  |  |  |  |  |  |  |  | 10 782 358
+15:  |  |  |  |  |  |  |  | -50 871
+16: Capitaux propres corrigés : 2025.décembre | 3 560 562 | - | - | 5 935 210 | 272 696 | 9 768 468 | 963 020 | 10 731 487
+TABLE 1 rows=5 cols=5
+00: Portefeuille Créances sur / les Établissements de Crédit | Bucket 1 / ECL 12 mois | Bucket 2 / ECL Lifetime | Bucket 3 / ECL Lifetime | Total
+01:  |  |  |  | 6 271 417
+02:  |  |  |  | -
+03:  |  |  |  | 2 883
+04:  |  |  |  | -
+TABLE 2 rows=5 cols=5
+00: Portefeuille Titres / au Coût Amorti | Bucket 1 / ECL 12 mois | Bucket 2 / ECL Lifetime | Bucket 3 / ECL Lifetime | Total
+01:  |  |  |  | 11 410 454
+02:  |  |  |  | -
+03:  |  |  |  | -
+04:  |  |  |  | -
+TABLE 3 rows=5 cols=5
+00: Portefeuille Créances / sur la Clientèle | Bucket 1 / ECL 12 mois | Bucket 2 / ECL Lifetime | Bucket 3 / ECL Lifetime | Total
+01:  |  |  |  | 124 604 022
+02:  |  |  |  | 29 537 188
+03:  |  |  |  | 6 466 756
+04:  |  |  |  | 448 895
+TABLE 4 rows=5 cols=5
+00: Portefeuille Titres / en Juste Valeur OCI | Bucket 1 / ECL 12 mois | Bucket 2 / ECL Lifetime | Bucket 3 / ECL Lifetime | Total
+01:  |  |  |  | 918 302
+02:  |  |  |  | -
+03:  |  |  |  | -
+04:  |  |  |  | -
+TABLE 5 rows=5 cols=5
+00:  | déc-25 |  | déc-24 | 
+01:  | Actif | Passif |  | 
+02:  | 2 275 590 | - |  | 
+03:  | 3 215 808 | - |  | 
+04: Total | 5 491 398 | - | 5 422 122 | -
+TABLE 6 rows=15 cols=3
+00:  | déc-25 | déc-24
+01:  | 5 892 375 | 
+02:  | 5 419 266 | 
+03:  | 200 000 | 
+04:  | 300 252 | 
+05:  | -27 143 | 
+06:  | 379 042 | 
+07:  | - | 
+08:  | - | 
+09:  | 353 956 | 
+10:  | 25 085 | 
+11:  | - | 
+12: TOTAL BRUT | 6 271 417 | 3 414 732
+13:  | -2 883 | 
+14: TOTAL NET | 6 268 533 | 3 411 829
+TABLE 7 rows=12 cols=3
+00:  | déc-25 | déc-24
+01:  | 9 140 882 | 
+02:  | 7 426 958 | 
+03:  | 1 713 924 | 
+04:  | 918 302 | 
+05:  | 44 655 | 
+06:  | 873 647 | 
+07:  | 135 816 253 | 113 683 560
+08:  | 6 268 533 | 3 411 829
+09:  | 118 137 266 | 101 209 734
+10:  | 11 410 454 | 9 061 996
+11:  | - | -
+TABLE 8 rows=20 cols=7
+00: PRÊTS ET CRÉANCES SUR LA CLIENTÈLE | Secteur / public | Entreprises / financières | Entreprises / non financières | Autre / clientèle | déc-25 | déc-24
+01:  |  |  |  |  | 18 665 163 | 
+02:  |  |  |  |  | 6 224 191 | 
+03:  |  |  |  |  | 1 985 308 | 
+04:  |  |  |  |  | 97 629 | 
+05:  |  |  |  |  | 10 358 035 | 
+06:  |  |  |  |  | 24 084 209 | 
+07:  |  |  |  |  | 15 097 392 | 
+08:  |  |  |  |  | 38 016 608 | 
+09:  |  |  |  |  | 16 569 913 | 
+10:  |  |  |  |  | 913 026 | 
+11:  |  |  |  |  | 254 758 | 
+12:  |  |  |  |  | 10 954 565 | 
+13:  |  |  |  |  | -6 466 756 | 
+14:  |  |  |  |  | - | 
+15:  |  |  |  |  | - | 
+16:  |  |  |  |  | - | 
+17:  |  |  |  |  | - | -
+18:  |  |  |  |  | 48 387 | 44 629
+19: TOTAL | 4 791 158 | 20 781 816 | 39 370 463 | 53 193 828 | 118 137 266 | 101 209 734
+-- PAGE 12 --
+TABLE 0 rows=8 cols=3
+00:  | déc-25 | déc-24
+01:  | 5 199 329 | 
+02:  | - | 
+03:  | 5 199 329 | 
+04:  | 6 211 125 | 
+05:  | - | 
+06:  | 6 211 125 | 
+07:  | 11 410 454 | 
+TABLE 1 rows=14 cols=3
+00:  | déc-25 | déc-24
+01:  | 344 900 | 
+02:  | 563 945 | 
+03:  | - | 
+04:  | - | 
+05:  | 809 954 | 
+06:  | 1 759 458 | 
+07: TOTAL DES COMPTES DE REGULARISATION ET ACTIFS DIVERS | 3 478 256 | 2 301 086
+08:  | - | 
+09:  | 205 879 | 
+10:  | - | 
+11:  | 4 205 880 | 
+12:  | 3 651 318 | 
+13: TOTAL DES COMPTES DE REGULARISATION ET PASSIFS DIVERS | 8 063 077 | 8 613 057
+TABLE 2 rows=4 cols=3
+00:  | déc-25 | déc-24
+01:  | 854 041 | 
+02:  | 438 708 | 
+03: Position nette | 415 333 | 424 794
+TABLE 3 rows=1 cols=6
+00: Entreprises associées | Valeur / de mise en / équivalence | Résultat | Total bilan | Produit / des activités / ordinaires | Quote part / dans le / résultat
+TABLE 4 rows=7 cols=3
+00:  | déc-25 | déc-24
+01:  | 700 375 | 
+02:  | 854 041 | 
+03: ACTIFS D'IMPOTS COURANTS ET DIFFERES | 1 554 416 | 1 619 045
+04:  | 752 381 | 
+05:  | 438 708 | 
+06: PASSIFS D'IMPOTS COURANTS ET DIFFERES | 1 191 089 | 1 027 363
+TABLE 5 rows=3 cols=6
+00:  | Valeur brute / déc-24 | Acquisitions | Cessions | Reclassements / et variations / de périmètre | Valeur brute / déc-25
+01:  | 1 922 978 | 539 248 -296 565 -92 179 |  |  | 2 073 482
+02: TOTAL | 1 922 978 | 539 248 | -296 565 | -92 179 | 2 073 482
+TABLE 6 rows=7 cols=7
+00:  | déc-25 |  |  | déc-24 |  | 
+01:  | Valeur brute / comptable | Cumul des / amortissements / et pertes de valeur | Valeur nette / comptable | Valeur brute / comptable | Cumul des / amortissements / et pertes de valeur | Valeur nette / comptable
+02:  | 2 395 327 460 269 1 935 059 |  |  |  |  | 
+03:  | 1 136 716 635 171 501 546 |  |  |  |  | 
+04:  | - - - |  |  |  |  | 
+05:  | 2 295 159 740 287 1 554 872 |  |  |  |  | 
+06: TOTAL | 5 827 203 | 1 835 727 | 3 991 476 | 5 286 406 | 1 627 688 | 3 658 718
+TABLE 7 rows=4 cols=6
+00:  | déc-24 | Autres mouvements | Acquisitions | Cessions / ou retraits | déc-25
+01:  |  |  |  |  | 1 371 759
+02:  |  |  |  |  | -510 794
+03: NET | 743 776 | 202 | 171 840 | -54 853 | 860 965
+TABLE 8 rows=8 cols=6
+00:  | déc-24 | Augmentation | Diminution | Autres ful x | déc-25
+01:  |  |  |  |  | 433 938
+02:  |  |  |  |  | -356 666
+03:  |  |  |  |  | 77 272
+04:  |  |  |  |  | 453 658
+05:  |  |  |  |  | -145 739
+06:  |  |  |  |  | 307 919
+07: TOTAL / IMMOBILISATIONS | 444 076 | -52 076 | -6 810 | - | 385 191
+TABLE 9 rows=5 cols=3
+00:  | déc-25 | déc-24
+01:  | 3 991 476 | 
+02:  | 77 272 | 
+03:  | 860 965 | 
+04:  | 307 919 | 
+TABLE 10 rows=3 cols=3
+00:  | déc-25 | déc-24
+01:  | 8 063 077 | 
+02:  | 59 989 | 
+TABLE 11 rows=5 cols=3
+00:  | déc-25 | déc-24
+01:  | -2 051 030 | 
+02:  | -18 291 | 
+03:  | -240 029 | 
+04:  | -8 580 | 
+TABLE 12 rows=7 cols=6
+00:  | déc-24 | Augmentation | Diminution | Perte de valeur / de la période | déc-25
+01:  |  |  |  |  | 296 531
+02:  |  |  |  |  | 174 884
+03:  |  |  |  |  | 68 900
+04:  |  |  |  |  | 52 747
+05:  |  |  |  |  | -
+06: Valeur nette au bilan | 296 531 | - | - | - | 296 531
+
+==== SAH ====
+-- PAGE 6 --
+TABLE 0 rows=4 cols=3
+00: Indication des / dérogations | Justification des / dérogations | Influence des dérogations / sur le patrimoine, la situation / Financiere et les resultats
+01: I. Dérogations aux principes comptables fondamentaux | Néant | Néant
+02: II. Dérogations aux méthodes d'évaluation | Néant | Néant
+03: III. Dérogations aux règles d'établissement et de présentation des états de synthèse | Néant | Néant
+TABLE 1 rows=3 cols=3
+00: Nature des changements | Justification du changement | Influence sur le patrimoine, / la situation / Financiere et les resultats
+01: I. Changements afefctant les méthodes d'évaluation | Néant | Néant
+02: II. Changements afefctant les règles de présentation | Néant | Néant
+TABLE 2 rows=40 cols=5
+00: Éléments de l'actif | Valeur brute | Valeur nette | Valeur / de réalisation (1) | Plus ou moins / value latente
+01: • Terrains (2311, 2312, 2316, 2611) | 641.623.446,82 | 641.623.446,82 | 620.864.000,00 | -20.759.446,82
+02: • Constructions (2313, 2321, 2323, 2325, 2327, 2612) | 628.651.639,78 | 260.860.512,84 | 496.236.000,00 | 235.375.487,16
+03: • Parts et actions de sociétés immobilières (2613) | 1.121.140.380,45 | 722.453.128,18 | 506.638.750,00 | -215.814.378,18
+04: • Autres placements immobiliers (2318, 2328, 2618) |  |  |  | 
+05: • Placements immobiliers en cours (2392, 2619) | 55.035.203,09 | 55.035.203,09 | 48.683.718,00 | -6.351.485,09
+06: TOTAL DES PLACEMENTS IMMOBILIERS | 2.446.450.670,14 | 1.679.972.290,93 | 1.672.422.468,00 | -7.549.822,93
+07: • Obligations de l'Etat (26211, 26221) | 50.002.259,56 | 50.002.259,56 | 50.010.000,00 | 7.740,44
+08: • Bons du Trésor (26213, 26223) | 792.249.996,41 | 782.839.000,00 | 843.480.000,00 | 60.641.000,00
+09: • Obligations garanties par l'Etat (26215, 26225) |  |  |  | 
+10: • Titres hypothécaires (2623) (Obligations) |  |  |  | 
+11: • Titres de créances négociables (2624) | 100.000.000,00 | 100.000.000,00 | 101.294.000,00 | 1.294.000,00
+12: • Autres obligations et bons ((26218, 26228, 2481, 3504, 3506, 3508) | 1.167.464.764,71 | 1.135.096.505,15 | 1.157.490.000,00 | 22.393.494,85
+13: TOTAL OBLIGATIONS, BONS & TITRES DE CREANCES NEGOCIABLES | 2.109.717.020,68 | 2.067.937.764,71 | 2.152.274.000,00 | 84.336.235,29
+14: • Titres de particpation (2510, 2631) | 747.415.640,55 | 481.775.226,72 | 746.653.000,00 | 264.877.773,28
+15: • Actions cotées (2632) | 3.192.092.189,26 | 3.179.968.189,26 | 3.856.395.000,00 | 676.426.810,74
+16: • OPCVM Obligations (2634) | 7.002.971.485,80 | 7.002.971.485,80 | 7.456.564.000,00 | 453.592.514,20
+17: • OPCVM Actions (2635) | 773.668.002,41 | 773.668.002,41 | 916.563.000,00 | 142.894.997,59
+18: • OPCVM Divers (2636) destinés aux FPC en Titrisation |  |  |  | 
+19: • Autres Actions et Parts Sociales (2633, 2638,3501) | 3.010.923.711,31 | 2.857.318.148,87 | 3.475.811.000,00 | 618.492.851,13
+20: TOTAL ACTIONS ET TITRES DE PARTICPATION | 14.727.071.029,33 | 14.295.701.053,06 | 16.451.986.000,00 | 2.156.284.946,94
+21: • Prêts en première hypothèque (2641);(2411) | 259.295,76 | 259.295,76 | 259.295,76 | 
+22: • Avances sur polices vie (2643) |  |  |  | 
+23: • Prêts nantis par des obligations (2644) |  |  |  | 
+24: • Autres prêts (2415, 16, 18, 83, 87, 2488, 2648, 2683, 2688) | 854.326.729,67 | 737.057.243,18 | 737.057.243,18 | 
+25: TOTAL PRETS ET CREANCES IMMOBILISES | 854.586.025,43 | 737.316.538,94 | 737.316.538,94 | 
+26: • Dépôts à terme (2651) | 151.932.428,93 | 151.932.428,93 | 151.932.428,93 | 
+27: • OPCVM Monétaires (2653) | 2.045.834,44 | 2.045.834,44 | 2.045.834,44 | 
+28: • Autres dépôts (2486, 2658) | 44.232.727,08 | 44.232.727,08 | 44.232.727,08 | 
+29: • Valeurs remises aux cédantes (2672) |  |  |  | 
+30: • Créances pour espèces remises aux cédantes (2675) |  |  |  | 
+31: TOTAL DEPOTS | 198.210.990,45 | 198.210.990,45 | 198.210.990,45 | 
+32: • Placements immobiliers (2661) |  |  |  | 
+33: • Obligations et bons (2662) |  |  |  | 
+34: • Actions et parts autres que les OPCVM (2663) |  |  |  | 
+35: • Parts et actions OPCVM (2664) |  |  |  | 
+36: • Parts et actions autres OPCVM (2665) | 205.823.346,60 | 205.823.346,60 | 205.823.346,60 | 
+37: • Autres placements ((2668) |  |  |  | 
+38: TOTAL PLACEMENTS AFFECTES AUX CONTRATS EN U.C. | 205.823.346,60 | 205.823.346,60 | 205.823.346,60 | 
+39: TOTAL | 20.541.859.082,63 | 19.184.961.984,69 | 21.418.033.343,99 | 2.233.071.359,30
+TABLE 3 rows=20 cols=11
+00: Raison sociale / de la société / émettrice | Secteur / d'activité | Identifaint / Fiscal | Capital / social | Participation / au capital / en % | Prix / d'acquisition / global | Valeur / comptable / nette | Extrait des derniers états de synthèse / de la société émettrice |  |  | Produits / inscrits au C.P.C. / de l’exercice
+01:  |  |  |  |  |  |  | Date de / clôture | Situation nette | Résultat / net | 
+02:  | 1 |  | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
+03: I - IMMOBILISATIONS / FINANCIERES |  |  |  |  |  |  |  |  |  | 
+04: SANLAM Asset / Management Maroc | Finances | 40427592 | 5.000.000 | 99,99% | 4.999.600,00 | 4.999.600,00 | 31/12/2025 | 8.020.767,97 | -1.002.230,78 | 
+05: DAYAM | Investissement | 40182776 | 19.524.458 | 100,00% | 19.524.458,00 | - | 31/12/2025 | 5.340.415,87 | -43.925,61 | 
+06: DARIF | Investissement | 1105111 | 25.656.000 | 44,52% | 11.904.238,44 | 11.904.238,44 | 31/12/2024 | 17.315.362,97 | -8.340.524,76 | 
+07: Partenariat Capital / Maroc | Investissement | 40394259 | 47.000.000 | 100,00% | 46.999.600,00 | 25.360.584,15 | 31/12/2024 | 35.372.422,31 | -1.756.034,63 | 
+08: LUXOR | Hôtelier | 1031892 | 92.667.000 | 100,00% | 64.500.000,00 | 64.500.000,00 | 31/12/2024 | -10.861.362,54 | -63.224.486,23 | 
+09: SAHAM HOTEL | Hôtelier | 40175297 | 121.237.600 | 100,00% | 223.973.300,00 | - | 31/12/2025 | 10.422.202,04 | -145.561,87 | 
+10: Action Participation / KHALLADI | Energies et / Mines | 33623743 | 131.514.000 | 100,00% | 131.513.500,00 | 131.513.500,00 | 31/12/2025 | 132.073.867,15 | 242.446,24 | 
+11: Jadis | Immobilier | 40169334 | 8.205.400 | 90,50% | 7.405.400,00 | 6.901.760,00 | 31/12/2025 | 6.863.751,34 | -23.056,88 | 
+12: STOKVIS NORD / AFRIQUE | Commerce et / transport | 1620634 | 176.951.500 | 17,15% | 85.386.535,49 | 85.386.535,49 | 31/12/2024 | 49.592.855,50 | -12.780.957,98 | 
+13: I I - PLACEMENTS / AFFECTES AUX / OPERATIONS / D'ASSURANCES |  |  |  |  |  |  |  |  |  | 
+14: STE MAROCAINE A / L'EXPORT | ASSURANCES | 1003169 | 50.000.000 | 2,00% | 750.000,00 | 750.000,00 | 31/12/2024 | 144.031.851,81 | 11.604.898,37 | 
+15: AFRICA First Assist | ASSURANCES | 1030998 | 50.000.000 | 25,00% | 100.000.000,00 | 100.000.000,00 | 31/12/2024 | 240.068.016,14 | 43.506.032,45 | 10.250.861,00
+16: AFRICAINE RE | ASSURANCES |  | 3.070.718.080 | 0,20% | 3.746.796,45 | 3.746.796,45 | 31/12/2024 | 13.385.959.408,00 | 1.390.041.552,00 | 
+17: CAT | ASSURANCES | 1085427 | 162.656.000 | 16,16% | 26.290.600,00 | 26.290.600,00 | 31/12/2024 | 675.257.835,14 | 11.604.898,37 | 40.224.618,00
+18: ATLANTASANAD | ASSURANCES | 1085137 | 602.835.950 | 0,44% | 20.421.612,18 | 20.421.612,18 | 31/12/2024 | 3.645.299.972,62 | 456.350.915,23 | 1.736.375,00
+19: TOTAL |  |  |  |  | 747.415.640,56 | 481.775.226,71 |  |  |  | 52.211.854,00
+TABLE 4 rows=12 cols=10
+00: LIBELLE | Montant au début de l'exercice |  |  | Variations de l'exercice |  |  | Montant à la fin de l'exercice |  | 
+01:  | Brut | Cessions | Net | Brut | Cessions | Net | Brut | Cessions | Net
+02: Provisions pour primes / non acquises | 1.050.230.097,82 | 226.035.739,22 | 824.194.358,60 | 51.582.707,42 | 22.218.161,43 | 29.364.545,99 | 1.101.812.805,23 | 248.253.900,64 | 853.558.904,59
+03: Provisions pour sinistres / à payer | 8.187.246.067,16 | 861.918.842,95 | 7.325.327.224,21 | 186.265.896,30 | 119.504.246,04 | 66.761.650,26 | 8.373.511.963,47 | 981.423.089,00 | 7.392.088.874,47
+04: Provisions des / assurances-vie | 6.055.524.164,70 | 235.907.097,84 | 5.819.617.066,86 | -286.711.068,78 | -9.410.958,14 | -277.300.110,64 | 5.768.813.095,92 | 226.496.139,70 | 5.542.316.956,22
+05: Provisions pour / fulctuations de sinistralité | 1.144.290.011,82 |  | 1.144.290.011,82 | 23.638.535,82 |  | 23.638.535,82 | 1.167.928.547,64 |  | 1.167.928.547,64
+06: Provisions pour aléas / fnianciers |  |  |  |  |  |  |  |  | 
+07: Provisions des contrats / en U.C. | 50.278.144,09 |  | 50.278.144,09 | 143.354.135,00 |  | 143.354.135,00 | 193.632.279,09 |  | 193.632.279,09
+08: Provisions pour / participation aux / bénéfcies | 119.399.660,37 |  | 119.399.660,37 | 15.234.415,23 |  | 15.234.415,23 | 134.634.075,60 |  | 134.634.075,60
+09: Provisions techniques / sur placements | 120.518.418,48 |  | 120.518.418,48 - | 53.476.095,86 |  | -53.476.095,86 | 67.042.322,62 |  | 67.042.322,62
+10: Autres Provisions / techniques | 183.982.640,32 |  | 183.982.640,32 | 95.717.344,15 |  | 95.717.344,15 | 279.699.984,47 |  | 279.699.984,47
+11: TOTAL | 16.911.469.204,76 | 1.323.861.680,01 | 15.587.607.524,75 | 175.605.869,28 | 132.311.449,33 | 43.294.419,95 | 17.087.075.074,04 | 1.456.173.129,34 | 15.630.901.944,70
+TABLE 5 rows=18 cols=9
+00: Dettes | Total | Analyse par échéance |  |  | Autres analyses |  |  | 
+01:  |  | Plus d’un an | Moins / d’un an | Echues / et non / payées | Montants / en / devises | sM uro ln ’Et ta an tt es / t / Organismes / publics | Montants sur / les / entreprises / liées | Montants / représentés / par des / efefts
+02: DE FINANCEMENT |  |  |  |  |  |  |  | 
+03: – Emprunts obligataires |  |  |  |  |  |  |  | 
+04: – Autres dettes de financement |  |  |  |  |  |  |  | 
+05: Sous-total |  |  |  |  |  |  |  | 
+06: DES AUTRES PASSIFS CIRCULANTS |  |  |  |  |  |  |  | 
+07: – Dettes pour dépôts des réassureurs | 581.204.090,98 | 292.296.641,18 | 288.907.449 | ,80 |  |  |  | 
+08: – Cessionnaires et comptes rattachés créditeurs | 287.488.408,86 |  | 287.488.408 | ,86 |  |  |  | 
+09: – Assurés, Intermédiaires, cédants, coassureurs / et comptes rattachés | 618.046.476,06 | 116.394.229,52 | 501.652.246, | 54 |  |  |  | 
+10: – Personnel | 78.889.070,48 | 17.900.000,00 | 60.989.070, | 48 |  |  |  | 
+11: – Organismes sociaux | 14.484.007,97 |  | 14.484.007, | 97 |  | 14.484.007,97 |  | 
+12: – Etat | 257.285.426,11 |  | 257.285.426 | ,11 |  | 257.285.426,11 |  | 
+13: – Comptes d'associés | 224.000.000,00 |  | 224.000.000 | ,00 |  |  |  | 
+14: – Autres créanciers * | 284.097.236,98 | 94.149.402,36 | 189.947.834 | ,62 |  |  |  | 
+15: – Compte de régularisation-passif | 63.968.030,56 | 48.510.493,71 | 15.457.536 | ,85 |  |  |  | 
+16: Sous-total | 2.409.462.748,00 | 569.250.766,77 | 1.840.211.981 | ,23 |  | 271.769.434,08 |  | 
+17: TOTAL | 2.409.462.748,00 | 569.250.766,77 | 1.840.211.981 | ,23 |  | 271.769.434,08 |  | 
+TABLE 6 rows=11 cols=9
+00: Nature | Montant début / de l'exercice | Dotations |  |  | Reprises |  |  | montant / fin / d’exercice
+01:  |  | d’exploitation / technique | sur / placements | non / techniques | d’exploitation / technique | sur / placements | non / techniques | 
+02: 1-Provisions pour dépréciation de / l'actif immobilisé | 570.620.579,53 |  | 398.688.439,27 | 6.233.005,00 | 1.065.807,64 | 1.187,00 | 17.368.734,38 | 957.106.294,78
+03: 2-Provisions réglementées |  |  |  |  |  |  |  | 
+04: 3-Provisions durables pour risques et charges |  |  |  |  |  |  |  | 
+05: SOUS-TOTAL (A) | 570.620.579,53 |  | 398.688.439,27 | 6.233.005,00 | 1.065.807,64 | 1.187,00 | 17.368.734,38 | 957.106.294,78
+06: 4-Provisions pour dépréciation de l'actif / circulant | 1.193.536.699,26 | 76.370.001,16 | 1.997.642,45 | 3.721.538,62 | 1.242.403,33 | 373.480,33 | 23.316.770,02 | 1.250.693.227,81
+07: 5-Autres provisions pour risques et charges |  |  |  |  |  |  |  | 
+08: 6-Provisions pour dépréc. des cptes de / trésorerie |  |  |  |  |  |  |  | 
+09: SOUS-TOTAL (B) | 1.193.536.699,26 | 76.370.001,16 | 1.997.642,45 | 3.721.538,62 | 1.242.403,33 | 373.480,33 | 23.316.770,02 | 1.250.693.227,81
+10: TOTAL (A+B) | 1.764.157.278,79 | 76.370.001,16 | 400.686.081,72 | 9.954.543,62 | 2.308.210,97 | 374.667,33 | 40.685.504,40 | 2.207.799.522,59
+TABLE 7 rows=11 cols=3
+00: Engagements donnés | Montants Exercice | Montants Exercice / Précédent
+01: • Avals et cautions | 41.960.214,28 | 47.980.165,78
+02: • Valeurs remises aux cédantes |  | 
+03: • Autres engagements donnés |  | 
+04: TOTAL (1) | 41.960.214,28 | 47.980.165,78
+05: (1) dont engagements à l'égard d'entreprises liées |  | 
+06: Engagements reçus | Montants Exercice | Montants Exercice / Précédent
+07: • Avals et cautions |  | 
+08: • Valeurs remises par les réassureurs | Néant | Néant
+09: • Autres engagements reçus |  | 
+10: TOTAL (1) |  | 
+TABLE 8 rows=22 cols=9
+00: Créances | Total | Analyse par échéance |  |  | Autres analyses |  |  | 
+01:  |  | Plus d’un an | Moins d’un an | Echues et / non / recouvrées | Montants / en / devises | Montants / sur l’Etat et / Organismes / publics | Montants sur / les entre- / prises liées | Montants / représentés / par des / efefts
+02: DE L'ACTIF IMMOBILISE |  |  |  |  |  |  |  | 
+03: • Immobilisations financières |  |  |  |  |  |  |  | 
+04: – Prêts immobilisés | 68.988.439,26 | 62.146.915,38 | 6.841.523,88 |  |  |  |  | 
+05: – Autres créances financières | 999.679.115,24 | 903.469.622,59 | 96.209.492,65 |  |  |  |  | 
+06: • Placements afefctés aux opérations d'assurance |  |  |  |  |  |  |  | 
+07: – Obligations et bons et Titres non négociables | 2.107.117.020,68 | 1.622.617.020,68 | 484.500.000,00 |  |  | 1.170.431.000,00 | 936.686.020,68 | 
+08: – Prêts et efefts assimilés | 10.225.798,72 | 8.286.298,72 | 1.939.500,00 |  |  |  |  | 
+09: – Créances pour dépôts auprès des cédantes |  |  |  |  |  |  |  | 
+10: Sous-total | 3.186.010.373,90 | 2.596.519.857,37 | 589.490.516,53 |  |  | 1.170.431.000,00 | 936.686.020,68 | 
+11: DE L'ACTIF CIRCULANT |  |  |  |  |  |  |  | 
+12: – Parts des réassureurs dans les provisions techniques | 1.456.173.129,24 | 829.075.066,52 | 627.098.062,72 |  |  |  |  | 
+13: – Cessionnaires et comptes rattachés débiteurs | 100.723.692,94 |  | 100.723.692,94 |  |  |  |  | 
+14: – Assurés, Intermédiaires, cédants, coassureurs et / comptes rattachés | 3.254.501.272,95 | 1.278.406.756,01 | 1.976.094.516,94 |  |  |  |  | 
+15: – Personnel | 7.001.761,09 |  | 7.001.761,09 |  |  |  |  | 
+16: – Etat | 213.288.352,27 | 133.016.676,37 | 80.271.675,90 |  |  | 213.288.352,27 |  | 
+17: – Comptes d'associés |  |  |  |  |  |  |  | 
+18: – Autres débiteurs | 234.256.547,11 | 62.077.279,18 | 172.179.267,93 |  |  |  |  | 
+19: – Compte de régularisation-actif | 743.519.628,90 | 380.678.716,91 | 362.840.911,99 |  |  |  |  | 
+20: Sous-total | 6.009.464.384,50 | 2.683.254.494,99 | 3.326.209.889,51 |  |  | 213.288.352,27 |  | 
+21: TOTAL | 9.195.474.758,40 | 5.279.774.352,36 | 3.915.700.406,04 |  |  | 1.383.719.352,27 | 936.686.020,68 | 
+TABLE 9 rows=2 cols=6
+00: Tiers débiteurs ou tiers créditeurs / Pour les sûretés réelles données | Montant / couvert / par la sûreté | Nature / (1) | Date et lieu / d'inscription | Objet / (2) | Valeur comptable nette de / la sûreté donnée à la date de / clôture
+01: • N E A N T |  |  |  |  | 
+TABLE 10 rows=3 cols=6
+00: Tiers débiteurs ou tiers créditeurs / Pour les sûretés réelles reçues | Montant / couvert / par la sûreté | Nature / (1) | Date et lieu / d'inscription | Objet / (3) | Valeur réelle de la sûreté reçue / à la date de clôture / )4(
+01: BIDAOUI ZHOR | 143.866,42 | 2 |  |  | 143.866,42
+02: RIAD MAATI | 115.429,34 | 2 |  |  | 115.429,34
+
+==== WAA ====
+-- PAGE 6 --
+TABLE 0 rows=3 cols=3
+00: 31/12/2025 | 31/12/2024 / retraité | 01/01/2024 / retraité
+01: 372299 / 317159 / 689458 / 795061 / 66037529 / 2284376 / 69116966 / 905906 / 743988 / 105556 / 960118 / 1801487 / 3611149 / 1210689 |  | 
+02: 75534168 |  | 
+TABLE 1 rows=1 cols=2
+00: 31/12/2025 | 31/12/2024 R
+TABLE 2 rows=4 cols=8
+00:  | Capital social et / primes / d'émission | Réserves non / distribuées | Réserve de / conversion | Autres réserves / comptabilisées via les / autres éléments du résultat / global (OCI) | Total Capitaux / propres part du / groupe | Intérêts / minoritaires | Total
+01: Capitaux propres d’ouverture au 1er janvier 2025 350000 9 284370 ( 18047) 2 950462 |  |  |  |  | 12 566785 211725 12 778510 |  | 
+02:  |  |  |  |  | 0 / 12 566785 / 1 026037 / 1 773528 / 2 799565 / ( 490085) / 0 / 0 / ( 33429) / 117499 | 0 / 211725 / 74368 / ( 68) / 74300 / ( 26256) / 0 / 0 / 12718 / ( 1758) | 0 / 12 778510 / 1 100404 / 1 773460 / 2 873865 / ( 516341) / 0 / 0 / ( 20711) / 115741
+03: Situation à la clôture au 31 décembre 2025 350000 9 905764 ( 42858) 4 747429 |  |  |  |  | 14 960 337 | 270729 15 231 066 | 
+TABLE 3 rows=3 cols=3
+00: 31/12/2025 | 31/12/2024 / retraité | 01/01/2024 / retraité
+01: 350000 / 0 / 8836 872 / 4747429 / 1026036 / 14960337 / 270729 / 15231066 / 110 / 244476 / 50670820 / 2284376 / 4632316 / 1168716 / 191028 / 1111 259 / 2471 003 |  | 
+02: 75534168 |  | 
+TABLE 4 rows=3 cols=4
+00: C raa pp pit oa ru téx s p pro rép cr ée ds e a mu m 31 e nd técembre 2023, comme 350000 6 625422 1891 2 255191 9 232504 276585 9 509089 |  |  | 
+01:  | 1 662326 / 10 894830 / 923147 / 1 107536 / 2 030683 / ( 490000) / 0 / 0 / ( 2732) / 134003 | ( 107861) / 168725 / 71989 / 6268 / 78257 / ( 35861) / 0 / 0 / 0 / 604 | 1 554465 / 11 063554 / 995137 / 1 113804 / 2 108941 / ( 525861) / 0 / 0 / ( 2732) / 134607
+02: Situation à la clôture au 31 décembre 2024, retraitée 350000 9 284369 ( 18047) 2 950462 12 566 785 211725 12 778 510 |  |  | 
+TABLE 5 rows=1 cols=3
+00:  | 31/12/2025 | 31/12/2024 R
+TABLE 6 rows=1 cols=2
+00: 31/12/2025 | 31/12/2024 R

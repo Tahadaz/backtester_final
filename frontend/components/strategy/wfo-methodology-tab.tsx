@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
+import { horizonLabel } from "@/lib/horizon"
 import { cn } from "@/lib/utils"
 
 type WfoMethodologyTabProps = {
@@ -255,7 +256,7 @@ export function WfoMethodologyTab({ symbol, horizon, variant }: WfoMethodologyTa
               <Settings className="h-4 w-4 text-muted-foreground" />
               Configuration de l&apos;horizon
             </CardTitle>
-            <Badge variant="outline" className="text-[10px] capitalize">{horizon}</Badge>
+            <Badge variant="outline" className="text-[10px]">{horizonLabel(horizon)}</Badge>
           </div>
         </CardHeader>
         <CardContent className="pb-4">
@@ -543,7 +544,7 @@ export function WfoMethodologyTab({ symbol, horizon, variant }: WfoMethodologyTa
             <div>
               <p className="text-xs font-bold">Lancer le calcul WFO</p>
               <p className="text-[10px] text-muted-foreground">
-                {symbol} / {horizon}
+                {symbol} / {horizonLabel(horizon)}
                 {manualWindowOverride || costBps || maxReps || maxCorr
                   ? " (parametres personnalises)"
                   : " (auto strict par defaut)"}

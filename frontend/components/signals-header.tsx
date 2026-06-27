@@ -140,12 +140,12 @@ export function SignalsHeader({ sessionEmail, hideWorkspaceNavItems = false, isA
               >
                 {isPublicDashboardOnly ? (
                   <a href={publicHref}>
-                    <item.icon className="h-3.5 w-3.5 stroke-[1.75]" />
+                    <item.icon className="h-3.5 w-3.5 stroke-[1.75]" suppressHydrationWarning />
                     {item.label}
                   </a>
                 ) : (
                   <Link href={item.href}>
-                    <item.icon className="h-3.5 w-3.5 stroke-[1.75]" />
+                    <item.icon className="h-3.5 w-3.5 stroke-[1.75]" suppressHydrationWarning />
                     {item.label}
                   </Link>
                 )}
@@ -167,7 +167,7 @@ export function SignalsHeader({ sessionEmail, hideWorkspaceNavItems = false, isA
             onClick={() => window.location.reload()}
             className="h-[30px] w-[30px] rounded-md border border-transparent text-muted-foreground hover:bg-bg3 hover:text-foreground"
           >
-            <RefreshCw className="h-3.5 w-3.5 stroke-[1.75]" />
+            <RefreshCw className="h-3.5 w-3.5 stroke-[1.75]" suppressHydrationWarning />
           </Button>
           {!isPublicDashboardOnly && (
             sessionEmail ? (
@@ -201,7 +201,7 @@ export function SignalsHeader({ sessionEmail, hideWorkspaceNavItems = false, isA
                   }}
                   className="h-[30px] w-[30px] rounded-md border border-transparent text-muted-foreground hover:bg-bg3 hover:text-foreground"
                 >
-                  <LogOut className="h-3.5 w-3.5 stroke-[1.75]" />
+                  <LogOut className="h-3.5 w-3.5 stroke-[1.75]" suppressHydrationWarning />
                 </Button>
               </>
             ) : (
@@ -212,7 +212,7 @@ export function SignalsHeader({ sessionEmail, hideWorkspaceNavItems = false, isA
                 className="h-[30px] rounded-md border border-line bg-card px-2.5 text-xs font-medium text-muted-foreground hover:bg-bg3 hover:text-foreground"
               >
                 <Link href="/login">
-                  <LogIn className="h-3.5 w-3.5 stroke-[1.75]" />
+                  <LogIn className="h-3.5 w-3.5 stroke-[1.75]" suppressHydrationWarning />
                   <span className="hidden sm:inline">Se connecter</span>
                 </Link>
               </Button>
@@ -235,7 +235,7 @@ export function SignalsHeader({ sessionEmail, hideWorkspaceNavItems = false, isA
                 isActive && "text-primary",
               )}
             >
-              <item.icon className="h-5 w-5 stroke-[1.75]" />
+              <item.icon className="h-5 w-5 stroke-[1.75]" suppressHydrationWarning />
               <span className="max-w-full truncate">{item.label}</span>
             </a>
           ) : (
@@ -247,7 +247,7 @@ export function SignalsHeader({ sessionEmail, hideWorkspaceNavItems = false, isA
                 isActive && "text-primary",
               )}
             >
-              <item.icon className="h-5 w-5 stroke-[1.75]" />
+              <item.icon className="h-5 w-5 stroke-[1.75]" suppressHydrationWarning />
               <span className="max-w-full truncate">{item.label}</span>
             </Link>
           )

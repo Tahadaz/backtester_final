@@ -1,0 +1,1729 @@
+
+
+===== HPS PAGE 1 =====
+RÉSULTATS
+ANNUELS
+2025
+À propos de HPS 
+HPS est un leader global dans la fourniture de solutions et services de paiement pour les émetteurs, les acquéreurs, les processeurs, les opérateurs de réseaux mobiles (MNOs), la 
+grande distribution, les organisations indépendantes de vente (ISOs), ainsi que les switches nationaux et régionaux dans le monde. PowerCARD est une suite complète de solutions 
+de HPS qui couvre toute la chaîne de valeur des paiements. Elle permet des paiements innovants grâce à sa plateforme ouverte qui assure le traitement de toutes les transactions 
+initiées par tous les moyens de paiement en provenance de n’importe quel canal. PowerCARD est utilisé par plus de 500 institutions dans plus de 90 pays. HPS est cotée à la Bourse 
+de Casablanca depuis 2006 et possède des bureaux dans les principaux centres d’affaires (Afrique, Europe, Asie, Moyen-Orient). Plus d’informations sur : www.hps-worldwide.com
+HPS - Siège Social
+Casablanca Nearshore Park, Shore 1 - 1100, bd Al Qods - Sidi Maârouf 
+20270 - Casablanca - Morocco - Tel: + 212 529 045 000
+Le rapport financier annuel 2025 peut être consulté à travers le lien  
+https://www.hps-worldwide.com/investor-relations/annual-reports
+COMMUNICATION 
+FINANCIÈRE
+Contact
+invest@hps-worldwide.com
+FEEL GOOD ABOUT PAYMENTS
+
+
+
+===== HPS PAGE 2 =====
+HPS dépasse ses objectifs 2025, franchit un point d’inflexion  
+et renforce significativement son profil financier
+DONNÉES CONSOLIDÉES EN M MAD
+PUBLIÉES
+PROFORMA
+2025
+2024
+%
+2025
+2024
+%
+Produits d'exploitation
+1 551
+1 267
++22,3%
+1 551
+1 455
++6,5%
+    Revenus réguliers & récurrents
+1 120
+905
++23,8%
+1 120
+1 051
++6,6%
+    En % des produits d'exploitation
+72,3%
+71,4%
++0,9 Pt
+72,3%
+72,2%
++0,1 Pt
+EBITDA
+286
+220
++30,0%
+286
+234
++22,3%
+    Marge EBITDA
+18,4%
+17,3%
++1,1 Pt
+18,4%
+16,1%
++2,3 Pt
+Résultat d'exploitation
+220
+154
++43,1%
+220
+165
++33,1%
+    Marge d'exploitation
+14,2%
+12,1%
++2,1 Pt
+14,2%
+11,3%
++2,9 Pt
+Résultat net (part du Groupe)
+106
+75
++40,5%
+106
+62
++71,4%
+    Marge nette
+6,8%
+5,9%
++0,9 Pt
+6,8%
+4,2%
++2,6 Pt
+    Résultat par action (MAD)
+14,3
+10,2
++40,5%
+14,3
+8,3
++71,4%
+Autres indicateurs clés
+Recherche & Développement
+144
+156
+-7,9%
+Trésorerie (fin de période)
+256
+204
++25,4%
+Endettement net
+196
+341
+-42,4%
+Cash-flow opérationnel
+239
+49
+×4,9
+Backlog
+1 672
+885
++88,9%
+Casablanca, le 25 mars 2026 – HPS (CSE : HPS), leader mondial des solutions de paiement, annonce ses résultats 
+consolidés pour l’exercice 2025. Le Conseil d’Administration s’est réuni le 24 mars 2026 sous la présidence de M. Mohamed 
+HORANI pour examiner l’activité de la société et arrêter les comptes au 31 décembre 2025.
+Mohamed Horani, Président du Conseil d’Administration :
+«En 2025, HPS a franchi une étape importante dans son développement, avec une performance solide portée 
+par un backlog record et des fondamentaux renforcés. Ces résultats reflètent la pertinence de nos orientations 
+stratégiques et confortent la confiance du Conseil dans la capacité du Groupe à créer durablement de la 
+valeur»
+Abdeslam Alaoui Smaili, CEO :
+«Les résultats 2025 confirment la solidité de notre modèle et la qualité d’éxecution de notre feuille de route 
+stratégique. La transition vers le SaaS est désormais bien engagée et commence à se traduire par une amélioration 
+des revenus récurrents, de la génération de cash et de la rentabilité.
+Dans un environnement marqué par des effets de change défavorables, le Groupe démontre la résilience de 
+sa performance sous-jacente et aborde une nouvelle phase de développement, résolument orientée vers une 
+croissance rentable»
+• Produits d’exploitation : 1 551 M MAD, en croissance de +22,3%, au-dessus de l’objectif annuel (>20%)
+• Croissance sous-jacente : +10,7% à périmètre et taux de change constants
+• EBITDA : 286 M MAD, en progression de +30,0%, avec une marge de 18,4%, en ligne avec les objectifs
+• Modèle SaaS : revenus récurrents et réguliers à 72,3% des produits d’exploitation (+0,9 Pt vs 2024)
+• Backlog record : 1 672 M MAD (+89%), renforçant la visibilité sur la croissance future
+• Génération de cash : cash-flow opérationnel de 239 M MAD (×4,9) et réduction de l’endettement net de -42,4%
+RÉSULTATS 
+            ANNUELS 
+2025
+FEEL GOOD ABOUT PAYMENTS
+
+
+
+===== HPS PAGE 3 =====
+Performance des activités
+Paiement : 1.329 M MAD (+26,6%) | 1.389 M MAD à taux de change et périmètre constant (+12,2%)
+L’activité Paiement, qui représente 89% des revenus du Groupe liés aux activités, a enregistré une croissance sous-jacente 
+de +12,2%. Cette performance reflète :
+• l’accélération des grands projets auprès d’institutions Tier 1 ;
+• la montée en puissance du SaaS (+32,7%), désormais principal moteur de croissance ;
+• la progression des revenus de maintenance.
+La croissance sous-jacente reste solide et de plus en plus tirée par les revenus récurrents.
+Switching (SWAM) : 97,6 M MAD (+9,5%)
+Rebaptisée SWAM en 2025, l’activité Switching a poursuivi sa croissance avec des revenus de 97,6 M MAD, en hausse de +9,5%. 
+Cette progression est portée par l’augmentation continue des volumes de transactions (dépassement régulier du million de 
+transactions quotidiennes), le développement de nouveaux services et le renforcement de la plateforme technologique.
+Testing : 66,6 M MAD (-18,3%)
+L’activité Testing a généré des revenus de 66,6 M MAD, en baisse de -18,3%. Cette évolution confirme la pertinence de la 
+stratégie du Groupe visant à recentrer ses activités sur ses métiers cœur et à permettre à cette activité de se développer 
+dans un environnement plus adapté. HPS poursuit activement le processus de cession de cette activité.
+2025 : une année d’inflexion marquant l’entrée dans une phase d’expansion des marges
+En 2025, HPS a franchi une étape structurante dans l’exécution de son plan stratégique. Le Groupe enregistre des 
+produits d’exploitation de 1.551 M MAD, en croissance publiée de +22,3%, dépassant l’objectif annuel de +20%. Cette 
+croissance reflète en partie l’intégration en année pleine de CR2, consolidée sur seulement quatre mois en 2024. À 
+périmètre comparable (proforma), la croissance ressort à +6,5%, et atteint +10,7% à périmètre et taux de change 
+constants, traduisant la performance réelle du Groupe.
+Le point d’inflexion se matérialise clairement au second semestre.
+L’EBITDA s’est établi à 69,9 M MAD au premier semestre (marge de 10,4%), affecté par les coûts liés à la transition SaaS 
+et par des effets de change exceptionnels.
+Au second semestre, l’EBITDA atteint ~216 M MAD, soit une marge d’environ 25%, représentant une multiplication par 
+trois. Cette forte progression illustre la montée en charges des plateformes existantes, se traduisant par une expansion 
+des marges.
+Cette inflexion est portée par l’accélération du modèle SaaS, désormais au cœur de la dynamique du Groupe.
+Les redevances SaaS progressent de +32,7% à 296 M MAD (à périmètre et taux de change constants) et deviennent, 
+pour la première fois, la première ligne de revenus de l’activité Paiement.
+Avec un TCAM de près de 20% depuis 2021 et un run-rate estimé à 480 M MAD à horizon 2027 sur la base des seuls 
+contrats existants, les impacts de la transition sont quasiment derrière nous, les revenus additionnels étant générés 
+avec des coûts incrémentaux limités.
+Sur l’ensemble de l’exercice, l’EBITDA atteint 286 M MAD, en progression de +30,0%, avec une marge de 18,4% contre 
+17,3% en 2024, et de 18,8% à périmètre et taux de change constants.
+Ces résultats confirment l’exécution réussie des priorités stratégiques du plan AccelR8 :
+• Montée en puissance du modèle récurrent : les revenus réguliers et récurrents atteignent 1.120 M MAD (+23,8%), soit 
+72,3% des produits d’exploitation, confirmant l’amélioration de la qualité et de la visibilité des revenus.
+• Croissance externe créatrice de valeur : l’intégration en année pleine de CR2 a renforcé l’offre du Groupe, élargi sa 
+couverture fonctionnelle et contribué à l’amélioration progressive du profil de rentabilité.
+• Succès commercial auprès des institutions Tier 1 : HPS a signé deux contrats majeurs avec des banques Tier 1 
+mondiales en Asie, chacun représentant plusieurs dizaines de millions de dollars, et a porté le Backlog à un niveau 
+record de 1 672 M MAD (+89%).
+• Renforcement de la plateforme internationale : l’extension opérationnelle en Amérique du Nord, en Inde et en Australie 
+accélère le déploiement des projets et rapproche le Groupe de ses marchés stratégiques.
+FEEL GOOD ABOUT PAYMENTS
+RÉSULTATS 
+            ANNUELS 
+2025
+
+
+
+===== HPS PAGE 4 =====
+Au titre de l’exercice 2025, le Conseil d’Administration proposera à l’Assemblée Générale Ordinaire la distribution d’un 
+dividende de 8 MAD par action, en hausse de 14,2% par rapport à 2024.
+Dividende
+Les investissements R&D s’établissent à 144 M MAD (-7,9%), traduisant un retour à un niveau plus normatif après 
+plusieurs années d’investissements structurants. Les efforts restent concentrés sur le cloud, l’intelligence artificielle, 
+la cybersécurité et l’intégration des plateformes PowerCARD et BankWorld.
+Investissements en Recherche & Développement
+Perspectives 2026 : entrée dans une phase de croissance rentable
+HPS aborde 2026 avec des fondamentaux solides, portés par un Backlog record, une base de revenus récurrents 
+en expansion et un modèle SaaS en phase de montée en régime. Le Groupe entre dans une nouvelle phase de son 
+développement, caractérisée par :
+• la poursuite de la montée en régime des plateformes déployées en 2024 et 2025 ;
+• la conversion progressive du Backlog en revenus et en cash-flow ;
+• la poursuite de l’intégration de CR2 et du développement des synergies entre paiement et digital Banking ;
+• l’accélération de l’innovation dans les domaines du cloud, de l’IA et de l’open Banking.
+HPS entend ainsi poursuivre la transformation de son modèle vers une croissance plus récurrente, plus visible et plus 
+rentable, en ligne avec les objectifs de son plan stratégique AccelR8. Le Groupe vise une croissance organique des 
+revenus comprise entre 12% et 17%, accompagnée d’une amélioration de la marge d’EBITDA par rapport à 2025.
+HPS - Siège Social
+Casablanca Nearshore Park, Shore 1 - 1100, bd Al Qods - Sidi Maârouf 20270 - Casablanca - Morocco - Tel: + 212 529 045 000
+Contact
+invest@hps-worldwide.com
+À propos de HPS 
+HPS est un leader global dans la fourniture de progiciels et de solutions de paiement pour les émetteurs, les acquéreurs, les processeurs, les opérateurs de réseaux mobiles (MNOs), la grande distribution, les organisations 
+indépendantes de vente (ISOs), ainsi que les switches nationaux et régionaux dans le monde. PowerCARD est une suite complète de solutions de HPS qui couvre toute la chaîne de valeur des paiements. Elle permet des 
+paiements innovants grâce à sa plateforme ouverte qui assure le traitement de toutes les transactions initiées par tous les moyens de paiement en provenance de n’importe quel canal. PowerCARD est utilisée par plus de 
+500 institutions dans plus de 95 pays. HPS est cotée à la Bourse de Casablanca depuis 2006 et possède des bureaux dans les principaux centres d’affaires (Afrique, Europe, Asie, Moyen-Orient, Amériques et Australie). 
+Plus d’informations sur : www.hps-worldwide.com
+Avertissement
+Ce communiqué contient des informations prévisionnelles qui comprennent des projections, des estimations et des hypothèses concernant des résultats financiers futurs, des projets et des objectifs, ainsi que des performances 
+ou des événements à venir. Les résultats et les événements effectifs peuvent différer significativement de ceux évoqués dans ces prévisions. Ces dernières ne sauraient constituer une garantie de performance future et doivent 
+être considérées en ce sens.
+Le Backlog atteint 1 672 M MAD à fin décembre 2025, en hausse de +88,9% par rapport à fin 2024. Cette progression 
+reflète la signature de contrats structurants auprès d’institutions financières Tier 1, le développement du portefeuille 
+de contrats SaaS pluriannuels et les synergies commerciales issues du rapprochement entre PowerCARD et BankWorld 
+(CR2). Ce niveau record offre une forte visibilité sur la croissance future du Groupe.
+Backlog record et visibilité renforcée
+Forte génération de cash et désendettement significatif
+Le Groupe enregistre une forte amélioration de sa génération de liquidités :
+• Cash-flow opérationnel : 239 M MAD (×4,9 par rapport à 49 M MAD en 2024) ;
+• Endettement net : 196 M MAD, en réduction de -42,4% (contre 341 M MAD en 2024) ;
+• Trésorerie en fin de période : 256 M MAD (+25,4%).
+HPS dispose désormais d’une structure financière significativement renforcée, lui permettant d’accompagner sa croissance 
+future tout en poursuivant le désendettement engagé après les opérations de croissance externe.
+Renforcement de la rentabilité et du profil financier
+L’amélioration de la rentabilité se confirme sur l’ensemble des indicateurs clés :
+• EBITDA : 286 M MAD (+30,0%), marge d’exploitation de 18,4% contre 17,3% en 2024. Cette performance confirme 
+l’entrée du Groupe dans une phase d’expansion des marges, portée par la montée en puissance du modèle SaaS et 
+le levier opérationnel.
+• Résultat d’exploitation : 220 M MAD (+43,1%), marge d’exploitation de 14,2% contre 12,1% en 2024.
+• Résultat net (part du Groupe) : 106 M MAD (+40,5%), marge nette de 6,8%.
+RÉSULTATS 
+            ANNUELS 
+2025
+FEEL GOOD ABOUT PAYMENTS
+
+
+
+===== HPS PAGE 5 =====
+COMPTES   CONSOLIDÉS
+RÉSULTATS 
+            ANNUELS 
+2025
+BILAN ACTIF
+En MAD
+31/12/2025
+31/12/2024
+ Actif immobilisé 
+ 582 650 414 
+ 634 197 839 
+ Ecart d'acquisition 
+ 356 881 282 
+ 385 287 753 
+ Immobilisations incorporelles 
+ 90 383 673 
+ 88 450 560 
+ Immobilisations corporelles 
+ 60 946 599 
+ 78 675 140 
+ Immobilisations financières 
+ 6 231 809 
+ 6 330 779 
+ Titres mis en équivalence 
+ 68 207 051 
+ 75 453 607 
+ Actif circulant 
+ 1 552 603 312 
+ 1 582 914 999 
+ Stocks et en cours 
+ 172 897 042 
+ 142 984 944 
+Clients et comptes rattachés
+ 796 997 611 
+ 949 930 450 
+Impôts différés actifs
+ 42 276 718 
+ 15 393 534 
+Autres créances et comptes de régularisation
+ 237 847 906 
+ 227 882 323 
+Valeurs mobilières de placement
+ 6 450 509 
+ 2 129 613 
+Disponibilités
+ 296 133 526 
+ 244 594 136 
+Total de l'Actif 
+ 2 135 253 725 
+ 2 217 112 838 
+BILAN PASSIF
+ En MAD
+31/12/2025
+31/12/2024
+ Capitaux Propres 
+ 816 636 777 
+ 774 719 895 
+  - Capital 
+ 74 061 900 
+ 74 061 900 
+  - Primes d’émission
+ 83 451 410 
+ 83 451 410 
+  - Réserves consolidées
+ 553 345 726 
+ 541 907 226 
+  - Résultats consolidés
+ 105 777 740 
+ 75 299 358 
+ Capitaux propres part du Groupe 
+ 816 636 777 
+ 774 719 895 
+ - Intérêts minoritaires
+ - 
+ - 
+ Total Capitaux propres 
+ 816 636 777 
+ 774 719 895 
+ Passifs à long terme 
+ 471 838 922 
+ 569 231 485 
+ - Dettes financières à long terme
+ 452 171 904 
+ 544 750 016 
+ - Provisions pour risques et charges
+ 19 667 017 
+ 24 481 470 
+ Passif circulant 
+ 846 778 027 
+ 873 161 459 
+ - Fournisseurs et comptes rattachés
+ 95 836 825 
+ 97 515 364 
+ - Autres dettes et comptes de régularisation
+ 710 208 892 
+ 734 630 498 
+ - Impôts différés passifs
+ 732 311 
+ 644 549 
+ - Trésorerie passif
+ 40 000 000 
+ 40 371 048 
+Total du Passif 
+ 2 135 253 725 
+ 2 217 112 839 
+COMPTE DE PRODUITS ET CHARGES
+31/12/2025
+31/12/2024
+31/12/2024 
+Proforma
+Chiffres d’affaires
+ 1 493 574 508 
+ 1 220 706 447 
+ 1 408 612 644 
+Autres produits d’exploitation
+ 56 944 582 
+ 46 694 579 
+ 46 687 701 
+Produits d’Exploitation 
+ 1 550 519 090 
+ 1 267 401 026 
+ 1 455 300 345 
+Achats revendus de Marchandises
+-6 809 400 
+-7 173 351 
+-7 173 351 
+Achats consommés
+-145 903 279 
+-178 766 854 
+-179 607 704 
+Charges externes
+-337 268 670 
+-268 901 549 
+-318 121 107 
+Charges de personnel
+-735 844 908 
+-554 484 153 
+-668 332 850 
+Autres charges d’exploitation
+-4 862 193 
+-4 678 589 
+-14 579 813 
+Impôts et taxes
+-34 059 247 
+-33 572 381 
+-33 865 224 
+Dotations d’exploitation
+-66 069 050 
+-66 258 748 
+-68 561 400 
+Charges d’Exploitation 
+-1 330 816 746 
+-1 113 835 625 
+-1 290 241 448 
+Résultat d’exploitation 
+ 219 702 344 
+ 153 565 401 
+ 165 058 897 
+Marge d’exploitation 
+14,2%
+12,1%
+11,3%
+Charges et produits financiers 
+-53 225 010 
+-17 418 462 
+-15 843 624 
+Résultat courant des entreprises intégrées 
+ 166 477 334 
+ 136 146 939 
+ 149 215 273 
+Charges et produits non courants 
+-5 854 277 
+-12 524 502 
+-12 524 610 
+Impôts sur les résultats
+-24 802 036 
+-44 329 913 
+-49 228 786 
+Résultat net des entreprises intégrées 
+ 135 821 021 
+ 79 292 525 
+ 87 461 878 
+Quote-part dans les résultats des entreprises MEE
+ 16 248 780 
+ 18 155 220 
+ 18 155 220 
+Dotations aux amortissements des écarts d’acquisition
+-46 292 061 
+-22 148 387 
+-43 907 315 
+Résultat net de l’ensemble consolidé 
+ 105 777 740 
+ 75 299 358 
+ 61 709 782 
+Intérêts minoritaires
+ - 
+ - 
+ - 
+Résultat net (Part du groupe) 
+ 105 777 740 
+ 75 299 358 
+ 61 709 782 
+Marge nette 
+6,8%
+5,9%
+4,2%
+Résultat par action
+ 14,3 
+ 10,2 
+ 8,3
+TABLEAU DES FLUX DE TRÉSORERIE
+En MAD
+31/12/2025
+31/12/2024
+ Résultat net  
+ 105 777 740 
+ 75 299 358 
+Élimination des charges et produits nets sans effet sur la trésorerie ou 
+non liés à l'activité 
+ - 
+ - 
+-Dotations aux amortissements
+ 81 105 419 
+ 53 222 432 
+-Variation des impôts différés 
+-25 349 970 
+-1 109 390 
+-Plus ou moins value de cession 
+ - 
+ - 
+-Autres produits (charges) nets sans effets sur la trésorerie 
+ - 
+ 323 633 
+-Quote part dans le résultat des sociétés mises en équivalence nette des 
+dividendes reçus
+-16 248 780 
+-18 155 220 
+Capacités d'autofinancement des sociétés intégrées
+ 145 284 410 
+ 109 580 814 
+Dividendes reçus des sociétés mises en équivalence 
+ 15 594 068 
+ 15 142 488 
+Variation du besoin en fonds de roulement lié à l'activité
+ 77 819 664 
+-75 349 203 
+ Flux net de trésorerie liés à l'activité 
+ 238 698 141 
+ 49 374 099 
+Acquisition d'immobilisations corporelles  et incorporelles
+-20 141 872 
+-47 786 869 
+Cessions d'immobilisations nettes d'impôts 
+ 64 850 
+ - 
+Cession de titres de sociétés mises en équivalence
+ - 
+ - 
+Acquisition nette de titre de société consolidée
+-20 293 759 
+-382 895 032 
+ Flux de trésorerie liés aux opérations d'investissements 
+-40 370 781 
+-430 681 901 
+Dividendes versés aux actionnaires de la société mère 
+-51 843 330 
+-50 362 092 
+Augmentation du capital en numéraire 
+ - 
+ - 
+Autres 
+ 98 970 
+ 2 501 679 
+Variations des emprunts 
+-92 578 107 
+ 430 252 712 
+ Flux des opérations de financement 
+-144 322 467 
+ 382 392 299 
+Mouvements de conversion 
+-2 094 456 
+-7 905 479 
+ Augmentation (diminution) de la trésorerie 
+ 51 910 438 
+-6 820 982 
+ Trésorerie au début de l'exercice  
+ 204 223 088 
+ 211 044 070 
+ Trésorerie à la fin de l'exercice  
+ 256 133 526 
+ 204 223 088 
+TABLEAU DE VARIATION DES CAPITAUX
+En MAD
+Capital 
+Primes d'émission
+Écart de changes 
+Réserves et résultat 
+consolidés 
+Total part groupe
+Minoritaires
+Total 
+ Situation au 31 décembre 2023 
+ 74 061 900     
+ 83 451 410     
+ 1 706 603     
+ 597 940 844     
+ 757 160 757     
+ -     
+ 757 160 757     
+Distribution de dividendes 
+-50 362 092     
+-50 362 092     
+-50 362 092     
+Augmentation de capital 
+ -     
+ -     
+ -     
+ -     
+Résultat net de l’exercice 
+ 75 299 358     
+ 75 299 358     
+ 75 299 358     
+Ecarts de change
+ -     
+ -     
+ -     
+Autres variations 
+-7 378 129     
+-7 378 129     
+-7 378 129     
+ Situation au 31/12/2024 
+ 74 061 900     
+ 83 451 410     
+-5 671 526     
+ 622 878 111     
+ 774 719 894     
+ -     
+ 774 719 894     
+Distribution de dividendes 
+-51 843 330     
+-51 843 330     
+-51 843 330     
+Augmentation de capital 
+ -     
+ -     
+ -     
+ -     
+Résultat net de l’exercice 
+ 105 777 740     
+ 105 777 740     
+ 105 777 740     
+Ecarts de change
+ -     
+ -     
+ -     
+Autres variations 
+-12 017 528     
+-12 017 528     
+-12 017 528     
+ Situation au 31/12/2025 
+ 74 061 900     
+ 83 451 410     
+-17 689 054     
+ 676 812 521     
+ 816 636 777     
+ -     
+ 816 636 777    
+PÉRIMÈTRE DE CONSOLIDATION
+Périmètre au 31/12/2025
+Périmètre au 31/12/2024
+Société
+% de contrôle % d'intérêt
+Méthode de 
+consolidation % de contrôle % d'intérêt
+Méthode de 
+consolidation
+HPS
+100%
+100%
+IG
+100%
+100%
+IG
+HPS Europe
+100%
+100%
+IG
+100%
+100%
+IG
+ACPQualife
+100%
+100%
+IG
+100%
+100%
+IG
+Switch Al Maghrib 
+(SWAM)
+100%
+100%
+IG
+100%
+100%
+IG
+HPS Singapour
+100%
+100%
+IG
+100%
+100%
+IG
+GPS
+30%
+30%
+MEE
+30%
+30%
+MEE
+ICPS
+100%
+100%
+IG
+100%
+100%
+IG
+Involia
+0%
+30%
+Exclue
+0%
+30%
+Exclue
+IPRC
+100%
+100%
+IG
+100%
+100%
+IG
+HPS South Africa
+100%
+100%
+IG
+100%
+100%
+IG
+HPS India
+100%
+100%
+IG
+100%
+100%
+IG
+HPS Montréal
+100%
+100%
+IG
+100%
+100%
+IG
+CR2
+100%
+100%
+IG
+100%
+100%
+IG
+HPS Australia
+100%
+100%
+IG
+-
+-
+-
+
+
+
+===== HPS PAGE 6 =====
+COMPTES   CONSOLIDÉS
+RÉSULTATS 
+            ANNUELS 
+2025
+ 
+ 
+ 
+ 
+ 
+ 
+Aux Actionnaires de la société 
+HIGHTECH PAYMENT SYSTEMS S.A. « HPS » 
+Casablanca Nearshore Park 
+Shore 1, Secteur A 
+1100 boulevard Al Qods 
+Sidi Maârouf, Casablanca 
+ 
+ 
+RAPPORT DES COMMISSAIRES AUX COMPTES SUR LES COMPTES CONSOLIDES  
+EXERCICE DU 1er JANVIER AU 31 DECEMBRE 2025 
+ 
+ 
+Opinion  
+ 
+Nous avons effectué l’audit des états de synthèse consolidés de la société HIGHTECH PAYMENT 
+SYSTEMS S.A. et de ses filiales (le « groupe »), qui comprennent le bilan consolidé au 
+31 décembre 2025, ainsi que le compte de produits et charges consolidé, le tableau consolidé des 
+flux de trésorerie pour l’exercice clos à cette date, ainsi que l’état des informations 
+complémentaires (ETIC), y compris un résumé des principales méthodes comptables. Ces états 
+de synthèse consolidés font ressortir un montant de capitaux propres consolidés de     
+MAD 816 636 777 dont un bénéfice net consolidé de 105 777 740 MAD.  
+
+Nous certifions que les états de synthèse consolidés cités au premier paragraphe     
+ci-dessus, sont réguliers et sincères et donnent dans tous leurs aspects significatifs, une image 
+fidèle du patrimoine et de la situation financière du groupe au 31 décembre 2025, ainsi que du 
+résultat de l’ensemble consolidé pour l’exercice clos à cette date, conformément au référentiel 
+comptable en vigueur au Maroc. 
+ 
+Fondement de l’opinion  
+ 
+Nous avons effectué notre audit selon les Normes de la Profession au Maroc. Les responsabilités 
+qui nous incombent en vertu de ces normes sont plus amplement décrites dans la section 
+« Responsabilités de l’auditeur à l’égard de l’audit des états de synthèse consolidés » du présent 
+rapport. Nous sommes indépendants du groupe conformément aux règles de déontologie qui 
+s’appliquent à l’audit des états de synthèse au Maroc et nous nous sommes acquittés des autres 
+responsabilités déontologiques qui nous incombent selon ces règles. Nous estimons que les 
+éléments probants que nous avons obtenus sont suffisants et appropriés pour fonder notre 
+opinion d’audit. 
+ 
+Questions clés de l’audit  
+ 
+Les questions clés de l’audit sont les questions qui, selon notre jugement professionnel, ont été 
+les plus importantes dans l’audit des états de synthèse consolidés de la période considérée.  
+ 
+Ces questions ont été traitées dans le contexte de notre audit des états de synthèse consolidés 
+pris dans leur ensemble et aux fins de la formation de notre opinion sur ceux-ci, et nous 
+n’exprimons pas une opinion distincte sur ces questions. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+Comptabilisation du chiffre d’affaires sur les contrats à long terme 
+ 
+Risque identifié  
+ 
+L’installation des solutions Powercard par HPS et celle des nouvelles demandes (NRF) sont 
+réalisées sur plusieurs années. Ainsi, leur chiffre d’affaires est comptabilisé selon la méthode du 
+bénéfice net partiel. Cette méthode vise à reconnaître en chiffre d’affaires la marge au fur et à 
+mesure de la réalisation des prestations, en fonction du degré d’avancement déterminé par 
+comparaison des coûts déjà engagés à la clôture et des coûts totaux prévisionnels sur la durée 
+des contrats.  
+ 
+Nous avons considéré la comptabilisation du chiffre d’affaires comme un point clé de l’audit 
+dans la mesure où les coûts prévisionnels sur ces contrats sont fondés sur des hypothèses 
+opérationnelles et que leur estimation a une incidence directe sur le niveau du chiffre d’affaires 
+comptabilisé au titre de chaque exercice. 
+ 
+Réponse d’audit 
+ 
+Dans le cadre de notre audit, les procédures mises en place ont consisté à : 
+ 
+- 
+Prendre connaissance du dispositif de contrôle interne relatif à la comptabilisation des 
+contrats et tester les contrôles que nous avons jugé clés pour notre audit, mis en œuvre par 
+les contrôleurs financiers et les responsables opérationnels ; 
+ 
+- 
+Vérifier le calcul arithmétique du chiffre d’affaires résultant de la méthode du bénéfice net 
+partiel ; 
+ 
+- 
+Rapprocher les données issues de la comptabilité analytique avec celles de la comptabilité 
+générale ; 
+ 
+- 
+Analyser les variations significatives d’une période à l’autre des coûts prévisionnels totaux 
+et du chiffre d’affaires. 
+ 
+Pour une sélection de contrats, nous avons réalisé les diligences suivantes :  
+ 
+- 
+nous avons rapproché les données analytiques historiques avec les pièces justificatives 
+correspondantes ;  
+ 
+- 
+nous avons corroboré le montant des encours avec les données de saisie des heures par 
+projet ;  
+ 
+- 
+nous avons comparé les montants prévus dans les contrats et/ou avenants avec le chiffre 
+d’affaires retenu pour déterminer le chiffre d’affaires à comptabiliser sur l’exercice. 
+ 
+ Dépréciation des créances clients 
+ 
+Risque identifié  
+ 
+Les créances clients s’élèvent à KMAD 796 998 en valeur nette au 31 décembre 2025 dont un 
+montant de KMAD 88 578 de provision pour dépréciation. 
+ 
+Ces provisions sont déterminées sur la base d’une méthode statistique qui se base sur 
+l’ancienneté de la créance (100% de solde pour les créances antérieures à 2 ans et 50% pour les 
+créances antérieures à 1 an). La direction complète éventuellement cette règle par une analyse 
+au cas par cas intégrant d’autres indices de dépréciation (relation commerciale, avancement du 
+projet concerné, encaissements reçus postérieurement à la clôture). 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+Nous avons considéré l’estimation du montant de la provision pour dépréciation des créances 
+client comme un point clé de l’audit compte tenu du caractère estimatif de ce processus et son 
+impact significatif sur les comptes. 
+ 
+Réponse d’audit 
+ 
+Dans le cadre de notre audit, nos travaux ont principalement consisté à :  
+ 
+- 
+tester pour un échantillon de créances, l’ancienneté retenue pour le calcul de la provision 
+pour dépréciation ; 
+ 
+- 
+tester sur la base d’un échantillon l’apurement des créances en période subséquente ; 
+ 
+- 
+recalculer la provision sur la base de la méthode retenue par la société. 
+ 
+Responsabilités de la direction et des responsables de la gouvernance à l’égard des 
+états de synthèse consolidés 
+ 
+La direction est responsable de la préparation et de la présentation fidèle des états de synthèse 
+consolidés conformément au référentiel comptable en vigueur au Maroc, ainsi que du contrôle 
+interne qu'elle considère comme nécessaire pour permettre la préparation d'états de synthèse 
+consolidés exempts d'anomalies significatives, que celles-ci résultent de fraudes ou d'erreurs. 
+ 
+Lors de la préparation des états de synthèse consolidés, c’est à la direction qu’il incombe 
+d’évaluer la capacité du groupe à poursuivre son exploitation, de communiquer, le cas échéant, 
+les questions se rapportant à la continuité de l’exploitation et d’appliquer le principe comptable 
+de continuité d’exploitation, sauf si la direction a l’intention de liquider le groupe ou de cesser 
+son activité ou si aucune autre solution réaliste ne s’offre à elle. 
+ 
+Il incombe aux responsables de la gouvernance de surveiller le processus d’information 
+financière du groupe. 
+ 
+Responsabilités de l’auditeur à l’égard de l’audit des états de synthèse consolidés 
+ 
+Nos objectifs sont d’obtenir l’assurance raisonnable que les états de synthèse consolidés pris 
+dans leur ensemble sont exempts d’anomalies significatives, que celles-ci résultent de fraudes 
+ou d’erreurs et de délivrer un rapport de l’auditeur contenant notre opinion.  
+ 
+L’assurance raisonnable correspond à un niveau élevé d’assurance, qui ne garantit toutefois pas 
+qu’un audit réalisé conformément aux normes de la profession au Maroc permettra toujours de 
+détecter toute anomalie significative qui pourrait exister. Les anomalies peuvent résulter de 
+fraudes ou d’erreurs et elles sont considérées comme significatives lorsqu’il est raisonnable de 
+s’attendre à ce que, individuellement ou collectivement, elles puissent influer sur les décisions 
+économiques que les utilisateurs des états de synthèse consolidés prennent en se fondant sur 
+ceux-ci. 
+ 
+Dans le cadre d’un audit réalisé conformément aux normes de la profession au Maroc, nous 
+exerçons notre jugement professionnel et faisons preuve d’esprit critique tout au long de cet 
+audit. En outre : 
+ 
+- 
+nous identifions et évaluons les risques que les états de synthèse consolidés comportent des 
+anomalies significatives, que celles-ci résultent de fraudes ou d’erreurs, concevons et 
+mettons en œuvre des procédures d’audit en réponse à ces risques, et réunissons des 
+éléments probants suffisants et appropriés pour fonder notre opinion. Le risque de non-
+détection d’une anomalie significative résultant d’une fraude est plus élevé que celui d’une 
+anomalie significative résultant d’une erreur, car la fraude peut impliquer la collusion, la 
+falsification, les omissions volontaires, les fausses déclarations ou le contournement du 
+contrôle interne ; 
+- 
+nous acquérons une compréhension des éléments du contrôle interne pertinents pour 
+l’audit afin de concevoir des procédures d’audit appropriées aux circonstances, et non dans 
+le but d’exprimer une opinion sur l’efficacité du contrôle interne du groupe ; 
+ 
+- 
+nous apprécions le caractère approprié des méthodes comptables retenues et le caractère 
+raisonnable des estimations comptables faites par la direction, de même que des 
+informations y afférentes fournies par cette dernière ; 
+ 
+- 
+nous tirons une conclusion quant au caractère approprié de l’utilisation par la direction du 
+principe comptable de continuité d’exploitation et, selon les éléments probants obtenus, 
+quant à l’existence ou non d’une incertitude significative liée à des événements ou situations 
+susceptibles de jeter un doute important sur la capacité du groupe à poursuivre son 
+exploitation. Si nous concluons à l’existence d’une incertitude significative, nous sommes 
+tenus d’attirer l’attention des lecteurs de notre rapport sur les informations fournies dans 
+les états de synthèse au sujet de cette incertitude ou, si ces informations ne sont pas 
+adéquates, d’exprimer une opinion modifiée. Nos conclusions s’appuient sur les éléments 
+probants obtenus jusqu’à la date de notre rapport. Des événements ou situations futurs 
+pourraient par ailleurs amener le groupe à cesser son exploitation ; 
+ 
+- 
+nous évaluons la présentation d’ensemble, la structure et le contenu des états de synthèse 
+consolidés, y compris les informations fournies dans les notes, et apprécions si les états de 
+synthèse consolidés représentent les opérations et événements sous-jacents d’une manière 
+propre à donner une image fidèle. 
+ 
+- 
+nous obtenons des éléments probants suffisants et appropriés concernant les informations 
+financières des entités et activités du groupe pour exprimer une opinion sur les états de 
+synthèse consolidés. Nous sommes responsables de la direction, de la supervision et de la 
+réalisation de l’audit du groupe. Nous assumons l’entière responsabilité de l’opinion d’audit. 
+ 
+Nous communiquons aux responsables de la gouvernance notamment l’étendue et le calendrier 
+prévus des travaux d’audit et nos constatations importantes, y compris toute déficience 
+importante du contrôle interne que nous aurions relevée au cours de notre audit. 
+ 
+ 
+Casablanca, le 29 avril 2026 
+ 
+Les Commissaires aux Comptes 
+ 
+ 
+Forvis Mazars   
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Adnane Loukili             
+ 
+ 
+ 
+ 
+                              Mohamed Rqibate 
+Associé 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+                 Associé 
+ 
+ 
+ 
+
+
+
+===== HPS PAGE 7 =====
+BILAN ACTIF
+ Brut 
+ Amortis-
+sements / 
+Provisions 
+ Net au 
+31/12/2025 
+ Net au 
+31/12/2024 
+ IMMOBILISATIONS EN NON VALEURS  
+ 47 364 152 
+ 20 101 658 
+ 27 262 494 
+ 36 735 326 
+ * Frais préliminaires 
+ * Charges à répartir 
+ 47 364 152 
+ 20 101 658 
+ 27 262 494 
+ 36 735 326 
+ * Primes de remboursement des obligations 
+ - 
+ - 
+ - 
+ - 
+ IMMOBILISATIONS INCORPORELLES  
+ 64 868 036 
+ 48 221 335 
+ 16 646 701 
+ 13 831 440 
+ * Immobilisations en recherche et développement 
+ 13 560 538 
+ 13 560 538 
+ * Brevets,marques,droits et valeurs similaires 
+ * Immobilisations incorporelles en cours 
+ * Fonds commercial 
+ 3 350 000 
+ - 
+ 3 350 000 
+ 3 350 000 
+ * Autres immobilisations incorporelles 
+ 47 957 498 
+ 34 660 797 
+ 13 296 701 
+ 10 481 440 
+ IMMOBILISATIONS CORPORELLES  
+ 76 968 133 
+ 59 481 704 
+ 17 486 429 
+ 19 748 874 
+ * Terrains 
+ * Constructions 
+ * Installations techniques,matériel et outillage 
+ 47 255 516 
+ 38 892 595 
+ 8 362 922 
+ 9 047 612 
+ * Matériel de transport 
+ 3 245 463 
+ 3 173 080 
+ 72 382 
+ 289 530 
+ * Mobilier,matériel de bureau et aménagement 
+ 26 467 154 
+ 17 416 029 
+ 9 051 125 
+ 10 411 732 
+ * Autres immobilisations corporelles  
+ * Immobilisations corporelles en cours 
+ IMMOBILISATIONS FINANCIERES  
+ 723 695 356 
+ 1 200 000 
+ 722 495 356 
+ 720 617 700 
+ * Prêts immobilisés 
+ * Autres créances financières 
+ 1 712 699 
+ - 
+ 1 712 699 
+ 1 712 699 
+ * Titres de participation 
+ 709 059 231 
+ 1 200 000 
+ 707 859 231 
+ 705 981 576 
+ * Autres titres immobilisés 
+ 12 923 425 
+ 12 923 425 
+ 12 923 425 
+ ÉCARTS DE CONVERSION-ACTIF  
+ * Diminution des créances immobilisées 
+ * Augmentation des dettes financières 
+ ACTIF IMMOBILISÉ 
+ 912 895 677 
+ 129 004 697 
+ 783 890 980 
+ 790 933 340 
+ STOCKS  
+ 173 084 786 
+ 173 084 786 
+ 143 127 621 
+ * Marchandises 
+ * Matières et fournitures consommables 
+ * Produits en cours 
+ 173 084 786 
+ 173 084 786 
+ 143 127 621 
+ * Produits intermédiaires et produits résiduels 
+ * Produits finis 
+ CREANCES DE L’ACTIF CIRCULANT 
+ 1 100 495 774 
+ 70 923 057 
+ 1 029 572 717 
+ 1 094 072 447 
+ * Fournisseurs débiteurs,avances et acomptes 
+ 7 740 918 
+ 140 000 
+ 7 600 918 
+ 10 275 233 
+ * Clients et comptes rattachés 
+ 902 127 714 
+ 70 783 057 
+ 831 344 658 
+ 902 435 822 
+ * Personnel 
+ 3 797 197 
+ 3 797 197 
+ 4 098 507 
+ * ETAT 
+ 128 991 151 
+ 128 991 151 
+ 120 150 270 
+ * Comptes d’associés 
+ * Autres Débiteurs  
+ 9 194 329 
+ 9 194 329 
+ 34 187 627 
+ * Comptes de régularisation-Actif 
+ 48 644 464 
+ 48 644 464 
+ 22 924 988 
+ TITRES VALEURS DE PLACEMENT 
+ 1 000 002 
+ 1 000 002 
+ 1 000 002 
+ ECARTS DE CONVERSION-ACTIF (éléments circulants) 
+ 9 696 869 
+ 9 696 869 
+ 5 049 386 
+ ACTIF CIRCULANT (hors trésorerie) 
+ 1 284 277 431 
+ 70 923 057 
+ 1 213 354 374 
+ 1 243 249 456 
+ * Chèques et valeurs à encaisser 
+ - 
+ * Banques, TG et CCP 
+ 59 678 962 
+ 59 678 962 
+ 9 179 226 
+ * Caisse, Régie d’avances et accréditifs 
+ 1 116 193 
+ 1 116 193 
+ 1 489 988 
+ * Provisions pour dépréciation des comptes de trésorerie 
+ TRESORERIE-ACTIF 
+ 60 795 155 
+ 60 795 155 
+  10 669 214 
+ TOTAL ACTIF 	
+ 2 257 968 263 
+ 199 927 754 
+ 2 058 040 509 
+ 2 044 852 010 
+BILAN PASSIF
+ 
+ 31/12/2025 
+31/12/2024
+*  Capital social ou personnel 
+ 74 061 900 
+ 74 061 900 
+*  Moins : actionnaires, capital souscrit non appelé capital appelé  
+*  Prime d’émission, de fusion, d’apport
+ 83 451 410 
+ 83 451 410 
+*  ECARTS DE RÉÉVALUATION
+*  Réserve légales
+ 7 406 190 
+ 7 035 990 
+*  Autres réserves 
+*  Report à nouveau                   
+ 426 995 393 
+ 392 301 412 
+*  Résultat en instance d’affectation 
+*  Résultat net de l’exercice                     
+ 138 768 757 
+ 86 907 511 
+Total des capitaux propres 
+ 730 683 650 
+ 643 758 223 
+CAPITAUX PROPRES ASSIMILES                                      
+* Subvention d’investissement
+* Provisions réglementées
+DETTES DE FINANCEMENTS                                             
+ 422 306 692 
+ 503 508 450 
+* Emprunts obligataires
+* Autres dettes de financement
+ 422 306 692 
+ 503 508 450 
+PROVISIONS DURABLES POUR RISQUES ET CHARGES      
+* Provisions pour risques
+* PROVISIONS POUR CHARGES
+ECART DE CONVERSION PASSIF   
+* Augmentation de créances immobilisées
+* Diminution des dettes de financement
+FINANCEMENT PERMANENT 
+ 1 152 990 342 
+ 1 147 266 672 
+DETTES DU PASSIF CIRCULANT                                    
+ 821 321 999 
+ 822 948 709 
+* Fournisseurs et comptes rattachés
+ 278 439 323 
+ 276 970 219 
+* Clients créditeurs,avances et acomptes
+ 5 666 046 
+ 3 073 950 
+* PERSONNEL
+ 59 928 857 
+ 14 993 989 
+* Organisme sociaux
+ 22 135 719 
+ 19 355 513 
+* Etat 
+ 9 244 252 
+ 13 712 216 
+* Comptes d’associés
+* Autres créanciers
+ 31 195 000 
+ 407 499 
+* COMPTES DE RÉGULARISATION-PASSIF
+ 414 712 801 
+ 494 435 322 
+AUTRES PROVISIONS POUR RISQUES ET CHARGES         
+ 33 434 194 
+ 25 951 036 
+ECARTS DE CONVERSION- PASSIF(ELÉMENTS CIRCULANTS)    
+ 10 293 974 
+ 8 685 593 
+PASSIF CIRCULANT (hors trésorerie) 
+ 865 050 168 
+ 857 585 338 
+* Crédits d’escompte et de trésorerie
+* Crédit de trésorerie
+ 40 000 000 
+ 40 000 000 
+* Banques (soldes créditeurs)
+TRESORERIE-PASSIF 
+ 40 000 000 
+ 40 000 000 
+TOTAL PASSIF 	
+ 2 058 040 509 
+ 2 044 852 010 
+COMPTE DE PRODUITS ET CHARGES
+NATURE
+2025
+2024
+  PRODUITS D’EXPLOITATION 
+ 935 520 960 
+ 900 098 062 
+ *  Ventes de marchandises  
+ - 
+ *  Ventes de biens et services produits 
+ 874 438 699 
+ 837 540 199 
+     Chiffre d’affaires 
+ 874 438 699 
+ 837 540 199 
+ *  Variation de stocks de produits  
+ 29 957 165 
+ 22 145 140 
+ *  Immobilisations produites par l’entreprise pour elle-même
+ *  Subventions d’exploitation 
+ 9 327 534 
+ 21 321 792 
+ *  Autres produits d’exploitation 
+ 1 467 977 
+ *  Reprises d’exploitation : transfert de charges 
+ 21 797 562 
+ 17 622 954 
+  CHARGES D’EXPLOITATION 
+ 868 531 876 
+ 833 116 310 
+ *  Achats revendus de marchandises 
+ *  Achats consommés de matières et fournitures 
+ 201 510 371 
+ 234 882 044 
+ *  Autres charges externes 
+ 219 939 037 
+ 191 227 767 
+ *  Impôts et taxes 
+ 30 974 407 
+ 30 831 061 
+ *  Charges de personnel 
+ 370 844 306 
+ 325 216 665 
+ *  Autres charges d’exploitation 
+ 4 416 143 
+ 4 091 098 
+ * Dotations d’exploitation  
+ 40 847 612 
+ 46 867 675 
+ RÉSULTAT D’EXPLOITATION 
+ 66 989 084 
+ 66 981 752 
+ PRODUITS FINANCIERS 
+ 144 701 946 
+ 86 028 725 
+ * Produits titres de participation et titres immo. 
+ 133 075 118 
+ 69 452 088 
+ * Gains de change 
+ 6 525 425 
+ 6 020 410 
+ * Intérêts et autres produits financiers 
+ 52 018 
+ 28 
+ * Reprises financières: transfert de charges 
+ 5 049 386 
+ 10 556 200 
+ CHARGES FINANCIERES 
+ 68 545 563 
+ 37 937 783 
+ *Charges d’intérêts 
+ 25 321 499 
+ 15 574 204 
+ * Pertes de change 
+ 33 527 194 
+ 17 272 410 
+ * Autres charges financières 
+ 41 784 
+ * Dotations financières 
+ 9 696 869 
+ 5 049 386 
+ RESULTAT FINANCIER 
+ 76 156 384 
+ 48 090 943 
+ RESULTAT COURANT 
+ 143 145 468 
+ 115 072 695 
+ PRODUITS NON COURANTS 
+ 2 559 188 
+ 189 854 
+ * Produits de cessions d’immobilisations 
+ 9 000 
+ * Subventions d’équilibre 
+ * Reprises sur subventions d’investissement 
+ * Autres produits non courants 
+ 2 559 188 
+ 180 854 
+ * Reprises non courantes;transfert de charges 
+ CHARGES NON COURANTES 
+ 3 343 878 
+ 8 798 079 
+ * Valeurs nettes d’amortissement immo.cédées 
+ * Subventions accordées 
+ * Autres charges non courantes 
+ 3 343 878 
+ 8 798 079 
+ * Dotations non courantes amort.et prov. 
+ RESULTAT NON COURANT 
+-784 690 
+-8 608 225 
+ RESULTAT AVANT IMPOTS  
+ 142 360 777 
+ 106 464 470 
+ IMPOTS SUR LES RESULTATS 
+ 3 592 021 
+ 19 556 959 
+ RESULTAT NET 
+ 138 768 757 
+ 86 907 511 
+RÉSULTATS 
+            ANNUELS 
+2025
+COMPTES   SOCIAUX
+
+
+
+===== HPS PAGE 8 =====
+II  Emplois et Ressources
+31/12/2025
+31/12/2024
+ Emplois 
+ Ressources 
+ Emplois 
+ Ressources 
+RESSOURCES  STABLES L’EXERCICE (FLUX)
+AUTOFINANCEMENT (A)
+108 217 462
+57 471 966
+* Capacité d'autofinancement
+160 060 792
+107 834 058
+- Distribution de bénéfices
+51 843 330
+50 362 092
+CESSIONS ET REDUCTIONS D'IMMOBILISATIONS (B)
+9 000
+* Cession d'immobi. incorporelles
+* Cession d'immobi. corporelles
+9 000
+* Cession d'immobi. financières
+* Récupérations sur créances Immob.
+AUGMENTATIONS DES CAPITAUX PROPRES ET ASSIMILES (C)
+* Augmentations de capital, apports
+* Subventions d'investissement
+AUGMENTATIONS DES DETTES DE FINANCEMENT (D)
+416 879 546
+I. TOTAL DES RESSOURCES STABLES (A+B+C+D)
+108 217 462
+474 360 512
+EMPLOIS STABLE DE L'EXERCICE (FLUX)
+ACQUISITIONS ET AUGMENTATIONS D'IMMOBILISATIONS (E)
+14 249 675
+448 103 941
+* Acquisitions d'immobilisations incorporelles
+7 123 453
+3 884 867
+* Acquisitions d’immobilisations corporelles
+5 248 566
+8 757 563
+* Acquisitions d’immobilisations financières
+1 877 656
+434 831 721
+* Augmentation des créances immobilisées
+629 790
+REMBOURSEMENTS DES CAPITAUX PROPRES(F)
+REMBOURSEMENTS DES DETTES DE FINANCEMENT(G)
+81 201 757
+EMPLOIS EN NON VALEURS(H)
+45 437 494
+II. TOTAL - EMPLOIS STABLES (E+F+G+H)
+81 201 757
+493 541 435
+III. VARIATION DU BESOIN DE FINANCEMENT GLOBAL (B.F.G)
+37 359 912
+60 648 383
+IV. VARIATION DE LA TRESORERIE
+50 125 941
+79 829 306
+ TOTAL GÉNÉRAL 
+145 577 374
+145 577 374
+554 189 818
+554 189 818
+TABLEAU DE FINANCEMENT DE L’EXERCICE
+ I  Synthèse des masses du bilan 
+ MASSES 
+31/12/2025 (a)
+31/12/2024 (b)
+ Variation (a-b) 
+ Emplois (c)  
+ Ressources (d) 
+1  Financement permanent
+1 152 990 342
+1 147 266 672
+5 723 669
+2  Moins actif immobilisé
+783 890 980
+790 933 340
+7 042 360
+3 = Fonds de Roulement (1-2) (A)
+369 099 362
+356 333 332
+12 766 030
+4  Actif circulant
+1 213 354 374
+1 243 249 456
+29 895 082
+5  Moins passif circulant
+865 050 168
+857 585 338
+7 464 830
+6 = Besoin de Financement (4-5) (B)
+348 304 206
+385 664 118
+37 359 912
+7  Trésorerie Nette (A-B)
+20 795 155
+-29 330 786
+50 125 941
+(1) à l’exclusion des dotations relatives aux actifs et passifs circulants et à la trésorerie
+(2) à l’exclusion des reprises relatives aux actifs et passifs circulants et à la trésorerie
+(3) Y compris reprises sur subventions d’investissement
+ÉTAT DES SOLDES DE GESTION (ESG)
+ I  TABLEAU DE FORMATION DES RÉSULTATS ( T F R ) 
+31/12/2025
+31/12/2024
+1
+* Ventes de marchandises (en l'état )
+2
+-
+* Achats de marchandises
+I
+=
+MARGE BRUTE SUR VENTES EN L ' ETAT
+II
++
+PRODUCTION DE L' EXERCICE  : (3 + 4 + 5 )
+904 395 864 
+859 685 339 
+3
+* Ventes de biens et services produits
+874 438 699 
+837 540 199 
+4
+* Variation de stocks de produits
+29 957 165 
+22 145 140 
+5
+* Immobilisations produites par l'entreprise pour elle-même
+III
+-
+CONSOMMATION DE L'EXERCICE : ( 6 + 7 )
+421 449 408 
+426 109 811 
+6
+* Achats consommés de matières et fournitures
+201 510 371 
+234 882 044 
+7
+* Autres charges externes
+219 939 037 
+191 227 767 
+IV
+=
+VALEUR AJOUTEE : ( I + II + III )
+482 946 456 
+433 575 528 
+8
++
+* Subventions d'exploitation
+9 327 534 
+21 321 792 
+V
+9
+* Impôts et taxes
+30 974 407 
+30 831 061 
+10
+-
+* Charges du personnel
+370 844 306 
+325 216 665 
+=
+EXCEDENT BRUT D'EXPLOITATION  ( E.B.E )
+90 455 277 
+98 849 594 
+=
+OU INSUFFISANCE BRUTE D'EXPLOITATION ( I.B.E)
+11
++
+* Autres produits d'exploitation
+1 467 977 
+12
+-
+* Autres charges d'exploitation
+4 416 143 
+4 091 098 
+13
++
+* Reprises d'exploitation : transferts de charges
+21 797 562 
+17 622 954 
+14
+-
+* DOTATIONS D'EXPLOITATION
+40 847 612 
+46 867 675 
+VI
+=
+RESULTAT D'EXPLOITATION  ( + OU - )
+66 989 084 
+66 981 752 
+VII
++ ou - 
+RESULTAT FINANCIER  
+76 156 384 
+48 090 943 
+VIII
+=
+RESULTAT COURANT ( + OU - )
+143 145 468 
+115 072 695 
++ ou - 
+RESULTAT NON COURANT  
+(784 690)
+(8 608 225)
+15
+-
+* IMPÔTS SUR LES RÉSULTATS
+3 592 021 
+19 556 959 
+X
+=
+RESULTAT NET DE L'EXERCICE  ( + OU - )
+138 768 757 
+86 907 511 
+ II  CAPACITÉ D’AUTOFINANCEMENT ( C A F ) - AUTOFINANCEMENT 
+  * Bénéfice
+138 768 757 
+86 907 511 
+  * Perte
+ 
+2
++
+* Dotations d'exploitation ( 1)
+21 292 035 
+20 935 546 
+3
++
+* Dotations financières ( 1)
+4
++
+* Dotations non courantes ( 1)
+5
+-
+* Reprises d'exploitation ( 2)
+6
+-
+* Reprises financières ( 2 )
+7
+-
+* Reprises non courantes (2)  ( 3)
+8
+-
+* Produits de cession d'immobilisations
+9 000 
+9
++
+* Valeurs nettes d'amortissement des imm. cédées 
+I
+CAPACITE D'AUTOFINANCEMENT ( C.A.F ) 
+160 060 792 
+107 834 058 
+10
+-
+* Distributions de bénéfices 
+51 843 330 
+50 362 092 
+II
+AUTOFINANCEMENT
+108 217 462 
+57 471 966 
+RÉSULTATS 
+            ANNUELS 
+2025
+COMPTES   SOCIAUX
+
+
+
+===== HPS PAGE 9 =====
+RÉSULTATS 
+            ANNUELS 
+2025
+COMPTES   SOCIAUX
+ 
+ 
+ 
+ 
+ 
+
+
+
+===== HPS PAGE 10 =====
+Afrique
+Casablanca Nearshore Park, Shore 1
+1100 boulevard Al Qods, Sidi Maârouf, 20270 Casablanca - Maroc
+Tél. : + 212 529 045 000
+Moyen Orient & Asie
+Dubai Internet City
+209 / 210 Building 12, 2nd Floor
+P.O. Box 500308 - Dubai
+United Arab Emirates
+Tél. : + 971 4390 0750
+One Rafl es - Level 24
+1, Rafl es Place
+048616 Singapore
+Singapore
+Tél. : + 65 6408 0732
+Europe & Amériques
+65-67, rue Faubourg St Honoré
+75008 Paris
+France
+Tel: + 33 1 5 8 1 8 0 1 3 4
+805 Avenue Guilibert Gauthier
+de la Lauzière
+13290 Aix en Provence
+France
+Tél : + 33 4 42 91 42 99
+https://x.com/HPS_worldwide
+https://www.linkedin.com/company/hps/
+Contact investisseurs:
+invest@hps-worldwide.com
+www.hps-worldwide.com

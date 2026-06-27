@@ -22,6 +22,27 @@ from .storage import s3_client
 # Low-level loaders
 # ---------------------------------------------------------------------------
 
+def format_ohlcv_timestamp(value) -> str:
+    """Return a stable timestamp label for daily and intraday OHLCV bars."""
+    ts = pd.Timestamp(value)
+    if pd.isna(ts):
+        return str(value)
+
+    if ts.tzinfo is not None:
+        ts = ts.tz_convert("UTC")
+
+    if (
+        ts.hour == 0
+        and ts.minute == 0
+        and ts.second == 0
+        and ts.microsecond == 0
+        and ts.nanosecond == 0
+    ):
+        return ts.strftime("%Y-%m-%d")
+
+    return ts.isoformat().replace("+00:00", "Z")
+
+
 def load_close_series_from_store(*, object_key: str) -> pd.Series:
     """Load a Close series from a market_data_store parquet in S3."""
     payload = s3_client().get_object(Bucket=settings.S3_BUCKET, Key=object_key)["Body"].read()

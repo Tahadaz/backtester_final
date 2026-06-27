@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { horizonLabel } from "@/lib/horizon"
 import {
   Table,
   TableBody,
@@ -188,7 +189,7 @@ export function StatArbPanel() {
                   className={horizon === item ? "active" : ""}
                   onClick={() => setHorizon(item)}
                 >
-                  {item}
+                  {horizonLabel(item)}
                 </button>
               ))}
             </div>

@@ -140,7 +140,7 @@ class IndicatorSeriesRequest(BaseModel):
     symbol: str = Field(..., min_length=1)
     indicator: str = Field(..., pattern=r"^(sma|ema|ema_cross|ichimoku|psar|macd|roc|trix|adx|tsi|rsi|stochastic|cci|mfi|uo|obv|cmf|ad|vwap|fi)$")
     params: dict[str, float] = Field(default_factory=dict)
-    timeframe: str = Field(default="1D", pattern=r"^1D$")
+    timeframe: str = Field(default="1D", min_length=1)
     live_bar: IndicatorLiveBar | None = None
 
 

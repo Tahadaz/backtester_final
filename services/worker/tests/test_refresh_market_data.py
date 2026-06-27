@@ -4,6 +4,9 @@ import importlib
 import datetime as dt
 from types import SimpleNamespace
 
+import pandas as pd
+import requests
+
 from services.api.app.models import SignalEngineGlobalResult, WfoGlobalSignal
 from core.quant_core.signal_engine.modes import ALL_SIGNAL_MODE_NAMES
 from services.worker.tasks import signal_engine_batch as signal_engine_batch_mod
@@ -43,12 +46,16 @@ class _CaptureDB:
     def __init__(self):
         self.executed = []
         self.commits = 0
+        self.rollbacks = 0
 
     def execute(self, statement, params=None):
         self.executed.append((str(statement), params or {}))
 
     def commit(self):
         self.commits += 1
+
+    def rollback(self):
+        self.rollbacks += 1
 
 
 def _engine_global_rows(symbol: str, *, stale_target: tuple[str, str] | None = None):
@@ -250,6 +257,66 @@ def test_upsert_market_data_store_persists_dashboard_stats():
     assert params["adv_20d"] == 12345.0
 
 
+def test_update_stock_share_count_from_frame_persists_nombre_titres():
+    db = _CaptureDB()
+    frame = pd.DataFrame(
+        {"NombreTitres": [11_864_676.0]},
+        index=pd.DatetimeIndex([dt.datetime(2026, 6, 2, tzinfo=dt.timezone.utc)]),
+    )
+
+    refresh_market_data_mod._update_stock_share_count_from_frame(
+        db,
+        "MNG",
+        frame,
+        source="bourse_direct",
+    )
+
+    assert db.commits == 1
+    sql, params = db.executed[0]
+    assert "shares_outstanding" in sql
+    assert params["symbol"] == "MNG"
+    assert params["shares_outstanding"] == 11_864_676
+    assert params["shares_source"] == "bourse_direct"
+    assert params["shares_as_of"] == dt.date(2026, 6, 2)
+
+
+def test_update_stock_metadata_from_bourse_persists_nombre_titres(monkeypatch):
+    db = _CaptureDB()
+    html = """
+    <html>
+      <body>
+        mardi 2 juin 2026
+        <a href="/fr/live-market/instruments/MNG?pwa=1">Managem</a>
+        <span>MA0000011058</span>
+        <table>
+          <tr><th>Secteur</th><td>Mines</td></tr>
+          <tr><th>Nombre de titres</th><td><span dir="ltr">11 864 676</span></td></tr>
+        </table>
+      </body>
+    </html>
+    """
+
+    class FakeResponse:
+        status_code = 200
+        text = html
+
+    def fake_get(*args, **kwargs):
+        return FakeResponse()
+
+    monkeypatch.setattr(requests, "get", fake_get)
+
+    refresh_market_data_mod._update_stock_metadata_from_bourse(db, "MNG", "MNG")
+
+    assert db.commits == 1
+    sql, params = db.executed[0]
+    assert "shares_outstanding" in sql
+    assert params["symbol"] == "MNG"
+    assert params["shares_outstanding"] == 11_864_676
+    assert params["shares_source"] == "bourse_direct"
+    assert params["shares_as_of"] == dt.date(2026, 6, 2)
+    assert params["isin"] == "MA0000011058"
+
+
 def test_enqueue_dashboard_snapshot_after_signal_jobs_uses_allow_failure_dependency(monkeypatch):
     captured: dict = {}
 
@@ -283,4 +350,42 @@ def test_enqueue_dashboard_snapshot_after_signal_jobs_uses_allow_failure_depende
     }
     assert captured["kwargs"]["job_timeout"] == 3600
     assert captured["kwargs"]["meta"]["updated_symbols_count"] == 2
+    assert captured["kwargs"]["meta"]["signal_dependency_count"] == 2
+
+
+def test_enqueue_best_evidence_snapshot_after_signal_jobs_uses_signal_backtest_queue(monkeypatch):
+    captured: dict = {}
+
+    class FakeQueue:
+        def enqueue(self, *args, **kwargs):
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+            return SimpleNamespace(id="best-evidence-job")
+
+    monkeypatch.setattr(refresh_market_data_mod, "_signal_backtest_queue", lambda: FakeQueue())
+    monkeypatch.setattr(
+        refresh_market_data_mod,
+        "_dashboard_snapshot_dependency",
+        lambda job_ids: {"jobs": tuple(job_ids), "allow_failure": True},
+    )
+
+    job_id = refresh_market_data_mod._enqueue_best_evidence_snapshot_after_signal_jobs(
+        ["engine-1", "wfo-1", "engine-1"],
+        symbols=["IAM"],
+        triggered_by="market_refresh_single",
+    )
+
+    assert job_id == "best-evidence-job"
+    assert captured["args"] == (
+        "services.worker.tasks.signal_best_evidence_snapshot.refresh_signal_best_evidence_snapshot",
+        "IAM",
+        None,
+        0,
+    )
+    assert captured["kwargs"]["depends_on"] == {
+        "jobs": ("engine-1", "wfo-1"),
+        "allow_failure": True,
+    }
+    assert captured["kwargs"]["job_timeout"] == 7200
+    assert captured["kwargs"]["meta"]["updated_symbols_count"] == 1
     assert captured["kwargs"]["meta"]["signal_dependency_count"] == 2

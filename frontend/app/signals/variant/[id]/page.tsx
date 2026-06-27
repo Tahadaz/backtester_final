@@ -20,6 +20,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 import { ArrowLeft, ChevronDown, ChevronRight, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { horizonLabel } from "@/lib/horizon"
 import { signalVariantLabel } from "@/lib/signal-variant-label"
 import { ICStatsChip } from "@/components/signals/ic-stats-chip"
 import type { VariantDetail, VariantSummary, VariantBacktest, PlotlyFigure } from "@/lib/api"
@@ -238,7 +239,7 @@ export default function VariantDetailPage() {
             <div className="flex items-center gap-2">
               <h1 className="text-base font-bold">{srMode ? "Couple S/R" : symbol}</h1>
               <Badge variant="outline" className="text-xs font-medium px-2 py-0.5">
-                {horizon === "weekly" ? "Court terme" : horizon === "monthly" ? "Moyen terme" : "Long terme"}
+                {horizonLabel(horizon)}
               </Badge>
             </div>
             <p className="text-sm font-medium text-muted-foreground mt-0.5">{data.description}</p>

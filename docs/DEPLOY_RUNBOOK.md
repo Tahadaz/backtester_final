@@ -6,8 +6,8 @@ This is the source-of-truth deploy runbook for the Oracle VM path.
 
 | Asset | Status |
 | --- | --- |
-| `infra/docker-compose.gcp.yml` | Production VM compose stack. Uses GHCR images for API, worker, and frontend. |
-| `infra/Caddyfile.gcp` | TLS reverse proxy with IP allowlist. |
+| `infra/docker-compose.prod.yml` | Production VM compose stack. Uses GHCR images for API, worker, and frontend. |
+| `infra/Caddyfile.prod` | TLS reverse proxy with IP allowlist. |
 | `.github/workflows/build-images.yml` | Builds `linux/arm64` images on pushes to `main`. |
 | `.github/workflows/deploy-vm.yml` | SSH deploy to Oracle VM after image builds complete. |
 | `services/api/Dockerfile` | FastAPI image. |
@@ -193,13 +193,13 @@ cd /opt/bt
 git fetch --quiet
 git reset --hard origin/main
 
-IMAGE_TAG=latest docker compose --env-file /etc/bt/env -f infra/docker-compose.gcp.yml pull
+IMAGE_TAG=latest docker compose --env-file /etc/bt/env -f infra/docker-compose.prod.yml pull
 
-IMAGE_TAG=latest docker compose --env-file /etc/bt/env -f infra/docker-compose.gcp.yml run --rm quant_api \
+IMAGE_TAG=latest docker compose --env-file /etc/bt/env -f infra/docker-compose.prod.yml run --rm quant_api \
   alembic -c services/api/alembic.ini upgrade head
 
-IMAGE_TAG=latest docker compose --env-file /etc/bt/env -f infra/docker-compose.gcp.yml up -d --remove-orphans
-IMAGE_TAG=latest docker compose --env-file /etc/bt/env -f infra/docker-compose.gcp.yml ps
+IMAGE_TAG=latest docker compose --env-file /etc/bt/env -f infra/docker-compose.prod.yml up -d --remove-orphans
+IMAGE_TAG=latest docker compose --env-file /etc/bt/env -f infra/docker-compose.prod.yml ps
 ```
 
 10. Install heartbeat timer:
@@ -281,7 +281,7 @@ Recreate the frontend and Caddy as `deploy` so `NEXTAUTH_URL` and the Caddy site
 ```bash
 cd /opt/bt
 TAG=$(docker inspect -f '{{.Config.Image}}' quant_frontend | sed 's|^ghcr.io/tahadaz/bt-frontend:||')
-IMAGE_TAG="$TAG" docker compose --env-file /etc/bt/env -f infra/docker-compose.gcp.yml up -d --no-deps --force-recreate quant_frontend edge_proxy
+IMAGE_TAG="$TAG" docker compose --env-file /etc/bt/env -f infra/docker-compose.prod.yml up -d --no-deps --force-recreate quant_frontend edge_proxy
 ```
 
 ## Allowlist Updates
@@ -300,7 +300,7 @@ Then recreate only Caddy as `deploy`:
 ```bash
 cd /opt/bt
 TAG=$(docker inspect -f '{{.Config.Image}}' quant_frontend | sed 's|^ghcr.io/tahadaz/bt-frontend:||')
-IMAGE_TAG="$TAG" docker compose --env-file /etc/bt/env -f infra/docker-compose.gcp.yml up -d --no-deps --force-recreate edge_proxy
+IMAGE_TAG="$TAG" docker compose --env-file /etc/bt/env -f infra/docker-compose.prod.yml up -d --no-deps --force-recreate edge_proxy
 ```
 
 Avoid heredocs and pasted multi-line Python in a remote terminal for simple env changes; indentation and line wrapping caused avoidable failures during the rollout.
@@ -337,7 +337,7 @@ python -m alembic -c services/api/alembic.ini heads
 Apply on VM:
 
 ```bash
-IMAGE_TAG=latest docker compose --env-file /etc/bt/env -f infra/docker-compose.gcp.yml run --rm quant_api \
+IMAGE_TAG=latest docker compose --env-file /etc/bt/env -f infra/docker-compose.prod.yml run --rm quant_api \
   alembic -c services/api/alembic.ini upgrade head
 ```
 
@@ -360,8 +360,8 @@ RESOLVE="${DOMAIN}:443:127.0.0.1"
 Container health:
 
 ```bash
-docker compose --env-file /etc/bt/env -f infra/docker-compose.gcp.yml ps
-docker compose --env-file /etc/bt/env -f infra/docker-compose.gcp.yml exec -T quant_api \
+docker compose --env-file /etc/bt/env -f infra/docker-compose.prod.yml ps
+docker compose --env-file /etc/bt/env -f infra/docker-compose.prod.yml exec -T quant_api \
   python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).read().decode())"
 ```
 
@@ -392,20 +392,20 @@ curl -fsS --resolve "$RESOLVE" "$BASE/api/dashboard/data/weekly" | head -c 300
 Redis queues:
 
 ```bash
-docker compose --env-file /etc/bt/env -f infra/docker-compose.gcp.yml exec -T quant_redis \
+docker compose --env-file /etc/bt/env -f infra/docker-compose.prod.yml exec -T quant_redis \
   redis-cli llen runs
-docker compose --env-file /etc/bt/env -f infra/docker-compose.gcp.yml exec -T quant_redis \
+docker compose --env-file /etc/bt/env -f infra/docker-compose.prod.yml exec -T quant_redis \
   redis-cli llen market_refresh
-docker compose --env-file /etc/bt/env -f infra/docker-compose.gcp.yml exec -T quant_redis \
+docker compose --env-file /etc/bt/env -f infra/docker-compose.prod.yml exec -T quant_redis \
   redis-cli llen signal_engine
 ```
 
 Logs:
 
 ```bash
-docker compose --env-file /etc/bt/env -f infra/docker-compose.gcp.yml logs --tail=100 quant_api
-docker compose --env-file /etc/bt/env -f infra/docker-compose.gcp.yml logs --tail=100 quant_worker
-docker compose --env-file /etc/bt/env -f infra/docker-compose.gcp.yml logs --tail=100 edge_proxy
+docker compose --env-file /etc/bt/env -f infra/docker-compose.prod.yml logs --tail=100 quant_api
+docker compose --env-file /etc/bt/env -f infra/docker-compose.prod.yml logs --tail=100 quant_worker
+docker compose --env-file /etc/bt/env -f infra/docker-compose.prod.yml logs --tail=100 edge_proxy
 ```
 
 ## Warmup Commands
@@ -462,14 +462,14 @@ Fast path:
 3. Approve it in Postgres:
 
 ```bash
-docker compose --env-file /etc/bt/env -f infra/docker-compose.gcp.yml exec -T quant_postgres \
+docker compose --env-file /etc/bt/env -f infra/docker-compose.prod.yml exec -T quant_postgres \
   psql -U app -d quant -c "UPDATE users SET \"isActive\" = true WHERE email = 'demo@example.com';"
 ```
 
 List pending users:
 
 ```bash
-docker compose --env-file /etc/bt/env -f infra/docker-compose.gcp.yml exec -T quant_postgres \
+docker compose --env-file /etc/bt/env -f infra/docker-compose.prod.yml exec -T quant_postgres \
   psql -U app -d quant -c "SELECT id, email, \"isActive\" FROM users ORDER BY email;"
 ```
 
@@ -479,7 +479,7 @@ Use the previous image tag or `latest` known-good tag:
 
 ```bash
 cd /opt/bt
-IMAGE_TAG=<previous_sha> docker compose --env-file /etc/bt/env -f infra/docker-compose.gcp.yml up -d --remove-orphans
+IMAGE_TAG=<previous_sha> docker compose --env-file /etc/bt/env -f infra/docker-compose.prod.yml up -d --remove-orphans
 ```
 
 If migrations are not backward-compatible, restore Postgres using `docs/ops/restore.md`.
@@ -490,9 +490,9 @@ These were run during the audit:
 
 ```bash
 docker compose -f infra/docker-compose.yml config --quiet
-docker compose -f infra/docker-compose.gcp.yml config --quiet
+docker compose -f infra/docker-compose.prod.yml config --quiet
 docker run --rm -e DOMAIN=84.8.218.252.sslip.io -e ALLOWED_REMOTE_IPS=197.230.23.178/32 \
-  -v "${PWD}/infra/Caddyfile.gcp:/etc/caddy/Caddyfile:ro" \
+  -v "${PWD}/infra/Caddyfile.prod:/etc/caddy/Caddyfile:ro" \
   caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
 python -m alembic -c services/api/alembic.ini heads
 ```
@@ -502,4 +502,4 @@ Validation notes:
 - Compose validation passes.
 - Caddy validation passes, with only a formatting warning from Caddy.
 - Alembic reports one head: `f7a8b9c1d2e3`.
-- `docker compose -f infra/docker-compose.gcp.yml config --quiet` warns if `NEXTAUTH_SECRET` is not supplied in the current shell; the VM env file must supply it.
+- `docker compose -f infra/docker-compose.prod.yml config --quiet` warns if `NEXTAUTH_SECRET` is not supplied in the current shell; the VM env file must supply it.

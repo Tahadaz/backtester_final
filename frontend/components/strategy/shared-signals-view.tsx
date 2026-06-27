@@ -8,6 +8,7 @@ import { SignalEvidenceTab } from "@/components/strategy/signal-evidence-tab"
 import { SignalEngineResultsPanel } from "@/components/strategy/signal-engine-results-panel"
 import { WfoEvidenceTab } from "@/components/strategy/wfo-evidence-tab"
 import { BacktestMCPanel } from "@/components/signals/backtest-mc-panel"
+import { PortfolioBacktestPanel } from "@/components/signals/portfolio-backtest-panel"
 
 type SharedSignalsViewProps = {
   selectedSymbol: string | null
@@ -16,7 +17,8 @@ type SharedSignalsViewProps = {
   onHorizonChange: (value: string) => void
   variant: ExpandedSignalsPageView
   topbarContent?: ReactNode
-  defaultTab?: "technique" | "evidence" | "indicateurs" | "wfo" | "backtest"
+  defaultTab?: "technique" | "evidence" | "indicateurs" | "wfo" | "backtest" | "portfolio"
+  onTabChange?: (tab: string) => void
   evidenceSource?: "auto" | "signal_engine" | "wfo"
   evidenceVariant?: string | null
   selectedVariantId?: string | null
@@ -66,6 +68,7 @@ export function SharedSignalsView({
   variant,
   topbarContent,
   defaultTab,
+  onTabChange,
   evidenceSource = "auto",
   evidenceVariant = null,
   selectedVariantId = null,
@@ -84,6 +87,7 @@ export function SharedSignalsView({
       onCooldownBarsChange={setCooldownBars}
       topbarContent={topbarContent}
       defaultTab={defaultTab}
+      onTabChange={onTabChange}
       techniqueContent={
         selectedSymbol ? (
           <SignalTechniqueDashboard
@@ -124,7 +128,7 @@ export function SharedSignalsView({
       }
       wfoContent={
         selectedSymbol ? (
-          <WfoEvidenceTab symbol={selectedSymbol} horizon={horizon} variant={variant} />
+          <WfoEvidenceTab symbol={selectedSymbol} horizon={horizon} variant={variant} cooldownBars={cooldownBars} />
         ) : (
           <EmptyState icon={Settings} message={copy.wfo} />
         )
@@ -136,6 +140,7 @@ export function SharedSignalsView({
           <EmptyState icon={TrendingUp} message={copy.backtest} />
         )
       }
+      portfolioContent={<PortfolioBacktestPanel horizon={horizon} />}
     />
   )
 }

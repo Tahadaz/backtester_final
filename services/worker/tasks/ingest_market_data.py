@@ -31,6 +31,8 @@ from core.quant_core.data import _standardize_ohlcv, _standardize_ohlcv_index, _
 from core.quant_core.s3_keys import build_dataset_object_key, build_market_store_object_key
 from services.worker.tasks.dashboard_snapshot import regenerate_dashboard_snapshot
 
+NON_STOCK_UPLOAD_SYMBOLS = {"INSTRUMENT", "MAJ", "MAJJ", "WORKSHEET"}
+
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -300,6 +302,8 @@ def _normalize_upload_scope(meta: dict[str, object] | None) -> str:
 
 
 def _is_symbol_allowed_for_upload_scope(symbol: str, upload_scope: str) -> tuple[bool, str | None]:
+    if str(symbol or "").strip().upper() in NON_STOCK_UPLOAD_SYMBOLS:
+        return False, "non_stock_symbol_rejected"
     if upload_scope == "masi" and not is_masi_ticker(symbol):
         return False, "non_masi_symbol_rejected"
     return True, None
@@ -911,7 +915,7 @@ def ingest_excel_indices_to_store(dataset_id: str) -> dict:
                 # Parse date index
                 if "date" in df.columns:
                     from services.api.app.market_data_formats import parse_datetime_series
-                    df["date"] = parse_datetime_series(df["date"])
+                    df["date"] = parse_datetime_series(df["date"], day_first=True)
                     df = df.dropna(subset=["date"]).set_index("date")
                     df.index.name = "Date"
 

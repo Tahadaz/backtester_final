@@ -12,6 +12,7 @@ import logging
 import math
 from collections import defaultdict
 from datetime import date, datetime, timezone
+from itertools import combinations
 from typing import Any
 
 import numpy as np
@@ -89,6 +90,13 @@ EXPANDED_CATEGORY_FAMILIES: dict[str, list[str]] = {
     "momentum": ["macd", "roc", "trix", "adx", "tsi"],
     "oscillation": ["rsi", "stochastic", "cci", "mfi", "uo"],
     "volume": ["obv", "cmf", "ad", "vwap", "fi"],
+}
+TECHNICAL_CATEGORY_ORDER: tuple[str, ...] = tuple(EXPANDED_CATEGORY_FAMILIES.keys())
+TECHNICAL_CATEGORY_LABELS: dict[str, str] = {
+    "tendance": "Tendance",
+    "momentum": "Momentum",
+    "oscillation": "Oscillation",
+    "volume": "Volume",
 }
 
 CLASSIC_TECHNICAL_VARIANT = "classic_ta"
@@ -532,6 +540,122 @@ def _direction_from_score(score: float | None) -> str:
     return "none"
 
 
+def _technical_scope_categories(scope: str, scope_key: str) -> list[str]:
+    if scope == "per_category":
+        return [scope_key] if scope_key in TECHNICAL_CATEGORY_ORDER else []
+    if scope == "combination":
+        return [
+            category
+            for category in (item.strip() for item in scope_key.split("+"))
+            if category in TECHNICAL_CATEGORY_ORDER
+        ]
+    return list(TECHNICAL_CATEGORY_ORDER)
+
+
+def _technical_scope_label(scope: str, scope_key: str) -> str:
+    categories = _technical_scope_categories(scope, scope_key)
+    if scope == "global":
+        return "Global"
+    if categories:
+        return " + ".join(TECHNICAL_CATEGORY_LABELS.get(category, category) for category in categories)
+    return scope_key or scope or "Global"
+
+
+def _scoped_category_payload(
+    per_family: dict[str, Any] | None,
+    categories: list[str],
+) -> dict[str, Any]:
+    payload = per_family or {}
+    return {
+        category: payload[category]
+        for category in categories
+        if isinstance(payload.get(category), dict)
+    }
+
+
+def _scoped_factor_dependencies(
+    factor_dependencies: dict[str, list[dict[str, Any]]] | None,
+    categories: list[str],
+) -> dict[str, list[dict[str, Any]]]:
+    payload = factor_dependencies or {}
+    return {
+        category: payload[category]
+        for category in categories
+        if isinstance(payload.get(category), list)
+    }
+
+
+def _category_score_value(payload: dict[str, Any] | None, category: str) -> float | None:
+    raw = (payload or {}).get(category)
+    if not isinstance(raw, dict):
+        return None
+    return _safe_float(raw.get("score_pct"))
+
+
+def _category_signal_label(payload: dict[str, Any] | None, category: str) -> str | None:
+    raw = (payload or {}).get(category)
+    if not isinstance(raw, dict):
+        return None
+    label = raw.get("label")
+    return str(label) if isinstance(label, str) and label else None
+
+
+def _technical_scoped_candidates(
+    *,
+    source: str,
+    variant: str,
+    per_family: dict[str, Any],
+    factor_dependencies: dict[str, list[dict[str, Any]]] | None = None,
+) -> list[dict[str, Any] | None]:
+    candidates: list[dict[str, Any] | None] = []
+
+    available_categories = [
+        category
+        for category in TECHNICAL_CATEGORY_ORDER
+        if _category_score_value(per_family, category) is not None
+    ]
+
+    for category in available_categories:
+        score = _category_score_value(per_family, category)
+        candidates.append(_build_technical_signal_candidate(
+            source=source,
+            variant=variant,
+            score=score,
+            signal_label=_category_signal_label(per_family, category),
+            per_family=_scoped_category_payload(per_family, [category]),
+            factor_dependencies=_scoped_factor_dependencies(factor_dependencies, [category]),
+            scope="per_category",
+            scope_key=category,
+            categories=[category],
+        ))
+
+    for size in (2, 3):
+        for subset_tuple in combinations(available_categories, size):
+            subset = list(subset_tuple)
+            scores = [
+                score
+                for category in subset
+                for score in [_category_score_value(per_family, category)]
+                if score is not None
+            ]
+            if len(scores) != len(subset):
+                continue
+            score = sum(scores) / len(scores)
+            candidates.append(_build_technical_signal_candidate(
+                source=source,
+                variant=variant,
+                score=score,
+                signal_label=_score_to_label(score),
+                per_family=_scoped_category_payload(per_family, subset),
+                factor_dependencies=_scoped_factor_dependencies(factor_dependencies, subset),
+                scope="combination",
+                scope_key="+".join(subset),
+                categories=subset,
+            ))
+
+    return candidates
+
+
 def _technical_variant_priority(variant: str) -> tuple[int, int, int, int]:
     try:
         mode = resolve_signal_mode(variant)
@@ -547,15 +671,17 @@ def _technical_variant_priority(variant: str) -> tuple[int, int, int, int]:
     )
 
 
-def _technical_signal_rank(candidate: dict[str, Any]) -> tuple[float, int, int, int, int, int, str]:
+def _technical_signal_rank(candidate: dict[str, Any]) -> tuple[float, int, int, int, int, int, int, str]:
     variant = str(candidate.get("variant") or "")
     source = str(candidate.get("source") or "")
+    scope = str(candidate.get("scope") or "global")
     abs_score = _safe_float(candidate.get("abs_score_pct")) or 0.0
     variant_priority = _technical_variant_priority(variant)
     return (
         abs_score,
         1 if source == "wfo" else 0,
         *variant_priority,
+        1 if scope == "global" else 0,
         str(candidate.get("label") or ""),
     )
 
@@ -568,6 +694,9 @@ def _build_technical_signal_candidate(
     signal_label: str | None,
     per_family: dict[str, Any] | None,
     factor_dependencies: dict[str, list[dict[str, Any]]] | None = None,
+    scope: str = "global",
+    scope_key: str = "global",
+    categories: list[str] | None = None,
 ) -> dict[str, Any] | None:
     if score is None:
         return None
@@ -576,10 +705,16 @@ def _build_technical_signal_candidate(
     except ValueError:
         canonical_variant = str(variant or "expanded")
     rounded_score = _round(score)
+    scope_label = _technical_scope_label(scope, scope_key)
+    method_label = _signal_method_label(source, canonical_variant)
     return {
         "source": "wfo" if source == "wfo" else "signal_engine",
         "variant": canonical_variant,
-        "label": _signal_method_label(source, canonical_variant),
+        "scope": scope,
+        "scope_key": scope_key,
+        "scope_label": scope_label,
+        "categories": categories if categories is not None else _technical_scope_categories(scope, scope_key),
+        "label": method_label if scope == "global" else f"{method_label} - {scope_label}",
         "signal_label": signal_label or _score_to_label(score),
         "direction": _direction_from_score(score),
         "score_pct": rounded_score,
@@ -1863,13 +1998,8 @@ def build_dashboard_payload(db: Session, horizon: str, *, include_edge: bool = F
                 coverage_pct = min(1.0, max(0.0, metric_count / 20.0))
             confidence_score = _safe_float(getattr(fundamental_ensemble, "confidence_score", None))
             fundamentals_obj = {
-                "overall_score": _round(scores.get("overall")),
                 "value_score": _round(scores.get("value")),
                 "quality_score": _round(scores.get("quality")),
-                "growth_score": _round(scores.get("growth")),
-                "risk_score": _round(scores.get("risk")),
-                "cash_flow_score": _round(scores.get("cash_flow")),
-                "health_score": _round(scores.get("health")),
                 "fair_value": _round(getattr(fundamental_ensemble, "fair_value_base", None)),
                 "upside_pct": _round(getattr(fundamental_ensemble, "upside_pct", None)),
                 "confidence": (
@@ -1908,12 +2038,19 @@ def build_dashboard_payload(db: Session, horizon: str, *, include_edge: bool = F
             factor_dependencies: dict[str, list[dict[str, Any]]] = {}
             if mode.is_factor_x_ta and family_rows:
                 factor_per_family, factor_dependencies = _factor_family_payload(family_rows)
+            category_payload = factor_per_family or _category_scores_from_family_payload(row[5] or {}, canonical_variant)
             technical_candidates.append(_build_technical_signal_candidate(
                 source="signal_engine",
                 variant=canonical_variant,
                 score=score,
                 signal_label=row[4] or _score_to_label(score),
-                per_family=factor_per_family or _category_scores_from_family_payload(row[5] or {}, canonical_variant),
+                per_family=category_payload,
+                factor_dependencies=factor_dependencies,
+            ))
+            technical_candidates.extend(_technical_scoped_candidates(
+                source="signal_engine",
+                variant=canonical_variant,
+                per_family=category_payload,
                 factor_dependencies=factor_dependencies,
             ))
 
@@ -1929,12 +2066,18 @@ def build_dashboard_payload(db: Session, horizon: str, *, include_edge: bool = F
             if score is None:
                 score = _safe_float(row[4])
             wfo_per_family = technical_wfo_summary_by_symbol_variant.get((symbol, canonical_variant), {})
+            wfo_category_payload = {c: wfo_per_family[c] for c in EXPANDED_CATEGORY_FAMILIES if c in wfo_per_family}
             technical_candidates.append(_build_technical_signal_candidate(
                 source="wfo",
                 variant=canonical_variant,
                 score=score,
                 signal_label=row[5] or _score_to_label(score),
-                per_family={c: wfo_per_family[c] for c in EXPANDED_CATEGORY_FAMILIES if c in wfo_per_family},
+                per_family=wfo_category_payload,
+            ))
+            technical_candidates.extend(_technical_scoped_candidates(
+                source="wfo",
+                variant=canonical_variant,
+                per_family=wfo_category_payload,
             ))
 
         stock_obj: dict[str, Any] = {

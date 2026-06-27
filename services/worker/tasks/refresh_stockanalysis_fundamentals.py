@@ -1,14 +1,21 @@
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import logging
 import time
 import uuid
 from typing import Any
 
-from core.quant_core.fundamentals.domain import FundamentalWorkbook
+from core.quant_core.fundamentals.cgnc_mapping import (
+    FINANCIAL_ARCHETYPES,
+    FINANCIAL_SUPPRESSED_METRICS,
+    infer_statement_archetype_from_values,
+)
+from core.quant_core.fundamentals.domain import AnnualMetricRow, FundamentalWorkbook
 from core.quant_core.fundamentals.providers import ProviderUnavailableError
 from core.quant_core.fundamentals.providers.stockanalysis_provider import StockAnalysisFundamentalProvider
+from core.quant_core.fundamentals.ratios import compute_ratios
 
 from services.api.app import models
 from services.api.app.json_sanitize import sanitize_json_compatible
@@ -16,10 +23,12 @@ from services.api.app.services.fundamentals import (
     _build_integrity_reports,
     _persist_integrity_reports,
     create_import_run,
+    delete_fundamental_import_artifacts,
     latest_snapshot_rows_by_symbol,
     make_bulk_overrides_loader,
     persist_pillar_history_for_import,
     recompute_symbol_valuations_all_scenarios,
+    refresh_canonical_snapshot_flags,
     rescore_universe,
 )
 from services.worker.db import SessionLocal
@@ -90,6 +99,85 @@ def _missing_coverage_symbols(
     return missing
 
 
+def _augment_workbook_with_ratios(
+    workbook: FundamentalWorkbook,
+    stock: models.StockMaster,
+    db,
+) -> FundamentalWorkbook:
+    """Compute archetype-aware ratios and merge them into the workbook.
+
+    Determines company archetype from non-null snapshot metrics, fetches current
+    price from MarketDataStore.close_last (1d timeframe), calls compute_ratios,
+    appends ratio rows to annual_metrics, and updates snapshot.metrics with
+    latest-year ratios.
+    """
+    if workbook.latest_snapshots:
+        archetype = infer_statement_archetype_from_values(workbook.latest_snapshots[0].metrics)
+    else:
+        archetype = "unknown"
+
+    if archetype == "unknown" and stock is not None:
+        stock_sector = str(getattr(stock, "sector", None) or "").lower()
+        if "assurance" in stock_sector or "insurance" in stock_sector:
+            archetype = "insurance"
+
+    raw_by_year: dict[int, dict[str, float]] = {}
+    for row in workbook.annual_metrics:
+        if row.metric_value is not None:
+            raw_by_year.setdefault(row.statement_year, {})[row.metric_name] = row.metric_value
+
+    price_row = (
+        db.query(models.MarketDataStore.close_last)
+        .filter(
+            models.MarketDataStore.symbol == stock.symbol,
+            models.MarketDataStore.timeframe == "1d",
+        )
+        .first()
+    )
+    price = float(price_row[0]) if price_row and price_row[0] is not None else None
+    shares = float(stock.shares_outstanding) if stock.shares_outstanding is not None else None
+
+    ratios_by_year = compute_ratios(raw_by_year, archetype=archetype, price=price, shares=shares)
+    if not ratios_by_year:
+        # Still stamp archetype on snapshots so cohort assignment is correct even without ratios.
+        for snap in workbook.latest_snapshots:
+            snap.source["archetype"] = archetype
+        return workbook
+
+    company_name = (
+        workbook.latest_snapshots[0].company_name
+        if workbook.latest_snapshots
+        else (stock.display_name or stock.symbol)
+    )
+    ratio_rows: list[AnnualMetricRow] = [
+        AnnualMetricRow(
+            symbol=stock.symbol,
+            company_name=company_name,
+            statement_year=year,
+            metric_name=metric,
+            metric_value=value,
+            raw_metric_name=f"computed:{metric}",
+            source_sheet="ratios_computed",
+            source_field=metric,
+            is_proxy=True,
+        )
+        for year, ratios in ratios_by_year.items()
+        for metric, value in ratios.items()
+    ]
+
+    latest_year = max(ratios_by_year)
+    latest_ratios = ratios_by_year[latest_year]
+    for snap in workbook.latest_snapshots:
+        snap.metrics.update(latest_ratios)
+        snap.source["archetype"] = archetype
+        snap.diagnostics["archetype"] = archetype
+        if archetype in FINANCIAL_ARCHETYPES:
+            for key in FINANCIAL_SUPPRESSED_METRICS:
+                snap.metrics.pop(key, None)
+
+    return dataclasses.replace(workbook, annual_metrics=workbook.annual_metrics + ratio_rows)
+
+
 def _persist_workbook(db, import_id: uuid.UUID, workbook: FundamentalWorkbook, *, data_source: str) -> None:
     db.add_all(
         [
@@ -121,6 +209,8 @@ def _persist_workbook(db, import_id: uuid.UUID, workbook: FundamentalWorkbook, *
                 source_sheet=row.source_sheet,
                 source_field=row.source_field,
                 is_proxy=row.is_proxy,
+                as_of_date=row.as_of_date,
+                source_document_id=row.source_document_id,
             )
             for row in workbook.annual_metrics
         ]
@@ -154,6 +244,8 @@ def _persist_workbook(db, import_id: uuid.UUID, workbook: FundamentalWorkbook, *
                 coverage_json=sanitize_json_compatible(snapshot.coverage),
                 model_eligibility_json={},
                 source_json=sanitize_json_compatible(snapshot.source),
+                as_of_date=snapshot.as_of_date,
+                source_document_id=snapshot.source_document_id,
             )
             for snapshot in workbook.latest_snapshots
         ]
@@ -249,6 +341,7 @@ def refresh_stockanalysis_universe(
                     market_region=stock.market_region,
                     shares_outstanding=stock.shares_outstanding,
                 )
+                workbook = _augment_workbook_with_ratios(workbook, stock, db)
                 _persist_workbook(db, run.id, workbook, data_source="stockanalysis")
                 succeeded.append(stock.symbol)
                 db.flush()
@@ -308,10 +401,12 @@ def refresh_stockanalysis_universe(
         else:
             run.status = "failed"
             run.error_message = "All StockAnalysis symbols failed"
+            delete_fundamental_import_artifacts(db, import_id=run.id, include_statement_rows=True)
         db.add(run)
         db.commit()
 
         if succeeded:
+            refresh_canonical_snapshot_flags(db, symbols=succeeded)
             rescore_universe(db, scope="masi")
             persist_pillar_history_for_import(db, import_id=run.id)
             db.commit()

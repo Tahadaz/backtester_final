@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { usePublicSignals } from "@/hooks/use-public-signals"
 import { formatScore } from "@/lib/dashboard-constants"
 import type { Horizon } from "@/lib/dashboard-types"
+import { resolveHorizonPreset, type TradingHorizon } from "@/lib/horizon"
 import { signalVariantLabel } from "@/lib/signal-variant-label"
 import { SignalEvidenceTab } from "@/components/strategy/signal-evidence-tab"
 import type {
@@ -63,6 +64,10 @@ function parseHorizon(value: string | null): Horizon {
   if (value === "monthly") return "medium"
   if (value === "quarterly") return "long"
   return "short"
+}
+
+function selectorHorizon(value: Horizon): TradingHorizon {
+  return resolveHorizonPreset(value).value
 }
 
 function parseTab(value: string | null): PublicSignalsTab {
@@ -401,7 +406,7 @@ export function PublicSignalsPage() {
                 {data && ` - Mis a jour le ${new Date(data.generated_at).toLocaleDateString("fr-FR")}`}
               </p>
             </div>
-            <HorizonSelector value={horizon} onChange={(value) => setHorizon(parseHorizon(value))} />
+            <HorizonSelector value={selectorHorizon(horizon)} onChange={(value) => setHorizon(parseHorizon(value))} />
           </div>
 
           <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as PublicSignalsTab)}>

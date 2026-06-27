@@ -6,6 +6,7 @@ import { usePredictiveAbilityLeaderboard } from "@/hooks/use-api"
 import type { PredictiveLeaderboardRow } from "@/lib/api"
 import { Skeleton } from "@/components/ui/skeleton"
 import { signalEvidenceUrl } from "@/lib/signal-evidence-url"
+import { horizonLabel } from "@/lib/horizon"
 import { ArrowUpDown, ArrowDown, ArrowUp } from "lucide-react"
 
 type EngineHorizon = "short" | "medium" | "long"
@@ -169,7 +170,7 @@ export function TopSignauxLeaderboard({ onSelectSymbol, advBySymbol, liquidityFi
     <div className="space-y-3">
       <div className="flex items-center gap-3 flex-wrap">
         <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          Engine horizon
+          Horizon
         </span>
         <div className="inline-flex rounded-md border border-line bg-bg2 p-0.5">
           {HORIZONS.map((h) => (
@@ -182,7 +183,7 @@ export function TopSignauxLeaderboard({ onSelectSymbol, advBySymbol, liquidityFi
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              {h}
+              {horizonLabel(h)}
             </button>
           ))}
         </div>

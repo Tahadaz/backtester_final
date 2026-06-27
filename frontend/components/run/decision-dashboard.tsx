@@ -111,8 +111,8 @@ export function DecisionDashboardView({ decision, dashboard, loading }: Props) {
   const whenToAct = Array.isArray(decision.decision_page?.when_to_act) ? decision.decision_page.when_to_act : []
   const regimeLabel = String(dashboard?.regime?.label ?? "—")
   const horizonLabel = String(decision.decision_page?.trial_id ?? "").includes("medium")
-    ? "Moyen terme" : String(decision.decision_page?.trial_id ?? "").includes("long")
-    ? "Long terme" : "Court terme"
+    ? "Mensuel" : String(decision.decision_page?.trial_id ?? "").includes("long")
+    ? "Trimestriel" : "Hebdomadaire"
 
   const chartData = useMemo(() => {
     if (!dashboard) return []

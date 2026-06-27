@@ -1,0 +1,177 @@
+{
+  "AFM": {
+    "url": "https://media.casablanca-bourse.com/sites/default/files/2026-05/afma_2025.pdf",
+    "status_code": 200,
+    "bytes": 8271705,
+    "is_pdf": true,
+    "pages": 3
+  },
+  "AGM": {
+    "url": "https://media.casablanca-bourse.com/sites/default/files/2026-04/agma_2025_cp_rfa_2025.pdf",
+    "status_code": 200,
+    "bytes": 14561068,
+    "is_pdf": true,
+    "pages": 2
+  },
+  "ATL": {
+    "url": "https://media.casablanca-bourse.com/sites/default/files/2026-03/cp_atlantasanad_2025.pdf",
+    "status_code": 200,
+    "bytes": 650905,
+    "is_pdf": true,
+    "pages": 1
+  },
+  "ATW": {
+    "url": "https://media.casablanca-bourse.com/sites/default/files/2026-02/awb_2025.pdf",
+    "status_code": 200,
+    "bytes": 4604275,
+    "is_pdf": true,
+    "pages": 32
+  },
+  "BAL": {
+    "url": "https://media.casablanca-bourse.com/sites/default/files/2026-04/balima_2025.pdf",
+    "status_code": 200,
+    "bytes": 7566813,
+    "is_pdf": true,
+    "pages": 5
+  },
+  "BCI": {
+    "url": "https://media.casablanca-bourse.com/sites/default/files/2026-03/cp_bmci_t4_25.pdf",
+    "status_code": 200,
+    "bytes": 162370,
+    "is_pdf": true,
+    "pages": 1
+  },
+  "BCP": {
+    "url": "https://media.casablanca-bourse.com/sites/default/files/2026-03/bcp_2025_0.pdf",
+    "status_code": 200,
+    "bytes": 3801598,
+    "is_pdf": true,
+    "pages": 42
+  },
+  "BOA": {
+    "url": "https://media.casablanca-bourse.com/sites/default/files/2026-03/boa_2025.pdf",
+    "status_code": 200,
+    "bytes": 7659747,
+    "is_pdf": true,
+    "pages": 20
+  },
+  "CDM": {
+    "url": "https://media.casablanca-bourse.com/sites/default/files/2026-02/cdm_2025.pdf",
+    "status_code": 200,
+    "bytes": 2352669,
+    "is_pdf": true,
+    "pages": 33
+  },
+  "CFG": {
+    "url": "https://media.casablanca-bourse.com/sites/default/files/2026-02/cfg_bank_2025.pdf",
+    "status_code": 200,
+    "bytes": 3839972,
+    "is_pdf": true,
+    "pages": 15
+  },
+  "CIH": {
+    "url": "https://media.casablanca-bourse.com/sites/default/files/2026-03/cih_bank_2025.pdf",
+    "status_code": 200,
+    "bytes": 3155688,
+    "is_pdf": true,
+    "pages": 24
+  },
+  "CMA": {
+    "url": "https://media.casablanca-bourse.com/sites/default/files/2026-03/cp_cimar_2025.pdf",
+    "status_code": 200,
+    "bytes": 6109918,
+    "is_pdf": true,
+    "pages": 1
+  },
+  "CMT": {
+    "url": "https://media.casablanca-bourse.com/sites/default/files/2026-05/cmt_2025.pdf",
+    "status_code": 200,
+    "bytes": 1531583,
+    "is_pdf": true,
+    "pages": 13
+  },
+  "COL": {
+    "url": "https://media.casablanca-bourse.com/sites/default/files/2026-04/colorado_rfa_2025.pdf",
+    "status_code": 200,
+    "bytes": 9073756,
+    "is_pdf": true,
+    "pages": 55
+  },
+  "DHO": {
+    "url": "https://media.casablanca-bourse.com/sites/default/files/2026-04/dho_rfa_2025.pdf",
+    "status_code": 200,
+    "bytes": 17296278,
+    "is_pdf": true,
+    "pages": 115
+  },
+  "HPS": {
+    "url": "https://media.casablanca-bourse.com/sites/default/files/2026-05/hps_2025.pdf",
+    "status_code": 200,
+    "bytes": 1496059,
+    "is_pdf": true,
+    "pages": 10
+  },
+  "LHM": {
+    "url": "https://media.casablanca-bourse.com/sites/default/files/2026-04/lafargeholcim_maroc_2025.pdf",
+    "status_code": 200,
+    "bytes": 648496,
+    "is_pdf": true,
+    "pages": 3
+  },
+  "MUT": {
+    "url": "https://media.casablanca-bourse.com/sites/default/files/2026-02/cp_mutandis_2025.pdf",
+    "status_code": 200,
+    "bytes": 2436728,
+    "is_pdf": true,
+    "pages": 2
+  },
+  "OUL": {
+    "url": "https://media.casablanca-bourse.com/sites/default/files/2026-04/oulmes_2025_cp_rfa_2025.pdf",
+    "status_code": 200,
+    "bytes": 3155081,
+    "is_pdf": true,
+    "pages": 8
+  },
+  "SAH": {
+    "url": "https://media.casablanca-bourse.com/sites/default/files/2026-04/sanlam_rfa_2025.pdf",
+    "status_code": 200,
+    "bytes": 12813004,
+    "is_pdf": true,
+    "pages": 82
+  },
+  "SID": {
+    "url": "https://media.casablanca-bourse.com/sites/default/files/2026-03/cp_sonasid_2025.pdf",
+    "status_code": 200,
+    "bytes": 88682,
+    "is_pdf": true,
+    "pages": 1
+  },
+  "TGC": {
+    "url": "https://media.casablanca-bourse.com/sites/default/files/2026-05/tgcc_2025.pdf",
+    "status_code": 200,
+    "bytes": 3140108,
+    "is_pdf": true,
+    "pages": 4
+  },
+  "VCN": {
+    "url": "https://media.casablanca-bourse.com/sites/default/files/2026-03/cp_vicenne_2025.pdf",
+    "status_code": 200,
+    "bytes": 1762242,
+    "is_pdf": true,
+    "pages": 1
+  },
+  "WAA": {
+    "url": "https://media.casablanca-bourse.com/sites/default/files/2026-04/wafa_assurance_2025.pdf",
+    "status_code": 200,
+    "bytes": 7765160,
+    "is_pdf": true,
+    "pages": 11
+  },
+  "ZDJ": {
+    "url": "https://media.casablanca-bourse.com/sites/default/files/2026-03/cp_zellidja_2025.pdf",
+    "status_code": 200,
+    "bytes": 354173,
+    "is_pdf": true,
+    "pages": 1
+  }
+}

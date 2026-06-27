@@ -1,0 +1,621 @@
+Total slides: 28
+=== Slide 1 ===
+Développement d'une plateforme d'aide à la décision en trading à la bourse de Casablanca
+DÉPARTEMENT GÉNIE MODÉLISATION ET INFORMATIQUE SCIENTIFIQUE
+Réalisé par : DAZINE Ahmed Taha
+Soutenu le 22 Mai 2026 devant le jury :
+1
+PROJET DE FIN D'ÉTUDES   |   pour l'obtention du diplôme d'Ingénieur d'état
+
+=== Slide 2 ===
+…….
+1
+Organisme d’accueil
+Problématique
+Démarche suivie
+Stratégie
+Marché actions marocain
+Feature Analysis
+Résultats
+Perspectives
+Backtest
+2
+3
+1
+2
+3
+1
+2
+4
+PLAN
+Architecture
+5
+3
+2
+
+=== Slide 3 ===
+Cadre de travail
+
+=== Slide 4 ===
+Salle des marchés     
+BMCE Capital
+Lieu qui regroupe différents services spécialisés permettant à la banque d’intervenir sur le marché marocain.
+Front-Office
+Négociation avec les clients
+Middle-Office
+Contrôle des risques et analyse des résultats
+Back-Office
+Saisies et contrôles comptables
+Présentation du cadre de travail
+1-Organsime d’accueil
+1
+2
+3
+Cadre général
+2- Marché Actions Marocain
+3- Problématique
+1-Organsime d’accueil
+5
+
+=== Slide 5 ===
+Front-Office
+Desk Actions
+Marché Actions
+Présentation du cadre de travail
+1-Organsime d’accueil
+1
+2
+3
+Cadre général
+2- Marché Actions Marocain
+3- Problématique
+1-Organsime d’accueil
+6
+
+=== Slide 6 ===
+Marché Actions
+Permet aux entreprises de financer leur croissance par l’émission d’actions
+Permet aux investisseurs d’acquérir une part du capital et de bénéficier des dividendes ou PLUS-VALUES
+Confirmation
+Ordre Achat/Vente d’actions
+Investisseur
+Bourse de Casablanca
+Exécution de l’ordre
+Broker
+Présentation du cadre de travail
+1-Organsime d’accueil
+1
+2
+3
+Cadre général
+2- Marché Actions Marocain
+3- Problématique
+1-Organsime d’accueil
+7
+
+=== Slide 7 ===
+Nominal
+Émetteur
+Receveur
+Achat/Vente d’actions
+Changement du prix des actions
+Réalisation du PNL (profit)
+Ordre
+Présentation du cadre de travail
+1-Organsime d’accueil
+1
+2
+3
+Cadre général
+2- Marché Actions Marocain
+3- Problématique
+1-Organsime d’accueil
+8
+
+=== Slide 8 ===
+Marché Actions
+Permet aux entreprises de financer leur croissance par l’émission d’actions
+Permet aux investisseurs d’acquérir une part du capital et de bénéficier des dividendes ou PLUS-VALUES
+Confirmation d’ordre
+Ordre d’achat
+Investisseur
+Risque de marché
+Bourse de Casablanca
+Dépréciation de l’action
+Présentation du cadre de travail
+1-Organsime d’accueil
+1
+2
+3
+Cadre général
+2- Marché Actions Marocain
+3- Problématique
+1-Organsime d’accueil
+
+=== Slide 9 ===
+Modélisation
+
+=== Slide 10 ===
+7
+1- Démarche suivie
+2
+1
+3
+Modélisation
+2- Analyse Technique
+3- Validation WFO
+4- Architecture
+5- Résultats
+1- Démarche suivie
+11
+
+=== Slide 11 ===
+7
+1- Démarche suivie
+2
+1
+3
+Modélisation
+2- Feature Analysis
+3- Stratégie
+4- Backtesting
+5- Architecture
+1- Démarche suivie
+12
+
+=== Slide 12 ===
+7
+1- Démarche suivie
+2
+1
+3
+Modélisation
+2- Analyse Technique
+3- Validation WFO
+4- Architecture
+5- Résultats
+1- Démarche suivie
+13
+Données de prix OHLCV de 73 actions du marché actions marocain
+Uniquement données journalières
+
+=== Slide 13 ===
+7
+1- Démarche suivie
+2
+1
+3
+Modélisation
+2- Feature Analysis
+3- Validation WFO
+4- Architecture
+5- Résultats
+14
+2- Feature Analysis
+Données de prix OHLCV de 73 actions
+Uniquement données journalières
+Besoin du desk
+Analyse Technique
++
++
+Indicateurs techniques
+
+=== Slide 14 ===
+14 / 29
+Indicateurs techniques
+L'analyse technique repose sur des indicateurs qui répondent chacun à une question distincte sur la dynamique du prix.
+→ Chaque famille est représentée par 5 indicateurs paramétrés que le WFO arbitrera ensuite.
+1- Démarche suivie
+2
+1
+3
+Modélisation
+2- Feature Analysis
+3- Validation WFO
+4- Architecture
+5- Résultats
+15
+2- Feature Analysis
+ADI : prix de clôtures du 3 Février au 5 Mars 2026
+
+=== Slide 15 ===
+14 / 29
+Comment lire un graphe — les quatre questions
+L'analyse technique repose sur des indicateurs qui répondent chacun à une question distincte sur la dynamique du prix.
+?
+Où va
+le prix ?
+?
+À quelle
+vitesse ?
+FAMILLE
+MOMENTUM
+?
+Sur-achat
+ou survente ?
+FAMILLE
+OSCILLATION
+?
+Les volumes
+confirment ?
+FAMILLE
+VOLUME
+→ Chaque famille est représentée par 5 indicateurs paramétrés que le WFO arbitrera ensuite.
+1- Démarche suivie
+2
+1
+3
+Modélisation
+2- Feature Analysis
+3- Validation WFO
+4- Architecture
+5- Résultats
+16
+2- Feature Analysis
+SMA
+Simple Moving Average
+EMA
+Exponential Moving Avg
+Cross
+EMA Cross
+Ichi.
+Ichimoku Cloud
+PSAR
+Parabolic SAR
+
+=== Slide 16 ===
+14 / 29
+Comment lire un graphe — les quatre questions
+L'analyse technique repose sur des indicateurs qui répondent chacun à une question distincte sur la dynamique du prix.
+?
+Où va
+le prix ?
+?
+À quelle
+vitesse ?
+FAMILLE
+MOMENTUM
+?
+Sur-achat
+ou survente ?
+FAMILLE
+OSCILLATION
+?
+Les volumes
+confirment ?
+FAMILLE
+VOLUME
+→ Chaque famille est représentée par 5 indicateurs paramétrés que le WFO arbitrera ensuite.
+1- Démarche suivie
+2
+1
+3
+Modélisation
+2- Feature Analysis
+3- Validation WFO
+4- Architecture
+5- Résultats
+17
+2- Feature Analysis
+EMA
+EMA Cross
+SMA · EMA · EMA Cross · Ichimoku · PSAR
+MACD · ROC · TRIX · ADX · TSI
+RSI · Stochastique · CCI · MFI · Ult.
+OBV · CMF · VWAP · A/D Line · Force
+
+=== Slide 17 ===
+DAZINE Ahmed Taha  ·  EMI · GMIS  ·  2025 / 2026
+16 / 29
+Walk-Forward Optimization
+Choisir sur le passé. Tester sur un futur non vu. Répéter.
+Temps →
+Pli 1
+Entrainement
+Test
+Pli 2
+Entrainement
+Test
+Pli 3
+Entrainement
+Test
+Pli 4
+Entrainement
+Test
+In-sample (Entrainement)
+Out-of-sample (test)
+Fonction Objectif : PROM
+Pessimistic Return
+on Margin
+Pénalise les configurations dont la performance dépend de peu d'observations favorables.
+1- Démarche suivie
+2
+1
+3
+Modélisation
+2- Feature Analysis
+3- Validation WFO
+4- Architecture
+5- Résultats
+18
+2- Feature Analysis
+
+=== Slide 18 ===
+14 / 29
+Résultats de la Feature Analysis
+Pour chaque catégorie, on trouve le Meilleur indicateur par WFO
+FAMILLE
+MOMENTUM
+FAMILLE
+OSCILLATION
+FAMILLE
+VOLUME
+1- Démarche suivie
+2
+1
+3
+Modélisation
+2- Feature Analysis
+3- Validation WFO
+4- Architecture
+5- Résultats
+19
+2- Feature Analysis
+EMA Cross
+↑  Tendance haussière
+↓  Tendance baissière
+↑  Momentum haussier
+↓  Momentum baissier
+▲  Suracheté
+▼  Survendu
+↑  Accumulation
+↓  Distribution
+
+=== Slide 19 ===
+14 / 29
+Composition de la stratégie de trading
+On considère une stratégie simple sous forme d’un signal composite des scores des 4 catégories
+FAMILLE
+MOMENTUM
+FAMILLE
+OSCILLATION
+FAMILLE
+VOLUME
+1- Démarche suivie
+2
+1
+3
+Modélisation
+2- Feature Analysis
+3- Stratégie
+4- Architecture
+5- Résultats
+20
+EMA Cross
+↑  Tendance haussière
+↓  Tendance baissière
+↑  Momentum haussier
+↓  Momentum baissier
+▲  Suracheté
+▼  Survendu
+↑  Accumulation
+↓  Distribution
+2- Stratégie
+Sᵢ ∈ [-100, +100]
+Sᵢ ∈ [-100, +100]
+Sᵢ ∈ [-100, +100]
+Sᵢ ∈ [-100, +100]
+Score global  =  w₁·S_tendance  +  w₂·S_momentum  +  w₃·S_oscillation  +  w₄·S_volume
+Vente forte
+Vente
+Neutre
+Achat
+Achat fort
+[-100, -60]
+[-60, -20]
+[-20, +20]
+[+20, +60]
+[+60, +100]
+
+=== Slide 20 ===
+14 / 29
+Composition de la stratégie de trading
+On considère une stratégie simple sous forme d’un signal composite des scores des 4 catégories
+MOMENTUM
+1- Démarche suivie
+2
+1
+3
+Modélisation
+2- Feature Analysis
+3- Stratégie
+4- Architecture
+5- Résultats
+21
+3- Stratégie
+Score global  =  w₁·S_tendance  +  w₂·S_momentum  +  w₃·S_oscillation  +  w₄·S_volume
+Vente forte
+Vente
+Neutre
+Achat
+Achat fort
+[-100, -50]
+[-50, -15]
+[-15, +15]
+[+15, +50]
+[+50, +100]
+
+=== Slide 21 ===
+DAZINE Ahmed Taha  ·  EMI · GMIS  ·  2025 / 2026
+20 / 29
+Gₙ
+Échantillon
+Suffisant
+>30
+∧
+Borne Wilson
+Franchie
+Taux de succés avec IC 95% > 50%
+∧
+Monte-Carlo
+significatif
+∧
+Gₚₑᵣₘ
+Permutation
+rejette H₀
+∧
+PROVEN
+EDGE
+toutes les portes franchies
+Si une seule porte échoue  →  signal en Watch, non promu Proven
+Retour moyen après couts positif
+Backtest : Edge Analytics — preuve statistique
+On réalise un backtest sur les parties test de WFO de chaque signal trouvé et on évalue sa signification statistique
+1- Démarche suivie
+2
+1
+3
+Modélisation
+2- Feature Analysis
+3- Stratégie
+4-Backtest
+5- Résultats
+22
+4- Backtest
+
+=== Slide 22 ===
+1- Démarche suivie
+2
+1
+3
+Modélisation
+2- Feature Analysis
+3- Stratégie
+4-Backtest
+5- Architecture
+23
+5- Architecture
+Stack technique
+Stack micro-services déployée sur OCI — composants réels et flux de données
+CLIENT
+Utilisateur
+Trader · Desk Actions
+Caddy
+edge_proxy · TLS · HSTS
+quant_frontend  ·  Next.js 14
+React · TypeScript · NextAuth · Radix UI · lightweight-charts
+REST + JSON
+API
+quant_api  ·  FastAPI + Pydantic + OpenAPI
+24 routeurs : runs · datasets · signals · wfo_signals · strategy · leaderboard · results · market_data · analytics · ops · …
+enqueue job (RQ)
+ASYNC
+quant_redis  ·  RQ
+3 files :
+runs · defaults_discovery · wfo_signals
+Workers  ·  Python · Numba JIT · noyau quant_core
+quant_worker
+_defaults
+_signal_engine
+_score_history
+_wfo
++ quant_scheduler (jobs cron)
+DATA
+PostgreSQL 16  ·  base : quant
+runs · datasets · users · scores · trials · alembic migrations
+MinIO (S3)  ·  bucket : quant-artifacts
+signaux · plots PNG · CSV · artefacts WFO
+lecture API
+lecture API
+
+=== Slide 23 ===
+Conclusion
+
+=== Slide 24 ===
+Présentation du cadre de travail
+1-Organsime d’accueil
+1
+2
+3
+Cadre général
+2- Perspectives
+1- Résultats
+25
+EN UN COUP D'ŒIL
+20
+titres actifs
+9
+long edge eligible
+11
+short edge eligible
+
+=== Slide 25 ===
+Présentation du cadre de travail
+1-Organsime d’accueil
+1
+2
+3
+Cadre général
+2- Perspectives
+1- Résultats
+26
+Drill-down par titre
+Backtest du signal étudié avec details de trades
+
+=== Slide 26 ===
+DAZINE Ahmed Taha  ·  EMI · GMIS  ·  2025 / 2026
+24 / 29
+Drill-down par titre
+Backtest directionnel · familles contributrices · indicateurs paramétrés
+1-Organsime d’accueil
+1
+2
+3
+Cadre général
+2- Perspectives
+1- Résultats
+27
+
+=== Slide 27 ===
+Présentation du cadre de travail
+1-Organsime d’accueil
+1
+2
+3
+Cadre général
+2- Perspectives
+1- Résultats
+28
+Drill-down par titre
+
+=== Slide 28 ===
+Cinq étapes, de la donnée brute à la décision
+10
+Réalisation du Tableau de bord
+1
+2
+3
+4
+5
+2
+1
+3
+Démarche Globale
+Données
+OHLCV journalières
+73 titres MASI
+Indicateurs
+20 indicateurs
+4 familles
+Signal Engine
+Agrégation
+Score [-100, +100]
+Validation WFO
+10 plis IS/OOS
+Grade A–F
+Décision
+Direction technique
+Niveaux & blotter
+Pour répondre à la problématique, j'ai construit un pipeline en cinq étapes.
+29
+

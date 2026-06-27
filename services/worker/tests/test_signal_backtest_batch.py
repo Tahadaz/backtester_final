@@ -73,6 +73,33 @@ def _ohlcv_frame() -> pd.DataFrame:
     )
 
 
+def test_run_signal_backtest_batch_uses_data_backed_signal_universe(monkeypatch):
+    fake_db = _FakeDB()
+    calls: list[tuple[str, str, str | None]] = []
+
+    monkeypatch.setattr(backtest_mod, "SessionLocal", lambda: fake_db)
+    monkeypatch.setattr(backtest_mod, "list_signal_universe_symbols", lambda _db: ["AAA", "XAUUSD"])
+
+    def _fake_compute(symbol, horizon, variant="expanded", **kwargs):
+        calls.append((symbol, horizon, kwargs.get("triggered_by")))
+        return {"status": "succeeded"}
+
+    monkeypatch.setattr(backtest_mod, "compute_signal_backtest_for_symbol", _fake_compute)
+
+    result = backtest_mod.run_signal_backtest_batch()
+
+    assert result == {"total": 6, "succeeded": 6, "failed": 0}
+    assert calls == [
+        ("AAA", "weekly", "scheduler"),
+        ("AAA", "monthly", "scheduler"),
+        ("AAA", "quarterly", "scheduler"),
+        ("XAUUSD", "weekly", "scheduler"),
+        ("XAUUSD", "monthly", "scheduler"),
+        ("XAUUSD", "quarterly", "scheduler"),
+    ]
+    assert fake_db.rows_by_model == {}
+
+
 def test_compute_signal_backtest_uses_requested_config_and_updates_job(monkeypatch):
     pending_job = SignalEngineBatchJob(
         id=uuid.uuid4(),

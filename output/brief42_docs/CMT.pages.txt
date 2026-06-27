@@ -1,0 +1,1909 @@
+
+
+===== CMT PAGE 1 =====
+ÉTATS FINANCIERS
+SOCIAUX
+EXERCICE AU 31 DÉCEMBRE 2025
+BILAN ACTIF
+DU 01/01/2025 AU 31/12/2025
+(En dirhams)
+EXERCICE
+EXERCICE 
+PRÉCÉDENT
+Brut
+Amortissements 
+et Provisions
+Net
+Net
+ACTIF IMMOBILISÉ
+IMMOBILISATIONS EN NON VALEURS→[A]
+24 609 772,14
+24 587 772,14
+22 000,00
+2 374 000,00
+Frais préliminaires
+Charges à répartir sur plusieurs exercices
+24 609 772,14
+24 587 772,14
+22 000,00
+2 374 000,00
+Primes de remboursement des obligations
+IMMOBILISATIONS INCORPORELLES→ [B]
+235 397 545,03
+162 144 361,39
+73 253 183,64
+47 196 742,46
+Immobilisations en Recherche et Dev.
+154 218 826,24
+153 260 488,57
+958 337,67
+1 024 133,67
+Brevets, marques, droits et valeurs similaires
+10 306 618,49
+8 883 872,82
+1 422 745,67
+1 659 951,59
+Fonds commercial
+60 000,00
+60 000,00
+60 000,00
+Autres immobilisations incorporelles
+70 812 100,30
+70 812 100,30
+44 452 657,20
+IMMOBILISATIONS CORPORELLES→[C]
+1 195 452 679,92
+678 905 258,88
+516 547 421,04
+497 650 497,25
+Terrains
+3 518 649,00
+76 730,83
+3 441 918,17
+3 055 720,00
+Constructions
+511 407 028,27
+311 792 353,12
+199 614 675,15
+94 825 633,79
+Installations techniques, matériel et outillage
+383 316 517,38
+259 883 598,22
+123 432 919,16
+39 069 338,26
+Matériel de transport
+118 737 039,20
+102 049 120,30
+16 687 918,90
+2 987 439,97
+Mobilier, Mat. de bureau, Aménag. Divers
+7 131 144,14
+5 103 456,41
+2 027 687,73
+1 170 834,39
+Autres immobilisations corporelles
+Immobilisations corporelles en cours
+171 342 301,93
+171 342 301,93
+356 541 530,84
+IMMOBILISATIONS FINANCIÈRES→[D]
+702 535 017,15
+203 821 901,95
+498 713 115,20
+519 419 764,94
+Prêts immobilisés
+311 878 800,20
+311 878 800,20
+311 878 800,20
+Autres créances financières
+12 156 005,62
+9 644 222,16
+2 511 783,46
+2 218 433,20
+Titres de participation
+378 491 911,33
+194 177 679,79
+184 314 231,54
+205 314 231,54
+Autres titres immobilisés
+8 300,00
+8 300,00
+8 300,00
+ÉCARTS DE CONVERSION ACTIF→ [E]
+Diminution des créances immobilisées
+Augmentations des dettes de financement
+TOTAL (A+B+C+D+E)
+2 157 995 014,24
+1 069 459 294,36
+1 088 535 719,88
+1 066 641 004,65
+ACTIF CIRCULANT
+STOCKS→[F]
+106 646 714,30
+21 468 034,26
+85 178 680,04
+51 557 319,45
+Marchandises
+Matières et fournitures consommables
+68 093 533,43
+21 468 034,26
+46 625 499,17
+39 618 211,84
+Produits en cours
+Produits intermédiaires et produits résiduels
+492 355,93
+492 355,93
+427 491,96
+Produits finis
+38 060 824,94
+38 060 824,94
+11 511 615,65
+CRÉANCES DE L’ACTIF CIRCULANT→[G]
+577 344 978,02
+1 902 131,26
+575 442 846,76
+435 548 231,72
+Fournis. débiteurs, avances et acomptes
+11 841 970,42
+11 841 970,42
+3 411 251,97
+Clients et comptes rattachés
+311 992 806,91
+781 214,26
+311 211 592,65
+319 264 820,49
+Personnel
+1 640 141,25
+1 640 141,25
+1 378 004,11
+État
+179 102 199,30
+179 102 199,30
+67 432 172,76
+Comptes d'associés
+52 054 437,50
+52 054 437,50
+36 592 625,00
+Autres débiteurs
+19 564 903,08
+1 120 917,00
+18 443 986,08
+7 083 735,68
+Comptes de régularisation- Actif
+1 148 519,56
+1 148 519,56
+385 621,71
+Titres valeurs de placement→[H]
+Écarts de conversion actif→ [I]  
+Éléments circulants
+3 388 415,68
+3 388 415,68
+7 803 869,08
+TRÉSORERIE
+TOTAL II (F+G+H+I)
+687 380 108,00
+23 370 165,52
+664 009 942,48
+494 909 420,25
+Trésorerie-Actif
+23 347 228,49
+23 347 228,49
+26 720 191,76
+Chèques et valeurs à encaisser
+4 374,60
+4 374,60
+0,24
+Banques, T.G et C.C.P
+23 299 327,70
+23 299 327,70
+26 653 054,59
+CAISSE, RÉGIE D›AVANCES ET ACCRÉDITIFS
+43 526,19
+43 526,19
+67 136,93
+TOTAL III
+23 347 228,49
+23 347 228,49
+26 720 191,76
+TOTAL GÉNÉRAL I+II+III
+2 868 722 350,73
+1 092 829 459,88
+1 775 892 890,85
+1 588 270 616,66
+BILAN PASSIF
+DU 01/01/2025 AU 31/12/2025
+(En dirhams)
+EXERCICE
+EXERCICE  
+PRÉCÉDENT
+FINANCEMENT PERMANENT
+CAPITAUX PROPRES
+898 404 885,10
+695 005 807,17
+Capital social ou personnel (1)
+168 123 300,00
+168 123 300,00
+Moins : actionnaires, capital souscrit non appelé
+Capital appelé
+168 123 300,00
+168 123 300,00
+Dont versé
+168 123 300,00
+168 123 300,00
+Prime d’émission, de fusion, d’apport
+225 666 999,00
+225 666 999,00
+Écarts de réévaluation
+Réserve légale
+16 812 330,00
+16 812 330,00
+Autres réserves
+113 013 980,00
+113 013 980,00
+Report à nouveau (2)
+171 389 198,17
+185 449 535,89
+Résultat en instance d’affectation
+Résultat net de l’exercice (2)
+203 399 077,93
+-14 060 337,72
+TOTAL DES CAPITAUX PROPRES (A)
+898 404 885,10
+695 005 807,17
+Capitaux propres assimilés (B)
+Subvention d’investissement
+Provisions réglementées
+DETTES DE FINANCEMENT (C)
+136 977 960,27
+197 823 657,59
+Emprunts obligataires
+50 000 000,00
+100 000 000,00
+Autres dettes de financement
+86 977 960,27
+97 823 657,59
+Provisions durables pour risques et charges (D)
+185 758 906,60
+183 585 602,94
+Provisions pour risques
+144 569 629,67
+143 535 713,97
+Provisions pour charges
+41 189 276,93
+40 049 888,97
+Écarts de conversion-passif (E)
+Augmentation des créances immobilisées
+Diminution des dettes de financement
+TOTAL I (A+B+C+D+E)
+1 221 141 751,97
+1 076 415 067,70
+PASSIF CIRCULANT
+Dettes du passif circulant (F)
+391 515 620,18
+263 980 560,60
+Fournisseurs et comptes rattachés
+79 776 067,26
+66 014 659,03
+Clients créditeurs, avances et acomptes
+4 116 219,51
+2 598 884,96
+Personnel
+11 236 771,63
+12 426 373,22
+Organismes sociaux
+3 835 772,91
+5 434 381,84
+État
+143 999 683,42
+21 702 380,44
+Comptes d’associés
+2 632,22
+2 632,22
+Autres créanciers
+147 577 933,34
+153 000 213,54
+Comptes de régularisation passif
+970 539,89
+2 801 035,35
+Autres provisions pour risques et charges (G)
+140 061 312,48
+118 819 774,63
+Écarts de conversion - passif (Éléments circulants) (H)
+10 505,13
+2 275 605,39
+TOTAL II (F+G+H)
+531 587 437,79
+385 075 940,62
+TRÉSORERIE
+Trésorerie passif
+23 163 701,09
+126 779 608,34
+Crédits d’escompte
+Crédits de trésorerie
+73 772 768,62
+Banques (Soldes créditeurs)
+23 163 701,09
+53 006 839,72
+TOTAL III
+23 163 701,09
+126 779 608,34
+TOTAL GÉNÉRAL I+II+III
+1 775 892 890,85
+1 588 270 616,66
+COMPTE DE PRODUITS ET CHARGES (Hors Taxes)
+DÉSIGNATION
+OPÉRATIONS
+TOTAUX  
+DE L'EXERCICE
+TOTAUX  
+DE L'EXERCICE 
+PRÉCÉDENT
+Propres à 
+l'exercice
+Concernant 
+les exercices 
+précédents
+1
+2
+3 = 2 + 1
+4
+EXPLOITATION
+I
+PRODUITS D‘EXPLOITATION
+743 816 926,08
+1 071 296,09
+744 888 222,17
+613 751 796,09
+Ventes de marchandises (en l'état)
+Ventes de biens et services produits
+690 138 129,04
+1 071 296,09
+691 209 425,13
+586 946 432,16
+Chiffres d‘affaires
+690 138 129,04
+1 071 296,09
+691 209 425,13
+586 946 432,16
+Variation de stocks de produits (1)
+26 614 073,26
+26 614 073,26
+2 720 578,24
+Immobilisations produites par l'entreprise 
+pour elle-même
+18 578 870,28
+18 578 870,28
+23 235 940,54
+Subventions d‘exploitation
+Autres produits d‘exploitation
+Reprises d‘exploitation : transferts de charges
+8 485 853,50
+8 485 853,50
+848 845,15
+Total I
+743 816 926,08
+1 071 296,09
+744 888 222,17
+613 751 796,09
+II
+CHARGES D‘EXPLOITATION
+351 136 695,08
+184 627,51
+351 321 322,59
+327 713 900,19
+Achats revendus (2) de marchandises
+Achats consommés (2) de matières et 
+fournitures
+153 391 016,91
+153 391 016,91
+146 873 112,39
+Autres charges externes
+81 213 469,05
+184 627,51
+81 398 096,56
+65 934 099,87
+Impôts et taxes
+1 662 959,57
+1 662 959,57
+2 722 298,60
+Charges de personnel
+73 404 442,53
+73 404 442,53
+64 248 416,27
+Autres charges d‘exploitation
+1 800 000,00
+1 800 000,00
+10 400 000,04
+Dotations d‘exploitation
+39 664 807,02
+39 664 807,02
+37 535 973,02
+Total II
+351 136 695,08
+184 627,51
+351 321 322,59
+327 713 900,19
+III
+ RÉSULTAT D‘EXPLOITATION (I-II)
+392 680 231,00
+886 668,58
+393 566 899,58
+286 037 895,90
+FINANCIER
+IV
+PRODUITS FINANCIERS
+28 370 726,63
+28 370 726,63
+30 386 334,41
+Produits des titres de partic. et autres titres 
+immobilisés
+2 000,00
+2 000,00
+1 500,00
+Gains de change
+3 279 926,95
+3 279 926,95
+3 400 986,65
+Intérêts et autres produits financiers
+17 284 930,60
+17 284 930,60
+20 191 888,88
+Reprises financières : transfert de charges
+7 803 869,08
+7 803 869,08
+6 791 958,88
+Total IV
+28 370 726,63
+28 370 726,63
+30 386 334,41
+V
+CHARGES FINANCIÈRES
+53 450 948,71
+53 450 948,71
+86 633 866,81
+Charges d’intérêts
+12 278 914,40
+12 278 914,40
+25 805 859,68
+Pertes de change
+16 783 618,63
+16 783 618,63
+3 744 138,05
+Autres charges financières
+Dotations financières
+24 388 415,68
+24 388 415,68
+57 083 869,08
+Total V
+53 450 948,71
+53 450 948,71
+86 633 866,81
+VI
+ RÉSULTAT FINANCIER (IV-V)
+-25 080 222,08
+-25 080 222,08
+-56 247 532,40
+VII
+ RÉSULTAT COURANT (III+VI)
+367 600 008,92
+886 668,58
+368 486 677,50
+229 790 363,50
+1) Variation de stocks : Stock final - Stock initial : Augmentation(+); Diminution(-)
+2) Achats revendus ou achats consommés : Achats - variation de stock.
+COMPTE DE PRODUITS ET CHARGES (Hors Taxes)
+DÉSIGNATION
+Opérations
+TOTAUX  
+DE 
+L'EXERCICE
+TOTAUX  
+DE 
+L'EXERCICE  
+PRÉCÉDENT
+Propres à 
+l'exercice
+Concernant 
+les exercices 
+précédents
+1
+2
+3 = 2 + 1
+4
+NON COURANT
+VII
+RÉSULTAT COURANT (III+VI)
+367 600 008,92
+886 668,58
+368 486 677,50
+229 790 363,50
+VIII
+PRODUITS NON COURANTS
+2 019 993,84
+2 019 993,84
+5 362 900,36
+Produits des cessions d’immobilisations
+1 000 000,00
+Subventions d’équilibre
+Reprises sur subventions d’investissement
+Autres produits non courants
+687 029,54
+687 029,54
+929 303,60
+Reprises non courantes ; transferts de 
+charges
+1 332 964,30
+1 332 964,30
+3 433 596,76
+Total VIII
+2 019 993,84
+2 019 993,84
+5 362 900,36
+CHARGES NON COURANTES
+45 469 285,41
+45 469 285,41
+169 415 350,58
+IX
+Valeurs nettes d’amortissements des 
+immobilisations cédées
+Subventions accordées
+Autres charges non courantes
+18 598 522,20
+18 598 522,20
+16 555 321,45
+Dotations non courantes aux 
+amortissements et aux provisions
+26 870 763,21
+26 870 763,21
+152 860 029,13
+Total IX
+45 469 285,41
+45 469 285,41
+169 415 350,58
+X
+RÉSULTAT NON COURANT (VIII-IX)
+-43 449 291,57
+-43 449 291,57
+-164 052 450,22
+XI
+RÉSULTAT AVANT IMPÔTS (VII+X)
+324 150 717,35
+886 668,58
+325 037 385,93
+65 737 913,28
+XII
+IMPÔTS SUR LES RÉSULTATS
+121 638 308,00
+121 638 308,00
+79 798 251,00
+XIII
+RÉSULTAT NET (XI-XII)
+202 512 409,35
+886 668,58
+203 399 077,93
+-14 060 337,72
+XIV
+TOTAL DES PRODUITS (I+IV+VII)
+774 207 646,55
+1 071 296,09
+775 278 942,64
+649 501 030,86
+XV
+TOTAL DES CHARGES (II+V+IX+XIII)
+571 695 237,20
+184 627,51
+571 879 864,71
+663 561 368,58
+XVI
+RÉSULTAT NET | (total des produits - 
+total des charges)
+202 512 409,35
+886 668,58
+203 399 077,93
+-14 060 337,72
+La Compagnie Minière Touissit S.A. (« CMT ») met à la disposition
+du public son Rapport Financier Annuel au titre de l’exercice 2025
+sur son site internet au niveau de la rubrique investisseurs / Rapports
+semestriels & annuels.
+https://www.cmt.ma/rapports-annuels/
+
+
+
+===== CMT PAGE 2 =====
+ÉTATS FINANCIERS
+SOCIAUX
+EXERCICE AU 31 DÉCEMBRE 2025
+ÉTAT DES SOLDES DE GESTION (E.S.G)
+DU 01/01/2025 AU 31/12/2025
+DÉSIGNATION
+EXERCICE
+EXERCICE 
+PRÉCÉDENT
+1
+Ventes de Marchandises (en l’état)
+2
+-
+Achats revendus de marchandises
+I
+=
+MARGE BRUTES VENTES EN L’ÉTAT
+II
++
+PRODUCTION DE L‘EXERCICE (3+4+5)
+736 402 368,67
+612 902 950,94
+3
+Ventes de biens et services produits
+691 209 425,13
+586 946 432,16
+4
+Variation des stocks produits
+26 614 073,26
+2 720 578,24
+5
+Immobilisations produites par l’entreprise pour elle-même
+18 578 870,28
+23 235 940,54
+III
+-
+CONSOMMATIONS DE L’EXERCICE (6+7)
+234 789 113,47
+212 807 212,26
+6
+Achats consommés de matières et fournitures
+153 391 016,91
+146 873 112,39
+7
+Autres charges externes
+81 398 096,56
+65 934 099,87
+IV
+=
+VALEUR AJOUTÉE (I+II+III)
+501 613 255,20
+400 095 738,68
+8
++
+Subventions d’exploitation
+9
+-
+Impôts et taxes
+1 662 959,57
+2 722 298,60
+10
+-
+Charges de personnel
+73 404 442,53
+64 248 416,27
+V
+=
+EXCÉDENT BRUT D’EXPLOITATION (E.B.E) OU INSUFFISANCE BRUTE D‘EXPLOITATION (IBE)
+426 545 853,10
+333 125 023,81
+11
++
+Autres produits d’exploitation
+12
+-
+Autres charges d’exploitation
+1 800 000,00
+10 400 000,04
+13
++
+Reprises d’exploitation, transferts de charges
+8 485 853,50
+848 845,15
+14
+-
+Dotations d’exploitation
+39 664 807,02
+37 535 973,02
+VI
+=
+RÉSULTAT D’EXPLOITATION (+ou-)
+393 566 899,58
+286 037 895,90
+VII
++
+RÉSULTAT FINANCIER
+-25 080 222,08
+-56 247 532,40
+VIII
+=
+RÉSULTAT COURANT (+ou-)
+368 486 677,50
+229 790 363,50
+IX
++
+RÉSULTAT NON COURANT
+-43 449 291,57
+-164 052 450,22
+15
+-
+Impôts sur les résultats
+121 638 308,00
+79 798 251,00
+X
+=
+RÉSULTAT NET DE L’EXERCICE
+203 399 077,93
+-14 060 337,72
+- TABLEAU DE FORMATION DES RÉSULTATS (T.F.R)
+1
+Résultat net de l’exercice
+203 399 077,93
+-14 060 337,72
+Bénéfice +
+203 399 077,93
+Perte -
+14 060 337,72
+2
++
+Dotations d’exploitation (1)
+39 607 207,02
+37 478 373,02
+3
++
+Dotations financières (1)
+21 000 000,00
+49 280 000,00
+4
++
+Dotations non courantes (1)
+1 213 771,96
+102 848 682,27
+5
+-
+Reprises d’exploitation (2)
+6
+-
+Reprises financières (2)
+7
+-
+Reprises non courantes (2)
+1 332 964,30
+3 433 596,76
+8
+-
+Produits des cessions d’immobilisation
+1 000 000,00
+9
++
+Valeurs nettes d’amortissements et des immobilisations cédées
+I
+CAPACITÉ D’AUTOFINANCEMENT (C.A.F)
+263 887 092,61
+171 113 120,81
+10
+-
+Distributions de bénéfices
+II
+=
+AUTOFINANCEMENT
+263 887 092,61
+171 113 120,81
+( 1 )  À l’exclusion des dotations relatives aux actifs et passifs circulants et à la trésorerie. 
+( 2 )  À l’exclusion des reprises relatives aux actifs circulants et à la trésorerie. 
+( 3 )  Y compris reprises sur subventions d’investissements.
+TABLEAU DE FINANCEMENT (MODÈLE NORMAL)
+EXERCICE DU 01/01/2025 AU 31/12/2025
+I. SYNTHÈSES DES MASSES DU BILAN
+EXERCICE
+EXERCICE 
+PRÉCÉDENT
+Emplois
+Ressources
+b
+a
+c
+d
+Financement permanent
+1 221 141 751,97
+1 076 415 067,70
+144 726 684,27
+Moins actif immobilisé
+1 088 535 719,88
+1 066 641 004,65
+21 894 715,23
+= FONDS DE ROULEMENT FONCTIONNEL (1-2) (A)
+132 606 032,09
+9 774 063,05
+122 831 969,04
+Actif circulant
+663 309 901,15
+494 210 490,23
+169 099 410,92
+Moins Passif circulant
+530 887 396,46
+384 377 010,60
+146 510 385,86
+= BESOINS DE FINANCEMENT GLOBAL (4-5) (B)
+132 422 504,69
+109 833 479,63
+22 589 025,06
+TRÉSORERIE NETTE  (ACTIF - PASSIF) A - B
+183 527,40
+-100 059 416,58
+100 242 943,98
+II. EMPLOIS ET RESSOURCES
+EXERCICE
+EXERCICE PRÉCÉDENT
+Emplois
+Ressources
+Emplois
+Ressources
+I. RESSOURCES STABLES DE L’EXERCICE
+AUTOFINANCEMENT (A)
+263 887 092,61
+171 113 120,81
++  Capacité d’autofinancement
+263 887 092,61
+171 113 120,81
+-  Distributions de bénéfices
+CESSIONS ET RÉDUCTIONS D’IMMOBILISATIONS (B)
+13 378 000,00
++   Cessions d’immobilisations incorporelles
++   Cessions d’immobilisations corporelles
+1 000 000,00
++   Cessions d’immobilisations financières
++  Récupérations sur créances immobilisées
+12 378 000,00
+AUGMENTATIONS DES CAPITAUX PROPRES ET ASSIMILÉS (C)
++   Augmentations de capital, apports
++   Subvention d’investissement
+AUGMENTATION DES DETTES DE FINANCEMENT (D) (nettes de primes de remboursement)
+53 062 065,23
+TOTAL I. RESSOURCES STABLES (A+B+C+D)
+II. EMPLOIS STABLES DE L’EXERCICE
+ACQUISITIONS ET AUGMENTATIONS D’IMMOBILISATIONS (E)
+80 209 426,25
+107 970 597,54
++   Acquisitions d’immobilisations incorporelles
+26 359 443,10
+23 044 464,88
++   Acquisitions d’immobilisations corporelles
+53 556 632,89
+84 926 132,66
++  Acquisitions d’immobilisations financières
+293 350,26
++   Augmentation des créances immobilisées
+REMBOURSEMENT DES CAPITAUX PROPRES (F)
+REMBOURSEMENT DES DETTES DE  FINANCEMENT (G)
+60 845 697,32
+60 196 484,39
+EMPLOIS EN NON VALEURS (H)
+TOTAL II. EMPLOIS STABLES (E+F+G+H)
+141 055 123,57
+168 167 081,93
+III. VARIATION DU BESOIN DE FINANCEMENT GLOBAL (B.F.G)
+22 589 025,06
+25 326 035,78
+IV. VARIATION DE LA TRÉSORERIE
+100 242 943,98
+94 712 139,89
+TOTAL GÉNÉRAL
+263 887 092,61
+263 887 092,61
+262 879 221,82
+262 879 221,82
+
+
+
+===== CMT PAGE 3 =====
+ COOPERS AUDIT 
+Deloitte Audit 
+Bd Sidi Mohammed Benabdellah 
+Bâtiment C – Tour Ivoire III – 3ème étage 
+La Marina - Casablanca 
+Coopers Audit  
+83, Avenue Hassan II 
+20 100 Casablanca 
+Aux Actionnaires de 
+COMPAGNIE MINIERE DE TOUISSIT (C.M.T.) S.A. 
+89-90 rue Larbi Doghmi 3ème étage
+Casablanca
+RAPPORT GENERAL DES COMMISSAIRES AUX COMPTES 
+EXERCICE DU 1ER JANVIER 2025 AU 31 DECEMBRE 2025 
+Audit des états de synthèse 
+Opinion avec réserve 
+Conformément à la mission qui nous a été confiée par vos Assemblées Générales, nous avons effectué 
+l'audit des états de synthèse ci-joints de la société COMPAGNIE MINIERE DE TOUISSIT (C.M.T.) S.A, qui 
+comprennent le bilan au 31 décembre 2025, le compte de produits et charges, l'état des soldes de gestion, 
+le tableau de financement pour l’exercice clos à cette date, ainsi que l’état des informations 
+complémentaires (ETIC). Ces états de synthèse font ressortir un montant de capitaux propres et assimilés 
+de 898 404 885,10 MAD dont un bénéfice net de 203 399 077,93 MAD. 
+Sous réserve de l’incidence des situations décrites dans la section « Fondement de l’opinion avec réserve» 
+de notre rapport, nous certifions que les états de synthèse cités au premier paragraphe ci-dessus sont 
+réguliers et sincères et donnent, dans tous leurs aspects significatifs, une image fidèle du résultat des 
+opérations de l’exercice écoulé ainsi que de la situation financière et du patrimoine de la société 
+COMPAGNIE MINIERE DE TOUISSIT (C.M.T.) S.A au 31 décembre 2025, conformément au référentiel 
+comptable en vigueur au Maroc. 
+Fondement de l’opinion avec réserve 
+Dans notre rapport général relatif à l’exercice clos le 31 décembre 2024 daté du 30 avril 2025, nous avons 
+émis les réserves suivantes pour lesquelles nous effectuons le suivi ci-après : 
+1.
+Comme indiqué au niveau de l’état B15 de l’ETIC, la société CMT S.A était en contentieux avec 
+l’Office des Changes et l’Administration des Douanes : 
+a)
+La société CMT S.A. avait fait l’objet en 2022 d’un contrôle de l’Office des Changes portant sur les 
+exercices 2012 à 2022. À la suite de ce contrôle, l’Office des Changes avait initialement notifié des 
+infractions à la société CMT S.A pour un total de 387 MMAD que celle-ci avait contesté. 
+Le 4 novembre 2025, la société a été condamnée, à la suite d’un jugement de première instance 
+rendu par le Tribunal correctionnel de Casablanca, à verser au profit de l’Administration des 
+Douanes et Impôts Indirects une amende de 2,3 milliards de dirhams. 
+En date du 02 avril 2026, la société CMT S.A. a conclu un accord transactionnel avec l’Office des 
+Changes pour le dénouement de ce contentieux moyennant le paiement d’un montant de 
+155 MMAD.   Selon le management, ce montant est couvert par les provisions pour risques et 
+charges inscrites au passif de la société CMT S.A au 31 décembre 2025. 
+ÉTATS FINANCIERS
+SOCIAUX
+EXERCICE AU 31 DÉCEMBRE 2025
+
+
+
+===== CMT PAGE 4 =====
+ 
+ 
+ 
+ 
+ COOPERS AUDIT 
+ 
+b) A l’issue d'un autre contrôle de l’Office des Changes, la société CMT S.A avait été notifiée en février 
+2024 d’une infraction relative au non-rapatriement et encaissement à l’étranger du produit partiel 
+des exportations de minerais. En date du 22 octobre 2024, la société CMT S.A. avait été 
+condamnée, au titre de ce contentieux, de manière conjointe avec son précédent Président du 
+Conseil d’Administration à payer une amende pour un montant total de 827 MMAD. 
+Pour rappel, le solde comptable de la créance sur le client historique de la société CMT S.A s’élevait 
+à 182 MMAD (18 MUSD) au 31 décembre 2023. L’exploitation de la confirmation de solde à la même 
+date reçue de ce client, avait mis en évidence un écart de l’ordre de 13,7 MUSD en majoration du 
+solde comptable à cette date. L’écart correspondait à des transferts effectués par ce client à une 
+filiale étrangère de la société CMT S.A.   
+Selon le management, le rapatriement desdits transferts n’aurait pas abouti en raison du blocage 
+des fonds auprès d’une banque à l’étranger. 
+Par ailleurs, la société avait reçu en 2024 des virements en devises d’un actionnaire indirect, pour 
+un montant total de 13,7 MUSD afin de répondre, selon le management, à la demande de l’Office 
+des Changes.  
+Le 02 avril 2026, la société CMT S.A. a conclu un accord transactionnel avec l’Office des Changes 
+pour le dénouement de ce contentieux pour un montant total de 27 MMAD. Selon le management, 
+ce montant est couvert par les provisions pour risques et charges inscrites au passif de la société 
+CMT S.A au 31 décembre 2025.  
+Au 31 décembre 2025, les livres comptables de la société font toujours apparaitre la créance sur le 
+client historique de la société CMT S.A ainsi que la dette envers l’actionnaire indirect pour un 
+montant de 13,7 MUSD.  
+Selon le management, une étude juridique est en cours pour déterminer les modalités d’extinction 
+desdites créances et dettes. À ce stade, nous ne sommes pas en mesure de nous prononcer sur 
+les impacts éventuels de cette situation sur les états de synthèse de la société CMT S.A. au 31 
+décembre 2025. 
+2. Comme indiqué au niveau de l’état B15 de l’ETIC, la société CMT S.A. a repris, dans l’attente de la 
+formalisation d’un nouveau contrat, ses relations commerciales avec son client historique, 
+suspendues courant 2024. A la date d’arrêté des comptes et compte tenu de cette reprise, les 
+procédures d’arbitrage en cours ont été suspendues.  
+À ce stade, nous ne sommes pas en mesure de nous prononcer sur les impacts éventuels de cette 
+situation sur les états de synthèse de la société CMT S.A. au 31 décembre 2025. 
+3. La société CMT S.A. détient des titres de participation dans la société Touissit International 
+Corporation (TIC) pour une valeur nette comptable de 179 MMAD au 31 décembre 2025, compte 
+tenu d’une provision pour dépréciation constatée en 2025 d’un montant de 21 MMAD. A ce stade, la 
+société ne dispose pas de documentation justifiant la valorisation de ces titres. 
+En conséquence, nous ne pouvons pas nous prononcer sur les impacts éventuels de cette situation 
+sur les états de synthèse de la société CMT S.A. au 31 décembre 2025. 
+ 
+Nous avons effectué notre audit selon les Normes de la Profession au Maroc. Les responsabilités qui nous 
+incombent en vertu de ces normes sont plus amplement décrites dans la section « Responsabilités de 
+l’auditeur à l’égard de l’audit des états de synthèse » du présent rapport. Nous sommes indépendants de 
+la société conformément aux règles de déontologie qui s’appliquent à l’audit des états de synthèse au 
+Maroc et nous nous sommes acquittés des autres responsabilités déontologiques qui nous incombent 
+selon ces règles. Nous estimons que les éléments probants que nous avons obtenus sont suffisants et 
+appropriés pour fonder notre opinion avec réserve. 
+ 
+ 
+ 
+ÉTATS FINANCIERS
+SOCIAUX
+EXERCICE AU 31 DÉCEMBRE 2025
+
+
+
+===== CMT PAGE 5 =====
+ 
+ 
+ 
+ 
+ COOPERS AUDIT 
+ 
+Observation 
+ 
+Nous attirons l’attention sur les points suivants :  
+ 
+- 
+Les deux situations décrites dans l’état A1 Bis de l’ETIC relatif aux évènements significatifs de 
+l’exercice ; 
+- 
+La situation décrite au niveau de l’état C5 de l’ETIC relative aux différends concernant les créances 
+sur les sociétés OSEAD Maroc Mining (OMM) et SHABA METALS LLC. Postérieurement à la date 
+d’arrêté des comptes, les accords transactionnels ont permis de dénouer définitivement ces 
+différends, suite à la réception par la CMT S.A. de deux virements respectifs de 35 000 000 USD et 
+12 000 000 USD.  
+ 
+Notre opinion n’est pas modifiée à l'égard de ces points. 
+ 
+Questions clés de l’audit  
+ 
+Les questions clés de l’audit sont les questions qui, selon notre jugement professionnel, ont été les plus 
+importantes dans l’audit des états de synthèse de la période considérée. Ces questions ont été traitées 
+dans le contexte de notre audit des états de synthèse pris dans leur ensemble et aux fins de la formation 
+de notre opinion sur ceux-ci, et nous n’exprimons pas une opinion distincte sur ces questions. 
+ 
+Questions clés identifiées 
+Nos réponses 
+Evaluation des titres de participation  
+ 
+Au 31 décembre 2025, les titres de participation 
+sont inscrits au bilan pour un montant brut de 378,5 
+MMAD, dépréciés à hauteur de 194 MMAD.  
+ 
+Les titres de participation sont comptabilisés à leur 
+date d’entrée au coût d’acquisition. A la clôture, ils 
+sont évalués au plus faible entre leur valeur 
+comptable et leur valeur actuelle. 
+ 
+Dans la détermination de la valeur actuelle ou 
+d’utilité, il est notamment tenu compte des 
+perspectives de rentabilité des titres, de la 
+conjoncture économique des capitaux propres 
+réels de la société contrôlée, des effets de 
+complémentarité 
+technique, 
+commerciale 
+ou 
+économique susceptibles de résulter de la 
+participation selon le niveau de celle-ci. 
+ 
+Dans 
+ce 
+contexte, 
+nous 
+avons 
+considéré 
+l’évaluation des titres de participation comme un 
+point clé de notre audit. 
+ 
+ 
+ 
+Nos travaux ont consisté à examiner le processus 
+d’évaluation des titres de participations et aussi 
+des éléments chiffrés utilisés.  
+ 
+Nos travaux ont consisté notamment à :  
+• 
+Examiner la cohérence des données et 
+des hypothèses sur lesquelles se fondent 
+l’évaluation des titres de participation,  
+• 
+Vérifier, sur la base des méthodes 
+appropriées l’exactitude des calculs 
+effectués par la société,  
+• 
+Examiner sur la base des analyses 
+obtenues, 
+l’existence 
+éventuelle 
+de 
+risque additionnel non provisionné lié à 
+ces actifs. 
+ 
+ÉTATS FINANCIERS
+SOCIAUX
+EXERCICE AU 31 DÉCEMBRE 2025
+
+
+
+===== CMT PAGE 6 =====
+ COOPERS AUDIT 
+Evaluation des autres provisions pour risques et 
+charges  
+Au 31 décembre 2025, les autres provisions pour 
+risques et charges s’élèvent à un montant de 240 
+MMAD. L’évaluation des provisions couvrant ces 
+risques nécessite l’exercice du jugement de la 
+direction dans son choix des éléments à considérer 
+(notamment l’existence ou non d’obligation de 
+paiement et la fiabilité de l’estimation des enjeux).  
+Compte tenu de ce qui précède nous avons 
+considéré l’évaluation des autres provisions pour 
+risques et charges comme un point clé de notre 
+audit.  
+Nous avons pris connaissance du processus 
+d’évaluation de ces provisions sur la base 
+d’entretiens avec la Direction de la société.  
+Nos travaux ont consisté également à : 
+•
+Evaluer la pertinence de la méthodologie
+retenue par la société pour l’estimation
+des provisions constituées ;
+•
+Obtenir des confirmations écrites et/ou
+rapport des conseillers juridiques de la
+société, en lien avec les principaux
+risques et litiges ;
+•
+Examiner le bien-fondé des hypothèses
+et/ou des calculs 
+utilisés pour la
+détermination des principales provisions.
+Responsabilités de la direction et des responsables de la gouvernance à l’égard des états de 
+synthèse 
+La direction est responsable de la préparation et de la présentation fidèle des états de synthèse, 
+conformément au référentiel comptable en vigueur au Maroc, ainsi que du contrôle interne qu'elle 
+considère comme nécessaire pour permettre la préparation d'états de synthèse exempts d'anomalies 
+significatives, que celles-ci résultent de fraudes ou d'erreurs. 
+Lors de la préparation des états de synthèse, c’est à la direction qu’il incombe d’évaluer la capacité de la 
+société à poursuivre son exploitation, de communiquer, le cas échéant, les questions se rapportant à la 
+continuité de l’exploitation et d’appliquer le principe comptable de continuité d’exploitation, sauf si la 
+direction a l’intention de liquider la société ou de cesser son activité ou si aucune autre solution réaliste ne 
+s’offre à elle. 
+Il incombe aux responsables de la gouvernance de surveiller le processus d’information financière de la 
+société. 
+Responsabilités de l’auditeur à l’égard de l’audit des états de synthèse 
+Nos objectifs sont d’obtenir l’assurance raisonnable que les états de synthèse pris dans leur ensemble 
+sont exempts d’anomalies significatives, que celles-ci résultent de fraudes ou d’erreurs et de délivrer un 
+rapport de l’auditeur contenant notre opinion. L’assurance raisonnable correspond à un niveau élevé 
+d’assurance, qui ne garantit toutefois pas qu’un audit réalisé conformément aux normes de la profession 
+au Maroc permettra toujours de détecter toute anomalie significative qui pourrait exister. Les anomalies 
+peuvent résulter de fraudes ou d’erreurs et elles sont considérées comme significatives lorsqu’il est 
+raisonnable de s’attendre à ce que, individuellement ou collectivement, elles puissent influer sur les 
+décisions économiques que les utilisateurs des états de synthèse prennent en se fondant sur ceux-ci. 
+Dans le cadre d’un audit réalisé conformément aux normes de la profession au Maroc, nous exerçons notre 
+jugement professionnel et faisons preuve d’esprit critique tout au long de cet audit. En outre : 
+-
+nous identifions et évaluons les risques que les états de synthèse comportent des anomalies 
+significatives, que celles-ci résultent de fraudes ou d’erreurs, concevons et mettons-en œuvre des 
+procédures d’audit en réponse à ces risques, et réunissons des éléments probants suffisants et
+appropriés pour fonder notre opinion. Le risque de non-détection d’une anomalie significative 
+résultant d’une fraude est plus élevé que celui d’une anomalie significative résultant d’une erreur, 
+ÉTATS FINANCIERS
+SOCIAUX
+EXERCICE AU 31 DÉCEMBRE 2025
+
+
+
+===== CMT PAGE 7 =====
+ COOPERS AUDIT 
+car la fraude peut impliquer la collusion, la falsification, les omissions volontaires, les fausses 
+déclarations ou le contournement du contrôle interne ; 
+-
+nous acquérons une compréhension des éléments du contrôle interne pertinents pour l’audit afin de
+concevoir des procédures d’audit appropriées aux circonstances, et non dans le but d’exprimer une 
+opinion sur l’efficacité du contrôle interne de la société ;
+-
+nous apprécions le caractère approprié des méthodes comptables retenues et le caractère 
+raisonnable des estimations comptables faites par la direction, de même que des informations y
+afférentes fournies par cette dernière ;
+-
+nous tirons une conclusion quant au caractère approprié de l’utilisation par la direction du principe 
+comptable de continuité d’exploitation et, selon les éléments probants obtenus, quant à l’existence 
+ou non d’une incertitude significative liée à des événements ou situations susceptibles de jeter un
+doute important sur la capacité de la société à poursuivre son exploitation. Si nous concluons à
+l’existence d’une incertitude significative, nous sommes tenus d’attirer l’attention des lecteurs de 
+notre rapport sur les informations fournies dans les états de synthèse au sujet de cette incertitude 
+ou, si ces informations ne sont pas adéquates, d’exprimer une opinion modifiée. Nos conclusions 
+s’appuient sur les éléments probants obtenus jusqu’à la date de notre rapport. Des événements ou
+situations futurs pourraient par ailleurs amener la société à cesser son exploitation ;
+-
+nous évaluons la présentation d’ensemble, la structure et le contenu des états de synthèse, y 
+compris les informations fournies dans l’ETIC, et apprécions si les états de synthèse représentent 
+les opérations et événements sous-jacents d’une manière propre à donner une image fidèle.
+Nous communiquons aux responsables de la gouvernance notamment l’étendue et le calendrier prévus 
+des travaux d’audit et nos constatations importantes, y compris toute déficience importante du contrôle 
+interne que nous aurions relevée au cours de notre audit. 
+Vérifications et informations spécifiques 
+Nous avons procédé également aux vérifications spécifiques prévues par la loi et nous nous sommes 
+assurés notamment de la sincérité et de la concordance des informations données dans le rapport de 
+gestion du Conseil d’Administration destiné aux actionnaires avec les états de synthèse de la société. Leur 
+sincérité et leur concordance avec les états de synthèse de la société appellent, de notre part, les mêmes 
+constatations que celles formulées ci-dessus.  
+Casablanca, le 30 avril 2026 
+Les Commissaires aux Comptes 
+Deloitte Audit 
+ Coopers Audit Maroc S.A. 
+Sakina Bensouda Korachi 
+Associée 
+ Hicham Cherkaoui 
+ Associé 
+ÉTATS FINANCIERS
+SOCIAUX
+EXERCICE AU 31 DÉCEMBRE 2025
+
+
+
+===== CMT PAGE 8 =====
+ÉTATS FINANCIERS
+CONSOLIDÉS
+EXERCICE AU 31 DÉCEMBRE 2025
+BILAN ACTIF
+AU 31 DÉCEMBRE 2025
+(En dirhams)
+31/12/2025
+31/12/2024
+Immobilisations incorporelles
+73 253 184
+47 196 743
+   Dont Écarts d'acquisition
+Immobilisations corporelles
+530 601 651
+512 837 777
+Immobilisations financières
+414 550 441
+453 447 357
+Titres mis en équivalence
+45 657 798
+44 931 607
+Actif immobilisé
+1 064 063 074
+1 058 413 483
+Stocks et en-cours
+85 178 680
+51 557 319
+Clients et comptes rattachés
+311 231 007
+319 284 235
+Autres créances et comptes de régularisation
+432 388 912
+304 836 741
+Disponibilités
+28 713 549
+32 358 332
+Actif circulant
+857 512 148
+708 036 628
+TOTAL ACTIF
+1 921 575 223
+1 766 450 112
+BILAN PASSIF
+AU 31 DÉCEMBRE 2025
+(En dirhams)
+31/12/2025
+31/12/2024
+Capital
+168 123 300
+168 123 300
+Primes liées au capital
+225 666 999
+225 666 999
+Réserves
+310 887 207
+340 366 483
+Résultat Net Part Groupe
+196 465 103
+(12 125 978)
+Capitaux propres (Part du groupe)
+901 142 608
+722 030 805
+Intérêts minoritaires
+(115 713)
+(109 593)
+Total des capitaux propres
+901 026 895
+721 921 211
+Provisions pour risques et charges
+333 309 242
+305 373 947
+Provisions
+333 309 242
+305 373 947
+Dettes financières
+171 581 683
+337 854 921
+Fournisseurs et comptes rattachés
+80 085 595
+66 376 586
+Autres dettes et comptes de régularisation
+435 571 808
+334 923 446
+Dettes
+687 239 086
+739 154 953
+TOTAL PASSIF
+1 921 575 223
+1 766 450 112
+COMPTE DE PRODUITS ET CHARGES (Hors Taxes)
+(En dirhams)
+31/12/2025
+31/12/2024
+Chiffre d'affaires
+690 451 532
+586 364 041
+Autres produits d'exploitation
+53 678 797
+29 600 683
+Achats consommés
+(153 553 725)
+(147 111 680)
+Charges de personnel
+(73 404 443)
+(64 248 416)
+Autres charges d'exploitation
+(89 244 165)
+(70 258 355)
+Impôts et taxes
+(1 667 760)
+(2 727 099)
+Dotations aux amortissements, dépréciations et provisions
+(38 412 256)
+(34 054 375)
+Résultat d'exploitation avant dotations aux amort. et dép. EA
+387 847 981
+297 564 799
+Dotations aux amort. et dépréciations des écarts d’acquisition
+Résultat d’exploitation après dotations aux amort. et dép. EA
+387 847 981
+(175 373 394)
+Charges et produits financiers
+(28 130 412)
+(54 870 259)
+Charges et produits exceptionnels
+(43 554 472)
+(175 373 394)
+Impôts sur les résultats
+(119 593 339)
+(79 267 190)
+Résultat net des entreprises intégrées
+196 569 758
+(11 946 044)
+Résultat net des activités abandonnées
+Quote-part du résultat net des sociétés mises en équivalence
+(110 776)
+(186 054)
+Résultat net de l’ensemble consolidé
+196 458 983
+(12 132 098)
+Intérêts minoritaires
+(6 120)
+(6 120)
+Résultat net (Part du groupe)
+196 465 103
+(12 125 978)
+TABLEAU DES FLUX DE TRÉSORERIE
+(En dirhams)
+31/12/2025
+31/12/2024
+Résultat net total des entités consolidées
+196 458 983
+(12 132 098)
+Dotations / Reprises aux amortissements, prov. et dépréciations
+85 031 055
+232 841 807
+Variation de l’impôt différé
+(2 053 969)
+(540 061)
+Éléments calculés ou gains/pertes liés aux var. de juste valeur
+Élimination des plus ou moins values de cessions d'actifs
+424 293
+(1 000 001)
+Élimination de la quote-part de résultat des sociétés MEE
+110 776
+186 054
+Autres éléments sans incidence sur la trésorerie
+49 452
+58 415
+Marge brute d'autofinancement
+280 020 589
+219 414 116
+Dividendes reçus des mises en équivalence
+Variation du BFR lié à l'activité (provisions incluses)
+(36 708 964)
+(146 557 866)
+Flux net de trésorerie généré par l'exploitation (I)
+243 311 624
+72 856 250
+Acquisitions d'immobilisations
+(80 633 719)
+(108 000 597)
+Cessions d'immobilisations
+1 000 000
+Réduction des autres immobilisations financières
+33 000
+Incidence des variations de périmètre
+Variation nette des placements à court terme
+Opérations internes Haut de Bilan
+Flux net de trésorerie généré par l'investissement (II)
+(80 633 719)
+(106 967 597)
+Émissions d'emprunts
+53 062 065
+Remboursements d'emprunts
+(62 706 782)
+(62 015 380)
+Variations des subventions d'investissements
+Dividendes versés des filiales
+Dividendes reçus/versés de la société mère
+Augmentations / réductions de capital
+Actionnaires : capital appelé non versé
+Cessions (acq.) nettes d'actions propres
+Variation nette des concours bancaires
+Flux net de trésorerie Généré par les opérations de financement (III)
+(62 706 782)
+(8 953 315)
+Variation de change sur la trésorerie (IV)
+4 188 440
+Variation de change sur autres postes du bilan 
+Incidence des variations de change
+4 188 440
+Variation de flux de trésorerie (I + II + III + IV)
+99 971 123
+(38 876 222)
+Trésorerie : ouverture
+(94 421 276)
+(55 545 054)
+Trésorerie : clôture
+5 549 847
+(94 421 276)
+TABLEAU DE VARIATION DES CAPITAUX PROPRES CONSOLIDÉS
+VARIATION DE LA SITUATION NETTE 
+INDIVIDUELLE
+Ouverture
+Affectation 
+du résultat 
+N-1
+Distribution 
+brute versée
+Var. de capital 
+en numéraire 
+et souscrit
+Résultat
+Autres 
+augmentations 
+et diminutions
+JV & 
+actualisation
+Reclass. 
+chgt de 
+méthode
+Écart de 
+conversion/
+effet de change
+Variations de 
+périmètre
+Autres
+Clôture
+Capitaux propres sociaux en devise de 
+consolidation
+951 820 522
+199 499 346
+(16 516 332)
+1 134 803 536
+Total des écritures d'éliminations
+(3 411 427)
+(5 996 292)
+(9 407 719)
+Total des écritures de retraitements
+1 926 927
+(20 321 416)
+(18 394 489)
+Total des impacts de fiscalité différée
+60 016 015
+2 053 969
+62 069 984
+Total des écritures de retraitements IAS
+Capitaux propres retraités
+1 010 352 038
+175 235 607
+(16 516 332)
+1 169 071 312
+Elimination des écarts de conv. & prov. de change
+Reclassement automatique de consolidation
+Elimination des provisions intra groupes
+1 322 022
+33 600
+1 355 622
+Elimination des provisions intra groupes (Titres)
+12 031 560
+21 000 000
+33 031 560
+Elimination des +/- value de cession interne
+Elimination des marges internes sur stocks
+Elimination des dividendes des entités consolidées
+Quote-part CP après éli. des opérations internes
+1 023 705 620
+196 269 207
+(16 516 332)
+1 203 458 495
+Annulation quote-part HG sur Proportionnelles
+Écart d'acquisition net
+Annulation du social pour les MEE
+(73 601 017)
+300 551
+(1 673 933)
+(74 974 399)
+Calcul des MEE
+38 428 168
+(110 776)
+836 967
+39 154 359
+Elimination des titres chez les mères
+(266 611 560)
+(266 611 560)
+Total des capitaux propres
+721 921 211
+196 458 983
+(17 353 299)
+901 026 895
+Intérêts minoritaires
+(109 593)
+(6 120)
+(115 713)
+Capitaux propres groupe
+722 030 805
+196 465 103
+(17 353 299)
+901 142 608
+Total capitaux propres part groupe - Consolidé
+722 030 805
+196 465 103
+(17 353 299)
+901 142 608
+Intérêts minoritaires pris en charge par le groupe
+Capitaux propres groupe après ret. des 
+minoritaires
+722 030 805
+196 465 103
+(17 353 299)
+901 142 608
+
+
+
+===== CMT PAGE 9 =====
+ 
+ 
+ 
+ 
+COOPERS AUDIT 
+ Deloitte Audit 
+Bd Sidi Mohammed Benabdellah 
+Bâtiment C – Tour Ivoire III – 3ème étage 
+La Marina - Casablanca 
+Coopers Audit  
+83, Avenue Hassan II 
+20 100 Casablanca 
+ 
+ 
+ 
+ 
+ 
+ 
+Aux Actionnaires de 
+COMPAGNIE MINIERE DE TOUISSIT (C.M.T.) S.A. 
+89-90 rue Larbi Doghmi 3ème étage  
+Casablanca 
+ 
+ 
+RAPPORT DES COMMISSAIRES AUX COMPTES 
+EXERCICE DU 1ER JANVIER 2025 AU 31 DECEMBRE 2025 
+ 
+ 
+Audit des états de synthèse consolidés 
+ 
+Opinion avec réserve 
+Nous avons effectué l’audit des états de synthèse consolidés de la société Compagnie Minière de Touissit 
+(CMT) S.A et de ses filiales (le « groupe »), qui comprennent le bilan consolidé au 31 décembre 2025, ainsi 
+que le compte de produits et charges consolidé, le tableau consolidé des flux de trésorerie pour l’exercice 
+clos à cette date, ainsi que l’état des informations complémentaires (ETIC), y compris un résumé des 
+principales méthodes comptables. Ces états de synthèse consolidés font ressortir un montant de capitaux 
+propres consolidés de 901 MMAD dont un bénéfice net consolidé de 196,5 MMAD. 
+Sous réserve de l’incidence des situations décrites dans la section « Fondement de l’opinion avec 
+réserve» de notre rapport, nous certifions que les états de synthèse consolidés cités au premier 
+paragraphe ci-dessus sont réguliers et sincères et donnent, dans tous leurs aspects significatifs, une 
+image fidèle du patrimoine et de la situation financière du groupe au 31 décembre 2025, ainsi que du 
+résultat de l’ensemble consolidé pour l’exercice clos à cette date, conformément au référentiel 
+comptable en vigueur au Maroc. 
+ 
+Fondement de l’opinion avec réserve 
+1- Dans notre rapport d’audit sur les états de synthèse consolidés relatif à l’exercice clos le 31 décembre 
+2024 daté du 30 avril 2025, nous avons émis les réserves suivantes pour lesquelles nous effectuons le 
+suivi ci-après : 
+ 
+1.1 Comme indiqué dans la note 7 annexée aux états de synthèse consolidés, la société CMT S.A a fait 
+l’objet de contentieux avec l’Office des Changes et l’Administration des Douanes :  
+a) La société CMT S.A. avait fait l’objet en 2022 d’un contrôle de l’Office des Changes portant sur les 
+exercices 2012 à 2022. À la suite de ce contrôle, l’Office des Changes avait initialement notifié des 
+infractions à la société CMT S.A pour un total de 387 MMAD que celle-ci avait contesté.  
+Le 4 novembre 2025, la société a été condamnée, à la suite d’un jugement de première instance 
+rendu par le Tribunal correctionnel de Casablanca, à verser au profit de l’Administration des 
+Douanes et Impôts Indirects une amende de 2,3 milliards de dirhams.  
+En date du 02 avril 2026, la société CMT S.A. a conclu un accord transactionnel avec l’Office des 
+Changes pour le dénouement de ce contentieux moyennant le paiement d’un montant de                         
+155 MMAD.   Selon le management, ce montant est couvert par les provisions pour risques et 
+charges inscrites au passif de la société CMT S.A au 31 décembre 2025. 
+ 
+ÉTATS FINANCIERS
+CONSOLIDÉS
+EXERCICE AU 31 DÉCEMBRE 2025
+
+
+
+===== CMT PAGE 10 =====
+COOPERS AUDIT 
+b)
+A l’issue d'un autre contrôle de l’Office des Changes, la société CMT S.A avait été notifiée en 
+février 2024 d’une infraction relative au non-rapatriement et encaissement à l’étranger du produit 
+partiel des exportations de minerais. En date du 22 octobre 2024, la société CMT S.A. avait été 
+condamnée, au titre de ce contentieux, de manière conjointe avec son précédent Président du 
+Conseil d’Administration à payer une amende pour un montant total de 827 MMAD. 
+Pour rappel, le solde comptable de la créance sur le client historique de la société CMT S.A s’élevait 
+à 182 MMAD (18 MUSD) au 31 décembre 2023. L’exploitation de la confirmation de solde à la même 
+date reçue de ce client, avait mis en évidence un écart de l’ordre de 13,7 MUSD en majoration du 
+solde comptable à cette date. L’écart correspondait à des transferts effectués par ce client à une 
+filiale étrangère de la société CMT S.A. 
+Selon le management, le rapatriement desdits transferts n’aurait pas abouti en raison du blocage 
+des fonds auprès d’une banque à l’étranger. 
+Par ailleurs, la société avait reçu en 2024 des virements en devises d’un actionnaire indirect, pour 
+un montant total de 13,7 MUSD afin de répondre, selon le management, à la demande de l’Office 
+des Changes. 
+Le 02 avril 2026, la société CMT S.A. a conclu un accord transactionnel avec l’Office des Changes 
+pour le dénouement de ce contentieux pour un montant total de 27 MMAD. Selon le management, 
+ce montant est couvert par les provisions pour risques et charges inscrites au passif de la société 
+CMT S.A. au 31 décembre 2025. 
+Au 31 décembre 2025, les livres comptables de la société CMT S.A. font toujours apparaitre la 
+créance sur le client historique de la société CMT S.A ainsi que la dette envers l’actionnaire indirect 
+pour un montant de 13,7 MUSD. 
+Par ailleurs, les états de synthèse consolidés au 31 décembre 2025 font également apparaître, 
+dans les comptes de la filiale étrangère de CMT S.A., une créance sur la banque étrangère précitée 
+ainsi qu’une dette envers le client historique de CMT S.A., pour un montant de 13,7 MUSD. 
+Selon le management, une étude juridique est en cours pour déterminer les modalités d’extinction 
+desdites créances et dettes. À ce stade, nous ne sommes pas en mesure de nous prononcer sur 
+les impacts éventuels de cette situation sur les états de synthèse de la société CMT S.A. au 31 
+décembre 2025. 
+1.2 Comme mentionné au niveau de la note 7 annexée aux états de synthèses consolidés, la société CMT 
+S.A. a repris, dans l’attente de la formalisation d’un nouveau contrat, ses relations commerciales 
+avec son client historique, suspendues courant 2024. A la date d’arrêté des comptes et compte tenu 
+de cette reprise, les procédures d’arbitrage en cours ont été suspendues. 
+A ce stade, nous ne sommes pas en mesure de nous prononcer sur les impacts éventuels sur les 
+impacts éventuels de cette situation sur les états de synthèse consolidés de la société CMT S.A. au 
+31 décembre 2025. 
+Nous formulons la nouvelle réserve suivante : 
+2-
+La société Touissit International Corporation (TIC), filiale de la société CMT S.A., détient des titres de 
+participation pour une valeur brute comptable de 170,4 MMAD (18,6 MUSD) au 31 décembre 2025. A 
+cette date, le groupe CMT ne dispose pas de documentation justifiant la valorisation de ces titres. 
+Par ailleurs, une provision pour dépréciation des titres de participation détenus par CMT S.A. dans la 
+société TIC, d’un montant de 21 MMAD, a été comptabilisée dans les comptes sociaux et maintenue 
+dans les états de synthèses consolidés au 31 décembre 2025. 
+A ce stade, nous ne pouvons pas nous prononcer sur les impacts éventuels de cette situation sur les 
+états de synthèse consolidés de la société CMT S.A. au 31 décembre 2025. 
+ÉTATS FINANCIERS
+CONSOLIDÉS
+EXERCICE AU 31 DÉCEMBRE 2025
+
+
+
+===== CMT PAGE 11 =====
+ 
+ 
+ 
+ 
+COOPERS AUDIT 
+ 
+Observation 
+Nous attirons l’attention sur les deux points suivants :  
+- 
+Les deux situations décrites dans la note 6 des notes annexées aux états consolidés relative aux 
+évènements significatifs de l’exercice ; 
+- 
+La situation décrite au niveau de la note 8 des notes annexées aux états consolidés relative aux 
+différends concernant les créances sur les sociétés OSEAD Maroc Mining (OMM) et SHABA 
+METALS LLC. Postérieurement à la date d’arrêté des comptes, les accords transactionnels ont 
+permis de dénouer définitivement ces différends, suite à la réception par la CMT S.A. de deux 
+virements respectifs de 35 000 000 USD et 12 000 000 USD.  
+Notre opinion n’est pas modifiée à l'égard de ces points.  
+ 
+Questions clés de l’audit 
+Les questions clés de l’audit sont les questions qui, selon notre jugement professionnel, ont été les plus 
+importantes dans l’audit des états de synthèse consolidés de la période considérée. Ces questions ont 
+été traitées dans le contexte de notre audit des états de synthèse consolidés pris dans leur ensemble et 
+aux fins de la formation de notre opinion sur ceux-ci, et nous n’exprimons pas une opinion distincte sur 
+ces questions. 
+ 
+Questions clés identifiées 
+Nos réponses 
+ 
+Evaluation des titres mis en équivalence  
+ 
+Au 31 décembre 2025, les titres mis en équivalence 
+s’élèvent à 45 MMAD. 
+ 
+Conformément aux règles de consolidation en 
+vigueur, la mise en équivalence consiste à 
+substituer la valeur comptable des titres détenus 
+par la quote-part des capitaux propres retraités y 
+compris le résultat de l’exercice. Dès lors que des 
+changements 
+significatifs 
+défavorables 
+sont 
+survenus par rapport aux objectifs initialement 
+fixés à la date d’acquisition des titres, un test sur la 
+valeur recouvrable des titres mis en équivalence 
+est effectué. 
+ 
+La valeur recouvrable des titres mis en équivalence 
+par le Groupe correspond à la valeur d’utilité qui est 
+déterminée en se basant sur la valeur actuelle des 
+flux de trésorerie attendus sur la base des 
+jugements 
+et 
+estimations 
+de 
+la 
+part 
+du 
+management. 
+ 
+Dans 
+ce 
+contexte, 
+nous 
+avons 
+considéré 
+l’évaluation des titres mis en équivalence comme 
+un point clé de l’audit. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Nos travaux ont consisté à examiner le processus 
+d’évaluation des titres mis en équivalence ainsi 
+que des éléments chiffrés utilisés. 
+  
+Nos travaux ont consisté notamment à : 
+ 
+ 
+- 
+Examiner la cohérence des données et 
+des hypothèses sur lesquelles se fondent 
+l’évaluation des titres mis en équivalence 
+et de l’écart d’acquisition, le cas 
+échéant ; 
+- 
+Vérifier, sur la base des méthodes 
+appropriées, l’exactitude des calculs 
+effectués par la société,  
+- 
+Vérifier le caractère recouvrable des 
+créances éventuellement rattachées à 
+ces titres au regard des informations 
+disponibles. 
+ 
+ 
+ 
+ÉTATS FINANCIERS
+CONSOLIDÉS
+EXERCICE AU 31 DÉCEMBRE 2025
+
+
+
+===== CMT PAGE 12 =====
+COOPERS AUDIT 
+Evaluation des autres provisions pour risques et 
+charges  
+Les Provisions pour risques et charges pour un 
+montant de 333,3 MMAD au 31 décembre 2025, 
+comprennent des « autres provisions pour risques 
+et charges » pour à un montant de 240 MMAD. 
+L’évaluation des provisions couvrant ces risques 
+nécessite l’exercice du jugement de la direction 
+dans son choix des éléments à considérer 
+(notamment l’existence ou non d’obligation de 
+paiement et la fiabilité de l’estimation des enjeux).  
+Compte tenu de ce qui précède nous avons 
+considéré l’évaluation des autres provisions pour 
+risques et charges comme un point clé de notre 
+audit.  
+Nous avons pris connaissance du processus 
+d’évaluation de ces autres provisions sur la base 
+d’entretiens avec la Direction de la société.  
+Nos travaux ont consisté également à : 
+•
+Evaluer la pertinence de la méthodologie 
+retenue par la société pour l’estimation
+des provisions constituées ;
+•
+Obtenir des confirmations écrites et/ou
+rapport des conseillers juridiques de la
+société, en lien avec les principaux
+risques et litiges ;
+•
+Examiner le bien-fondé des hypothèses 
+et/ou des calculs utilisés pour la
+détermination 
+des 
+principales 
+provisions.
+Responsabilités de la direction et des responsables de la gouvernance à l’égard des états de 
+synthèse consolidés 
+La direction est responsable de la préparation et de la présentation fidèle des états de de synthèse 
+consolidés conformément au référentiel comptable en vigueur au Maroc, ainsi que du contrôle interne 
+qu'elle considère comme nécessaire pour permettre la préparation d'états de synthèse consolidés 
+exempts d'anomalies significatives, que celles-ci résultent de fraudes ou d'erreurs. 
+Lors de la préparation des états de synthèse consolidés, c’est à la direction qu’il incombe d’évaluer la 
+capacité du groupe à poursuivre son exploitation, de communiquer, le cas échéant, les questions se 
+rapportant à la continuité de l’exploitation et d’appliquer le principe comptable de continuité 
+d’exploitation, sauf si la direction a l’intention de liquider le groupe ou de cesser son activité ou si aucune 
+autre solution réaliste ne s’offre à elle. 
+Il incombe aux responsables de la gouvernance de surveiller le processus d’information financière du 
+groupe. 
+Responsabilités de l’auditeur à l’égard de l’audit des états de synthèse consolidés 
+Nos objectifs sont d’obtenir l’assurance raisonnable que les états de synthèse consolidés pris dans leur 
+ensemble sont exempts d’anomalies significatives, que celles-ci résultent de fraudes ou d’erreurs et de 
+délivrer un rapport de l’auditeur contenant notre opinion. L’assurance raisonnable correspond à un 
+niveau élevé d’assurance, qui ne garantit toutefois pas qu’un audit réalisé conformément aux normes de 
+la profession au Maroc permettra toujours de détecter toute anomalie significative qui pourrait exister. 
+Les anomalies peuvent résulter de fraudes ou d’erreurs et elles sont considérées comme significatives 
+lorsqu’il est raisonnable de s’attendre à ce que, individuellement ou collectivement, elles puissent influer 
+sur les décisions économiques que les utilisateurs des états de synthèse consolidés prennent en se 
+fondant sur ceux-ci. 
+Dans le cadre d’un audit réalisé conformément aux normes de la profession au Maroc, nous exerçons 
+notre jugement professionnel et faisons preuve d’esprit critique tout au long de cet audit. En outre : 
+-
+nous identifions et évaluons les risques que les états de synthèse consolidés comportent des 
+anomalies significatives, que celles-ci résultent de fraudes ou d’erreurs, concevons et mettons
+en œuvre des procédures d’audit en réponse à ces risques, et réunissons des éléments probants
+suffisants et appropriés pour fonder notre opinion. Le risque de non-détection d’une anomalie
+ÉTATS FINANCIERS
+CONSOLIDÉS
+EXERCICE AU 31 DÉCEMBRE 2025
+
+
+
+===== CMT PAGE 13 =====
+COOPERS AUDIT 
+significative résultant d’une fraude est plus élevé que celui d’une anomalie significative résultant 
+d’une erreur, car la fraude peut impliquer la collusion, la falsification, les omissions volontaires, 
+les fausses déclarations ou le contournement du contrôle interne ; 
+-
+nous acquérons une compréhension des éléments du contrôle interne pertinents pour l’audit afin 
+de concevoir des procédures d’audit appropriées aux circonstances, et non dans le but d’exprimer 
+une opinion sur l’efficacité du contrôle interne du groupe ; 
+-
+nous apprécions le caractère approprié des méthodes comptables retenues et le caractère 
+raisonnable des estimations comptables faites par la direction, de même que des informations y 
+afférentes fournies par cette dernière ; 
+-
+nous tirons une conclusion quant au caractère approprié de l’utilisation par la direction du principe 
+comptable de continuité d’exploitation et, selon les éléments probants obtenus, quant à l’existence 
+ou non d’une incertitude significative liée à des événements ou situations susceptibles de jeter un 
+doute important sur la capacité du groupe à poursuivre son exploitation. Si nous concluons à 
+l’existence d’une incertitude significative, nous sommes tenus d’attirer l’attention des lecteurs de 
+notre rapport sur les informations fournies dans les états de synthèse au sujet de cette incertitude 
+ou, si ces informations ne sont pas adéquates, d’exprimer une opinion modifiée. Nos conclusions 
+s’appuient sur les éléments probants obtenus jusqu’à la date de notre rapport. Des événements ou 
+situations futurs pourraient par ailleurs amener le groupe à cesser son exploitation ; 
+-
+nous évaluons la présentation d’ensemble, la structure et le contenu des états de synthèse 
+consolidés, y compris les informations fournies dans les notes, et apprécions si les états de 
+synthèse consolidés représentent les opérations et événements sous-jacents d’une manière propre 
+à donner une image fidèle. 
+-
+nous obtenons des éléments probants suffisants et appropriés concernant les informations 
+financières des entités et activités du groupe pour exprimer une opinion sur les états de synthèse 
+consolidés. Nous sommes responsables de la direction, de la supervision et de la réalisation de 
+l’audit du groupe. Nous assumons l’entière responsabilité de l’opinion d’audit. 
+Nous communiquons aux responsables de la gouvernance notamment l’étendue et le calendrier prévus 
+des travaux d’audit et nos constatations importantes, y compris toute déficience importante du contrôle 
+interne que nous aurions relevée au cours de notre audit. 
+Casablanca, le 30 avril 2026 
+Les Commissaires aux Comptes 
+Deloitte Audit 
+ Coopers Audit Maroc S.A. 
+Sakina Bensouda Korachi 
+Associée 
+ Hicham Cherkaoui 
+ Associé 
+ÉTATS FINANCIERS
+CONSOLIDÉS
+EXERCICE AU 31 DÉCEMBRE 2025

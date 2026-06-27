@@ -1,0 +1,204 @@
+{
+  "missing": {
+    "ATW": {
+      "2022": [
+        "Marge_Brute",
+        "Resultats_Reportes",
+        "Free_Cash_Flow",
+        "CFS_Beginning_Cash"
+      ],
+      "2023": [
+        "Marge_Brute",
+        "Resultats_Reportes",
+        "Free_Cash_Flow",
+        "CFS_Beginning_Cash"
+      ],
+      "2024": [
+        "Marge_Brute",
+        "EBITDA",
+        "Actif_Courant",
+        "Passif_Courant",
+        "Resultats_Reportes",
+        "CFS_Beginning_Cash"
+      ],
+      "2025": [
+        "Marge_Brute",
+        "EBITDA",
+        "Actif_Courant",
+        "Passif_Courant",
+        "Resultats_Reportes",
+        "CFS_Beginning_Cash"
+      ]
+    },
+    "BCP": {
+      "2022": [
+        "Marge_Brute",
+        "Resultats_Reportes",
+        "Free_Cash_Flow",
+        "CFS_Beginning_Cash"
+      ],
+      "2023": [
+        "Marge_Brute",
+        "EBITDA",
+        "Resultats_Reportes",
+        "CFS_Beginning_Cash"
+      ],
+      "2024": [
+        "Marge_Brute",
+        "EBITDA",
+        "Resultat_Exploitation",
+        "Actif_Courant",
+        "Passif_Courant",
+        "Resultats_Reportes",
+        "Dividendes",
+        "CFS_Beginning_Cash",
+        "CFS_Ending_Cash"
+      ],
+      "2025": [
+        "Marge_Brute",
+        "EBITDA",
+        "Resultat_Exploitation",
+        "Actif_Courant",
+        "Passif_Courant",
+        "Resultats_Reportes",
+        "Dividendes",
+        "CFS_Beginning_Cash",
+        "CFS_Ending_Cash"
+      ]
+    },
+    "BOA": {
+      "2022": [
+        "Marge_Brute",
+        "Resultats_Reportes",
+        "Free_Cash_Flow",
+        "CFS_Beginning_Cash"
+      ],
+      "2023": [
+        "Marge_Brute",
+        "EBITDA",
+        "Resultat_Exploitation",
+        "Actif_Courant",
+        "Passif_Courant",
+        "Resultats_Reportes",
+        "Dividendes",
+        "CFS_Beginning_Cash",
+        "CFS_Ending_Cash"
+      ],
+      "2024": [
+        "Marge_Brute",
+        "EBITDA",
+        "Resultat_Exploitation",
+        "Actif_Courant",
+        "Passif_Courant",
+        "Resultats_Reportes",
+        "Dividendes",
+        "CFS_Beginning_Cash",
+        "CFS_Ending_Cash"
+      ],
+      "2025": [
+        "Marge_Brute",
+        "EBITDA",
+        "Resultat_Exploitation",
+        "Actif_Courant",
+        "Passif_Courant",
+        "Resultats_Reportes",
+        "Dividendes",
+        "CFS_Beginning_Cash",
+        "CFS_Ending_Cash"
+      ]
+    },
+    "IAM": {
+      "2022": [
+        "Marge_Brute",
+        "EBITDA",
+        "Resultat_Exploitation",
+        "Actif_Courant",
+        "Passif_Courant",
+        "Net_Debt",
+        "Resultats_Reportes",
+        "Free_Cash_Flow",
+        "Dividendes",
+        "CFS_Beginning_Cash",
+        "CFS_Ending_Cash"
+      ],
+      "2023": [
+        "Marge_Brute",
+        "EBITDA",
+        "Resultat_Exploitation",
+        "Actif_Courant",
+        "Passif_Courant",
+        "Net_Debt",
+        "Resultats_Reportes",
+        "Free_Cash_Flow",
+        "Dividendes",
+        "CFS_Beginning_Cash",
+        "CFS_Ending_Cash"
+      ],
+      "2024": [
+        "Marge_Brute",
+        "EBITDA",
+        "Resultat_Exploitation",
+        "Actif_Courant",
+        "Passif_Courant",
+        "Net_Debt",
+        "Resultats_Reportes",
+        "Free_Cash_Flow",
+        "Dividendes",
+        "CFS_Beginning_Cash",
+        "CFS_Ending_Cash"
+      ],
+      "2025": [
+        "Marge_Brute",
+        "EBITDA",
+        "Resultat_Exploitation",
+        "Actif_Courant",
+        "Passif_Courant",
+        "Net_Debt",
+        "Resultats_Reportes",
+        "Free_Cash_Flow",
+        "Dividendes",
+        "CFS_Beginning_Cash",
+        "CFS_Ending_Cash"
+      ]
+    },
+    "MSA": {
+      "2022": [
+        "Marge_Brute",
+        "Resultats_Reportes",
+        "Free_Cash_Flow",
+        "CFS_Beginning_Cash"
+      ],
+      "2023": [
+        "Marge_Brute",
+        "Resultats_Reportes",
+        "Free_Cash_Flow",
+        "CFS_Beginning_Cash"
+      ],
+      "2024": [
+        "Marge_Brute",
+        "Resultats_Reportes",
+        "Free_Cash_Flow",
+        "CFS_Beginning_Cash"
+      ],
+      "2025": [
+        "Marge_Brute",
+        "EBITDA",
+        "Resultats_Reportes",
+        "CFS_Beginning_Cash"
+      ]
+    }
+  },
+  "symbols": [
+    "ATW",
+    "BCP",
+    "BOA",
+    "IAM",
+    "MSA"
+  ],
+  "years": [
+    2022,
+    2023,
+    2024,
+    2025
+  ]
+}

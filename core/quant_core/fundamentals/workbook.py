@@ -228,6 +228,8 @@ def _parse_core_summary_annual(wb: Any, mappings: list[CompanyMapping]) -> list[
         if not symbol or year is None:
             continue
         count = _nonnull_metric_count(row, {"Company", "Statement_Year"})
+        if count == 0:
+            continue
         key = (symbol, year)
         if key not in best or count > best[key][0]:
             best[key] = (count, row)
@@ -289,6 +291,9 @@ def _parse_wide_metric_sheets(wb: Any, mappings: list[CompanyMapping]) -> list[A
                 key = (symbol, year, sheet_name)
                 if key in seen:
                     continue
+                value = _safe_float(row[index])
+                if value is None:
+                    continue
                 seen.add(key)
                 out.append(
                     AnnualMetricRow(
@@ -296,7 +301,7 @@ def _parse_wide_metric_sheets(wb: Any, mappings: list[CompanyMapping]) -> list[A
                         company_name=company_name,
                         statement_year=year,
                         metric_name=sheet_name,
-                        metric_value=_safe_float(row[index]),
+                        metric_value=value,
                         raw_metric_name=sheet_name,
                         source_sheet=sheet_name,
                         source_field=str(year),

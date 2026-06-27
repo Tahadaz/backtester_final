@@ -1,0 +1,635 @@
+- generic [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - link "RDT Alpha" [ref=e4] [cursor=pointer]:
+        - /url: /dashboard
+        - generic [ref=e5]: RDT
+        - generic [ref=e6]:
+          - generic [ref=e7]: RDT Alpha
+          - generic [ref=e8]: Road to Alpha
+      - navigation [ref=e9]:
+        - link "Tableau de Bord" [ref=e10] [cursor=pointer]:
+          - /url: /dashboard
+          - img
+          - text: Tableau de Bord
+        - link "Data" [ref=e11] [cursor=pointer]:
+          - /url: /data
+          - img
+          - text: Data
+        - link "Signals" [ref=e12] [cursor=pointer]:
+          - /url: /signals
+          - img
+          - text: Signals
+        - link "Strategy" [ref=e13] [cursor=pointer]:
+          - /url: /strategy
+          - img
+          - text: Strategy
+        - link "Backtest" [ref=e14] [cursor=pointer]:
+          - /url: /backtest
+          - img
+          - text: Backtest
+        - link "Analytics" [ref=e15] [cursor=pointer]:
+          - /url: /analytics
+          - img
+          - text: Analytics
+        - link "Glossaire" [ref=e16] [cursor=pointer]:
+          - /url: /glossary
+          - img
+          - text: Glossaire
+      - generic [ref=e17]:
+        - generic [ref=e18]: MASI · live
+        - button "Refresh" [ref=e20]:
+          - img
+        - link "Se connecter" [ref=e21] [cursor=pointer]:
+          - /url: /login
+          - img
+          - generic [ref=e22]: Se connecter
+  - main [ref=e23]:
+    - generic [ref=e25]:
+      - generic [ref=e26]:
+        - button "Back" [ref=e27]:
+          - img
+          - text: Back
+        - generic [ref=e28]:
+          - generic [ref=e29]:
+            - img [ref=e31]
+            - heading "Cross-sectional momentum - CMT" [level=1] [ref=e33]
+            - generic [ref=e34]: Mensuel
+            - generic [ref=e35]: Research
+          - generic [ref=e36]:
+            - generic [ref=e37]: Cross-sectional momentum
+            - generic [ref=e38]: /
+            - generic [ref=e39]: tendance
+            - generic [ref=e40]: /
+            - generic [ref=e41]: Long
+      - generic [ref=e42]:
+        - generic [ref=e43]:
+          - generic [ref=e44]: Edge
+          - generic [ref=e45]: "33"
+          - generic [ref=e46]: rank score
+        - generic [ref=e47]:
+          - generic [ref=e48]: IC
+          - generic [ref=e49]: "+0.040"
+          - generic [ref=e50]: tendance
+        - generic [ref=e51]:
+          - generic [ref=e52]: Sharpe
+          - generic [ref=e53]: "+0.40"
+          - generic [ref=e54]: screen backtest
+        - generic [ref=e55]:
+          - generic [ref=e56]: Sample
+          - generic [ref=e57]: "100"
+          - generic [ref=e58]: FDR not passed
+        - generic [ref=e59]:
+          - generic [ref=e60]: Liquidity
+          - generic [ref=e61]: "--"
+          - generic [ref=e62]: sector missing
+      - generic [ref=e63]:
+        - tablist [ref=e64]:
+          - tab "Overview" [ref=e65]
+          - tab "Backtest" [active] [selected] [ref=e66]
+          - tab "Validation" [ref=e67]
+          - tab "Rules" [ref=e68]
+        - tabpanel "Backtest" [ref=e143]:
+          - generic [ref=e144]:
+            - generic [ref=e145]:
+              - generic [ref=e146]:
+                - generic [ref=e147]: Return
+                - generic [ref=e148]: 44.2%
+                - generic [ref=e149]: 2026-01-01 to 2026-06-05
+              - generic [ref=e150]:
+                - generic [ref=e151]: Sharpe
+                - generic [ref=e152]: "+2.48"
+                - generic [ref=e153]: 4 trades
+              - generic [ref=e154]:
+                - generic [ref=e155]: Max DD
+                - generic [ref=e156]: 13.0%
+                - generic [ref=e157]: Win 50%
+              - generic [ref=e158]:
+                - generic [ref=e159]: MC positive
+                - generic [ref=e160]: 95%
+                - generic [ref=e161]: 2000 paths
+            - generic [ref=e166]:
+              - img:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic: Jan 2026
+                      - generic:
+                        - generic: Feb 2026
+                      - generic:
+                        - generic: Mar 2026
+                      - generic:
+                        - generic: Apr 2026
+                      - generic:
+                        - generic: May 2026
+                      - generic:
+                        - generic: Jun 2026
+                    - generic:
+                      - generic:
+                        - generic: "1500"
+                      - generic:
+                        - generic: "2000"
+                      - generic:
+                        - generic: "2500"
+                      - generic:
+                        - generic: "3000"
+                      - generic:
+                        - generic: "3500"
+                      - generic:
+                        - generic: "4000"
+                      - generic:
+                        - generic: "4500"
+                      - generic:
+                        - generic: "5000"
+                      - generic:
+                        - generic: "5500"
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: −40
+                        - generic:
+                          - generic: −20
+                        - generic:
+                          - generic: "0"
+                        - generic:
+                          - generic: "20"
+                        - generic:
+                          - generic: "40"
+                        - generic:
+                          - generic: "60"
+                        - generic:
+                          - generic: "80"
+                        - generic:
+                          - generic: "100"
+              - img:
+                - generic:
+                  - generic [ref=e191]:
+                    - generic [ref=e193]: Close
+                    - generic [ref=e196]: tendance score
+                    - generic [ref=e199]: Position
+                    - generic [ref=e202]: Buy
+                    - generic [ref=e209]: Sell
+                  - generic:
+                    - generic: Price, score and trades
+              - toolbar [ref=e215]:
+                - button "Download plot as a PNG" [ref=e217] [cursor=pointer]:
+                  - img [ref=e218]
+                - generic [ref=e220]:
+                  - button "Zoom" [ref=e221] [cursor=pointer]:
+                    - img [ref=e222]
+                  - button "Pan" [ref=e224] [cursor=pointer]:
+                    - img [ref=e225]
+                - generic [ref=e227]:
+                  - button "Zoom in" [ref=e228] [cursor=pointer]:
+                    - img [ref=e229]
+                  - button "Zoom out" [ref=e231] [cursor=pointer]:
+                    - img [ref=e232]
+                  - button "Autoscale" [ref=e234] [cursor=pointer]:
+                    - img [ref=e235]
+                  - button "Reset axes" [ref=e237] [cursor=pointer]:
+                    - img [ref=e238]
+              - img
+            - generic [ref=e240]:
+              - generic [ref=e242]: Trades ledger
+              - table [ref=e246]:
+                - rowgroup [ref=e247]:
+                  - row "Date Side Score Exec Position Return Realized PnL Cost" [ref=e248]:
+                    - columnheader "Date" [ref=e249]
+                    - columnheader "Side" [ref=e250]
+                    - columnheader "Score" [ref=e251]
+                    - columnheader "Exec" [ref=e252]
+                    - columnheader "Position" [ref=e253]
+                    - columnheader "Return" [ref=e254]
+                    - columnheader "Realized PnL" [ref=e255]
+                    - columnheader "Cost" [ref=e256]
+                - rowgroup [ref=e257]:
+                  - row "2026-01-05 ACHAT 9.5 1820.00 0 0.0% 0.00 1.85" [ref=e258]:
+                    - cell "2026-01-05" [ref=e259]
+                    - cell "ACHAT" [ref=e260]
+                    - cell "9.5" [ref=e261]
+                    - cell "1820.00" [ref=e262]
+                    - cell "0" [ref=e263]
+                    - cell "0.0%" [ref=e264]
+                    - cell "0.00" [ref=e265]
+                    - cell "1.85" [ref=e266]
+                  - row "2026-01-07 VENTE -15.5 1775.00 0 -0.8% -48.66 1.81" [ref=e267]:
+                    - cell "2026-01-07" [ref=e268]
+                    - cell "VENTE" [ref=e269]
+                    - cell "-15.5" [ref=e270]
+                    - cell "1775.00" [ref=e271]
+                    - cell "0" [ref=e272]
+                    - cell "-0.8%" [ref=e273]
+                    - cell "-48.66" [ref=e274]
+                    - cell "1.81" [ref=e275]
+                  - row "2026-01-13 ACHAT 74.5 2089.00 0 -0.9% 0.00 2.13" [ref=e276]:
+                    - cell "2026-01-13" [ref=e277]
+                    - cell "ACHAT" [ref=e278]
+                    - cell "74.5" [ref=e279]
+                    - cell "2089.00" [ref=e280]
+                    - cell "0" [ref=e281]
+                    - cell "-0.9%" [ref=e282]
+                    - cell "0.00" [ref=e283]
+                    - cell "2.13" [ref=e284]
+                  - row "2026-02-03 VENTE 75.0 2370.00 0 3.0% 276.58 2.29" [ref=e285]:
+                    - cell "2026-02-03" [ref=e286]
+                    - cell "VENTE" [ref=e287]
+                    - cell "75.0" [ref=e288]
+                    - cell "2370.00" [ref=e289]
+                    - cell "0" [ref=e290]
+                    - cell "3.0%" [ref=e291]
+                    - cell "276.58" [ref=e292]
+                    - cell "2.29" [ref=e293]
+                  - row "2026-02-06 VENTE 0.0 2100.00 0 2.8% 8.77 0.11" [ref=e294]:
+                    - cell "2026-02-06" [ref=e295]
+                    - cell "VENTE" [ref=e296]
+                    - cell "0.0" [ref=e297]
+                    - cell "2100.00" [ref=e298]
+                    - cell "0" [ref=e299]
+                    - cell "2.8%" [ref=e300]
+                    - cell "8.77" [ref=e301]
+                    - cell "0.11" [ref=e302]
+                  - row "2026-02-12 ACHAT 100.0 2878.00 0 2.8% 0.00 2.04" [ref=e303]:
+                    - cell "2026-02-12" [ref=e304]
+                    - cell "ACHAT" [ref=e305]
+                    - cell "100.0" [ref=e306]
+                    - cell "2878.00" [ref=e307]
+                    - cell "0" [ref=e308]
+                    - cell "2.8%" [ref=e309]
+                    - cell "0.00" [ref=e310]
+                    - cell "2.04" [ref=e311]
+                  - row "2026-02-13 ACHAT 100.0 3060.00 1 3.9% 0.00 3.98" [ref=e312]:
+                    - cell "2026-02-13" [ref=e313]
+                    - cell "ACHAT" [ref=e314]
+                    - cell "100.0" [ref=e315]
+                    - cell "3060.00" [ref=e316]
+                    - cell "1" [ref=e317]
+                    - cell "3.9%" [ref=e318]
+                    - cell "0.00" [ref=e319]
+                    - cell "3.98" [ref=e320]
+                  - row "2026-02-25 ACHAT 87.6 3590.00 1 13.1% 0.00 1.09" [ref=e321]:
+                    - cell "2026-02-25" [ref=e322]
+                    - cell "ACHAT" [ref=e323]
+                    - cell "87.6" [ref=e324]
+                    - cell "3590.00" [ref=e325]
+                    - cell "1" [ref=e326]
+                    - cell "13.1%" [ref=e327]
+                    - cell "0.00" [ref=e328]
+                    - cell "1.09" [ref=e329]
+                  - row "2026-02-27 ACHAT 100.0 3579.00 1 12.9% 0.00 1.33" [ref=e330]:
+                    - cell "2026-02-27" [ref=e331]
+                    - cell "ACHAT" [ref=e332]
+                    - cell "100.0" [ref=e333]
+                    - cell "3579.00" [ref=e334]
+                    - cell "1" [ref=e335]
+                    - cell "12.9%" [ref=e336]
+                    - cell "0.00" [ref=e337]
+                    - cell "1.33" [ref=e338]
+                  - row "2026-03-04 VENTE 85.5 3400.00 1 9.0% 244.40 2.50" [ref=e339]:
+                    - cell "2026-03-04" [ref=e340]
+                    - cell "VENTE" [ref=e341]
+                    - cell "85.5" [ref=e342]
+                    - cell "3400.00" [ref=e343]
+                    - cell "1" [ref=e344]
+                    - cell "9.0%" [ref=e345]
+                    - cell "244.40" [ref=e346]
+                    - cell "2.50" [ref=e347]
+                  - row "2026-03-09 VENTE 75.0 3200.00 0 5.7% 45.18 1.72" [ref=e348]:
+                    - cell "2026-03-09" [ref=e349]
+                    - cell "VENTE" [ref=e350]
+                    - cell "75.0" [ref=e351]
+                    - cell "3200.00" [ref=e352]
+                    - cell "0" [ref=e353]
+                    - cell "5.7%" [ref=e354]
+                    - cell "45.18" [ref=e355]
+                    - cell "1.72" [ref=e356]
+                  - row "2026-03-16 VENTE 21.8 3030.00 0 3.6% -123.82 0.73" [ref=e357]:
+                    - cell "2026-03-16" [ref=e358]
+                    - cell "VENTE" [ref=e359]
+                    - cell "21.8" [ref=e360]
+                    - cell "3030.00" [ref=e361]
+                    - cell "0" [ref=e362]
+                    - cell "3.6%" [ref=e363]
+                    - cell "-123.82" [ref=e364]
+                    - cell "0.73" [ref=e365]
+                  - row "2026-03-17 VENTE 21.8 3085.00 0 4.2% -70.44 2.35" [ref=e366]:
+                    - cell "2026-03-17" [ref=e367]
+                    - cell "VENTE" [ref=e368]
+                    - cell "21.8" [ref=e369]
+                    - cell "3085.00" [ref=e370]
+                    - cell "0" [ref=e371]
+                    - cell "4.2%" [ref=e372]
+                    - cell "-70.44" [ref=e373]
+                    - cell "2.35" [ref=e374]
+                  - row "2026-03-19 ACHAT 4.0 3050.00 0 4.0% 0.00 2.35" [ref=e375]:
+                    - cell "2026-03-19" [ref=e376]
+                    - cell "ACHAT" [ref=e377]
+                    - cell "4.0" [ref=e378]
+                    - cell "3050.00" [ref=e379]
+                    - cell "0" [ref=e380]
+                    - cell "4.0%" [ref=e381]
+                    - cell "0.00" [ref=e382]
+                    - cell "2.35" [ref=e383]
+                  - row "2026-03-24 VENTE 4.0 3060.00 0 4.0% -36.73 3.60" [ref=e384]:
+                    - cell "2026-03-24" [ref=e385]
+                    - cell "VENTE" [ref=e386]
+                    - cell "4.0" [ref=e387]
+                    - cell "3060.00" [ref=e388]
+                    - cell "0" [ref=e389]
+                    - cell "4.0%" [ref=e390]
+                    - cell "-36.73" [ref=e391]
+                    - cell "3.60" [ref=e392]
+                  - row "2026-03-26 ACHAT 72.7 3500.00 1 3.9% 0.00 6.70" [ref=e393]:
+                    - cell "2026-03-26" [ref=e394]
+                    - cell "ACHAT" [ref=e395]
+                    - cell "72.7" [ref=e396]
+                    - cell "3500.00" [ref=e397]
+                    - cell "1" [ref=e398]
+                    - cell "3.9%" [ref=e399]
+                    - cell "0.00" [ref=e400]
+                    - cell "6.70" [ref=e401]
+                  - row "2026-03-31 ACHAT 72.7 3311.00 1 0.9% 0.00 1.78" [ref=e402]:
+                    - cell "2026-03-31" [ref=e403]
+                    - cell "ACHAT" [ref=e404]
+                    - cell "72.7" [ref=e405]
+                    - cell "3311.00" [ref=e406]
+                    - cell "1" [ref=e407]
+                    - cell "0.9%" [ref=e408]
+                    - cell "0.00" [ref=e409]
+                    - cell "1.78" [ref=e410]
+                  - row "2026-04-03 ACHAT 100.0 3900.00 1 12.2% 0.00 4.28" [ref=e411]:
+                    - cell "2026-04-03" [ref=e412]
+                    - cell "ACHAT" [ref=e413]
+                    - cell "100.0" [ref=e414]
+                    - cell "3900.00" [ref=e415]
+                    - cell "1" [ref=e416]
+                    - cell "12.2%" [ref=e417]
+                    - cell "0.00" [ref=e418]
+                    - cell "4.28" [ref=e419]
+                  - row "2026-04-20 VENTE 85.5 4890.00 1 38.6% 1281.29 3.60" [ref=e420]:
+                    - cell "2026-04-20" [ref=e421]
+                    - cell "VENTE" [ref=e422]
+                    - cell "85.5" [ref=e423]
+                    - cell "4890.00" [ref=e424]
+                    - cell "1" [ref=e425]
+                    - cell "38.6%" [ref=e426]
+                    - cell "1281.29" [ref=e427]
+                    - cell "3.60" [ref=e428]
+                  - row "2026-04-24 VENTE 89.4 4900.00 1 38.7% 1292.25 2.64" [ref=e429]:
+                    - cell "2026-04-24" [ref=e430]
+                    - cell "VENTE" [ref=e431]
+                    - cell "89.4" [ref=e432]
+                    - cell "4900.00" [ref=e433]
+                    - cell "1" [ref=e434]
+                    - cell "38.7%" [ref=e435]
+                    - cell "1292.25" [ref=e436]
+                    - cell "2.64" [ref=e437]
+                  - row "2026-04-27 ACHAT 89.4 4990.00 1 40.2% 0.00 3.67" [ref=e438]:
+                    - cell "2026-04-27" [ref=e439]
+                    - cell "ACHAT" [ref=e440]
+                    - cell "89.4" [ref=e441]
+                    - cell "4990.00" [ref=e442]
+                    - cell "1" [ref=e443]
+                    - cell "40.2%" [ref=e444]
+                    - cell "0.00" [ref=e445]
+                    - cell "3.67" [ref=e446]
+                  - row "2026-05-04 ACHAT 89.4 4899.00 1 38.1% 0.00 1.23" [ref=e447]:
+                    - cell "2026-05-04" [ref=e448]
+                    - cell "ACHAT" [ref=e449]
+                    - cell "89.4" [ref=e450]
+                    - cell "4899.00" [ref=e451]
+                    - cell "1" [ref=e452]
+                    - cell "38.1%" [ref=e453]
+                    - cell "0.00" [ref=e454]
+                    - cell "1.23" [ref=e455]
+                  - row "2026-05-11 VENTE 89.4 5071.00 1 42.2% 1046.44 1.28" [ref=e456]:
+                    - cell "2026-05-11" [ref=e457]
+                    - cell "VENTE" [ref=e458]
+                    - cell "89.4" [ref=e459]
+                    - cell "5071.00" [ref=e460]
+                    - cell "1" [ref=e461]
+                    - cell "42.2%" [ref=e462]
+                    - cell "1046.44" [ref=e463]
+                    - cell "1.28" [ref=e464]
+                  - row "2026-05-13 ACHAT 100.0 5449.00 1 50.6% 0.00 1.37" [ref=e465]:
+                    - cell "2026-05-13" [ref=e466]
+                    - cell "ACHAT" [ref=e467]
+                    - cell "100.0" [ref=e468]
+                    - cell "5449.00" [ref=e469]
+                    - cell "1" [ref=e470]
+                    - cell "50.6%" [ref=e471]
+                    - cell "0.00" [ref=e472]
+                    - cell "1.37" [ref=e473]
+                  - row "2026-05-26 ACHAT -- 5000.00 1 39.9% 0.00 2.69" [ref=e474]:
+                    - cell "2026-05-26" [ref=e475]
+                    - cell "ACHAT" [ref=e476]
+                    - cell "--" [ref=e477]
+                    - cell "5000.00" [ref=e478]
+                    - cell "1" [ref=e479]
+                    - cell "39.9%" [ref=e480]
+                    - cell "0.00" [ref=e481]
+                    - cell "2.69" [ref=e482]
+                  - row "2026-06-01 VENTE -- 5499.00 1 53.8% 1237.57 1.38" [ref=e483]:
+                    - cell "2026-06-01" [ref=e484]
+                    - cell "VENTE" [ref=e485]
+                    - cell "--" [ref=e486]
+                    - cell "5499.00" [ref=e487]
+                    - cell "1" [ref=e488]
+                    - cell "53.8%" [ref=e489]
+                    - cell "1237.57" [ref=e490]
+                    - cell "1.38" [ref=e491]
+                  - row "2026-06-04 ACHAT -- 5133.00 1 44.2% 0.00 1.29" [ref=e492]:
+                    - cell "2026-06-04" [ref=e493]
+                    - cell "ACHAT" [ref=e494]
+                    - cell "--" [ref=e495]
+                    - cell "5133.00" [ref=e496]
+                    - cell "1" [ref=e497]
+                    - cell "44.2%" [ref=e498]
+                    - cell "0.00" [ref=e499]
+                    - cell "1.29" [ref=e500]
+                  - row "2026-06-04 VENTE -- 5133.00 0 44.2% 794.31 19.51" [ref=e501]:
+                    - cell "2026-06-04" [ref=e502]
+                    - cell "VENTE" [ref=e503]
+                    - cell "--" [ref=e504]
+                    - cell "5133.00" [ref=e505]
+                    - cell "0" [ref=e506]
+                    - cell "44.2%" [ref=e507]
+                    - cell "794.31" [ref=e508]
+                    - cell "19.51" [ref=e509]
+            - generic [ref=e510]:
+              - generic [ref=e515]:
+                - img:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: Mar 2026
+                        - generic:
+                          - generic: May 2026
+                      - generic:
+                        - generic:
+                          - generic: "1"
+                        - generic:
+                          - generic: "1.2"
+                        - generic:
+                          - generic: "1.4"
+                        - generic:
+                          - generic: "1.6"
+                        - generic:
+                          - generic: "1.8"
+                        - generic:
+                          - generic: "2"
+                        - generic:
+                          - generic: "2.2"
+                - img:
+                  - generic:
+                    - generic [ref=e532]:
+                      - generic [ref=e534]: MC p50
+                      - generic [ref=e537]: MC p95
+                      - generic [ref=e543]: MC p05
+                      - generic [ref=e546]: Equity
+                    - generic:
+                      - generic: Equity curve
+                - toolbar [ref=e548]:
+                  - button "Download plot as a PNG" [ref=e550] [cursor=pointer]:
+                    - img [ref=e551]
+                  - generic [ref=e553]:
+                    - button "Zoom" [ref=e554] [cursor=pointer]:
+                      - img [ref=e555]
+                    - button "Pan" [ref=e557] [cursor=pointer]:
+                      - img [ref=e558]
+                  - generic [ref=e560]:
+                    - button "Zoom in" [ref=e561] [cursor=pointer]:
+                      - img [ref=e562]
+                    - button "Zoom out" [ref=e564] [cursor=pointer]:
+                      - img [ref=e565]
+                    - button "Autoscale" [ref=e567] [cursor=pointer]:
+                      - img [ref=e568]
+                    - button "Reset axes" [ref=e570] [cursor=pointer]:
+                      - img [ref=e571]
+                - img
+              - generic [ref=e577]:
+                - img:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: Mar 2026
+                        - generic:
+                          - generic: May 2026
+                      - generic:
+                        - generic:
+                          - generic: −12%
+                        - generic:
+                          - generic: −10%
+                        - generic:
+                          - generic: −8%
+                        - generic:
+                          - generic: −6%
+                        - generic:
+                          - generic: −4%
+                        - generic:
+                          - generic: −2%
+                        - generic:
+                          - generic: 0%
+                - img:
+                  - generic:
+                    - generic:
+                      - generic: Drawdown curve
+                - toolbar [ref=e591]:
+                  - button "Download plot as a PNG" [ref=e593] [cursor=pointer]:
+                    - img [ref=e594]
+                  - generic [ref=e596]:
+                    - button "Zoom" [ref=e597] [cursor=pointer]:
+                      - img [ref=e598]
+                    - button "Pan" [ref=e600] [cursor=pointer]:
+                      - img [ref=e601]
+                  - generic [ref=e603]:
+                    - button "Zoom in" [ref=e604] [cursor=pointer]:
+                      - img [ref=e605]
+                    - button "Zoom out" [ref=e607] [cursor=pointer]:
+                      - img [ref=e608]
+                    - button "Autoscale" [ref=e610] [cursor=pointer]:
+                      - img [ref=e611]
+                    - button "Reset axes" [ref=e613] [cursor=pointer]:
+                      - img [ref=e614]
+                - img
+              - generic [ref=e620]:
+                - img:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: Jan
+                        - generic:
+                          - generic: Feb
+                        - generic:
+                          - generic: Mar
+                        - generic:
+                          - generic: Apr
+                        - generic:
+                          - generic: May
+                        - generic:
+                          - generic: Jun
+                        - generic:
+                          - generic: Jul
+                        - generic:
+                          - generic: Aug
+                        - generic:
+                          - generic: Sep
+                        - generic:
+                          - generic: Oct
+                        - generic:
+                          - generic: Nov
+                        - generic:
+                          - generic: Dec
+                      - generic:
+                        - generic:
+                          - generic: 2,025.6
+                        - generic:
+                          - generic: 2,025.8
+                        - generic:
+                          - generic: "2026"
+                        - generic:
+                          - generic: 2,026.2
+                        - generic:
+                          - generic: 2,026.4
+                - img:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: −20%
+                        - generic:
+                          - generic: −10%
+                        - generic:
+                          - generic: 0%
+                        - generic:
+                          - generic: 10%
+                        - generic:
+                          - generic: 20%
+                    - generic:
+                      - generic: Monthly return heatmap
+                - toolbar [ref=e634]:
+                  - button "Download plot as a PNG" [ref=e636] [cursor=pointer]:
+                    - img [ref=e637]
+                  - generic [ref=e639]:
+                    - button "Zoom" [ref=e640] [cursor=pointer]:
+                      - img [ref=e641]
+                    - button "Pan" [ref=e643] [cursor=pointer]:
+                      - img [ref=e644]
+                  - generic [ref=e646]:
+                    - button "Zoom in" [ref=e647] [cursor=pointer]:
+                      - img [ref=e648]
+                    - button "Zoom out" [ref=e650] [cursor=pointer]:
+                      - img [ref=e651]
+                    - button "Autoscale" [ref=e653] [cursor=pointer]:
+                      - img [ref=e654]
+                    - button "Reset axes" [ref=e656] [cursor=pointer]:
+                      - img [ref=e657]
+                - img
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=e138] [cursor=pointer]:
+    - img [ref=e139]
+  - alert [ref=e142]
+  - img [ref=e659]

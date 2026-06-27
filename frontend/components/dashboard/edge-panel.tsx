@@ -6,6 +6,7 @@ import { BarChart, Bar, CartesianGrid, ReferenceLine, XAxis, YAxis } from "recha
 import { ExternalLink } from "lucide-react"
 import { fetchEdge, type EdgeMetrics } from "@/lib/api"
 import { formatPercent } from "@/lib/format"
+import { horizonLabel } from "@/lib/horizon"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Segmented } from "@/components/ui/segmented"
 import { Eyebrow } from "@/components/ui/eyebrow"
@@ -178,7 +179,7 @@ export function EdgePanel({
         <SheetHeader className="border-b border-border pb-4">
           <SheetTitle className="font-semibold tracking-tight">{symbol ?? "Edge"}</SheetTitle>
           <SheetDescription>
-            {horizon} - {source === "signal_engine" ? "Signal Engine" : "WFO"}{requestVariant ? ` - ${requestVariant}` : ""}
+            {horizonLabel(horizon)} - {source === "signal_engine" ? "Signal Engine" : "WFO"}{requestVariant ? ` - ${requestVariant}` : ""}
           </SheetDescription>
         </SheetHeader>
 

@@ -13,12 +13,15 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.utils import PlotlyJSONEncoder
 
+from core.quant_core.plotly_compat import disable_broken_narwhals_optional_plugins
 from core.quant_core.plots import (
     make_cumreturn_vs_benchmark_plot,
     make_drawdown_plot,
     make_monthly_heatmap_plot,
     make_yearly_return_bar_plot,
 )
+
+disable_broken_narwhals_optional_plugins()
 from core.quant_core.data import drop_incomplete_ohlcv_rows
 from core.quant_core.portfolio import CostModel
 from core.quant_core.results import ResultsAnalyzer

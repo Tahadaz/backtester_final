@@ -23,45 +23,53 @@ const PERIOD_LABELS = {
 const MAX_PERIOD_COLUMNS = 6
 
 const METRIC_ALIASES = {
-  revenue: ["Clean_Chiffre_daffaires", "Chiffre_daffaires", "Revenue", "Total_Revenue", "Total_Revenues", "TotalRevenue"],
+  // Canonical name is always FIRST in each list — alias fallbacks follow.
+  revenue: ["Revenue", "Total_Revenue", "Total_Revenues", "TotalRevenue", "Chiffre_daffaires", "Clean_Chiffre_daffaires"],
   gross_profit: ["Gross_Profit", "GrossProfit", "Marge_Brute"],
   ebitda: ["EBITDA", "Normalized_EBITDA"],
+  depreciation_amortization: ["Depreciation_Amortization", "DandA", "Dotations_dexploitation"],
   ebit: ["EBIT", "Operating_Income", "OperatingIncome", "Resultat_Exploitation"],
-  net_income: ["Clean_Resultat_net", "Resultat_net", "NetIncome", "Net_Income", "IS_Net_Income"],
+  net_income: ["NetIncome", "Net_Income", "IS_Net_Income", "Resultat_net", "Clean_Resultat_net"],
   total_assets: ["Total_Assets", "Total_Actif", "Actif_Total"],
   current_assets: ["Current_Assets", "Total_Current_Assets", "Actif_Courant"],
-  cash: ["Cash_and_Equivalents", "BS_Cash_and_Equivalents", "Cash", "Tresorerie"],
+  cash: ["Cash", "Cash_and_Equivalents", "BS_Cash_and_Equivalents", "Tresorerie"],
   total_liabilities: ["Total_Liabilities", "Total_Passif", "Passif_Total"],
   current_liabilities: ["Current_Liabilities", "Total_Current_Liabilities", "Passif_Courant"],
   total_debt: ["Total_Debt", "Debt", "Financial_Debt", "Dette_Financiere", "Dettes"],
-  net_debt: ["NetDebt", "Net_Debt"],
+  net_debt: ["Net_Debt", "NetDebt"],
   total_equity: [
+    "Total_Equity",
+    "Shareholders_Equity",
+    "Total_Shareholders_Equity",
+    "Stockholders_Equity",
+    "Total_Stockholders_Equity",
+    "Book_Equity",
+    "Total_Common_Equity",
+    "Common_Equity",
+    "Fonds_Propres",
     "Clean_Capitaux_Propres",
     "Clean_Capitaux_propres",
     "Capitaux_Propres",
     "Capitaux_propres",
     "Capitaux_propres_part_groupe",
-    "Total_Equity",
-    "Book_Equity",
     "Equity",
-    "Fonds_Propres",
   ],
   retained_earnings: ["Retained_Earnings", "Reserves"],
-  operating_cf: ["CF_Operating", "Operating_Cash_Flow", "Cash_from_Operations", "Cash_From_Operations", "Flux_Tresorerie_Exploitation"],
-  investing_cf: ["CF_Investing", "Investing_Cash_Flow", "Cash_from_Investing", "Cash_From_Investing"],
-  financing_cf: ["CF_Financing", "Financing_Cash_Flow", "Cash_from_Financing", "Cash_From_Financing"],
+  operating_cf: ["Operating_Cash_Flow", "Cash_from_Operations", "Cash_From_Operations", "CF_Operating", "Flux_Tresorerie_Exploitation", "Flux_tresorerie_activites_operationnelles", "Flux_de_tresorerie_lies_a_lactivite"],
+  investing_cf: ["Investing_Cash_Flow", "CF_Investing", "Cash_from_Investing", "Cash_From_Investing", "Flux_de_tresorerie_lies_aux_investissements"],
+  financing_cf: ["Financing_Cash_Flow", "CF_Financing", "Cash_from_Financing", "Cash_From_Financing"],
   fx_effect: ["CF_FX_Effect", "FX_Effect"],
   beginning_cash: ["CFS_Beginning_Cash", "Beginning_Cash"],
   ending_cash: ["CFS_Ending_Cash", "Ending_Cash"],
-  capex: ["Capex", "CAPEX", "Capital_Expenditure"],
+  capex: ["Capex", "CAPEX", "Capital_Expenditure", "Capital_Expenditures", "Flux_tresorerie_investissement_CAPEX"],
   free_cash_flow: ["Free_Cash_Flow", "Levered_Free_Cash_Flow"],
-  dividends_paid: ["Clean_Dividendes", "Dividendes", "Dividends_Paid", "Cash_Dividends_Paid"],
+  dividends_paid: ["Dividendes", "Dividends_Paid", "Clean_Dividendes", "Cash_Dividends_Paid"],
   per: ["PER", "Price_to_Earnings", "PE_Ratio"],
   price_to_book: ["Price_to_Book", "P_B"],
   price_to_sales: ["Price_to_Sales", "P_S"],
   ev_to_ebitda: ["EV_to_EBITDA", "Enterprise_Value_to_EBITDA"],
   debt_to_equity: ["Debt_to_Equity", "Debt_Equity"],
-  net_debt_to_ebitda: ["NetDebt_to_EBITDA", "Net_Debt_to_EBITDA"],
+  net_debt_to_ebitda: ["Net_Debt_to_EBITDA", "NetDebt_to_EBITDA"],
   roe: ["ROE"],
   roa: ["ROA"],
   operating_margin: ["Operating_Margin"],
@@ -75,6 +83,18 @@ const METRIC_ALIASES = {
   revenue_growth: ["Revenue_Growth_YoY", "Revenue_Growth"],
   net_income_growth: ["NetIncome_Growth", "Net_Income_Growth"],
   eps: ["EPS", "Diluted_EPS", "Basic_EPS"],
+}
+
+// Set of all non-first (alias) metric names, built from METRIC_ALIASES above.
+// Used by the raw catalog view to de-duplicate rows when both canonical and
+// alias versions of the same metric exist in the DB during the transition period.
+const _ALIAS_METRIC_NAMES = new Set(
+  Object.values(METRIC_ALIASES).flatMap((names) => names.slice(1))
+)
+
+/** Returns true if metricName is a legacy alias rather than a canonical name. */
+export function isAliasMetricName(metricName) {
+  return _ALIAS_METRIC_NAMES.has(metricName)
 }
 
 const SUMMARY_KEY_RATIOS = [
@@ -112,6 +132,7 @@ const STATEMENT_ROWS = {
     row("revenue", "Chiffre d'affaires", METRIC_ALIASES.revenue, "money"),
     row("gross_profit", "Marge brute", METRIC_ALIASES.gross_profit, "money"),
     row("ebitda", "EBITDA", METRIC_ALIASES.ebitda, "money"),
+    row("depreciation_amortization", "D&A", METRIC_ALIASES.depreciation_amortization, "money"),
     row("ebit", "Resultat d'exploitation", METRIC_ALIASES.ebit, "money"),
     row("net_income", "Resultat net", METRIC_ALIASES.net_income, "money"),
   ],
@@ -245,6 +266,15 @@ function cleanPeriodLabel(value, fallback) {
   return label || fallback
 }
 
+function canonicalPeriodLabel(periodType, value, fallback) {
+  const label = cleanPeriodLabel(value, fallback).toUpperCase()
+  if (periodType === "semiannual") {
+    if (["S1", "SEM1", "SEMESTRE1", "SEMESTRE 1", "1"].includes(label)) return "H1"
+    if (["S2", "SEM2", "SEMESTRE2", "SEMESTRE 2", "2"].includes(label)) return "H2"
+  }
+  return label
+}
+
 function addPeriodMetric(groups, period, metricName, value) {
   if (!metricName) return
   const current = groups.get(period.key) || { ...period, metrics: {}, sourceMetrics: {} }
@@ -276,7 +306,7 @@ function collectPeriods(detail, periodType) {
     if (itemPeriodType !== periodType) continue
     const fiscalYear = asNumber(item?.fiscal_year)
     if (fiscalYear == null) continue
-    const periodLabel = cleanPeriodLabel(item?.period_label, itemPeriodType === "annual" ? "FY" : "")
+    const periodLabel = canonicalPeriodLabel(itemPeriodType, item?.period_label, itemPeriodType === "annual" ? "FY" : "")
     const label = itemPeriodType === "annual" ? String(fiscalYear) : `${fiscalYear} ${periodLabel}`.trim()
     const key = periodKey(itemPeriodType, fiscalYear, periodLabel)
     const period = {

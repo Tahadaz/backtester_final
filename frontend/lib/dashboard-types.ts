@@ -122,6 +122,10 @@ export interface ScoresBlock {
 export interface DashboardBestSignal {
   source: "signal_engine" | "wfo"
   variant: string
+  scope?: string
+  scope_key?: string
+  scope_label?: string
+  categories?: string[]
   label: string
   signal_label?: string | null
   triage: "proven" | "watch" | string
@@ -158,6 +162,8 @@ export interface DashboardBestSignal {
   proven_edge_gross?: boolean | null
   proven_edge_net?: boolean | null
   score?: number | null
+  live_adjusted?: boolean
+  live_score_pct?: number | null
 }
 
 export interface DashboardPortfolioEdge {
@@ -215,6 +221,9 @@ export interface DashboardPortfolioEdge {
 export interface DashboardBestTechnicalSignal {
   source: "signal_engine" | "wfo"
   variant: string
+  scope?: string
+  scope_key?: string
+  scope_label?: string
   label: string
   signal_label: string | null
   direction: "long" | "short" | "none" | string
@@ -222,6 +231,8 @@ export interface DashboardBestTechnicalSignal {
   abs_score_pct: number | null
   per_family: Record<string, FamilyScore>
   factor_dependencies?: Record<string, FactorDependency[]>
+  live_adjusted?: boolean
+  live_price?: number | null
 }
 
 export interface DashboardPerformancePeriod {
@@ -239,6 +250,21 @@ export interface DashboardPerformance {
   mtd?: DashboardPerformancePeriod
   ytd?: DashboardPerformancePeriod
   open_to_now?: DashboardPerformancePeriod
+}
+
+export interface DashboardFundamentals {
+  value_score?: number | null
+  quality_score?: number | null
+  fair_value?: number | null
+  upside_pct?: number | null
+  confidence?: "high" | "medium" | "low" | string | null
+  coverage_pct?: number | null
+  data_source?: string | null
+  currency?: string | null
+  as_of?: string | null
+  pe?: number | null
+  dividend_yield?: number | null
+  market_cap?: number | null
 }
 
 export interface DashboardStock {
@@ -259,6 +285,7 @@ export interface DashboardStock {
   best_signal?: DashboardBestSignal | null
   best_technical_signal?: DashboardBestTechnicalSignal | null
   classic_technical_signal?: DashboardBestTechnicalSignal | null
+  fundamentals?: DashboardFundamentals | null
   asset_class?: string | null     // "equity" | "index" | "factor"
   asset_type?: string | null      // "equity" | "commodity" | "forex" | "bond" | "crypto"
   market_region?: string | null   // "masi" | "us" | "european" | "asian" | null
@@ -306,7 +333,7 @@ export interface DashboardCustomIndexDefinition {
 
 export type DashboardScoreSource = "both" | "signal_engine" | "wfo"
 export type DashboardView = "stocks" | "sectors" | "index" | "portfolio"
-export type DashboardDisplayMode = "trade_opportunities" | "technical_directions"
+export type DashboardDisplayMode = "trade_opportunities" | "technical_directions" | "fundamental_directions"
 export type DashboardTechnicalDirectionMode = "best" | "classic"
 export type DashboardHorizon = TradingHorizon
 export type DashboardHorizonAlias = DashboardHorizon | "short" | "medium" | "long"

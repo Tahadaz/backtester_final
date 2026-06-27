@@ -38,6 +38,7 @@ from services.api.app.models import (
     WfoGlobalSignal,
     WfoSignalSummary,
 )
+from services.api.app.services.market_universe import list_signal_universe_symbols
 from services.worker.db import SessionLocal
 from services.worker.redis_utils import connect_redis_with_fallback
 
@@ -77,17 +78,10 @@ SIGNAL_BACKTEST_NATURAL_KEY_COLUMNS = {
 
 
 def run_signal_backtest_batch() -> dict:
-    """Compute signal backtests for every active symbol x horizon."""
+    """Compute signal backtests for every data-backed signal-universe symbol x horizon."""
     db: Session = SessionLocal()
     try:
-        from services.api.app.models import StockMaster
-
-        symbols = [
-            row.symbol
-            for row in db.query(StockMaster.symbol)
-            .filter(StockMaster.is_active.is_(True))
-            .all()
-        ]
+        symbols = list_signal_universe_symbols(db)
         logger.info("Signal backtest batch: %d symbols", len(symbols))
         results = {"total": 0, "succeeded": 0, "failed": 0}
 

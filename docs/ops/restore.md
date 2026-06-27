@@ -23,7 +23,7 @@ SQL
 docker exec -i quant_postgres pg_restore -U app -d quant < /tmp/restore.dump
 
 # 6. Bring services back up
-docker compose --env-file /etc/bt/env -f infra/docker-compose.gcp.yml up -d
+docker compose --env-file /etc/bt/env -f infra/docker-compose.prod.yml up -d
 
 # 7. Verify
 curl -fsS http://localhost/api/health

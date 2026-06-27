@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatNumber } from "@/lib/format"
+import { horizonLabel } from "@/lib/horizon"
 import type { SupportResistanceChart, SupportResistanceMethod } from "@/lib/api"
 
 function fmtPrice(value: number | null | undefined): string {
@@ -151,7 +152,7 @@ export default function SupportResistanceMethodPage() {
   const searchParams = useSearchParams()
   const methodId = decodeURIComponent(params.id as string)
   const symbol = (searchParams.get("symbol") ?? "").trim().toUpperCase()
-  const horizon = (searchParams.get("horizon") ?? "medium").trim().toLowerCase()
+  const horizon = (searchParams.get("horizon") ?? "monthly").trim().toLowerCase()
   const variant = (searchParams.get("variant") ?? "expanded").trim().toLowerCase()
   const cooldownBars = Number(searchParams.get("cooldown") ?? 0)
   const costBps = 33
@@ -200,7 +201,7 @@ export default function SupportResistanceMethodPage() {
         <div>
           <h1 className="text-base font-bold">{method.label}</h1>
           <p className="text-xs text-muted-foreground">
-            {symbol} - {horizon} - {data.as_of}
+            {symbol} - {horizonLabel(horizon)} - {data.as_of}
           </p>
         </div>
       </div>

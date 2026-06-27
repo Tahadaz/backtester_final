@@ -1,0 +1,149 @@
+- generic [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - link "RDT Alpha" [ref=e4] [cursor=pointer]:
+        - /url: /dashboard
+        - generic [ref=e5]: RDT
+        - generic [ref=e6]:
+          - generic [ref=e7]: RDT Alpha
+          - generic [ref=e8]: Road to Alpha
+      - navigation [ref=e9]:
+        - link "Tableau de Bord" [ref=e10] [cursor=pointer]:
+          - /url: /dashboard
+          - img
+          - text: Tableau de Bord
+        - link "Data" [ref=e11] [cursor=pointer]:
+          - /url: /data
+          - img
+          - text: Data
+        - link "Signals" [ref=e12] [cursor=pointer]:
+          - /url: /signals
+          - img
+          - text: Signals
+        - link "Strategy" [ref=e13] [cursor=pointer]:
+          - /url: /strategy
+          - img
+          - text: Strategy
+        - link "Backtest" [ref=e14] [cursor=pointer]:
+          - /url: /backtest
+          - img
+          - text: Backtest
+        - link "Analytics" [ref=e15] [cursor=pointer]:
+          - /url: /analytics
+          - img
+          - text: Analytics
+        - link "Glossaire" [ref=e16] [cursor=pointer]:
+          - /url: /glossary
+          - img
+          - text: Glossaire
+      - generic [ref=e17]:
+        - generic [ref=e18]: MASI · live
+        - button "Refresh" [ref=e20]:
+          - img
+        - link "Se connecter" [ref=e21] [cursor=pointer]:
+          - /url: /login
+          - img
+          - generic [ref=e22]: Se connecter
+  - main [ref=e23]:
+    - generic [ref=e24]:
+      - generic [ref=e25]:
+        - generic [ref=e26]: Analyse
+        - button "Analyse Technique Signaux TA, evidence, WFO" [ref=e27]:
+          - img [ref=e29]
+          - generic [ref=e31]:
+            - generic [ref=e32]: Analyse Technique
+            - generic [ref=e33]: Signaux TA, evidence, WFO
+        - button "Analyse Fondamentale Valorisation, qualite, financiers" [active] [pressed] [ref=e34]:
+          - img [ref=e36]
+          - generic [ref=e38]:
+            - generic [ref=e39]: Analyse Fondamentale
+            - generic [ref=e40]: Valorisation, qualite, financiers
+        - button "Analyse Quantitative IC, facteurs, macro, stat-arb" [ref=e41]:
+          - img [ref=e43]
+          - generic [ref=e45]:
+            - generic [ref=e46]: Analyse Quantitative
+            - generic [ref=e47]: IC, facteurs, macro, stat-arb
+      - generic [ref=e1059]:
+        - complementary [ref=e1060]:
+          - generic [ref=e1061]:
+            - generic [ref=e1062]:
+              - generic [ref=e1063]: Couverture - 0/0 titres
+              - generic [ref=e1064]: FY -
+            - generic [ref=e1065]:
+              - img
+              - textbox "Rechercher un titre..." [ref=e1066]
+            - generic [ref=e1067]:
+              - generic [ref=e1068]:
+                - img [ref=e1070]
+                - generic [ref=e1071]:
+                  - generic [ref=e1072]: Filtre institutionnel
+                  - generic [ref=e1073]:
+                    - generic [ref=e1074]: Liquidité ADV20
+                    - generic [ref=e1075]: Actif
+                - switch "Désactiver le filtre de liquidité" [checked] [ref=e1076]
+              - generic [ref=e1077]:
+                - generic [ref=e1078]:
+                  - generic [ref=e1079]: Seuil
+                  - generic [ref=e1080]: ">= 500 k MAD"
+                - generic [ref=e1081]:
+                  - generic [ref=e1082]: Eligibles
+                  - generic [ref=e1083]: 0/0
+            - generic [ref=e1084]:
+              - generic [ref=e1085]:
+                - button "Tous" [ref=e1086] [cursor=pointer]
+                - button "Buy" [ref=e1087] [cursor=pointer]
+                - button "Hold" [ref=e1088] [cursor=pointer]
+                - button "Sell" [ref=e1089] [cursor=pointer]
+              - combobox [ref=e1090]:
+                - option "Upside" [selected]
+                - option "Score"
+                - option "Conviction"
+                - option "Mkt Cap"
+                - option "Magic"
+                - option "PEG"
+                - option "Altman"
+                - option "EVA"
+                - option "Regression"
+          - table [ref=e1092]:
+            - rowgroup [ref=e1093]:
+              - row "Titre Rec. Score Upside Rev" [ref=e1094]:
+                - columnheader "Titre" [ref=e1095]
+                - columnheader "Rec." [ref=e1096]
+                - columnheader "Score" [ref=e1097]
+                - columnheader "Upside" [ref=e1098]
+                - columnheader "Rev" [ref=e1099]
+            - rowgroup [ref=e1100]:
+              - row [ref=e1101]:
+                - cell [ref=e1102]
+              - row [ref=e1104]:
+                - cell [ref=e1105]
+              - row [ref=e1107]:
+                - cell [ref=e1108]
+              - row [ref=e1110]:
+                - cell [ref=e1111]
+              - row [ref=e1113]:
+                - cell [ref=e1114]
+              - row [ref=e1116]:
+                - cell [ref=e1117]
+              - row [ref=e1119]:
+                - cell [ref=e1120]
+              - row [ref=e1122]:
+                - cell [ref=e1123]
+              - row [ref=e1125]:
+                - cell [ref=e1126]
+              - row [ref=e1128]:
+                - cell [ref=e1129]
+          - generic [ref=e1131]:
+            - generic [ref=e1132]:
+              - generic [ref=e1133]: 0 Buy
+              - text: "- 0 Hold -"
+              - generic [ref=e1134]: 0 Sell
+              - text: "- 0 N/R"
+            - generic [ref=e1135]: Upside moy. -
+        - generic [ref=e1137]:
+          - img [ref=e1138]
+          - text: Selectionnez un titre pour afficher la recherche fondamentale.
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=e164] [cursor=pointer]:
+    - img [ref=e165]
+  - alert [ref=e1058]

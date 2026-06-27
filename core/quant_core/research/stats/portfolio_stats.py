@@ -1,11 +1,13 @@
-"""Portfolio-level performance statistics.
+"""Portfolio-level performance statistics and shared cross-sectional helpers.
 
 Metrics: Sharpe, Sortino, MaxDD, Calmar, turnover, hit rate, profit factor.
+Shared helpers: assign_quintiles, forward_return, rebalance_dates, quintile_return_summary,
+equity_curve_with_stats — used by both signal_backtest.py and cross_sectional.py.
 """
 from __future__ import annotations
 
 import math
-from typing import Optional
+from typing import Any, Mapping, Optional
 
 import numpy as np
 import pandas as pd
@@ -149,3 +151,143 @@ def compute_portfolio_stats(
         "n_trades": n_trades,
         "total_return": total_return,
     }
+
+
+# ── Shared cross-sectional helpers ────────────────────────────────────────────
+# Used by both fundamentals/signal_backtest.py and research/cross_sectional.py.
+# Logic is identical to the private functions extracted from signal_backtest.py;
+# both modules import from here instead of duplicating.
+
+def _finite(value: Any) -> bool:
+    try:
+        return math.isfinite(float(value))
+    except (TypeError, ValueError):
+        return False
+
+
+def _mean_finite(values: Any) -> float:
+    clean = [float(v) for v in values if _finite(v)]
+    return float(np.mean(clean)) if clean else 0.0
+
+
+def assign_quintiles(signals: Mapping[str, float], *, n: int = 5) -> dict[str, int]:
+    """Assign ranks 1 (lowest) … n (highest) to a {symbol: score} mapping.
+
+    Ties broken alphabetically so output is deterministic.
+    """
+    clean = [(sym.upper(), float(v)) for sym, v in signals.items() if _finite(v)]
+    if not clean:
+        return {}
+    ordered = sorted(clean, key=lambda item: (item[1], item[0]))
+    count = len(ordered)
+    out: dict[str, int] = {}
+    for index, (sym, _v) in enumerate(ordered):
+        bucket = int(math.floor(index * n / count)) + 1
+        out[sym] = max(1, min(n, bucket))
+    return out
+
+
+def _tz_naive(ts: pd.Timestamp) -> pd.Timestamp:
+    """Return a tz-naive Timestamp, converting from UTC if necessary."""
+    return ts.tz_localize(None) if ts.tzinfo is None else ts.tz_convert("UTC").tz_localize(None)
+
+
+def _normalize_index(series: pd.Series) -> pd.Series:
+    """Return the series with a tz-naive DatetimeIndex (strip UTC if present)."""
+    if getattr(series.index, "tz", None) is not None:
+        return series.tz_localize(None) if series.index.tz is None else series.tz_convert("UTC").tz_localize(None)
+    return series
+
+
+def price_at_or_before(series: pd.Series, date: pd.Timestamp) -> float | None:
+    s = _normalize_index(series)
+    d = _tz_naive(date)
+    eligible = s[s.index <= d]
+    if eligible.empty:
+        return None
+    value = float(eligible.iloc[-1])
+    return value if _finite(value) else None
+
+
+def forward_return(series: pd.Series, entry: pd.Timestamp, exit_: pd.Timestamp) -> float | None:
+    """Close-to-close return from entry to exit_ using the last available price on each date."""
+    p_entry = price_at_or_before(series, entry)
+    p_exit = price_at_or_before(series, exit_)
+    if p_entry is None or p_exit is None or p_entry <= 0:
+        return None
+    return float(p_exit / p_entry - 1.0)
+
+
+def forward_return_horizon(series: pd.Series, entry: pd.Timestamp, horizon: int) -> float | None:
+    """Return over the next `horizon` trading days strictly after `entry`."""
+    s = _normalize_index(series)
+    e = _tz_naive(entry)
+    future = s.index[s.index > e]
+    if len(future) < horizon:
+        return None
+    return forward_return(s, e, pd.Timestamp(future[horizon - 1]))
+
+
+def rebalance_dates(
+    price_history: Mapping[str, pd.Series],
+    *,
+    start: pd.Timestamp,
+    end: pd.Timestamp,
+) -> list[pd.Timestamp]:
+    """Last available trading date per calendar month in [start, end]."""
+    # Normalise start/end to tz-naive so they can compare against any series index
+    start_n = _tz_naive(start)
+    end_n = _tz_naive(end)
+    all_dates = sorted({
+        _tz_naive(pd.Timestamp(idx))
+        for series in price_history.values()
+        for idx in series.index
+        if start_n <= _tz_naive(pd.Timestamp(idx)) <= end_n
+    })
+    if not all_dates:
+        return []
+    by_month: dict[tuple[int, int], pd.Timestamp] = {}
+    for d in all_dates:
+        by_month[(d.year, d.month)] = d
+    return [by_month[k] for k in sorted(by_month)]
+
+
+def quintile_return_summary(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Aggregate forward returns by quintile bucket.
+
+    Each record must have 'quintile' (int) and 'forward_return' (float) keys.
+    """
+    out: list[dict[str, Any]] = []
+    for q in sorted({int(row["quintile"]) for row in records}):
+        rets = [float(row["forward_return"]) for row in records if int(row["quintile"]) == q]
+        out.append({
+            "quintile": q,
+            "mean_forward_return": _mean_finite(rets),
+            "median_forward_return": float(np.median(rets)) if rets else None,
+            "hit_rate": float(np.mean([v > 0 for v in rets])) if rets else None,
+            "count": len(rets),
+        })
+    return out
+
+
+def equity_curve_with_stats(
+    rows: list[dict[str, Any]],
+    *,
+    periods_per_year: int = 12,
+) -> list[dict[str, Any]]:
+    """Attach drawdown and annualised Sharpe to each equity-curve row.
+
+    Each row must have 'net_return' (float) and 'equity' (float) keys.
+    Sharpe uses monthly periods by default (periods_per_year=12).
+    """
+    if not rows:
+        return []
+    returns = np.array([float(row["net_return"]) for row in rows], dtype=float)
+    equity = np.array([float(row["equity"]) for row in rows], dtype=float)
+    peak = np.maximum.accumulate(equity)
+    drawdown = equity / np.where(peak <= 0.0, 1.0, peak) - 1.0
+    sr = _sharpe(returns, periods_per_year)
+    out: list[dict[str, Any]] = []
+    for row, dd in zip(rows, drawdown):
+        out.append({**row, "drawdown": float(dd), "sharpe_to_date": sr})
+    return out

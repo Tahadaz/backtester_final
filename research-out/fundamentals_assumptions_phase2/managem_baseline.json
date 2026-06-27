@@ -1,0 +1,983 @@
+{
+  "company_name": "Managem",
+  "current_price": 17743.0,
+  "engine": "in_memory_recompute_path",
+  "ensemble": {
+    "confidence_score": 0.05037907608695652,
+    "current_price": 17743.0,
+    "excluded_model_count": 2,
+    "fair_value_base": null,
+    "fair_value_high": null,
+    "fair_value_low": null,
+    "fair_value_mean": 2039.024260412445,
+    "model_weights": {
+      "ddm": 0.4,
+      "fcfe_dcf": 0.15,
+      "fcff_dcf": 0.2,
+      "justified_multiples": 0.108696,
+      "relative_multiples": 0.141304
+    },
+    "upside_pct": null,
+    "usable_model_count": 5,
+    "warnings": [
+      "relative_multiples_proxy_weight_capped",
+      "fcff_dcf_proxy_weight_capped",
+      "fcfe_dcf_proxy_weight_capped",
+      "ddm_proxy_weight_capped",
+      "justified_multiples_proxy_weight_capped",
+      "relative_family_weight_capped",
+      "withheld_integrity_fail"
+    ]
+  },
+  "generated_at": "2026-06-03T09:41:17.356570+00:00",
+  "git_commit": "4f902f85728648e12dd29eb2b3466ae189a90a75",
+  "import_id": "846f85bd-100b-4322-b4f9-1f9ba5dae904",
+  "latest_statement_year": 2025,
+  "model_eligibility": {
+    "data_integrity": {
+      "confidence_haircut": 0.3,
+      "overall_status": "fail",
+      "warnings": [
+        "integrity_fail: all_checks_unavailable"
+      ]
+    },
+    "ddm": {
+      "confidence": "high",
+      "eligible": true
+    },
+    "ensemble": {
+      "confidence_score": 0.05037907608695652,
+      "currency": "MAD",
+      "excluded_model_count": 2,
+      "model_dispersion": {
+        "base": 414.53630592387225,
+        "cv": 0.8596244962659622,
+        "dispersion_factor": 0.25,
+        "high": 7097.200000000001,
+        "low": 0.0,
+        "mean": 2039.024260412445
+      },
+      "model_weights": {
+        "ddm": 0.4,
+        "fcfe_dcf": 0.15,
+        "fcff_dcf": 0.2,
+        "justified_multiples": 0.108696,
+        "relative_multiples": 0.141304
+      },
+      "monte_carlo": {
+        "base": 414.53630592387225,
+        "high": 800.9253665610195,
+        "low": 35.169852420167445
+      },
+      "usable_model_count": 5,
+      "warnings": [
+        "relative_multiples_proxy_weight_capped",
+        "fcff_dcf_proxy_weight_capped",
+        "fcfe_dcf_proxy_weight_capped",
+        "ddm_proxy_weight_capped",
+        "justified_multiples_proxy_weight_capped",
+        "relative_family_weight_capped",
+        "withheld_integrity_fail"
+      ]
+    },
+    "fcfe_dcf": {
+      "confidence": "medium",
+      "eligible": true,
+      "proxy_required": true
+    },
+    "fcff_dcf": {
+      "confidence": "medium",
+      "eligible": true
+    },
+    "is_financial": false,
+    "justified_multiples": {
+      "confidence": "medium",
+      "eligible": true
+    },
+    "projection": {
+      "as_of": "2026-04-30",
+      "available": true,
+      "confidence_cap": null,
+      "fallback": false,
+      "warnings": [
+        "revenue_growth_diverges_from_history",
+        "ebit_margin_diverges_from_history"
+      ]
+    },
+    "relative_multiples": {
+      "confidence": "high",
+      "eligible": true
+    },
+    "residual_income": {
+      "confidence": "unavailable",
+      "eligible": false
+    },
+    "reverse_dcf": {
+      "confidence": "medium",
+      "eligible": true
+    },
+    "terminal_growth": {
+      "equity": {
+        "binding_constraint": "raw",
+        "ceiling": 0.035,
+        "ceiling_source": "risk_free_rate",
+        "discount_buffer": 0.01,
+        "discount_cap": 0.08703581530552458,
+        "discount_rate": 0.09703581530552458,
+        "floor": 0.0,
+        "path": "equity",
+        "payout": 0.07529597379756875,
+        "payout_source": "historical_dividends_to_net_income",
+        "raw_growth": 0.03,
+        "retention": 0.9247040262024313,
+        "roe": null,
+        "roe_source": "missing_roe",
+        "source": "earnings_growth_proxy_missing_roe",
+        "terminal_growth": 0.03
+      },
+      "firm": {
+        "binding_constraint": "raw",
+        "ceiling": 0.035,
+        "ceiling_source": "risk_free_rate",
+        "discount_buffer": 0.01,
+        "discount_cap": 0.0819621793024451,
+        "discount_rate": 0.0919621793024451,
+        "floor": 0.0,
+        "path": "firm",
+        "raw_growth": 0.016789990118924094,
+        "reinvestment_rate": 0.3107816497189058,
+        "roic": 0.0540250369804981,
+        "source": "reinvestment_times_roic",
+        "tax_rate": 0.35,
+        "terminal_growth": 0.016789990118924094
+      }
+    }
+  },
+  "persisted_valuation_rows": [
+    {
+      "computed_at": "2026-06-03T09:38:01.175741+00:00",
+      "confidence": "high",
+      "current_price": 17743.0,
+      "fair_value": 233.98325840927555,
+      "model": "ddm",
+      "upside_pct": -0.9868126439492039
+    },
+    {
+      "computed_at": "2026-06-03T09:38:01.175741+00:00",
+      "confidence": "medium",
+      "current_price": 17743.0,
+      "fair_value": 251.25708132279672,
+      "model": "fcfe_dcf",
+      "upside_pct": -0.9858390868893199
+    },
+    {
+      "computed_at": "2026-06-03T09:38:01.175741+00:00",
+      "confidence": "medium",
+      "current_price": 17743.0,
+      "fair_value": 0.0,
+      "model": "fcff_dcf",
+      "upside_pct": -1.0
+    },
+    {
+      "computed_at": "2026-06-03T09:38:01.175741+00:00",
+      "confidence": "low",
+      "current_price": 17743.0,
+      "fair_value": 7097.200000000001,
+      "model": "justified_multiples",
+      "upside_pct": -0.6
+    },
+    {
+      "computed_at": "2026-06-03T09:38:01.175741+00:00",
+      "confidence": "medium",
+      "current_price": 17743.0,
+      "fair_value": 7097.200000000001,
+      "model": "relative_multiples",
+      "upside_pct": -0.6
+    },
+    {
+      "computed_at": "2026-06-03T09:38:01.175741+00:00",
+      "confidence": "unavailable",
+      "current_price": 17743.0,
+      "fair_value": null,
+      "model": "residual_income",
+      "upside_pct": null
+    },
+    {
+      "computed_at": "2026-06-03T09:38:01.175741+00:00",
+      "confidence": "medium",
+      "current_price": 17743.0,
+      "fair_value": null,
+      "model": "reverse_dcf",
+      "upside_pct": null
+    }
+  ],
+  "projection_growth_driver": {
+    "anchor_value": 0.12392017399786281,
+    "divergence": 0.21086877274326332,
+    "historical_series": [
+      {
+        "value": 0.2994018429703078,
+        "year": 2022
+      },
+      {
+        "value": -0.22162319080993653,
+        "year": 2023
+      },
+      {
+        "value": 0.18005754169108634,
+        "year": 2024
+      },
+      {
+        "value": 0.5456577194843895,
+        "year": 2025
+      }
+    ],
+    "inputs": {
+      "blend_weight_cagr": 0.5,
+      "blend_weight_last_year": 0.5,
+      "cagr_3y": 0.12392017399786281,
+      "growth_bound_method": "winsorized_peak_yoy_90th_percentile",
+      "historical_growth_upper_bound": 0.5456577194843895,
+      "last_year_growth": 0.5456577194843895,
+      "terminal_growth": 0.016789990118924094
+    },
+    "method": "blend(3y revenue CAGR 12.39%, last-year growth 54.57%) fades to terminal 1.68%",
+    "name": "revenue_growth",
+    "projected_by_year": {
+      "2026": 0.33478894674112614,
+      "2027": 0.2552892075855756,
+      "2028": 0.1757894684300251,
+      "2029": 0.0962897292744746,
+      "2030": 0.01678999011892407
+    },
+    "warning": "revenue_growth_diverges_from_history"
+  },
+  "projection_warnings": [
+    "revenue_growth_diverges_from_history",
+    "ebit_margin_diverges_from_history"
+  ],
+  "resolved_terminal_growth": {
+    "terminal_growth": 0.025,
+    "terminal_growth_basis": {
+      "equity": {
+        "binding_constraint": "raw",
+        "ceiling": 0.035,
+        "ceiling_source": "risk_free_rate",
+        "discount_buffer": 0.01,
+        "discount_cap": 0.08703581530552458,
+        "discount_rate": 0.09703581530552458,
+        "floor": 0.0,
+        "path": "equity",
+        "payout": 0.07529597379756875,
+        "payout_source": "historical_dividends_to_net_income",
+        "raw_growth": 0.03,
+        "retention": 0.9247040262024313,
+        "roe": null,
+        "roe_source": "missing_roe",
+        "source": "earnings_growth_proxy_missing_roe",
+        "terminal_growth": 0.03
+      },
+      "firm": {
+        "binding_constraint": "raw",
+        "ceiling": 0.035,
+        "ceiling_source": "risk_free_rate",
+        "discount_buffer": 0.01,
+        "discount_cap": 0.0819621793024451,
+        "discount_rate": 0.0919621793024451,
+        "floor": 0.0,
+        "path": "firm",
+        "raw_growth": 0.016789990118924094,
+        "reinvestment_rate": 0.3107816497189058,
+        "roic": 0.0540250369804981,
+        "source": "reinvestment_times_roic",
+        "tax_rate": 0.35,
+        "terminal_growth": 0.016789990118924094
+      }
+    },
+    "terminal_growth_equity": 0.03,
+    "terminal_growth_equity_provenance": "computed_from_fundamentals",
+    "terminal_growth_firm": 0.016789990118924094,
+    "terminal_growth_firm_provenance": "computed_from_fundamentals",
+    "terminal_growth_provenance": "default"
+  },
+  "scenario": "base",
+  "sector": "Mines",
+  "symbol": "MNG",
+  "valuations": [
+    {
+      "confidence": "medium",
+      "confidence_score": 0.315,
+      "current_price": 17743.0,
+      "fair_value": 414.53630592387225,
+      "family": "intrinsic",
+      "inputs": {
+        "cost_of_capital": {
+          "average_total_debt": 17031400000.0,
+          "base_cost_of_debt": 0.055,
+          "base_equity_risk_premium": 0.06,
+          "beta": 1.0339302550920764,
+          "beta_as_of": "2026-06-01",
+          "beta_frequency": "weekly",
+          "beta_liquidity_flag": false,
+          "beta_lookup_as_of": "latest",
+          "beta_method": "ols",
+          "beta_n_obs": 104,
+          "beta_r2": 0.18080387639883988,
+          "beta_source": "beta_history",
+          "beta_window_years": 2.0,
+          "beta_zero_week_frac": 0.04807692307692308,
+          "cost_of_debt": 0.045000000000000005,
+          "cost_of_debt_ceiling": 0.085,
+          "cost_of_debt_floor": 0.04,
+          "cost_of_debt_pre_scenario": 0.045000000000000005,
+          "cost_of_debt_source": "synthetic_interest_coverage_spread",
+          "cost_of_debt_unclamped": 0.045000000000000005,
+          "cost_of_equity": 0.09703581530552458,
+          "cost_of_equity_floor": 0.095,
+          "cost_of_equity_floor_bound": false,
+          "cost_of_equity_unfloored": 0.09703581530552458,
+          "country_risk_premium": 0.0,
+          "debt_weight": 0.07484804866934985,
+          "effective_cost_of_debt": 0.045000000000000005,
+          "effective_equity_risk_premium": 0.06,
+          "equity_weight": 0.9251519513306501,
+          "interest_coverage": 20.498461538461537,
+          "interest_expense": 195000000.0,
+          "kd_effective": 0.01144944044529516,
+          "kd_synthetic": 0.045000000000000005,
+          "macro_config": {
+            "country_risk_mode": "auto",
+            "country_risk_premium": 0.0,
+            "country_risk_source": "auto:masi_embedded",
+            "equity_risk_premium": 0.06,
+            "erp_index_asset_class": "index",
+            "erp_index_symbol": "MASI",
+            "erp_lookback_years": 10.0,
+            "erp_mean_method": "geometric",
+            "erp_mode": "manual",
+            "erp_source": "manual",
+            "expected_index_return": null,
+            "risk_free_mode": "tenor",
+            "risk_free_rate": 0.035,
+            "risk_free_source": "treasury_curve:10Y",
+            "scope_key": "GLOBAL",
+            "source": "structural_default",
+            "treasury_curve": {
+              "10Y": 0.035,
+              "1Y": 0.03,
+              "5Y": 0.033
+            },
+            "treasury_tenor": "10Y",
+            "version_label": "base",
+            "warnings": []
+          },
+          "market_cap": 210514946268.0,
+          "market_proxy": "MASI",
+          "scenario_cost_of_debt_addon": 0.0,
+          "scenario_erp_addon": 0.0,
+          "synthetic_bucket": "AA",
+          "synthetic_spread": 0.01,
+          "tax_rate": 0.35,
+          "total_debt": 17031400000.0,
+          "wacc": 0.0919621793024451,
+          "weight_source": "market_cap_plus_debt"
+        },
+        "cost_of_equity": 0.09703581530552458,
+        "dividend_per_share": 19.646554191618886,
+        "dividend_source": "reported_dividends_per_share",
+        "dividend_yield": 0.11072847991669328,
+        "mid_year_discounting": true,
+        "mid_year_terminal": false,
+        "reported_dividend_total": 233100000.0,
+        "shares": 11864676.0,
+        "terminal_growth": 0.03,
+        "terminal_growth_basis": {
+          "binding_constraint": "raw",
+          "ceiling": 0.035,
+          "ceiling_source": "risk_free_rate",
+          "discount_buffer": 0.01,
+          "discount_cap": 0.08703581530552458,
+          "discount_rate": 0.09703581530552458,
+          "floor": 0.0,
+          "path": "equity",
+          "payout": 0.07529597379756875,
+          "payout_source": "historical_dividends_to_net_income",
+          "raw_growth": 0.03,
+          "retention": 0.9247040262024313,
+          "roe": null,
+          "roe_source": "missing_roe",
+          "source": "earnings_growth_proxy_missing_roe",
+          "terminal_growth": 0.03
+        },
+        "terminal_growth_equity": 0.03
+      },
+      "model": "ddm",
+      "upside_pct": -0.97663662819569,
+      "warnings": [
+        "revenue_growth_diverges_from_history",
+        "ebit_margin_diverges_from_history",
+        "integrity_fail: all_checks_unavailable"
+      ],
+      "weight": 0.4
+    },
+    {
+      "confidence": "unavailable",
+      "confidence_score": 0.0,
+      "current_price": 17743.0,
+      "fair_value": null,
+      "family": "intrinsic",
+      "inputs": {},
+      "model": "residual_income",
+      "upside_pct": null,
+      "warnings": [
+        "model_not_eligible",
+        "integrity_fail: all_checks_unavailable"
+      ],
+      "weight": null
+    },
+    {
+      "confidence": "low",
+      "confidence_score": 0.0875,
+      "current_price": 17743.0,
+      "fair_value": 0.0,
+      "family": "intrinsic",
+      "inputs": {
+        "cost_of_capital": {
+          "average_total_debt": 17031400000.0,
+          "base_cost_of_debt": 0.055,
+          "base_equity_risk_premium": 0.06,
+          "beta": 1.0339302550920764,
+          "beta_as_of": "2026-06-01",
+          "beta_frequency": "weekly",
+          "beta_liquidity_flag": false,
+          "beta_lookup_as_of": "latest",
+          "beta_method": "ols",
+          "beta_n_obs": 104,
+          "beta_r2": 0.18080387639883988,
+          "beta_source": "beta_history",
+          "beta_window_years": 2.0,
+          "beta_zero_week_frac": 0.04807692307692308,
+          "cost_of_debt": 0.045000000000000005,
+          "cost_of_debt_ceiling": 0.085,
+          "cost_of_debt_floor": 0.04,
+          "cost_of_debt_pre_scenario": 0.045000000000000005,
+          "cost_of_debt_source": "synthetic_interest_coverage_spread",
+          "cost_of_debt_unclamped": 0.045000000000000005,
+          "cost_of_equity": 0.09703581530552458,
+          "cost_of_equity_floor": 0.095,
+          "cost_of_equity_floor_bound": false,
+          "cost_of_equity_unfloored": 0.09703581530552458,
+          "country_risk_premium": 0.0,
+          "debt_weight": 0.07484804866934985,
+          "effective_cost_of_debt": 0.045000000000000005,
+          "effective_equity_risk_premium": 0.06,
+          "equity_weight": 0.9251519513306501,
+          "interest_coverage": 20.498461538461537,
+          "interest_expense": 195000000.0,
+          "kd_effective": 0.01144944044529516,
+          "kd_synthetic": 0.045000000000000005,
+          "macro_config": {
+            "country_risk_mode": "auto",
+            "country_risk_premium": 0.0,
+            "country_risk_source": "auto:masi_embedded",
+            "equity_risk_premium": 0.06,
+            "erp_index_asset_class": "index",
+            "erp_index_symbol": "MASI",
+            "erp_lookback_years": 10.0,
+            "erp_mean_method": "geometric",
+            "erp_mode": "manual",
+            "erp_source": "manual",
+            "expected_index_return": null,
+            "risk_free_mode": "tenor",
+            "risk_free_rate": 0.035,
+            "risk_free_source": "treasury_curve:10Y",
+            "scope_key": "GLOBAL",
+            "source": "structural_default",
+            "treasury_curve": {
+              "10Y": 0.035,
+              "1Y": 0.03,
+              "5Y": 0.033
+            },
+            "treasury_tenor": "10Y",
+            "version_label": "base",
+            "warnings": []
+          },
+          "market_cap": 210514946268.0,
+          "market_proxy": "MASI",
+          "scenario_cost_of_debt_addon": 0.0,
+          "scenario_erp_addon": 0.0,
+          "synthetic_bucket": "AA",
+          "synthetic_spread": 0.01,
+          "tax_rate": 0.35,
+          "total_debt": 17031400000.0,
+          "wacc": 0.0919621793024451,
+          "weight_source": "market_cap_plus_debt"
+        },
+        "fcf_growth_source": "default_3pct_no_data",
+        "fcf_source": "reported_free_cash_flow",
+        "fcf_start": 49400000.0,
+        "growth": 0.03,
+        "mid_year_discounting": true,
+        "mid_year_terminal": false,
+        "net_debt": 13372000000.0,
+        "net_debt_bridge": {
+          "base_net_debt": 12641100000.0,
+          "net_debt": 13372000000.0,
+          "notes": [],
+          "other_adjustments": {
+            "associates_investments": null,
+            "minority_interest": 730900000.0,
+            "pension_lease_obligations": null
+          },
+          "source": "reported_net_debt_with_other_adjustments",
+          "warning": false
+        },
+        "net_debt_source": "reported_net_debt_with_other_adjustments",
+        "terminal_growth": 0.016789990118924094,
+        "terminal_growth_basis": {
+          "binding_constraint": "raw",
+          "ceiling": 0.035,
+          "ceiling_source": "risk_free_rate",
+          "discount_buffer": 0.01,
+          "discount_cap": 0.0819621793024451,
+          "discount_rate": 0.0919621793024451,
+          "floor": 0.0,
+          "path": "firm",
+          "raw_growth": 0.016789990118924094,
+          "reinvestment_rate": 0.3107816497189058,
+          "roic": 0.0540250369804981,
+          "source": "reinvestment_times_roic",
+          "tax_rate": 0.35,
+          "terminal_growth": 0.016789990118924094
+        },
+        "terminal_growth_firm": 0.016789990118924094,
+        "wacc": 0.0919621793024451
+      },
+      "model": "fcff_dcf",
+      "upside_pct": -1.0,
+      "warnings": [
+        "default_3pct_no_data",
+        "revenue_growth_diverges_from_history",
+        "ebit_margin_diverges_from_history",
+        "integrity_fail: all_checks_unavailable"
+      ],
+      "weight": 0.2
+    },
+    {
+      "confidence": "low",
+      "confidence_score": 0.0875,
+      "current_price": 17743.0,
+      "fair_value": 659.3982536193075,
+      "family": "intrinsic",
+      "inputs": {
+        "cost_of_capital": {
+          "average_total_debt": 17031400000.0,
+          "base_cost_of_debt": 0.055,
+          "base_equity_risk_premium": 0.06,
+          "beta": 1.0339302550920764,
+          "beta_as_of": "2026-06-01",
+          "beta_frequency": "weekly",
+          "beta_liquidity_flag": false,
+          "beta_lookup_as_of": "latest",
+          "beta_method": "ols",
+          "beta_n_obs": 104,
+          "beta_r2": 0.18080387639883988,
+          "beta_source": "beta_history",
+          "beta_window_years": 2.0,
+          "beta_zero_week_frac": 0.04807692307692308,
+          "cost_of_debt": 0.045000000000000005,
+          "cost_of_debt_ceiling": 0.085,
+          "cost_of_debt_floor": 0.04,
+          "cost_of_debt_pre_scenario": 0.045000000000000005,
+          "cost_of_debt_source": "synthetic_interest_coverage_spread",
+          "cost_of_debt_unclamped": 0.045000000000000005,
+          "cost_of_equity": 0.09703581530552458,
+          "cost_of_equity_floor": 0.095,
+          "cost_of_equity_floor_bound": false,
+          "cost_of_equity_unfloored": 0.09703581530552458,
+          "country_risk_premium": 0.0,
+          "debt_weight": 0.07484804866934985,
+          "effective_cost_of_debt": 0.045000000000000005,
+          "effective_equity_risk_premium": 0.06,
+          "equity_weight": 0.9251519513306501,
+          "interest_coverage": 20.498461538461537,
+          "interest_expense": 195000000.0,
+          "kd_effective": 0.01144944044529516,
+          "kd_synthetic": 0.045000000000000005,
+          "macro_config": {
+            "country_risk_mode": "auto",
+            "country_risk_premium": 0.0,
+            "country_risk_source": "auto:masi_embedded",
+            "equity_risk_premium": 0.06,
+            "erp_index_asset_class": "index",
+            "erp_index_symbol": "MASI",
+            "erp_lookback_years": 10.0,
+            "erp_mean_method": "geometric",
+            "erp_mode": "manual",
+            "erp_source": "manual",
+            "expected_index_return": null,
+            "risk_free_mode": "tenor",
+            "risk_free_rate": 0.035,
+            "risk_free_source": "treasury_curve:10Y",
+            "scope_key": "GLOBAL",
+            "source": "structural_default",
+            "treasury_curve": {
+              "10Y": 0.035,
+              "1Y": 0.03,
+              "5Y": 0.033
+            },
+            "treasury_tenor": "10Y",
+            "version_label": "base",
+            "warnings": []
+          },
+          "market_cap": 210514946268.0,
+          "market_proxy": "MASI",
+          "scenario_cost_of_debt_addon": 0.0,
+          "scenario_erp_addon": 0.0,
+          "synthetic_bucket": "AA",
+          "synthetic_spread": 0.01,
+          "tax_rate": 0.35,
+          "total_debt": 17031400000.0,
+          "wacc": 0.0919621793024451,
+          "weight_source": "market_cap_plus_debt"
+        },
+        "cost_of_equity": 0.09703581530552458,
+        "fcfe_source": "reported_free_cash_flow",
+        "fcfe_start": 49400000.0,
+        "growth": 0.03,
+        "mid_year_discounting": true,
+        "mid_year_terminal": false,
+        "terminal_growth": 0.03,
+        "terminal_growth_basis": {
+          "binding_constraint": "raw",
+          "ceiling": 0.035,
+          "ceiling_source": "risk_free_rate",
+          "discount_buffer": 0.01,
+          "discount_cap": 0.08703581530552458,
+          "discount_rate": 0.09703581530552458,
+          "floor": 0.0,
+          "path": "equity",
+          "payout": 0.07529597379756875,
+          "payout_source": "historical_dividends_to_net_income",
+          "raw_growth": 0.03,
+          "retention": 0.9247040262024313,
+          "roe": null,
+          "roe_source": "missing_roe",
+          "source": "earnings_growth_proxy_missing_roe",
+          "terminal_growth": 0.03
+        },
+        "terminal_growth_equity": 0.03
+      },
+      "model": "fcfe_dcf",
+      "upside_pct": -0.9628361464453977,
+      "warnings": [
+        "fcfe_proxy_from_free_cash_flow",
+        "revenue_growth_diverges_from_history",
+        "ebit_margin_diverges_from_history",
+        "integrity_fail: all_checks_unavailable"
+      ],
+      "weight": 0.15
+    },
+    {
+      "confidence": "low",
+      "confidence_score": 0.13999999999999999,
+      "current_price": 17743.0,
+      "fair_value": 7097.200000000001,
+      "family": "relative",
+      "inputs": {
+        "cost_of_capital": {
+          "average_total_debt": 17031400000.0,
+          "base_cost_of_debt": 0.055,
+          "base_equity_risk_premium": 0.06,
+          "beta": 1.0339302550920764,
+          "beta_as_of": "2026-06-01",
+          "beta_frequency": "weekly",
+          "beta_liquidity_flag": false,
+          "beta_lookup_as_of": "latest",
+          "beta_method": "ols",
+          "beta_n_obs": 104,
+          "beta_r2": 0.18080387639883988,
+          "beta_source": "beta_history",
+          "beta_window_years": 2.0,
+          "beta_zero_week_frac": 0.04807692307692308,
+          "cost_of_debt": 0.045000000000000005,
+          "cost_of_debt_ceiling": 0.085,
+          "cost_of_debt_floor": 0.04,
+          "cost_of_debt_pre_scenario": 0.045000000000000005,
+          "cost_of_debt_source": "synthetic_interest_coverage_spread",
+          "cost_of_debt_unclamped": 0.045000000000000005,
+          "cost_of_equity": 0.09703581530552458,
+          "cost_of_equity_floor": 0.095,
+          "cost_of_equity_floor_bound": false,
+          "cost_of_equity_unfloored": 0.09703581530552458,
+          "country_risk_premium": 0.0,
+          "debt_weight": 0.07484804866934985,
+          "effective_cost_of_debt": 0.045000000000000005,
+          "effective_equity_risk_premium": 0.06,
+          "equity_weight": 0.9251519513306501,
+          "interest_coverage": 20.498461538461537,
+          "interest_expense": 195000000.0,
+          "kd_effective": 0.01144944044529516,
+          "kd_synthetic": 0.045000000000000005,
+          "macro_config": {
+            "country_risk_mode": "auto",
+            "country_risk_premium": 0.0,
+            "country_risk_source": "auto:masi_embedded",
+            "equity_risk_premium": 0.06,
+            "erp_index_asset_class": "index",
+            "erp_index_symbol": "MASI",
+            "erp_lookback_years": 10.0,
+            "erp_mean_method": "geometric",
+            "erp_mode": "manual",
+            "erp_source": "manual",
+            "expected_index_return": null,
+            "risk_free_mode": "tenor",
+            "risk_free_rate": 0.035,
+            "risk_free_source": "treasury_curve:10Y",
+            "scope_key": "GLOBAL",
+            "source": "structural_default",
+            "treasury_curve": {
+              "10Y": 0.035,
+              "1Y": 0.03,
+              "5Y": 0.033
+            },
+            "treasury_tenor": "10Y",
+            "version_label": "base",
+            "warnings": []
+          },
+          "market_cap": 210514946268.0,
+          "market_proxy": "MASI",
+          "scenario_cost_of_debt_addon": 0.0,
+          "scenario_erp_addon": 0.0,
+          "synthetic_bucket": "AA",
+          "synthetic_spread": 0.01,
+          "tax_rate": 0.35,
+          "total_debt": 17031400000.0,
+          "wacc": 0.0919621793024451,
+          "weight_source": "market_cap_plus_debt"
+        },
+        "cost_of_equity": 0.09703581530552458,
+        "fade_years": 5,
+        "growth": 0.0,
+        "justified_multiple_ratio_mask": 3,
+        "payout": 0.55,
+        "roe": null,
+        "roe_source": "roe_spot_fallback",
+        "selected_ratio_keys": [
+          "justified_pb",
+          "justified_pe"
+        ],
+        "sustainable_growth": 0.0,
+        "terminal_growth": 0.03,
+        "terminal_growth_basis": {
+          "binding_constraint": "raw",
+          "ceiling": 0.035,
+          "ceiling_source": "risk_free_rate",
+          "discount_buffer": 0.01,
+          "discount_cap": 0.08703581530552458,
+          "discount_rate": 0.09703581530552458,
+          "floor": 0.0,
+          "path": "equity",
+          "payout": 0.07529597379756875,
+          "payout_source": "historical_dividends_to_net_income",
+          "raw_growth": 0.03,
+          "retention": 0.9247040262024313,
+          "roe": null,
+          "roe_source": "missing_roe",
+          "source": "earnings_growth_proxy_missing_roe",
+          "terminal_growth": 0.03
+        },
+        "terminal_growth_equity": 0.03
+      },
+      "model": "justified_multiples",
+      "upside_pct": -0.6,
+      "warnings": [
+        "using_stable_payout_assumption",
+        "justified_pe_implied_price_clamped",
+        "integrity_fail: all_checks_unavailable"
+      ],
+      "weight": 0.108696
+    },
+    {
+      "confidence": "medium",
+      "confidence_score": 0.21,
+      "current_price": 17743.0,
+      "fair_value": 7097.200000000001,
+      "family": "relative",
+      "inputs": {
+        "ev_to_ebitda_bridge": {
+          "ebitda": 5982000000.0,
+          "net_debt": 13372000000.0,
+          "net_debt_bridge": {
+            "base_net_debt": 12641100000.0,
+            "net_debt": 13372000000.0,
+            "notes": [],
+            "other_adjustments": {
+              "associates_investments": null,
+              "minority_interest": 730900000.0,
+              "pension_lease_obligations": null
+            },
+            "source": "reported_net_debt_with_other_adjustments",
+            "warning": false
+          },
+          "net_debt_source": "reported_net_debt_with_other_adjustments",
+          "shares": 11864676.0
+        },
+        "own_multiple_basis": {
+          "EV_to_EBITDA": "spot",
+          "PER": "market_cap_over_3y_avg_net_income",
+          "Price_to_Book": "spot",
+          "Price_to_Sales": "market_cap_over_3y_avg_revenue"
+        },
+        "own_multiples": {
+          "EV_to_EBITDA": 37.304588142427285,
+          "PER": 70.12489882345103,
+          "Price_to_Book": 18.34025476490421,
+          "Price_to_Sales": 15.373236129870888
+        },
+        "peer_count": {
+          "EV_to_EBITDA": 3,
+          "PER": 4,
+          "Price_to_Book": 4,
+          "Price_to_Sales": 4
+        },
+        "peer_scope": {
+          "EV_to_EBITDA": "sector",
+          "PER": "sector",
+          "Price_to_Book": "sector",
+          "Price_to_Sales": "sector"
+        },
+        "peer_stats": {
+          "EV_to_EBITDA": {
+            "count": 3,
+            "median": 14.677053659268068,
+            "scope": "sector"
+          },
+          "PER": {
+            "count": 4,
+            "median": 21.712266956241823,
+            "scope": "sector"
+          },
+          "Price_to_Book": {
+            "count": 4,
+            "median": 5.389235933593133,
+            "scope": "sector"
+          },
+          "Price_to_Sales": {
+            "count": 4,
+            "median": 10.929945638345874,
+            "scope": "sector"
+          }
+        },
+        "relative_multiple_ratio_mask": 15,
+        "selected_ratio_keys": [
+          "EV_to_EBITDA",
+          "PER",
+          "Price_to_Book",
+          "Price_to_Sales"
+        ]
+      },
+      "model": "relative_multiples",
+      "upside_pct": -0.6,
+      "warnings": [
+        "PER_implied_price_clamped",
+        "Price_to_Book_implied_price_clamped",
+        "EV_to_EBITDA_implied_price_clamped",
+        "relative_peers_count_below_5",
+        "integrity_fail: all_checks_unavailable"
+      ],
+      "weight": 0.141304
+    },
+    {
+      "confidence": "medium",
+      "confidence_score": 0.42,
+      "current_price": 17743.0,
+      "fair_value": null,
+      "family": "diagnostic",
+      "inputs": {
+        "cost_of_capital": {
+          "average_total_debt": 17031400000.0,
+          "base_cost_of_debt": 0.055,
+          "base_equity_risk_premium": 0.06,
+          "beta": 1.0339302550920764,
+          "beta_as_of": "2026-06-01",
+          "beta_frequency": "weekly",
+          "beta_liquidity_flag": false,
+          "beta_lookup_as_of": "latest",
+          "beta_method": "ols",
+          "beta_n_obs": 104,
+          "beta_r2": 0.18080387639883988,
+          "beta_source": "beta_history",
+          "beta_window_years": 2.0,
+          "beta_zero_week_frac": 0.04807692307692308,
+          "cost_of_debt": 0.045000000000000005,
+          "cost_of_debt_ceiling": 0.085,
+          "cost_of_debt_floor": 0.04,
+          "cost_of_debt_pre_scenario": 0.045000000000000005,
+          "cost_of_debt_source": "synthetic_interest_coverage_spread",
+          "cost_of_debt_unclamped": 0.045000000000000005,
+          "cost_of_equity": 0.09703581530552458,
+          "cost_of_equity_floor": 0.095,
+          "cost_of_equity_floor_bound": false,
+          "cost_of_equity_unfloored": 0.09703581530552458,
+          "country_risk_premium": 0.0,
+          "debt_weight": 0.07484804866934985,
+          "effective_cost_of_debt": 0.045000000000000005,
+          "effective_equity_risk_premium": 0.06,
+          "equity_weight": 0.9251519513306501,
+          "interest_coverage": 20.498461538461537,
+          "interest_expense": 195000000.0,
+          "kd_effective": 0.01144944044529516,
+          "kd_synthetic": 0.045000000000000005,
+          "macro_config": {
+            "country_risk_mode": "auto",
+            "country_risk_premium": 0.0,
+            "country_risk_source": "auto:masi_embedded",
+            "equity_risk_premium": 0.06,
+            "erp_index_asset_class": "index",
+            "erp_index_symbol": "MASI",
+            "erp_lookback_years": 10.0,
+            "erp_mean_method": "geometric",
+            "erp_mode": "manual",
+            "erp_source": "manual",
+            "expected_index_return": null,
+            "risk_free_mode": "tenor",
+            "risk_free_rate": 0.035,
+            "risk_free_source": "treasury_curve:10Y",
+            "scope_key": "GLOBAL",
+            "source": "structural_default",
+            "treasury_curve": {
+              "10Y": 0.035,
+              "1Y": 0.03,
+              "5Y": 0.033
+            },
+            "treasury_tenor": "10Y",
+            "version_label": "base",
+            "warnings": []
+          },
+          "market_cap": 210514946268.0,
+          "market_proxy": "MASI",
+          "scenario_cost_of_debt_addon": 0.0,
+          "scenario_erp_addon": 0.0,
+          "synthetic_bucket": "AA",
+          "synthetic_spread": 0.01,
+          "tax_rate": 0.35,
+          "total_debt": 17031400000.0,
+          "wacc": 0.0919621793024451,
+          "weight_source": "market_cap_plus_debt"
+        },
+        "fcf_yield": 0.023466267301092438,
+        "market_cap": 210514946268.0,
+        "wacc": 0.0919621793024451
+      },
+      "model": "reverse_dcf",
+      "upside_pct": null,
+      "warnings": [
+        "integrity_fail: all_checks_unavailable"
+      ],
+      "weight": 0.0
+    }
+  ],
+  "year1_revenue": 18278065921.094284,
+  "year1_revenue_growth": 0.33478894674112614
+}

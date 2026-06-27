@@ -1,0 +1,97 @@
+# Gold-layer (star schema) docs + tests.
+# The `relationships` tests are the important ones: they prove every foreign key
+# in a fact exists in its dimension — i.e. NO orphan facts. This is referential
+# integrity enforced by tests rather than DB constraints.
+version: 2
+
+models:
+  - name: dim_symbol
+    description: "Conformed dimension: MASI equities (stock_master) + macro factors (macro_factor_meta). One row per symbol."
+    columns:
+      - name: symbol_key
+        description: "Surrogate key (hash of symbol). PK; referenced by both facts."
+        data_tests: [not_null, unique]
+      - name: symbol
+        data_tests: [not_null, unique]
+      - name: asset_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['equity', 'commodity', 'forex', 'bond', 'crypto']
+
+  - name: dim_date
+    description: "Calendar dimension, one row per day from 2000-01-01."
+    columns:
+      - name: date_key
+        data_tests: [not_null, unique]
+      - name: full_date
+        data_tests: [not_null]
+
+  - name: dim_signal_source
+    description: "One row per distinct raw signal source (engine/wfo family + variant)."
+    columns:
+      - name: source_key
+        data_tests: [not_null, unique]
+      - name: source_base
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['engine', 'engine_expanded', 'engine_legacy', 'wfo']
+
+  - name: dim_category
+    description: "Junk dimension: distinct (category, horizon) combinations."
+    columns:
+      - name: category_key
+        data_tests: [not_null, unique]
+
+  - name: fct_signal_scores
+    description: "Fact (~6.6M rows): per-bar signal scores. Grain = (date, symbol, source, category, horizon)."
+    columns:
+      - name: signal_score_key
+        data_tests: [not_null, unique]
+      - name: symbol_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_symbol')
+                field: symbol_key
+      - name: date_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: source_key
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_signal_source')
+                field: source_key
+      - name: category_key
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_category')
+                field: category_key
+
+  - name: fct_fundamental_pillars
+    description: "Fact (~700 rows): per-symbol fundamental pillar scores. Grain = (symbol, import_id) — each import re-scores a symbol."
+    columns:
+      - name: pillar_key
+        data_tests: [not_null, unique]
+      - name: symbol_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_symbol')
+                field: symbol_key
+      - name: date_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key

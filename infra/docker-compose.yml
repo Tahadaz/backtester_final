@@ -5,6 +5,30 @@
 #   To scale up: set WORKER_CONCURRENCY=8 in .env (or add more replica services).
 #   Tune to your CPU core count — too high causes contention and slows all jobs.
 # ---------------------------------------------------------------------------
+#
+# Airflow (optional — gated behind profile "airflow"):
+#   docker compose --profile airflow up    → starts airflow_init, airflow_scheduler, airflow_webserver
+#   docker compose up                      → starts ZERO Airflow containers
+#   Webserver UI: http://localhost:8081  (login: admin / admin)
+#   Port 8081 is used (not 8080) to avoid conflict with `dbt docs serve` on 8080.
+#   Airflow metadata DB: separate `airflow` logical database on quant_postgres.
+# ---------------------------------------------------------------------------
+
+x-airflow-env: &airflow_env
+  AIRFLOW__CORE__EXECUTOR: LocalExecutor
+  AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://app:app@quant_postgres:5432/airflow
+  AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+  AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+  AIRFLOW__WEBSERVER__SECRET_KEY: "airflow-local-dev-secret-change-in-prod"
+  # DAG talks to the app exclusively over HTTP — no RQ/app-lib imports in the image
+  API_BASE_URL: http://quant_api:8000
+  # dbt env-var profile (container-internal host/port, not the host's 5555)
+  DBT_PG_HOST: quant_postgres
+  DBT_PG_PORT: "5432"
+  DBT_PG_USER: app
+  DBT_PG_PASSWORD: app
+  DBT_PG_DBNAME: quant
+  DBT_PG_SCHEMA: analytics
 
 x-worker-base: &worker_base
   build:
@@ -101,6 +125,7 @@ services:
       - "5555:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
 
   quant_redis:
     image: redis:7
@@ -112,6 +137,7 @@ services:
       timeout: 3s
       retries: 10
       start_period: 5s
+    restart: unless-stopped
 
   quant_minio:
     image: minio/minio
@@ -134,6 +160,7 @@ services:
       timeout: 3s
       retries: 20
       start_period: 10s
+    restart: unless-stopped
 
   quant_minio_init:
     image: minio/mc
@@ -188,6 +215,12 @@ services:
       S3_ACCESS_KEY: minio
       S3_SECRET_KEY: minio12345
       S3_BUCKET: quant-artifacts
+      FUNDAMENTAL_LLM_API_KEYS: ${FUNDAMENTAL_LLM_API_KEYS:-}
+      FUNDAMENTAL_LLM_MODEL: ${FUNDAMENTAL_LLM_MODEL:-gemma-4-31b-it}
+      FUNDAMENTAL_LLM_BASE_URL: ${FUNDAMENTAL_LLM_BASE_URL:-https://generativelanguage.googleapis.com/v1beta/openai/}
+      FAMA_FRENCH_DIR: /bvc/fama-french
+      FAMA_FRENCH_MARKET_REFERENCE_WORKBOOK: /bvc/fama-french/data/raw/fundamental_data_all_structured.xlsx
+      FAMA_FRENCH_HISTORICAL_WORKBOOK: /bvc/fama-french/data/raw/fundamental_data_yearly.xlsx
       PYTHONPATH: /repo
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
       OMP_NUM_THREADS: ${OMP_NUM_THREADS:-1}
@@ -210,6 +243,9 @@ services:
       - ../services/worker:/repo/services/worker
       - ../core:/repo/core
       - ../frontend:/repo/frontend
+      - type: bind
+        source: ${FAMA_FRENCH_HOST_DIR:-C:/Users/taha/Downloads/fama french}
+        target: /bvc/fama-french
     healthcheck:
       test:
         [
@@ -326,6 +362,8 @@ services:
   quant_scheduler:
     <<: *worker_base
     environment:
+      # Automatic schedules run only in deployed environments. Set to "1" there.
+      WORKER_SCHEDULER_ENABLED: "0"
       REDIS_URL: redis://quant_redis:6379/0
       DATABASE_URL: postgresql+psycopg2://app:app@quant_postgres:5432/quant
       RUNS_QUEUE_NAME: runs
@@ -371,6 +409,9 @@ services:
       ADMIN_SCOPES: ${ADMIN_SCOPES:-admin}
       BLOOMBERG_BRIDGE_API_KEY: ${BLOOMBERG_BRIDGE_API_KEY:-local-bloomberg-bridge-key}
       BLOOMBERG_BRIDGE_MAX_UPLOAD_BYTES: ${BLOOMBERG_BRIDGE_MAX_UPLOAD_BYTES:-268435456}
+      FUNDAMENTAL_LLM_API_KEYS: ${FUNDAMENTAL_LLM_API_KEYS:-}
+      FUNDAMENTAL_LLM_MODEL: ${FUNDAMENTAL_LLM_MODEL:-gemma-4-31b-it}
+      FUNDAMENTAL_LLM_BASE_URL: ${FUNDAMENTAL_LLM_BASE_URL:-https://generativelanguage.googleapis.com/v1beta/openai/}
       PYTHONPATH: /repo
     depends_on:
       quant_postgres:
@@ -407,6 +448,7 @@ services:
       timeout: 3s
       retries: 5
       start_period: 15s
+    restart: unless-stopped
 
   quant_frontend:
     profiles: ["frontend-container"]
@@ -433,8 +475,100 @@ services:
         condition: service_healthy
     ports:
       - "3000:3000"
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Airflow services — only start with: docker compose --profile airflow up
+  # ---------------------------------------------------------------------------
+
+  airflow_init:
+    profiles: ["airflow"]
+    build:
+      context: ..
+      dockerfile: infra/airflow/Dockerfile
+    environment:
+      <<: *airflow_env
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: admin
+      _AIRFLOW_WWW_USER_FIRSTNAME: Admin
+      _AIRFLOW_WWW_USER_LASTNAME: User
+      _AIRFLOW_WWW_USER_EMAIL: admin@localhost
+      _AIRFLOW_WWW_USER_ROLE: Admin
+      # psql creds for CREATE DATABASE guard
+      PGPASSWORD: app
+    depends_on:
+      quant_postgres:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -e
+        echo "==> Checking whether 'airflow' database exists..."
+        # Connect to the 'postgres' maintenance DB: psql -U app with no -d defaults to a
+        # database named after the user ('app'), which does not exist (the app DB is 'quant').
+        if PGPASSWORD=app psql -h quant_postgres -U app -d postgres -lqt | cut -d'|' -f1 | grep -qw airflow; then
+          echo "    Database 'airflow' already exists — skipping creation."
+        else
+          echo "    Creating database 'airflow'..."
+          PGPASSWORD=app psql -h quant_postgres -U app -d postgres -c "CREATE DATABASE airflow"
+        fi
+        echo "==> Running airflow db migrate..."
+        airflow db migrate
+        echo "==> Creating admin user (idempotent)..."
+        airflow users create \
+          --username admin --password admin \
+          --firstname Admin --lastname User \
+          --role Admin --email admin@localhost \
+          || true
+        echo "==> airflow_init complete."
+    restart: "no"
+
+  airflow_scheduler:
+    profiles: ["airflow"]
+    build:
+      context: ..
+      dockerfile: infra/airflow/Dockerfile
+    environment:
+      <<: *airflow_env
+    depends_on:
+      airflow_init:
+        condition: service_completed_successfully
+      quant_postgres:
+        condition: service_healthy
+      quant_api:
+        condition: service_healthy
+    volumes:
+      - ../dataeng:/opt/dataeng
+      - ./airflow/dags:/opt/airflow/dags
+      - airflow_logs:/opt/airflow/logs
+    command: airflow scheduler
+    restart: unless-stopped
+
+  airflow_webserver:
+    profiles: ["airflow"]
+    build:
+      context: ..
+      dockerfile: infra/airflow/Dockerfile
+    environment:
+      <<: *airflow_env
+    depends_on:
+      airflow_init:
+        condition: service_completed_successfully
+      quant_postgres:
+        condition: service_healthy
+    volumes:
+      - ../dataeng:/opt/dataeng
+      - ./airflow/dags:/opt/airflow/dags
+      - airflow_logs:/opt/airflow/logs
+    ports:
+      - "8081:8080"
+    command: airflow webserver
+    restart: unless-stopped
 
 volumes:
   pgdata:
   miniodata:
   featurecache:
+  airflow_logs:

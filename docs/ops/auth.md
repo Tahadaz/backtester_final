@@ -18,7 +18,7 @@ Access the DB from the VM as the `deploy` user:
 
 ```bash
 cd /opt/bt
-docker compose --env-file /etc/bt/env -f infra/docker-compose.gcp.yml exec quant_postgres \
+docker compose --env-file /etc/bt/env -f infra/docker-compose.prod.yml exec quant_postgres \
   psql -U app -d quant
 ```
 
@@ -26,7 +26,7 @@ Or run the approval without opening an interactive `psql` session:
 
 ```bash
 cd /opt/bt
-docker compose --env-file /etc/bt/env -f infra/docker-compose.gcp.yml exec -T quant_postgres \
+docker compose --env-file /etc/bt/env -f infra/docker-compose.prod.yml exec -T quant_postgres \
   psql -U app -d quant -c "UPDATE users SET \"isActive\" = true WHERE email = 'user@example.com';"
 ```
 
@@ -51,7 +51,7 @@ Generate a bcrypt hash in the deployed frontend container:
 
 ```bash
 cd /opt/bt
-docker compose --env-file /etc/bt/env -f infra/docker-compose.gcp.yml exec -T quant_frontend \
+docker compose --env-file /etc/bt/env -f infra/docker-compose.prod.yml exec -T quant_frontend \
   node -e "const b=require('bcryptjs'); console.log(b.hashSync(process.argv[1], 12))" 'replace-this-password'
 ```
 

@@ -889,9 +889,9 @@ function StrategyPageContent() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="short">Short</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="long">Long</SelectItem>
+                  <SelectItem value="short">Hebdomadaire</SelectItem>
+                  <SelectItem value="medium">Mensuel</SelectItem>
+                  <SelectItem value="long">Trimestriel</SelectItem>
                 </SelectContent>
               </Select>
             </div>

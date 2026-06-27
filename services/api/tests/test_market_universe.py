@@ -54,6 +54,10 @@ def _row(
         "is_active": True,
         "track_source": "yahoo",
         "bourse_url": None,
+        "shares_outstanding": None,
+        "shares_as_of": None,
+        "shares_source": None,
+        "shares_updated_at": None,
         "notes": None,
         "asset_type": asset_type,
         "market_region": market_region,
@@ -73,19 +77,21 @@ def test_signal_universe_contains_all_data_backed_catalog_asset_classes():
         [
             _row("ATW", sector="Banks", market_region="masi"),
             _row("BTC-USD", display_name="Bitcoin", asset_type="crypto", asset_class="factor"),
+            _row("EURUSD", display_name="EUR/USD", asset_type="forex", asset_class="factor"),
             _row("MAJ", display_name="MAJ"),
             _row("MASI", display_name="MASI Index", market_region="masi", asset_class="index"),
             _row("NODATA", has_canonical_data=False),
             _row("SPY", display_name="SPY", market_region="us"),
             _row("VIX", display_name="VIX", asset_type="equity", market_region="us", asset_class="factor"),
+            _row("XAUUSD", display_name="Gold", asset_type="commodity", asset_class="factor"),
         ]
     )
 
     all_catalog_symbols = [row.symbol for row in list_market_catalog(db, include_without_data=True)]
     signal_symbols = list_signal_universe_symbols(db)
 
-    assert all_catalog_symbols == ["ATW", "BTC-USD", "MASI", "NODATA", "SPY", "VIX"]
-    assert signal_symbols == ["ATW", "BTC-USD", "MASI", "SPY", "VIX"]
+    assert all_catalog_symbols == ["ATW", "BTC-USD", "EURUSD", "MASI", "NODATA", "SPY", "VIX", "XAUUSD"]
+    assert signal_symbols == ["ATW", "BTC-USD", "EURUSD", "MASI", "SPY", "VIX", "XAUUSD"]
 
 
 def test_dashboard_group_and_masi_membership_use_taxonomy_not_stock_master_only():

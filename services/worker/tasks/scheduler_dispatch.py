@@ -16,7 +16,7 @@ from redis import Redis
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from core.quant_core.signal_engine.modes import signal_mode_storage_name
+from core.quant_core.signal_engine.modes import ALL_SIGNAL_MODE_NAMES, signal_mode_storage_name
 from services.api.app import models
 from services.api.app.services.market_universe import list_signal_universe_symbols
 from services.api.app.services.scheduler_registry import (
@@ -40,7 +40,9 @@ logger = logging.getLogger(__name__)
 HORIZONS = ("weekly", "monthly", "quarterly")
 SCHEDULER_HEARTBEAT_KEY = "ops:scheduler:heartbeat"
 DASHBOARD_SNAPSHOT_JOB_TIMEOUT_SECONDS = 3600
+BEST_SIGNAL_EVIDENCE_SNAPSHOT_JOB_TIMEOUT_SECONDS = 7200
 FUNDAMENTAL_REFRESH_JOB_TIMEOUT_SECONDS = 14400
+FUNDAMENTAL_BETA_REFRESH_JOB_TIMEOUT_SECONDS = 7200
 FUNDAMENTAL_REFRESH_NON_STOCK_SYMBOLS = ("INSTRUMENT", "MAJ", "MAJJ", "WORKSHEET")
 
 
@@ -107,12 +109,16 @@ def dispatch_schedule(schedule_id: str, *, trigger_source: str = "scheduled") ->
             result = _dispatch_factor_recalibration()
         elif spec.kind == "fundamental_refresh":
             result = _dispatch_fundamental_refresh(db, trigger_source=trigger_source, batch_id=str(run.id))
+        elif spec.kind == "fundamental_beta_refresh":
+            result = _dispatch_fundamental_beta_refresh(db, trigger_source=trigger_source, batch_id=str(run.id))
         elif spec.kind == "signal_engine_dispatch":
             result = _dispatch_stale_signal_engine(db, trigger_source=trigger_source, batch_id=str(run.id))
         elif spec.kind == "wfo_dispatch":
             result = _dispatch_stale_wfo(db, trigger_source=trigger_source)
         elif spec.kind == "signal_backtest_dispatch":
             result = _dispatch_signal_backtests(db, trigger_source=trigger_source)
+        elif spec.kind == "signal_best_evidence_snapshot":
+            result = _dispatch_signal_best_evidence_snapshot()
         else:  # pragma: no cover - guarded by registry typing
             raise ValueError(f"Unsupported schedule kind {spec.kind!r}")
 
@@ -214,6 +220,17 @@ def _dispatch_dashboard_snapshot() -> dict[str, Any]:
     return {"enqueued_jobs": 1, "rq_job_id": str(job.id)}
 
 
+def _dispatch_signal_best_evidence_snapshot() -> dict[str, Any]:
+    job = _queue(settings.SIGNAL_BACKTEST_QUEUE_NAME).enqueue(
+        "services.worker.tasks.signal_best_evidence_snapshot.refresh_signal_best_evidence_snapshot",
+        None,
+        None,
+        0,
+        job_timeout=BEST_SIGNAL_EVIDENCE_SNAPSHOT_JOB_TIMEOUT_SECONDS,
+    )
+    return {"enqueued_jobs": 1, "rq_job_id": str(job.id)}
+
+
 def _dispatch_factor_monitor() -> dict[str, Any]:
     job = _queue(settings.MARKET_REFRESH_QUEUE_NAME).enqueue(
         "services.worker.tasks.factor_selection_monitor.run_factor_selection_monitor",
@@ -258,7 +275,7 @@ def _dispatch_fundamental_refresh(
     job = _queue(settings.MARKET_REFRESH_QUEUE_NAME).enqueue(
         "services.worker.tasks.refresh_stockanalysis_fundamentals.refresh_stockanalysis_universe",
         symbols=None,
-        missing_only=False,
+        missing_only=True,
         triggered_by=trigger_source,
         batch_id=batch_id,
         job_timeout=FUNDAMENTAL_REFRESH_JOB_TIMEOUT_SECONDS,
@@ -269,6 +286,49 @@ def _dispatch_fundamental_refresh(
         "symbols_total": active_count,
         "market_region": "masi",
         "source": "stockanalysis",
+    }
+
+
+def _dispatch_fundamental_beta_refresh(
+    db: Session,
+    *,
+    trigger_source: str,
+    batch_id: str,
+) -> dict[str, Any]:
+    active_count = int(
+        db.query(models.StockMaster)
+        .join(models.MarketDataStore, models.MarketDataStore.symbol == models.StockMaster.symbol)
+        .filter(
+            models.StockMaster.is_active.is_(True),
+            models.StockMaster.market_region == "masi",
+            models.MarketDataStore.timeframe == "1D",
+            models.MarketDataStore.object_key.isnot(None),
+            ~models.StockMaster.symbol.in_(FUNDAMENTAL_REFRESH_NON_STOCK_SYMBOLS),
+        )
+        .count()
+        or 0
+    )
+    if active_count == 0:
+        return {
+            "enqueued_jobs": 0,
+            "reason": "no_data_backed_fundamental_symbols",
+            "symbols_total": 0,
+            "market_region": "masi",
+            "source": "market_data_store",
+        }
+
+    job = _queue(settings.MARKET_REFRESH_QUEUE_NAME).enqueue(
+        "services.worker.tasks.refresh_fundamental_betas.refresh_fundamental_betas",
+        triggered_by=trigger_source,
+        batch_id=batch_id,
+        job_timeout=FUNDAMENTAL_BETA_REFRESH_JOB_TIMEOUT_SECONDS,
+    )
+    return {
+        "enqueued_jobs": 1,
+        "rq_job_id": str(job.id),
+        "symbols_total": active_count,
+        "market_region": "masi",
+        "source": "market_data_store",
     }
 
 
@@ -328,7 +388,7 @@ def _dispatch_signal_backtests(db: Session, *, trigger_source: str) -> dict[str,
     from services.worker.tasks.signal_backtest_batch import enqueue_signal_backtest_for_symbol
 
     symbols = list_signal_universe_symbols(db)
-    variants = [signal_mode_storage_name("expanded")]
+    variants = [signal_mode_storage_name(variant) for variant in ALL_SIGNAL_MODE_NAMES]
     job_ids: list[str] = []
     for symbol in symbols:
         for horizon in HORIZONS:

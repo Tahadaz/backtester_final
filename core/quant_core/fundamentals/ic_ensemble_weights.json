@@ -1,0 +1,33 @@
+{
+  "_comment": "IC-shrunk ensemble weights estimated by pit_ic_backtest.py Phase-1 pilot (FY2021-FY2024, 12-month forward returns). lambda_shrink=0.40 applied toward equal weight over the 2 positive-IC models. Models with negative/zero IC are floored to 0 and kept as diagnostics only. Re-estimate by re-running pit_ic_backtest with --phase2. Do NOT hand-tune these weights.",
+  "version": "1",
+  "estimated_date": "2026-06-20",
+  "source": "pit_ic_backtest_fy2021_fy2024",
+  "horizon_months": 12,
+  "lambda_shrink": 0.40,
+  "n_periods": 4,
+  "raw_ic": {
+    "relative_multiples":  0.217,
+    "fcff_dcf":            0.332,
+    "ddm":                -0.188,
+    "fcfe_dcf":            0.0,
+    "residual_income":     0.0,
+    "justified_multiples": 0.0,
+    "reverse_dcf":         0.0
+  },
+  "weights": {
+    "relative_multiples":  0.4581,
+    "fcff_dcf":            0.5419,
+    "ddm":                 0.0,
+    "fcfe_dcf":            0.0,
+    "residual_income":     0.0,
+    "justified_multiples": 0.0,
+    "reverse_dcf":         0.0
+  },
+  "oos_validation": {
+    "method": "expanding_window_leave_last_out",
+    "ic_weighted_wins": null,
+    "equal_weight_wins": null,
+    "note": "populate after running --phase2 oos"
+  }
+}

@@ -460,16 +460,18 @@ function collapseToRanges(
   )
 
   const addDays = (iso: string, n: number) => {
-    const d = new Date(iso + "T00:00:00")
+    const d = parseLocalDate(iso)
     d.setDate(d.getDate() + n)
-    return d.toISOString().slice(0, 10)
+    return formatDateKey(d)
   }
 
   const isConsecutive = (a: string, b: string) => {
     let cursor = addDays(a, 1)
     while (cursor < b) {
       if (!nonTradingDays.has(cursor)) return false
-      cursor = addDays(cursor, 1)
+      const next = addDays(cursor, 1)
+      if (next <= cursor) return false
+      cursor = next
     }
     return cursor === b
   }

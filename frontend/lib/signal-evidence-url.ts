@@ -17,6 +17,8 @@ export function signalEvidenceUrl({
   side,
   evidenceVariant,
   variant,
+  scope,
+  scopeKey,
   tab = "evidence",
 }: {
   symbol: string
@@ -26,6 +28,8 @@ export function signalEvidenceUrl({
   side?: string
   evidenceVariant?: string
   variant?: string
+  scope?: string | null
+  scopeKey?: string | null
   tab?: string
 }): string {
   const params = new URLSearchParams()
@@ -37,5 +41,7 @@ export function signalEvidenceUrl({
   if (side) params.set("side", side)
   if (evidenceVariant) params.set("evidence_variant", evidenceVariant)
   if (variant) params.set("variant", variant)
+  if (scope) params.set("scope", scope)
+  if (scopeKey) params.set("scope_key", scopeKey)
   return `/signals?${params.toString()}`
 }

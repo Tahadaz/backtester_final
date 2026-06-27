@@ -3,10 +3,10 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Activity, ChartColumnIncreasing, Landmark } from "lucide-react"
-import { AnalyticsPageInner } from "@/app/analytics/page"
 import { ExpandedSignalsView } from "@/components/strategy/expanded-signals-view"
 import { LegacySignalsView } from "@/components/strategy/legacy-signals-view"
 import { PublicSignalsPage } from "@/components/strategy/public-signals-page"
+import { SignalQuantitativeView } from "@/components/strategy/signal-quantitative-view"
 import { SignalFundamentalView } from "@/components/strategy/signal-fundamental-view"
 import { SignalsVersionToggle } from "@/components/strategy/signals-version-toggle"
 import { signalPageHorizon } from "@/lib/signal-evidence-url"
@@ -30,8 +30,8 @@ const validViews = new Set<SignalsPageView>([
   "legacy_factor_x_ta_combo",
   "expanded_factor_x_ta_combo",
 ])
-type SignalsTab = "technique" | "evidence" | "indicateurs" | "wfo" | "backtest"
-const validTabs = new Set<SignalsTab>(["technique", "evidence", "indicateurs", "wfo", "backtest"])
+type SignalsTab = "technique" | "evidence" | "indicateurs" | "wfo" | "backtest" | "portfolio"
+const validTabs = new Set<SignalsTab>(["technique", "evidence", "indicateurs", "wfo", "backtest", "portfolio"])
 const sourceAliases: Record<string, "auto" | "signal_engine" | "wfo"> = {
   auto: "auto",
   best: "auto",
@@ -242,6 +242,10 @@ function PrivateSignalsPage() {
     updateSearchParams({ symbol })
   }, [updateSearchParams])
 
+  const handleTabChange = useCallback((tab: string) => {
+    updateSearchParams({ tab: tab === "technique" ? null : tab })
+  }, [updateSearchParams])
+
   const topbarContent = (
     <SignalsVersionToggle value={view} onChange={handleViewChange} />
   )
@@ -260,6 +264,7 @@ function PrivateSignalsPage() {
             topbarContent={topbarContent}
             variant={view}
             defaultTab={defaultTab}
+            onTabChange={handleTabChange}
             evidenceSource={evidenceSource}
             evidenceVariant={evidenceVariant}
             selectedVariantId={selectedVariantId}
@@ -275,6 +280,7 @@ function PrivateSignalsPage() {
             topbarContent={topbarContent}
             variant={view as ExpandedSignalsPageView}
             defaultTab={defaultTab}
+            onTabChange={handleTabChange}
             evidenceSource={evidenceSource}
             evidenceVariant={evidenceVariant}
             selectedVariantId={selectedVariantId}
@@ -291,9 +297,7 @@ function PrivateSignalsPage() {
         ) : null}
 
         {analysisMode === "quantitative" ? (
-          <div className="signals-embedded-analytics h-full overflow-hidden bg-background">
-            <AnalyticsPageInner />
-          </div>
+          <SignalQuantitativeView selectedSymbol={selectedSymbol} onSelectSymbol={handleSelectSymbol} />
         ) : null}
       </div>
     </div>

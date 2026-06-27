@@ -87,6 +87,10 @@ type IndicatorPanel = {
 }
 
 function toTime(date: string): Time {
+  if (date.includes("T")) {
+    const parsed = Date.parse(date)
+    if (Number.isFinite(parsed)) return Math.floor(parsed / 1000) as Time
+  }
   return date as unknown as Time
 }
 

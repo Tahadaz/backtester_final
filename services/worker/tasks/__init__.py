@@ -70,6 +70,12 @@ def refresh_stockanalysis_for_symbol(*args, **kwargs):
     return _refresh_stockanalysis_for_symbol(*args, **kwargs)
 
 
+def refresh_fundamental_betas(*args, **kwargs):
+    from .refresh_fundamental_betas import refresh_fundamental_betas as _refresh_fundamental_betas
+
+    return _refresh_fundamental_betas(*args, **kwargs)
+
+
 def execute_targeted_bvc_fundamental_import(*args, **kwargs):
     from .targeted_bvc_fundamentals import execute_targeted_bvc_fundamental_import as _execute_targeted_bvc_fundamental_import
 
@@ -86,6 +92,14 @@ def compute_stat_arb_for_horizon(*args, **kwargs):
     from .stat_arb import compute_stat_arb_for_horizon as _compute_stat_arb_for_horizon
 
     return _compute_stat_arb_for_horizon(*args, **kwargs)
+
+
+def refresh_signal_best_evidence_snapshot(*args, **kwargs):
+    from .signal_best_evidence_snapshot import (
+        refresh_signal_best_evidence_snapshot as _refresh_signal_best_evidence_snapshot,
+    )
+
+    return _refresh_signal_best_evidence_snapshot(*args, **kwargs)
 
 
 def __getattr__(name):
@@ -131,9 +145,11 @@ __all__ = [
     "refresh_yfinance_for_symbol",
     "refresh_stockanalysis_universe",
     "refresh_stockanalysis_for_symbol",
+    "refresh_fundamental_betas",
     "execute_targeted_bvc_fundamental_import",
     "refresh_fundamental_catalysts",
     "compute_stat_arb_for_horizon",
+    "refresh_signal_best_evidence_snapshot",
     "defaults_discovery",
     "refresh_market_data",
 ]

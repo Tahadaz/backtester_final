@@ -4,7 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-Recommendation = Literal["BUY", "HOLD", "SELL"]
+Recommendation = Literal["BUY", "ACCUMULATE", "HOLD", "REDUCE", "SELL", "NR"]
 PillarName = Literal["value", "quality", "growth", "risk", "cash_flow", "health"]
 
 
@@ -160,7 +160,23 @@ class EnsembleOut(BaseModel):
     monte_carlo_low: float | None = None
     monte_carlo_base: float | None = None
     monte_carlo_high: float | None = None
+    fair_value_mean: float | None = None
+    model_dispersion_cv: float | None = None
+    dispersion_factor: float | None = None
     sensitivity_grids: dict[str, Any] | None = None
+
+
+class HorizonPredictionOut(BaseModel):
+    horizon: Literal["quarter", "semester", "year"]
+    period_type: str | None = None
+    periods_per_year: int | None = None
+    forward_target: float | None = None
+    upside: float | None = None
+    target_date: str | None = None
+    method: str | None = None
+    confidence: str | None = None
+    warnings: list[str] = Field(default_factory=list)
+    available: bool = True
 
 
 class FundamentalUniverseRow(BaseModel):
@@ -171,16 +187,10 @@ class FundamentalUniverseRow(BaseModel):
     market_region: str | None = None
     latest_statement_year: int | None = None
     current_price: float | None = None
+    adv20: float | None = None
     market_cap: float | None = None
-    overall_score: float | None = None
     value_score: float | None = None
     quality_score: float | None = None
-    growth_score: float | None = None
-    dividend_score: float | None = None
-    risk_score: float | None = None
-    cash_flow_score: float | None = None
-    health_score: float | None = None
-    accrual_quality_score: float | None = None
     magic_formula_score: float | None = None
     peg_value: float | None = None
     peg_garp_score: float | None = None
@@ -193,8 +203,17 @@ class FundamentalUniverseRow(BaseModel):
     target_price: float | None = None
     conviction: int = 0
     revision_direction: Literal["up", "down", "="] = "="
+    headline_scenario: str = "base"
+    viewed_scenario: str | None = None
+    market_implied_scenario: str | None = None
+    scenario_trio_stale: bool = False
+    scenario_probabilities: dict[str, float] = Field(default_factory=dict)
+    assumption_warnings: list[str] = Field(default_factory=list)
     analyst: str | None = None
     as_of_date: str | None = None
+    valuation_date: str | None = None
+    target_date: str | None = None
+    horizon_predictions: list[HorizonPredictionOut] = Field(default_factory=list)
     free_float_pct: float | None = None
     screens: dict[str, Any] = Field(default_factory=dict)
     coverage: dict[str, Any] = Field(default_factory=dict)
@@ -215,10 +234,37 @@ class AnnualMetricRawOut(BaseModel):
     statement_year: int
     metric_name: str
     metric_value: float | None = None
+    original_metric_value: float | None = None
     raw_metric_name: str | None = None
     source_sheet: str | None = None
     source_field: str | None = None
     is_proxy: bool = False
+    as_of_date: str | None = None
+    source_document_id: int | None = None
+    is_overridden: bool = False
+    manual_override_id: int | None = None
+    manual_override_note: str | None = None
+    manual_override_created_by: str | None = None
+    manual_override_created_at: str | None = None
+
+
+class FundamentalMetricOverrideIn(BaseModel):
+    statement_year: int
+    metric_name: str
+    metric_value: float | None = None
+    note: str | None = None
+
+
+class FundamentalMetricOverrideOut(BaseModel):
+    id: int
+    symbol: str
+    statement_year: int
+    metric_name: str
+    metric_value: float | None = None
+    note: str | None = None
+    created_by: str
+    created_at: str | None = None
+    is_current: bool = True
 
 
 class PeriodMetricOut(BaseModel):
@@ -231,6 +277,7 @@ class PeriodMetricOut(BaseModel):
     period_end_date: str | None = None
     source_url: str | None = None
     document_title: str | None = None
+    source_document_id: int | None = None
     is_proxy: bool = False
 
 
@@ -255,6 +302,25 @@ class ValuationResultOut(BaseModel):
     computed_at: str | None = None
 
 
+class MissingFinancialMetricOut(BaseModel):
+    statement_year: int | None = None
+    metric_name: str
+    label: str
+    category: str = "summary"
+    scope: Literal["latest", "annual"] = "annual"
+    aliases: list[str] = Field(default_factory=list)
+    reason: str = "missing_value"
+
+
+class MissingFinancialDataSummaryOut(BaseModel):
+    statement_year: int | None = None
+    total_missing: int = 0
+    latest_missing: int = 0
+    annual_missing: int = 0
+    categories: dict[str, int] = Field(default_factory=dict)
+    items: list[MissingFinancialMetricOut] = Field(default_factory=list)
+
+
 class FundamentalStockDetailOut(BaseModel):
     symbol: str
     company_name: str
@@ -267,8 +333,10 @@ class FundamentalStockDetailOut(BaseModel):
     screens: dict[str, Any] = Field(default_factory=dict)
     coverage: dict[str, Any] = Field(default_factory=dict)
     model_eligibility: dict[str, Any] = Field(default_factory=dict)
+    missing_financial_data: MissingFinancialDataSummaryOut = Field(default_factory=MissingFinancialDataSummaryOut)
     annual: list[AnnualMetricOut] = Field(default_factory=list)
     annual_raw: list[AnnualMetricRawOut] = Field(default_factory=list)
+    metric_overrides: list[FundamentalMetricOverrideOut] = Field(default_factory=list)
     period_metrics: list[PeriodMetricOut] = Field(default_factory=list)
     valuations: list[ValuationResultOut] = Field(default_factory=list)
     ensemble: EnsembleOut | None = None
@@ -286,8 +354,17 @@ class FundamentalStockDetailOut(BaseModel):
     target_price: float | None = None
     conviction: int = 0
     revision_direction: Literal["up", "down", "="] = "="
+    headline_scenario: str = "base"
+    viewed_scenario: str | None = None
+    market_implied_scenario: str | None = None
+    scenario_trio_stale: bool = False
+    scenario_probabilities: dict[str, float] = Field(default_factory=dict)
+    assumption_warnings: list[str] = Field(default_factory=list)
     analyst: str | None = None
     as_of_date: str | None = None
+    valuation_date: str | None = None
+    target_date: str | None = None
+    horizon_predictions: list[HorizonPredictionOut] = Field(default_factory=list)
     free_float_pct: float | None = None
     data_source: str | None = None
     imported_at: str | None = None
@@ -419,6 +496,78 @@ class AssumptionResolvedOut(BaseModel):
     scenario: str
     assumptions: dict[str, Any] = Field(default_factory=dict)
     provenance: dict[str, str] = Field(default_factory=dict)
+    scenario_probabilities: dict[str, float] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class AssumptionMetaOut(BaseModel):
+    value: float | int | str | bool | None = None
+    label: str
+    unit: str = "number"
+    group: str = "general"
+    derivation: str | None = None
+    source: str | None = None
+    plausible_range: list[float] | None = None
+    scope: str = "desk"
+    editable: bool = True
+
+
+class FundamentalMethodologyOut(BaseModel):
+    version: str
+    assumptions: dict[str, AssumptionMetaOut] = Field(default_factory=dict)
+    models: dict[str, Any] = Field(default_factory=dict)
+    cost_of_capital: dict[str, Any] = Field(default_factory=dict)
+
+
+class FundamentalSignalBacktestIn(BaseModel):
+    signal: Literal["upside_pct", "pillar_score"] = "upside_pct"
+    universe: Literal["masi20", "full_masi", "custom"] = "masi20"
+    start: str | None = None
+    end: str | None = None
+    transaction_cost_bps: float = 25.0
+    long_short: bool = False
+    symbols: list[str] = Field(default_factory=list)
+    scenario: str = "base"
+
+
+class FundamentalSignalBacktestOut(BaseModel):
+    run_id: str
+    signal: str
+    universe: str
+    rebalance: str = "M"
+    as_of: str | None = None
+    status: str
+    error_message: str | None = None
+    quintile_returns: list[dict[str, Any]] = Field(default_factory=list)
+    ic: dict[str, Any] = Field(default_factory=dict)
+    equity_curve: list[dict[str, Any]] = Field(default_factory=list)
+    turnover: list[dict[str, Any]] = Field(default_factory=list)
+    holdings: list[dict[str, Any]] = Field(default_factory=list)
+    params: dict[str, Any] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class FundamentalSignalRecomputeIn(BaseModel):
+    symbol: str | None = None
+    scenario: Literal["all", "bear", "base", "bull"] = "all"
+    refresh_scores: bool = True
+
+
+class FundamentalSignalRecomputeFailureOut(BaseModel):
+    symbol: str
+    scenario: str | None = None
+    error: str
+
+
+class FundamentalSignalRecomputeOut(BaseModel):
+    symbol_count: int
+    scenario: str
+    scenarios: list[str] = Field(default_factory=list)
+    snapshot_count: int = 0
+    pillar_history_count: int = 0
+    valuation_count: int = 0
+    signal_summary: dict[str, int] = Field(default_factory=dict)
+    failures: list[FundamentalSignalRecomputeFailureOut] = Field(default_factory=list)
 
 
 class PillarHistoryRow(BaseModel):
@@ -569,13 +718,8 @@ class FundamentalSnapshotBatchIn(BaseModel):
 
 class FundamentalLightSnapshot(BaseModel):
     symbol: str
-    overall_score: float | None = None
     value_score: float | None = None
     quality_score: float | None = None
-    growth_score: float | None = None
-    risk_score: float | None = None
-    cash_flow_score: float | None = None
-    health_score: float | None = None
     fair_value: float | None = None
     upside_pct: float | None = None
     confidence: str | None = None

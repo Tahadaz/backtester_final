@@ -5,7 +5,9 @@ import unicodedata
 from statistics import mean
 from typing import Any
 
+from .cgnc_mapping import resolve_metric_name
 from .domain import AnnualMetricRow, FundamentalSnapshot
+from .valuation import DEFAULT_ASSUMPTIONS
 
 
 FINANCIAL_SECTOR_TOKENS = (
@@ -17,6 +19,49 @@ FINANCIAL_SECTOR_TOKENS = (
     "leasing",
     "credit",
 )
+
+EBIT_ALIASES = ("EBIT", "Resultat_dexploitation", "Resultat_Exploitation", "Clean_Resultat_dexploitation")
+SALES_ALIASES = ("Revenue", "Chiffre_daffaires", "Clean_Chiffre_daffaires")
+TOTAL_ASSET_ALIASES = ("Total_Assets", "Total_Actif")
+TOTAL_LIABILITY_ALIASES = ("Total_Liabilities",)
+TOTAL_LIABILITY_AND_EQUITY_ALIASES = ("Total_Liabilities_And_Equity", "Total_Passif")
+EQUITY_ALIASES = (
+    "Total_Equity",
+    "Shareholders_Equity",
+    "Total_Shareholders_Equity",
+    "Stockholders_Equity",
+    "Total_Stockholders_Equity",
+    "Clean_Capitaux_propres",
+    "Capitaux_propres",
+    "Equity",
+    "Total_Common_Equity",
+    "Common_Equity",
+)
+CURRENT_ASSET_ALIASES = ("Current_Assets", "Actif_circulant")
+CURRENT_LIABILITY_ALIASES = ("Current_Liabilities", "Passif_circulant")
+CASH_ALIASES = ("Cash_and_Equivalents", "Cash", "Tresorerie_Actif", "CFS_Ending_Cash")
+DEBT_ALIASES = ("Total_Debt", "Debt_Total", "Dettes_de_financement")
+NET_DEBT_ALIASES = ("NetDebt", "Net_Debt")
+
+ALTMAN_Z_EM_TERMS: tuple[tuple[str, str, str, str, float], ...] = (
+    ("wc_ta", "X1", "Fonds de roulement / Actif total", "liquidite court terme", 6.56),
+    ("re_ta", "X2", "Reserves (report a nouveau) / Actif total", "rentabilite cumulee / age", 3.26),
+    ("ebit_ta", "X3", "Resultat d'exploitation (EBIT) / Actif total", "productivite operationnelle", 6.72),
+    ("equity_tl", "X4", "Capitaux propres comptables / Total des dettes", "solvabilite", 1.05),
+)
+
+
+def _eva_wacc_source(assumptions: dict[str, Any]) -> str:
+    build = assumptions.get("cost_of_capital_build_up")
+    if isinstance(build, dict) and build.get("wacc") is not None:
+        return "firm_build_up"
+    try:
+        supplied_wacc = float(assumptions.get("wacc", DEFAULT_ASSUMPTIONS["wacc"]))
+    except (TypeError, ValueError):
+        return "default"
+    if abs(supplied_wacc - float(DEFAULT_ASSUMPTIONS["wacc"])) > 1e-12:
+        return "assumption"
+    return "default"
 
 
 def _num(value: Any) -> float | None:
@@ -52,13 +97,16 @@ def _is_financial(sector: str | None) -> bool:
 
 
 def _metric_series(history: list[AnnualMetricRow], *metric_names: str) -> list[tuple[int, float]]:
-    names = set(metric_names)
-    rows = [
-        (row.statement_year, float(row.metric_value))
-        for row in history
-        if row.metric_name in names and row.metric_value is not None and _num(row.metric_value) is not None
-    ]
-    return sorted(rows)
+    canonical_names = {resolve_metric_name(n) for n in metric_names}
+    by_year: dict[int, tuple[int, float]] = {}
+    for row in history:
+        if resolve_metric_name(row.metric_name) not in canonical_names:
+            continue
+        if row.metric_value is not None and _num(row.metric_value) is not None:
+            yr = row.statement_year
+            if yr not in by_year:
+                by_year[yr] = (yr, float(row.metric_value))
+    return sorted(by_year.values())
 
 
 def _latest_metric(history: list[AnnualMetricRow], *metric_names: str) -> float | None:
@@ -68,10 +116,41 @@ def _latest_metric(history: list[AnnualMetricRow], *metric_names: str) -> float 
 
 def _snapshot_or_history(snapshot: FundamentalSnapshot, history: list[AnnualMetricRow], *metric_names: str) -> float | None:
     for metric_name in metric_names:
-        value = _num(snapshot.metrics.get(metric_name))
+        canonical = resolve_metric_name(metric_name)
+        value = _num(snapshot.metrics.get(canonical))
         if value is not None:
             return value
+        if canonical != metric_name:
+            value = _num(snapshot.metrics.get(metric_name))
+            if value is not None:
+                return value
     return _latest_metric(history, *metric_names)
+
+
+def _positive_snapshot_or_history(snapshot: FundamentalSnapshot, history: list[AnnualMetricRow], *metric_names: str) -> float | None:
+    return _positive(_snapshot_or_history(snapshot, history, *metric_names))
+
+
+def _total_liabilities(snapshot: FundamentalSnapshot, history: list[AnnualMetricRow]) -> float | None:
+    direct = _positive_snapshot_or_history(snapshot, history, *TOTAL_LIABILITY_ALIASES)
+    if direct is not None:
+        return direct
+    total_liabilities_and_equity = _positive_snapshot_or_history(snapshot, history, *TOTAL_LIABILITY_AND_EQUITY_ALIASES)
+    equity = _snapshot_or_history(snapshot, history, *EQUITY_ALIASES)
+    if total_liabilities_and_equity is None or equity is None:
+        return None
+    derived = total_liabilities_and_equity - equity
+    return derived if derived > 0 else None
+
+
+def _book_equity(snapshot: FundamentalSnapshot, history: list[AnnualMetricRow], total_assets: float | None = None, total_liabilities: float | None = None) -> float | None:
+    equity = _snapshot_or_history(snapshot, history, *EQUITY_ALIASES)
+    if equity is not None:
+        return equity
+    if total_assets is not None and total_liabilities is not None:
+        derived = total_assets - total_liabilities
+        return derived if derived > 0 else None
+    return None
 
 
 def _screen_unavailable(reason: str, name: str, warnings: list[str] | None = None, *, scope: str | None = None) -> dict[str, Any]:
@@ -237,10 +316,12 @@ def peg_garp(
             warnings.append("using_ebit_growth_proxy")
     if growth is None:
         series = _metric_series(history, "Resultat_net", "Clean_Resultat_net", "NetIncome")
-        if len(series) >= 4 and series[0][1] > 0:
+        if len(series) >= 4 and series[0][1] > 0 and series[-1][1] > 0:
             growth = (series[-1][1] / series[0][1]) ** (1.0 / (len(series) - 1)) - 1.0
             growth_source = "trailing_3y_cagr"
             warnings.append("using_trailing_growth")
+        elif len(series) >= 4:
+            warnings.append("trailing_growth_unavailable_nonpositive_history")
     if growth is None:
         return _screen_unavailable("missing_growth", "PEG / GARP", warnings)
 
@@ -284,12 +365,16 @@ def altman_z(
     sector: str | None,
 ) -> dict[str, Any]:
     warnings: list[str] = []
-    ta = _positive(snapshot.metrics.get("Total_Assets")) or _latest_metric(history, "Total_Assets")
+    if _is_financial(sector):
+        result = _screen_unavailable("altman_not_applicable_financials", "Altman Z", warnings)
+        result["applicable"] = False
+        return result
+    ta = _positive_snapshot_or_history(snapshot, history, *TOTAL_ASSET_ALIASES)
     if ta is None or ta <= 0:
         return _screen_unavailable("missing_total_assets", "Altman Z", warnings)
 
-    ca = _snapshot_or_history(snapshot, history, "Current_Assets") or 0.0
-    cl = _snapshot_or_history(snapshot, history, "Current_Liabilities") or 0.0
+    ca = _snapshot_or_history(snapshot, history, *CURRENT_ASSET_ALIASES) or 0.0
+    cl = _snapshot_or_history(snapshot, history, *CURRENT_LIABILITY_ALIASES) or 0.0
     wc = ca - cl
 
     retained = _snapshot_or_history(snapshot, history, "Retained_Earnings", "Reserves")
@@ -297,62 +382,56 @@ def altman_z(
         warnings.append("missing_retained_earnings")
         retained = 0.0
 
-    ebit = _positive(snapshot.metrics.get("EBIT")) or _positive(snapshot.metrics.get("Resultat_Exploitation")) or _latest_metric(history, "EBIT", "Resultat_Exploitation")
+    ebit = _snapshot_or_history(snapshot, history, *EBIT_ALIASES)
     if ebit is None:
         return _screen_unavailable("missing_ebit", "Altman Z", warnings)
 
-    tl = _snapshot_or_history(snapshot, history, "Total_Liabilities")
+    tl = _total_liabilities(snapshot, history)
     if tl is None or tl <= 0:
         return _screen_unavailable("missing_total_liabilities", "Altman Z", warnings)
 
-    sales = _latest_metric(history, "Chiffre_daffaires", "Clean_Chiffre_daffaires", "Revenue") or _positive(snapshot.metrics.get("Revenue"))
-    if sales is None or sales <= 0:
-        return _screen_unavailable("missing_sales", "Altman Z", warnings)
+    book_equity = _book_equity(snapshot, history, total_assets=ta, total_liabilities=tl)
+    if book_equity is None:
+        return _screen_unavailable("missing_book_equity", "Altman Z", warnings)
 
-    book_equity = ta - tl
-    if _is_financial(sector):
-        wc_ta = wc / ta
-        re_ta = retained / ta
-        ebit_ta = ebit / ta
-        equity_tl = book_equity / tl
-        z_value = 6.56 * wc_ta + 3.26 * re_ta + 6.72 * ebit_ta + 1.05 * equity_tl
-        zone = "safe" if z_value > 2.60 else "grey" if z_value > 1.10 else "distress"
-        return {
-            "score": _clip_score(z_value * 20.0),
-            "scope": None,
-            "warnings": warnings,
-            "methodology": "Altman Z-score for distress probability; financials use the Z'' emerging-market variant.",
-            "z_value": round(z_value, 3),
-            "variant": "Z''",
-            "zone": zone,
-            "components": {"wc_ta": wc_ta, "re_ta": re_ta, "ebit_ta": ebit_ta, "equity_tl": equity_tl},
-        }
-
-    market_cap = _positive(snapshot.metrics.get("MarketCap_Calc"))
-    if market_cap is None:
-        return _screen_unavailable("missing_market_cap", "Altman Z", warnings)
+    # Altman Z'' (1995 emerging-market / non-manufacturer model): drops the sales/TA
+    # turnover term and uses book equity / total liabilities (not market cap) for X4.
+    # This is the correct variant for the Moroccan universe; the original 1968 Z is
+    # calibrated to US manufacturers and would misclassify distress here.
     wc_ta = wc / ta
     re_ta = retained / ta
     ebit_ta = ebit / ta
-    market_tl = market_cap / tl
-    sales_ta = sales / ta
-    z_value = 1.2 * wc_ta + 1.4 * re_ta + 3.3 * ebit_ta + 0.6 * market_tl + 1.0 * sales_ta
-    zone = "safe" if z_value > 2.99 else "grey" if z_value > 1.81 else "distress"
+    equity_tl = book_equity / tl
+    components = {
+        "wc_ta": wc_ta,
+        "re_ta": re_ta,
+        "ebit_ta": ebit_ta,
+        "equity_tl": equity_tl,
+    }
+    terms = [
+        {
+            "key": key,
+            "term": term,
+            "label": label,
+            "meaning": meaning,
+            "ratio": components[key],
+            "coefficient": coefficient,
+            "contribution": coefficient * components[key],
+        }
+        for key, term, label, meaning, coefficient in ALTMAN_Z_EM_TERMS
+    ]
+    z_value = sum(float(term["contribution"]) for term in terms)
+    zone = "safe" if z_value > 2.6 else "grey" if z_value > 1.1 else "distress"
     return {
-        "score": _clip_score((z_value - 1.0) * 25.0),
+        "score": _clip_score(25.0 + (z_value - 1.1) / (2.6 - 1.1) * 50.0),
         "scope": None,
         "warnings": warnings,
-        "methodology": "Altman Z-score for distress probability; financials use the Z'' emerging-market variant.",
+        "methodology": "Altman Z'' emerging-market model (6.56 X1 + 3.26 X2 + 6.72 X3 + 1.05 X4); no sales term, X4 = book equity / total liabilities. Safe > 2.6, distress < 1.1. Not applied to financials.",
         "z_value": round(z_value, 3),
-        "variant": "Z",
+        "variant": "Z''_EM",
         "zone": zone,
-        "components": {
-            "wc_ta": wc_ta,
-            "re_ta": re_ta,
-            "ebit_ta": ebit_ta,
-            "mkt_tl": market_tl,
-            "sales_ta": sales_ta,
-        },
+        "components": components,
+        "terms": terms,
     }
 
 
@@ -364,6 +443,7 @@ def eva(
 ) -> dict[str, Any]:
     warnings: list[str] = []
     if _is_financial(sector):
+        wacc = float(assumptions.get("wacc", DEFAULT_ASSUMPTIONS["wacc"]))
         return {
             "score": None,
             "scope": None,
@@ -372,7 +452,8 @@ def eva(
             "applicable": False,
             "nopat": None,
             "roic": None,
-            "wacc_used": float(assumptions.get("wacc", 0.0851)),
+            "wacc_used": wacc,
+            "wacc_source": _eva_wacc_source(assumptions),
             "roic_spread": None,
             "eva_value": None,
             "eva_margin": None,
@@ -380,37 +461,37 @@ def eva(
             "components": {},
         }
 
-    ebit = _positive(snapshot.metrics.get("EBIT")) or _positive(snapshot.metrics.get("Resultat_Exploitation")) or _latest_metric(history, "EBIT", "Resultat_Exploitation")
+    ebit = _snapshot_or_history(snapshot, history, *EBIT_ALIASES)
     if ebit is None:
         return _screen_unavailable("missing_ebit", "EVA", warnings)
 
-    tax_rate = float(assumptions.get("tax_rate", 0.30))
+    tax_rate = float(assumptions.get("tax_rate", DEFAULT_ASSUMPTIONS["tax_rate"]))
     nopat = ebit * (1.0 - tax_rate)
-    cash = _num(snapshot.metrics.get("Cash_and_Equivalents")) or _num(snapshot.metrics.get("Cash")) or 0.0
-    total_debt = _num(snapshot.metrics.get("Total_Debt")) or _latest_metric(history, "Total_Debt", "Debt_Total")
+    cash = _snapshot_or_history(snapshot, history, *CASH_ALIASES) or 0.0
+    total_debt = _snapshot_or_history(snapshot, history, *DEBT_ALIASES)
     if total_debt is None:
-        net_debt = _num(snapshot.metrics.get("NetDebt")) or _latest_metric(history, "NetDebt")
+        net_debt = _snapshot_or_history(snapshot, history, *NET_DEBT_ALIASES)
         if net_debt is not None:
             total_debt = net_debt + cash
     if total_debt is None:
         total_debt = 0.0
         warnings.append("missing_debt_assumed_zero")
 
-    ta = _positive(snapshot.metrics.get("Total_Assets")) or _latest_metric(history, "Total_Assets")
-    tl = _snapshot_or_history(snapshot, history, "Total_Liabilities")
-    if ta is None or tl is None:
+    ta = _positive_snapshot_or_history(snapshot, history, *TOTAL_ASSET_ALIASES)
+    tl = _total_liabilities(snapshot, history)
+    book_equity = _book_equity(snapshot, history, total_assets=ta, total_liabilities=tl)
+    if book_equity is None:
         return _screen_unavailable("missing_balance_sheet", "EVA", warnings)
 
-    book_equity = ta - tl
     invested_capital = total_debt + book_equity
     if invested_capital <= 0:
         return _screen_unavailable("invested_capital_non_positive", "EVA", warnings)
 
     roic = nopat / invested_capital
-    wacc = float(assumptions.get("wacc", 0.0851))
+    wacc = float(assumptions.get("wacc", DEFAULT_ASSUMPTIONS["wacc"]))
     roic_spread = roic - wacc
     eva_value = roic_spread * invested_capital
-    revenue = _latest_metric(history, "Chiffre_daffaires", "Clean_Chiffre_daffaires", "Revenue") or _positive(snapshot.metrics.get("Revenue"))
+    revenue = _positive_snapshot_or_history(snapshot, history, *SALES_ALIASES)
     eva_margin = eva_value / revenue if revenue and revenue > 0 else None
     return {
         "score": _clip_score(50.0 + roic_spread * 1000.0),
@@ -420,6 +501,7 @@ def eva(
         "nopat": nopat,
         "roic": roic,
         "wacc_used": wacc,
+        "wacc_source": _eva_wacc_source(assumptions),
         "roic_spread": roic_spread,
         "eva_value": eva_value,
         "eva_margin": eva_margin,

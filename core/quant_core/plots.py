@@ -9,6 +9,10 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from core.quant_core.plotly_compat import disable_broken_narwhals_optional_plugins
+
+disable_broken_narwhals_optional_plugins()
+
 LOGGER = logging.getLogger(__name__)
 
 

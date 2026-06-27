@@ -6,6 +6,7 @@ import { ArrowLeft, AlertCircle, CheckCircle2, Clock, Info } from "lucide-react"
 import { fetchWfoDetail, type WfoCategoryDetail } from "@/lib/api"
 import { formatWfoFoldRange } from "@/lib/wfo-fold-display"
 import { formatNumber } from "@/lib/format"
+import { horizonLabel } from "@/lib/horizon"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -31,7 +32,7 @@ function WfoDetailContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const symbol = searchParams.get("symbol") ?? ""
-  const horizon = searchParams.get("horizon") ?? "medium"
+  const horizon = searchParams.get("horizon") ?? "monthly"
   const category = searchParams.get("category") ?? ""
   const variant = searchParams.get("variant") ?? "expanded"
 
@@ -113,7 +114,7 @@ function WfoDetailContent() {
             WFO Detail — {CATEGORY_LABELS[category] || category}
           </h1>
           <p className="text-xs text-muted-foreground">
-            {symbol} / {horizon} / {variant}
+            {symbol} / {horizonLabel(horizon)} / {variant}
             {data.computed_at && ` — Calcule le ${data.computed_at}`}
             {data.compute_seconds != null && ` (${data.compute_seconds.toFixed(1)}s)`}
           </p>

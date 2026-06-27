@@ -4,7 +4,7 @@ This map reflects the current deployable application.
 
 ## Runtime Topology
 
-Production on Oracle VM is a Docker Compose stack defined by `infra/docker-compose.gcp.yml`.
+Production on Oracle VM is a Docker Compose stack defined by `infra/docker-compose.prod.yml`.
 
 Request path:
 
@@ -69,7 +69,7 @@ The Next.js catch-all proxy in `frontend/app/api/[...path]/route.ts` injects `X-
 
 Access has three layers:
 
-1. Caddy allowlist in `infra/Caddyfile.gcp`: only local VM traffic, Docker bridge traffic, and `ALLOWED_REMOTE_IPS` can reach the frontend.
+1. Caddy allowlist in `infra/Caddyfile.prod`: only local VM traffic, Docker bridge traffic, and `ALLOWED_REMOTE_IPS` can reach the frontend.
 2. NextAuth credentials auth in `frontend/auth/index.ts`: users can sign up, but `isActive` defaults to false.
 3. API auth in `services/api/app/auth.py`: protected FastAPI routers accept `X-API-Key`; admin operations accept `X-Admin-Api-Key` or an admin-scoped JWT.
 
@@ -116,7 +116,7 @@ Default schedule in `Africa/Casablanca`:
 | Time | Job |
 | --- | --- |
 | Mon-Fri 20:00 | Daily market refresh |
-| Mon-Fri 20:30 | Dashboard snapshot refresh |
+| Mon-Fri 23:30 | Dashboard snapshot maintenance refresh |
 | Mon-Fri 22:00 | Factor monitor |
 | Jan/Apr/Jul/Oct 1 at 02:00 | Quarterly factor recalibration |
 
@@ -127,7 +127,7 @@ The VM compose sets `API_WORKERS=1` by default so this scheduler is not duplicat
 Alembic lives under `services/api/alembic`. The deploy workflow runs:
 
 ```bash
-docker compose --env-file /etc/bt/env -f infra/docker-compose.gcp.yml run --rm quant_api \
+docker compose --env-file /etc/bt/env -f infra/docker-compose.prod.yml run --rm quant_api \
   alembic -c services/api/alembic.ini upgrade head
 ```
 
@@ -143,6 +143,21 @@ Important warmup/cache paths:
 - Signal engine/WFO batches: queued by strategy signal and WFO signal endpoints; workers persist results into Postgres.
 - Dashboard portfolio tickets depend on current dashboard rows, OHLCV history, Edge metrics, and support/resistance calculations.
 - Daily blotters depend on portfolio tickets plus manual desk positions in `desk_portfolio_position`; they are advisory next-session instructions, not broker orders.
+
+## Layer Documentation
+
+Detailed per-layer docs live in `docs/<layer-name>/`. Each layer has a `00-INDEX.md` entry point.
+
+| Layer | Index | Covers |
+| --- | --- | --- |
+| Data | [`docs/data-layer/00-INDEX.md`](data-layer/00-INDEX.md) | OHLCV ingestion, dataset object keys, daily refresh |
+| Factor | [`docs/factor-layer/00-INDEX.md`](factor-layer/00-INDEX.md) | Factor universe, statistical battery, factor×TA conditioning |
+| Signal generation | [`docs/signal-generation/00-INDEX.md`](signal-generation/00-INDEX.md) | Candidate universe, OOS evaluation, ensembling, indicator catalog |
+| Strategy | [`docs/strategy-layer/00-INDEX.md`](strategy-layer/00-INDEX.md) | Strategy builder, entry/exit/risk layers, backtest handoff |
+| Backtest | [`docs/backtest-layer/00-INDEX.md`](backtest-layer/00-INDEX.md) | WFO methodology, PROM objective, sizing from OOS |
+| Dashboard | [`docs/dashboard-layer/00-INDEX.md`](dashboard-layer/00-INDEX.md) | Snapshot export, navigation, dashboard types |
+| Analytics | [`docs/analytics-layer/00-INDEX.md`](analytics-layer/00-INDEX.md) | Predictive history, edge metrics, leaderboard |
+| **Fundamentals** | [`docs/fundamentals-layer/00-INDEX.md`](fundamentals-layer/00-INDEX.md) | **6-pillar scoring + 7-model valuation engine, Excel ingestion, known issues** |
 
 ## Known Deployment Risks
 

@@ -4,6 +4,15 @@ export type DashboardViewMode = "masi" | "complet"
 export type DashboardAssetTab = "all" | "equity" | "commodity" | "forex" | "bond" | "crypto"
 export type DashboardRegionTab = "all" | "masi" | "us" | "european" | "asian"
 export type DashboardFamilyColumn = "tendance" | "momentum" | "oscillation" | "volume"
+export type DashboardFundamentalColumn =
+  | "value"
+  | "quality"
+  | "upside"
+  | "fair_value"
+  | "pe"
+  | "dividend_yield"
+  | "coverage"
+  | "source"
 export type DashboardEdgeMode = "gross" | "net"
 
 export type DashboardVisibleFamilies = Record<DashboardFamilyColumn, boolean>
@@ -20,6 +29,7 @@ export interface DashboardPreferences {
   dashboardMode: DashboardDisplayMode
   technicalDirectionMode: DashboardTechnicalDirectionMode
   visibleFamilies: DashboardVisibleFamilies
+  fundamentalColumns: DashboardFundamentalColumn[]
   edgeOnly: boolean
   edgeMode: DashboardEdgeMode
 }
@@ -30,6 +40,14 @@ export const DEFAULT_DASHBOARD_VISIBLE_FAMILIES: DashboardVisibleFamilies = {
   oscillation: true,
   volume: true,
 }
+
+export const DEFAULT_DASHBOARD_FUNDAMENTAL_COLUMNS: DashboardFundamentalColumn[] = [
+  "upside",
+  "fair_value",
+  "value",
+  "quality",
+  "coverage",
+]
 
 export const DEFAULT_DASHBOARD_PREFERENCES: DashboardPreferences = {
   showTopActionableSignals: true,
@@ -43,6 +61,7 @@ export const DEFAULT_DASHBOARD_PREFERENCES: DashboardPreferences = {
   dashboardMode: "trade_opportunities",
   technicalDirectionMode: "best",
   visibleFamilies: DEFAULT_DASHBOARD_VISIBLE_FAMILIES,
+  fundamentalColumns: DEFAULT_DASHBOARD_FUNDAMENTAL_COLUMNS,
   edgeOnly: false,
   edgeMode: "net",
 }
@@ -52,9 +71,19 @@ const ASSET_TABS: DashboardAssetTab[] = ["all", "equity", "commodity", "forex", 
 const REGION_TABS: DashboardRegionTab[] = ["all", "masi", "us", "european", "asian"]
 const HORIZONS: Horizon[] = ["weekly", "monthly", "quarterly"]
 const VIEWS: DashboardView[] = ["stocks", "sectors", "index", "portfolio"]
-const DASHBOARD_MODES: DashboardDisplayMode[] = ["trade_opportunities", "technical_directions"]
+const DASHBOARD_MODES: DashboardDisplayMode[] = ["trade_opportunities", "technical_directions", "fundamental_directions"]
 const TECHNICAL_DIRECTION_MODES: DashboardTechnicalDirectionMode[] = ["best", "classic"]
 const FAMILY_COLUMNS: DashboardFamilyColumn[] = ["tendance", "momentum", "oscillation", "volume"]
+export const FUNDAMENTAL_COLUMNS: DashboardFundamentalColumn[] = [
+  "upside",
+  "fair_value",
+  "value",
+  "quality",
+  "pe",
+  "dividend_yield",
+  "coverage",
+  "source",
+]
 const EDGE_MODES: DashboardEdgeMode[] = ["gross", "net"]
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -79,6 +108,17 @@ function sanitizeVisibleFamilies(value: unknown): DashboardVisibleFamilies {
   ) as DashboardVisibleFamilies
 }
 
+export function sanitizeFundamentalColumns(value: unknown): DashboardFundamentalColumn[] {
+  if (!Array.isArray(value)) return DEFAULT_DASHBOARD_FUNDAMENTAL_COLUMNS
+  const seen = new Set<DashboardFundamentalColumn>()
+  for (const item of value) {
+    if (typeof item === "string" && FUNDAMENTAL_COLUMNS.includes(item as DashboardFundamentalColumn)) {
+      seen.add(item as DashboardFundamentalColumn)
+    }
+  }
+  return seen.size ? Array.from(seen) : DEFAULT_DASHBOARD_FUNDAMENTAL_COLUMNS
+}
+
 export function sanitizeDashboardPreferences(raw: unknown): DashboardPreferences {
   const value = isRecord(raw) ? raw : {}
   return {
@@ -100,6 +140,7 @@ export function sanitizeDashboardPreferences(raw: unknown): DashboardPreferences
       DEFAULT_DASHBOARD_PREFERENCES.technicalDirectionMode,
     ),
     visibleFamilies: sanitizeVisibleFamilies(value.visibleFamilies),
+    fundamentalColumns: sanitizeFundamentalColumns(value.fundamentalColumns),
     edgeOnly: booleanValue(value.edgeOnly, DEFAULT_DASHBOARD_PREFERENCES.edgeOnly),
     edgeMode: enumValue(value.edgeMode, EDGE_MODES, DEFAULT_DASHBOARD_PREFERENCES.edgeMode),
   }

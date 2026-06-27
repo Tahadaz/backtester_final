@@ -845,7 +845,7 @@ export default function NewRunPage() {
                   {
                     value: "optimize" as RunMode,
                     title: "Optimisation WFO",
-                    desc: "Optimisation walk-forward multi-horizon (Court / Moyen / Long terme) avec validation out-of-sample.",
+                    desc: "Optimisation walk-forward multi-horizon (Hebdomadaire / Mensuel / Trimestriel) avec validation out-of-sample.",
                     icon: Zap,
                     tag: "Recommandé",
                   },
@@ -1108,9 +1108,9 @@ export default function NewRunPage() {
                       </p>
                       <div className="grid grid-cols-3 gap-2">
                         {([
-                          { key: "short",  label: "Court terme",  duration: "5 ans",  train: "252j (~1 an)",   test: "63j (~3 mois)", step: "21j (~1 mois)", color: "border-blue-200 bg-blue-50" },
-                          { key: "medium", label: "Moyen terme",  duration: "10 ans", train: "504j (~2 ans)",  test: "126j (~6 mois)", step: "21j (~1 mois)", color: "border-violet-200 bg-violet-50" },
-                          { key: "long",   label: "Long terme",   duration: "20 ans", train: "756j (~3 ans)",  test: "252j (~1 an)",  step: "21j (~1 mois)", color: "border-amber-200 bg-amber-50" },
+                          { key: "short",  label: "Hebdomadaire", duration: "5 ans",  train: "252j (~1 an)",   test: "63j (~3 mois)", step: "21j (~1 mois)", color: "border-blue-200 bg-blue-50" },
+                          { key: "medium", label: "Mensuel",      duration: "10 ans", train: "504j (~2 ans)",  test: "126j (~6 mois)", step: "21j (~1 mois)", color: "border-violet-200 bg-violet-50" },
+                          { key: "long",   label: "Trimestriel",  duration: "20 ans", train: "756j (~3 ans)",  test: "252j (~1 an)",  step: "21j (~1 mois)", color: "border-amber-200 bg-amber-50" },
                         ] as const).map((h) => (
                           <div key={h.key} className={`rounded-lg border p-3 space-y-2 ${h.color}`}>
                             <p className="text-xs font-bold text-foreground">{h.label}</p>

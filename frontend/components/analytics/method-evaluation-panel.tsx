@@ -12,9 +12,9 @@ type Universe = "all" | "masi" | "liquid_masi"
 type SortKey = "verdict" | "coverage_pct" | "median_ic" | "median_sharpe" | "median_hit_rate" | "median_n" | "evidence_score"
 
 const HORIZONS: { value: EngineHorizon; label: string }[] = [
-  { value: "short", label: "Court" },
-  { value: "medium", label: "Moyen" },
-  { value: "long", label: "Long" },
+  { value: "short", label: "Hebdomadaire" },
+  { value: "medium", label: "Mensuel" },
+  { value: "long", label: "Trimestriel" },
 ]
 
 const UNIVERSES: { value: Universe; label: string }[] = [

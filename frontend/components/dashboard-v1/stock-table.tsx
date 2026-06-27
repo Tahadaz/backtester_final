@@ -1,8 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useState } from "react"
-import { ArrowRight, BookOpen, ChevronDown, ChevronUp, ChevronsUpDown, Star } from "lucide-react"
+import { Fragment, useEffect, useMemo, useState } from "react"
+import { ArrowRight, BarChart3, BookOpen, ChevronDown, ChevronUp, ChevronsUpDown, Star } from "lucide-react"
 import type { EdgeMetrics } from "@/lib/api"
 import type {
   DashboardBestSignal,
@@ -16,6 +16,7 @@ import type {
 import { FAMILY_ORDER } from "@/lib/dashboard-constants"
 import { formatPercent } from "@/lib/format"
 import { FamilyCell } from "./family-cell"
+import { DashboardSignalChartPanel } from "./signal-chart-panel"
 import { SignalBadge } from "./signal-badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -321,6 +322,11 @@ function BestSignalMethodCell({ signal }: { signal: DashboardBestSignal | null }
       </div>
       <div className="flex items-center gap-1.5">
         <EdgeBadge triage={bestSignalTriage(signal)} />
+        {signal.live_adjusted ? (
+          <span className="rounded border border-emerald-500/40 px-1 text-[9px] font-semibold uppercase text-emerald-600">
+            Live
+          </span>
+        ) : null}
         <span className="dashboard-mono text-[10px] text-muted-foreground">
           n={signal.n ?? "--"}
         </span>
@@ -377,6 +383,7 @@ export function StockTable({
 }: StockTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>("expected_return")
   const [sortDir, setSortDir] = useState<SortDir>("desc")
+  const [expandedSymbol, setExpandedSymbol] = useState<string | null>(null)
   const isTechnicalMode = displayMode === "technical_directions"
 
   const shownFamilies = useMemo(
@@ -401,6 +408,12 @@ export function StockTable({
       setSortDir("desc")
     }
   }, [isTechnicalMode, sortKey])
+
+  useEffect(() => {
+    if (expandedSymbol && !stocks.some((stock) => stock.symbol === expandedSymbol)) {
+      setExpandedSymbol(null)
+    }
+  }, [expandedSymbol, stocks])
 
   const sorted = useMemo(() => {
     return [...stocks].sort((left, right) => {
@@ -481,6 +494,17 @@ export function StockTable({
       : shownFamilies.length < FAMILY_ORDER.length
         ? "min-w-[1040px]"
         : "min-w-[1160px]"
+  const tableColumnCount =
+    (onToggleSelected ? 1 : 0)
+    + 5
+    + (isTechnicalMode && !hideDetails ? shownFamilies.length : 0)
+    + 3
+    + (!isTechnicalMode && edgeEnabled ? 2 : 0)
+    + 1
+
+  function toggleChart(symbol: string) {
+    setExpandedSymbol((prev) => (prev === symbol ? null : symbol))
+  }
 
   function evidenceHrefForStock(stock: DashboardStock) {
     const bestSignal = bestSignalForDisplay(stock)
@@ -491,16 +515,15 @@ export function StockTable({
     const evidenceVariant = isTechnicalMode
       ? technicalDirectionMode !== "classic" ? technicalSignal?.variant : undefined
       : bestSignal?.variant
-    const evidenceSource = isTechnicalMode
-      ? technicalSignal?.source ?? "auto"
-      : "wfo"
 
     return signalEvidenceUrl({
       symbol: stock.symbol,
       horizon,
       view: isTechnicalMode ? signalViewQuery : evidenceVariant ?? signalViewQuery,
-      source: evidenceSource,
-      evidenceVariant: isTechnicalMode && technicalDirectionMode !== "classic" ? evidenceVariant : undefined,
+      source: "wfo",
+      evidenceVariant: undefined,
+      scope: isTechnicalMode ? "global" : undefined,
+      scopeKey: isTechnicalMode ? "global" : undefined,
       tab: isTechnicalMode ? "technique" : "evidence",
     })
   }
@@ -518,6 +541,7 @@ export function StockTable({
           const technicalSignal = technicalSignalForDisplay(stock, technicalDirectionMode)
           const evidenceHref = evidenceHrefForStock(stock)
           const selected = selectedSymbols?.has(stock.symbol) ?? false
+          const chartOpen = expandedSymbol === stock.symbol
 
           return (
             <article key={`mobile-${stock.symbol}`} className="rounded-lg border border-border bg-card px-3 py-3 shadow-xs">
@@ -585,13 +609,41 @@ export function StockTable({
                 </div>
               </div>
 
-              <Link
-                href={evidenceHref}
-                className="mt-3 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-border bg-bg2 text-[12px] font-semibold text-foreground"
-              >
-                Voir detail
-                <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => toggleChart(stock.symbol)}
+                  aria-expanded={chartOpen}
+                  className={cn(
+                    "inline-flex h-8 items-center justify-center gap-1.5 rounded-md border text-[12px] font-semibold",
+                    chartOpen
+                      ? "border-foreground bg-foreground text-background"
+                      : "border-border bg-bg2 text-foreground",
+                  )}
+                >
+                  <BarChart3 className="h-3.5 w-3.5" />
+                  Chart
+                </button>
+                <Link
+                  href={evidenceHref}
+                  className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-border bg-bg2 text-[12px] font-semibold text-foreground"
+                >
+                  Voir detail
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </div>
+              {chartOpen ? (
+                <div className="-mx-3 mt-3">
+                  <DashboardSignalChartPanel
+                    stock={stock}
+                    horizon={horizon}
+                    horizonDays={horizonDays}
+                    displayMode={displayMode}
+                    technicalDirectionMode={technicalDirectionMode}
+                    evidenceHref={evidenceHref}
+                  />
+                </div>
+              ) : null}
             </article>
           )
         })}
@@ -751,21 +803,22 @@ export function StockTable({
             const evidenceVariant = isTechnicalMode
               ? technicalDirectionMode !== "classic" ? technicalSignal?.variant : undefined
               : bestSignal?.variant
-            const evidenceSource = isTechnicalMode
-              ? technicalSignal?.source ?? "auto"
-              : "wfo"
             const evidenceHref = signalEvidenceUrl({
               symbol: stock.symbol,
               horizon,
               view: isTechnicalMode ? signalViewQuery : evidenceVariant ?? signalViewQuery,
-              source: evidenceSource,
-              evidenceVariant: isTechnicalMode && technicalDirectionMode !== "classic" ? evidenceVariant : undefined,
+              source: "wfo",
+              evidenceVariant: undefined,
+              scope: isTechnicalMode ? "global" : undefined,
+              scopeKey: isTechnicalMode ? "global" : undefined,
               tab: isTechnicalMode ? "technique" : "evidence",
             })
             const selected = selectedSymbols?.has(stock.symbol) ?? false
+            const chartOpen = expandedSymbol === stock.symbol
 
             return (
-              <TableRow key={stock.symbol} className="border-b border-border/70 hover:bg-bg2">
+              <Fragment key={stock.symbol}>
+                <TableRow className="border-b border-border/70 hover:bg-bg2">
                 {onToggleSelected ? (
                   <TableCell className="px-2 py-2.5 align-middle">
                     <Checkbox
@@ -822,6 +875,7 @@ export function StockTable({
                           {technicalDirectionMode === "classic"
                             ? "Fixed classic"
                             : `${sourceLabel(technicalSignal.source)} - ${displayVariantLabel(technicalSignal.variant)}`}
+                          {technicalSignal.live_adjusted ? " - Live" : ""}
                         </div>
                       </div>
                     ) : (
@@ -868,15 +922,47 @@ export function StockTable({
                   </>
                 ) : null}
                 <TableCell className="px-2 py-2.5 align-middle">
-                  <Link
-                    href={evidenceHref}
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-muted-foreground transition hover:border-border hover:bg-muted/30 hover:text-foreground"
-                    aria-label={`Voir la preuve OOS ${stock.symbol}`}
-                  >
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </Link>
+                  <div className="flex items-center justify-end gap-1">
+                    <button
+                      type="button"
+                      onClick={() => toggleChart(stock.symbol)}
+                      aria-expanded={chartOpen}
+                      className={cn(
+                        "inline-flex h-7 w-7 items-center justify-center rounded-md border transition",
+                        chartOpen
+                          ? "border-foreground bg-foreground text-background"
+                          : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/30 hover:text-foreground",
+                      )}
+                      aria-label={`Afficher le graphique ${stock.symbol}`}
+                      title={`Graphique ${stock.symbol}`}
+                    >
+                      <BarChart3 className="h-3.5 w-3.5" />
+                    </button>
+                    <Link
+                      href={evidenceHref}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-muted-foreground transition hover:border-border hover:bg-muted/30 hover:text-foreground"
+                      aria-label={`Voir la preuve OOS ${stock.symbol}`}
+                    >
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </Link>
+                  </div>
                 </TableCell>
               </TableRow>
+              {chartOpen ? (
+                <TableRow className="border-b border-border/70 bg-background hover:bg-background">
+                  <TableCell colSpan={tableColumnCount} className="p-0">
+                    <DashboardSignalChartPanel
+                      stock={stock}
+                      horizon={horizon}
+                      horizonDays={horizonDays}
+                      displayMode={displayMode}
+                      technicalDirectionMode={technicalDirectionMode}
+                      evidenceHref={evidenceHref}
+                    />
+                  </TableCell>
+                </TableRow>
+              ) : null}
+              </Fragment>
             )
           })}
         </TableBody>

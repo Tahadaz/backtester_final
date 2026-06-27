@@ -1,0 +1,1236 @@
+{
+  "cohort_table": [
+    {
+      "symbol": "AFM",
+      "canonical_import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+      "fy2025_doc_count": 10,
+      "verification": {
+        "status": "data_unverified",
+        "reason": "t1_balance_sheet;t2_equity_per_share;t4_group_basis_roe",
+        "failed_checks": [
+          "t1_balance_sheet",
+          "t2_equity_per_share",
+          "t4_group_basis_roe"
+        ],
+        "recomputed": {
+          "ROE": null,
+          "BVPS": null,
+          "t4_basis": "no_minority_total_equity",
+          "NetIncome": 73000000.0,
+          "NetIncome_Group": 73000000.0,
+          "Total_Liabilities": null,
+          "Total_Liabilities_And_Equity": null
+        }
+      },
+      "before_upside": null,
+      "after_upside": null,
+      "after_fair_value": null,
+      "after_models": 0,
+      "warnings": [
+        "no_usable_valuation_models",
+        "data_unverified_nr:t1_balance_sheet;t2_equity_per_share;t4_group_basis_roe"
+      ],
+      "bkgr_buy_overlap": false
+    },
+    {
+      "symbol": "AGM",
+      "canonical_import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+      "fy2025_doc_count": 7,
+      "verification": {
+        "status": "verified",
+        "reason": null,
+        "failed_checks": [],
+        "recomputed": {
+          "ROE": 0.46238264730458806,
+          "BVPS": 768.06015455,
+          "t4_basis": "no_minority_total_equity",
+          "NetIncome": 71027537.51,
+          "NetIncome_Group": 71027537.51,
+          "Total_Liabilities": 528861816.20000005,
+          "Total_Liabilities_And_Equity": 682473847.11
+        }
+      },
+      "before_upside": 0.1387255992015335,
+      "after_upside": 0.029698507706719557,
+      "after_fair_value": 7455.0171957966495,
+      "after_models": 3,
+      "warnings": [
+        "justified_multiples_excluded_cross_model_outlier"
+      ],
+      "bkgr_buy_overlap": false
+    },
+    {
+      "symbol": "ATL",
+      "canonical_import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+      "fy2025_doc_count": 8,
+      "verification": {
+        "status": "verified",
+        "reason": null,
+        "failed_checks": [],
+        "recomputed": {
+          "ROE": 0.18775181305398872,
+          "BVPS": 41.17206347763434,
+          "t4_basis": "no_minority_total_equity",
+          "NetIncome": 466000000.0,
+          "NetIncome_Group": 468000000.0,
+          "Total_Liabilities": 18886000000.0,
+          "Total_Liabilities_And_Equity": 21368000000.0
+        }
+      },
+      "before_upside": 0.14023809469167836,
+      "after_upside": 0.17213437438235846,
+      "after_fair_value": 153.90124335640368,
+      "after_models": 4,
+      "warnings": [],
+      "bkgr_buy_overlap": false
+    },
+    {
+      "symbol": "ATW",
+      "canonical_import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+      "fy2025_doc_count": 6,
+      "verification": {
+        "status": "verified",
+        "reason": null,
+        "failed_checks": [],
+        "recomputed": {
+          "ROE": 0.15331495669479986,
+          "BVPS": 322.7247291714801,
+          "t4_basis": "reported_group_basis",
+          "NetIncome": 12368271000.0,
+          "NetIncome_Group": 10644852000.0,
+          "Total_Liabilities": 714970932000.0,
+          "Total_Liabilities_And_Equity": 795461302000.0
+        }
+      },
+      "before_upside": -0.3756521443396934,
+      "after_upside": -0.0508040700270761,
+      "after_fair_value": 647.3516242415341,
+      "after_models": 3,
+      "warnings": [],
+      "bkgr_buy_overlap": true
+    },
+    {
+      "symbol": "BAL",
+      "canonical_import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+      "fy2025_doc_count": 8,
+      "verification": {
+        "status": "verified",
+        "reason": null,
+        "failed_checks": [],
+        "recomputed": {
+          "ROE": 0.07852553524376582,
+          "BVPS": 79.26900219610093,
+          "t4_basis": "no_minority_total_equity",
+          "NetIncome": 10855773.6,
+          "NetIncome_Group": 10855773.6,
+          "Total_Liabilities": 43616103.399999976,
+          "Total_Liabilities_And_Equity": 181861243.23
+        }
+      },
+      "before_upside": -0.2811482770247361,
+      "after_upside": -0.5863906682381519,
+      "after_fair_value": 95.08878537204887,
+      "after_models": 4,
+      "warnings": [
+        "fcff_dcf_severe_terminal_value_warning",
+        "fcfe_dcf_severe_terminal_value_warning"
+      ],
+      "bkgr_buy_overlap": false
+    },
+    {
+      "symbol": "BCI",
+      "canonical_import_id": "9aef3b72-35d1-4298-ac1a-ab292924298f",
+      "fy2025_doc_count": 4,
+      "verification": {
+        "status": "data_unverified",
+        "reason": "t3_income_consistency",
+        "failed_checks": [
+          "t3_income_consistency"
+        ],
+        "recomputed": {
+          "ROE": 0.05540649167205547,
+          "BVPS": 570.2463219784557,
+          "t4_basis": "no_minority_total_equity",
+          "NetIncome": 420182000.0,
+          "NetIncome_Group": 434829000.0,
+          "Total_Liabilities": 70993221000.0,
+          "Total_Liabilities_And_Equity": 78576845000.0
+        }
+      },
+      "before_upside": -0.3431747011507036,
+      "after_upside": null,
+      "after_fair_value": null,
+      "after_models": 0,
+      "warnings": [
+        "no_usable_valuation_models",
+        "data_unverified_nr:t3_income_consistency"
+      ],
+      "bkgr_buy_overlap": true
+    },
+    {
+      "symbol": "BCP",
+      "canonical_import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+      "fy2025_doc_count": 9,
+      "verification": {
+        "status": "verified",
+        "reason": null,
+        "failed_checks": [],
+        "recomputed": {
+          "ROE": 0.10864029274511096,
+          "BVPS": 203.88337414006077,
+          "t4_basis": "reported_group_basis",
+          "NetIncome": 5621085000.0,
+          "NetIncome_Group": 4503361000.0,
+          "Total_Liabilities": 508811137000.0,
+          "Total_Liabilities_And_Equity": 571244210000.0
+        }
+      },
+      "before_upside": null,
+      "after_upside": 0.5467279819637327,
+      "after_fair_value": 376.62826360816894,
+      "after_models": 3,
+      "warnings": [],
+      "bkgr_buy_overlap": false
+    },
+    {
+      "symbol": "BOA",
+      "canonical_import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+      "fy2025_doc_count": 7,
+      "verification": {
+        "status": "verified",
+        "reason": null,
+        "failed_checks": [],
+        "recomputed": {
+          "ROE": 0.11994429200650682,
+          "BVPS": 144.3348851737833,
+          "t4_basis": "reported_group_basis",
+          "NetIncome": 5514079000.0,
+          "NetIncome_Group": 3813552000.0,
+          "Total_Liabilities": 397251350000.0,
+          "Total_Liabilities_And_Equity": 437677787000.0
+        }
+      },
+      "before_upside": -0.11449261500998953,
+      "after_upside": 0.07467275343151769,
+      "after_fair_value": 215.6868216137056,
+      "after_models": 3,
+      "warnings": [],
+      "bkgr_buy_overlap": false
+    },
+    {
+      "symbol": "CDM",
+      "canonical_import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+      "fy2025_doc_count": 6,
+      "verification": {
+        "status": "verified",
+        "reason": null,
+        "failed_checks": [],
+        "recomputed": {
+          "ROE": 0.1052724548671768,
+          "BVPS": 753.86900763095,
+          "t4_basis": "no_minority_total_equity",
+          "NetIncome": 863551000.0,
+          "NetIncome_Group": 863551000.0,
+          "Total_Liabilities": 75525087000.0,
+          "Total_Liabilities_And_Equity": 83728097000.0
+        }
+      },
+      "before_upside": -0.1625513400500731,
+      "after_upside": -0.21922544366955565,
+      "after_fair_value": 781.5553308867748,
+      "after_models": 3,
+      "warnings": [],
+      "bkgr_buy_overlap": false
+    },
+    {
+      "symbol": "CFG",
+      "canonical_import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+      "fy2025_doc_count": 7,
+      "verification": {
+        "status": "verified",
+        "reason": null,
+        "failed_checks": [],
+        "recomputed": {
+          "ROE": 0.18272085721582135,
+          "BVPS": 59.00306673110915,
+          "t4_basis": "no_minority_total_equity",
+          "NetIncome": 381362000.0,
+          "NetIncome_Group": 370445000.0,
+          "Total_Liabilities": 28328438000.0,
+          "Total_Liabilities_And_Equity": 30415567000.0
+        }
+      },
+      "before_upside": -0.6042751446910033,
+      "after_upside": 0.015878860737945644,
+      "after_fair_value": 207.23928759054093,
+      "after_models": 3,
+      "warnings": [],
+      "bkgr_buy_overlap": false
+    },
+    {
+      "symbol": "CIH",
+      "canonical_import_id": "9aef3b72-35d1-4298-ac1a-ab292924298f",
+      "fy2025_doc_count": 3,
+      "verification": {
+        "status": "verified",
+        "reason": null,
+        "failed_checks": [],
+        "recomputed": {
+          "ROE": 0.11151820326380758,
+          "BVPS": 274.3518271158511,
+          "t4_basis": "reported_group_basis",
+          "NetIncome": 1220478000.0,
+          "NetIncome_Group": 1089362000.0,
+          "Total_Liabilities": 152956708000.0,
+          "Total_Liabilities_And_Equity": 163688195000.0
+        }
+      },
+      "before_upside": 0.09179171852962287,
+      "after_upside": 0.35871963425042686,
+      "after_fair_value": 475.5518719876494,
+      "after_models": 3,
+      "warnings": [],
+      "bkgr_buy_overlap": false
+    },
+    {
+      "symbol": "CMA",
+      "canonical_import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+      "fy2025_doc_count": 8,
+      "verification": {
+        "status": "verified",
+        "reason": null,
+        "failed_checks": [],
+        "recomputed": {
+          "ROE": 0.3443025540275049,
+          "BVPS": 282.07251812897806,
+          "t4_basis": "no_minority_total_equity",
+          "NetIncome": 1402000000.0,
+          "NetIncome_Group": null,
+          "Total_Liabilities": 4820000000.0,
+          "Total_Liabilities_And_Equity": 8892000000.0
+        }
+      },
+      "before_upside": 0.07926107249207792,
+      "after_upside": 0.018700294893230884,
+      "after_fair_value": 1675.7619850993647,
+      "after_models": 5,
+      "warnings": [
+        "justified_multiples_excluded_cross_model_outlier"
+      ],
+      "bkgr_buy_overlap": false
+    },
+    {
+      "symbol": "CMT",
+      "canonical_import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+      "fy2025_doc_count": 8,
+      "verification": {
+        "status": "verified",
+        "reason": null,
+        "failed_checks": [],
+        "recomputed": {
+          "ROE": 0.21803897762674443,
+          "BVPS": 536.0010230586719,
+          "t4_basis": "no_minority_total_equity",
+          "NetIncome": 196458983.0,
+          "NetIncome_Group": 196465103.0,
+          "Total_Liabilities": 1020548328.0,
+          "Total_Liabilities_And_Equity": 1921575223.0
+        }
+      },
+      "before_upside": -0.6002401895229017,
+      "after_upside": -0.598800484763869,
+      "after_fair_value": 2059.35711170706,
+      "after_models": 4,
+      "warnings": [
+        "fcff_dcf_severe_fcf_quality_warning",
+        "fcfe_dcf_severe_fcf_quality_warning"
+      ],
+      "bkgr_buy_overlap": false
+    },
+    {
+      "symbol": "COL",
+      "canonical_import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+      "fy2025_doc_count": 7,
+      "verification": {
+        "status": "verified",
+        "reason": null,
+        "failed_checks": [],
+        "recomputed": {
+          "ROE": 0.18233282630819916,
+          "BVPS": 22.281210039750928,
+          "t4_basis": "reported_group_basis",
+          "NetIncome": 65479341.98,
+          "NetIncome_Group": 65479341.98,
+          "Total_Liabilities": 224305223.5,
+          "Total_Liabilities_And_Equity": 583425099.53
+        }
+      },
+      "before_upside": 0.420576132423782,
+      "after_upside": 0.3924955603444409,
+      "after_fair_value": 111.39964482755528,
+      "after_models": 3,
+      "warnings": [
+        "fcff_dcf_severe_fcf_quality_warning",
+        "fcfe_dcf_severe_fcf_quality_warning",
+        "justified_multiples_excluded_cross_model_outlier"
+      ],
+      "bkgr_buy_overlap": false
+    },
+    {
+      "symbol": "DHO",
+      "canonical_import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+      "fy2025_doc_count": 8,
+      "verification": {
+        "status": "verified",
+        "reason": null,
+        "failed_checks": [],
+        "recomputed": {
+          "ROE": 0.11730477151708157,
+          "BVPS": 29.894363519520546,
+          "t4_basis": "no_minority_total_equity",
+          "NetIncome": 307191429.85,
+          "NetIncome_Group": null,
+          "Total_Liabilities": 1853253755.69,
+          "Total_Liabilities_And_Equity": 4472000000.0
+        }
+      },
+      "before_upside": -0.1333452697090487,
+      "after_upside": -0.1570313149249254,
+      "after_fair_value": 48.892183734354326,
+      "after_models": 6,
+      "warnings": [],
+      "bkgr_buy_overlap": false
+    },
+    {
+      "symbol": "HPS",
+      "canonical_import_id": "9aef3b72-35d1-4298-ac1a-ab292924298f",
+      "fy2025_doc_count": 3,
+      "verification": {
+        "status": "verified",
+        "reason": null,
+        "failed_checks": [],
+        "recomputed": {
+          "ROE": 0.12953076018808776,
+          "BVPS": 110.26452197418645,
+          "t4_basis": "no_minority_total_equity",
+          "NetIncome": 105780000.0,
+          "NetIncome_Group": null,
+          "Total_Liabilities": 1318360000.0,
+          "Total_Liabilities_And_Equity": 2135000000.0
+        }
+      },
+      "before_upside": -0.5108979658632353,
+      "after_upside": -0.5251016824914305,
+      "after_fair_value": 286.6486244481726,
+      "after_models": 5,
+      "warnings": [
+        "fcfe_dcf_severe_fcf_quality_warning"
+      ],
+      "bkgr_buy_overlap": true
+    },
+    {
+      "symbol": "LHM",
+      "canonical_import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+      "fy2025_doc_count": 11,
+      "verification": {
+        "status": "verified",
+        "reason": null,
+        "failed_checks": [],
+        "recomputed": {
+          "ROE": 0.17816878311400533,
+          "BVPS": 518.8073273117428,
+          "t4_basis": "no_minority_total_equity",
+          "NetIncome": 2165873000.0,
+          "NetIncome_Group": 2165873000.0,
+          "Total_Liabilities": 7838247000.0,
+          "Total_Liabilities_And_Equity": 19994546000.0
+        }
+      },
+      "before_upside": -0.26520296814474065,
+      "after_upside": -0.2953744689951523,
+      "after_fair_value": 1296.5109770489198,
+      "after_models": 6,
+      "warnings": [],
+      "bkgr_buy_overlap": false
+    },
+    {
+      "symbol": "MUT",
+      "canonical_import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+      "fy2025_doc_count": 9,
+      "verification": {
+        "status": "verified",
+        "reason": null,
+        "failed_checks": [],
+        "recomputed": {
+          "ROE": 0.08172458172458172,
+          "BVPS": 168.05928404798362,
+          "t4_basis": "no_minority_total_equity",
+          "NetIncome": 127000000.0,
+          "NetIncome_Group": null,
+          "Total_Liabilities": 1829000000.0,
+          "Total_Liabilities_And_Equity": 3383000000.0
+        }
+      },
+      "before_upside": 0.09904945418308131,
+      "after_upside": -0.04080635831230761,
+      "after_fair_value": 220.61453758816924,
+      "after_models": 3,
+      "warnings": [
+        "fcff_dcf_severe_terminal_value_warning",
+        "fcfe_dcf_severe_terminal_value_warning",
+        "justified_multiples_excluded_cross_model_outlier"
+      ],
+      "bkgr_buy_overlap": false
+    },
+    {
+      "symbol": "OUL",
+      "canonical_import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+      "fy2025_doc_count": 10,
+      "verification": {
+        "status": "verified",
+        "reason": null,
+        "failed_checks": [],
+        "recomputed": {
+          "ROE": 0.14253249266274245,
+          "BVPS": 398.0308080808081,
+          "t4_basis": "no_minority_total_equity",
+          "NetIncome": 112330000.0,
+          "NetIncome_Group": null,
+          "Total_Liabilities": 3131899000.0,
+          "Total_Liabilities_And_Equity": 3920000000.0
+        }
+      },
+      "before_upside": 0.28113336275067335,
+      "after_upside": 0.1705866843738426,
+      "after_fair_value": 1439.8216217798265,
+      "after_models": 3,
+      "warnings": [
+        "fcff_dcf_severe_fcf_quality_warning",
+        "fcfe_dcf_severe_fcf_quality_warning",
+        "justified_multiples_excluded_cross_model_outlier"
+      ],
+      "bkgr_buy_overlap": false
+    },
+    {
+      "symbol": "SAH",
+      "canonical_import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+      "fy2025_doc_count": 9,
+      "verification": {
+        "status": "verified",
+        "reason": null,
+        "failed_checks": [],
+        "recomputed": {
+          "ROE": 0.11158621308466463,
+          "BVPS": 1472.6583810920615,
+          "t4_basis": "no_minority_total_equity",
+          "NetIncome": 676524000.0,
+          "NetIncome_Group": 676523000.0,
+          "Total_Liabilities": 18322223000.0,
+          "Total_Liabilities_And_Equity": 24385015000.0
+        }
+      },
+      "before_upside": 0.5960269400153717,
+      "after_upside": 0.670379557365683,
+      "after_fair_value": 4997.775635638123,
+      "after_models": 4,
+      "warnings": [],
+      "bkgr_buy_overlap": false
+    },
+    {
+      "symbol": "SID",
+      "canonical_import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+      "fy2025_doc_count": 9,
+      "verification": {
+        "status": "verified",
+        "reason": null,
+        "failed_checks": [],
+        "recomputed": {
+          "ROE": 0.1364776718514802,
+          "BVPS": 511.02564102564105,
+          "t4_basis": "no_minority_total_equity",
+          "NetIncome": 272000000.0,
+          "NetIncome_Group": 272000000.0,
+          "Total_Liabilities": 3434000000.0,
+          "Total_Liabilities_And_Equity": 5427000000.0
+        }
+      },
+      "before_upside": -0.5488277186130419,
+      "after_upside": -0.5443829730248211,
+      "after_fair_value": 888.4532026015988,
+      "after_models": 5,
+      "warnings": [
+        "fcfe_dcf_excluded_cross_model_outlier"
+      ],
+      "bkgr_buy_overlap": true
+    },
+    {
+      "symbol": "TGC",
+      "canonical_import_id": "9aef3b72-35d1-4298-ac1a-ab292924298f",
+      "fy2025_doc_count": 3,
+      "verification": {
+        "status": "verified",
+        "reason": null,
+        "failed_checks": [],
+        "recomputed": {
+          "ROE": 0.19493243243243244,
+          "BVPS": 140.85347051530798,
+          "t4_basis": "no_minority_total_equity",
+          "NetIncome": 952050000.0,
+          "NetIncome_Group": null,
+          "Total_Liabilities": 10786000000.0,
+          "Total_Liabilities_And_Equity": 15670000000.0
+        }
+      },
+      "before_upside": -0.3039471555221639,
+      "after_upside": -0.4265224766738772,
+      "after_fair_value": 429.9360992375943,
+      "after_models": 6,
+      "warnings": [],
+      "bkgr_buy_overlap": true
+    },
+    {
+      "symbol": "VCN",
+      "canonical_import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+      "fy2025_doc_count": 9,
+      "verification": {
+        "status": "data_unverified",
+        "reason": "t1_balance_sheet;t2_equity_per_share;t4_group_basis_roe",
+        "failed_checks": [
+          "t1_balance_sheet",
+          "t2_equity_per_share",
+          "t4_group_basis_roe"
+        ],
+        "recomputed": {
+          "ROE": null,
+          "BVPS": null,
+          "t4_basis": "no_minority_total_equity",
+          "NetIncome": 144000000.0,
+          "NetIncome_Group": 144000000.0,
+          "Total_Liabilities": null,
+          "Total_Liabilities_And_Equity": null
+        }
+      },
+      "before_upside": -0.4494801624108584,
+      "after_upside": null,
+      "after_fair_value": null,
+      "after_models": 0,
+      "warnings": [
+        "no_usable_valuation_models",
+        "data_unverified_nr:t1_balance_sheet;t2_equity_per_share;t4_group_basis_roe"
+      ],
+      "bkgr_buy_overlap": true
+    },
+    {
+      "symbol": "WAA",
+      "canonical_import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+      "fy2025_doc_count": 9,
+      "verification": {
+        "status": "verified",
+        "reason": null,
+        "failed_checks": [],
+        "recomputed": {
+          "ROE": 0.07224733974627909,
+          "BVPS": 4274.382,
+          "t4_basis": "no_minority_total_equity",
+          "NetIncome": 1100404000.0,
+          "NetIncome_Group": 1026036000.0,
+          "Total_Liabilities": 60302934000.0,
+          "Total_Liabilities_And_Equity": 75534000000.0
+        }
+      },
+      "before_upside": null,
+      "after_upside": 0.6846403409716595,
+      "after_fair_value": 9939.378011732791,
+      "after_models": 3,
+      "warnings": [
+        "justified_multiples_excluded_cross_model_outlier"
+      ],
+      "bkgr_buy_overlap": false
+    },
+    {
+      "symbol": "ZDJ",
+      "canonical_import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+      "fy2025_doc_count": 9,
+      "verification": {
+        "status": "verified",
+        "reason": null,
+        "failed_checks": [],
+        "recomputed": {
+          "ROE": 0.15216747726792135,
+          "BVPS": 247.65688689340473,
+          "t4_basis": "no_minority_total_equity",
+          "NetIncome": 21588000.0,
+          "NetIncome_Group": null,
+          "Total_Liabilities": 633560000.0,
+          "Total_Liabilities_And_Equity": 775430000.0
+        }
+      },
+      "before_upside": null,
+      "after_upside": null,
+      "after_fair_value": null,
+      "after_models": 3,
+      "warnings": [
+        "headline_review_required_extreme_upside",
+        "headline_review_weak_model_coverage",
+        "headline_review_weak_method_class_agreement"
+      ],
+      "bkgr_buy_overlap": false
+    }
+  ],
+  "tails": [],
+  "bank_metrics": {
+    "ATW": {
+      "Cout_du_risque": {
+        "value": -3664557000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 1630
+      },
+      "Equity_Group": {
+        "value": 69431269000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 1630
+      },
+      "Minority_Interest": {
+        "value": 11059101000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 1630
+      },
+      "PNB": {
+        "value": 34921384000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 1630
+      },
+      "RBE": {
+        "value": 21698811000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 1630
+      },
+      "Resultat_net": {
+        "value": 12368271000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 1630
+      },
+      "Resultat_net_part_du_groupe": {
+        "value": 10644852000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 1630
+      },
+      "ROE": {
+        "value": 0.15331495669479986,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 1630
+      },
+      "Total_Equity_Group": {
+        "value": 69431269000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 1630
+      }
+    },
+    "BCP": {
+      "Cout_du_risque": {
+        "value": -5362624000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 3212
+      },
+      "Equity_Group": {
+        "value": 41452033000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 3212
+      },
+      "Minority_Interest": {
+        "value": 20981040000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 3212
+      },
+      "PNB": {
+        "value": 26985158000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 3212
+      },
+      "RBE": {
+        "value": 14939379000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 3212
+      },
+      "Resultat_net": {
+        "value": 5621085000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 3212
+      },
+      "Resultat_net_part_du_groupe": {
+        "value": 4503361000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 3212
+      },
+      "ROE": {
+        "value": 0.10864029274511096,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 1517
+      },
+      "Total_Equity_Group": {
+        "value": 41452033000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 1517
+      }
+    },
+    "BOA": {
+      "Cout_du_risque": {
+        "value": -3287621000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 3214
+      },
+      "Equity_Group": {
+        "value": 31794360000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 3214
+      },
+      "Minority_Interest": {
+        "value": 8632078000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 3214
+      },
+      "PNB": {
+        "value": 20338747000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 3214
+      },
+      "RBE": {
+        "value": 11033238000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 3214
+      },
+      "Resultat_net": {
+        "value": 5514079000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 3214
+      },
+      "Resultat_net_part_du_groupe": {
+        "value": 3813552000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 3214
+      },
+      "ROE": {
+        "value": 0.11994429200650682,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 80
+      },
+      "Total_Equity_Group": {
+        "value": 31794360000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 80
+      }
+    },
+    "BCI": {
+      "Cout_du_risque": {
+        "value": -911575000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 3676
+      },
+      "Equity_Group": {
+        "value": 7572464000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 3676
+      },
+      "Minority_Interest": {
+        "value": 11160000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 3676
+      },
+      "PNB": {
+        "value": 3943792000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 3676
+      },
+      "RBE": {
+        "value": 1680701000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 3676
+      },
+      "Resultat_net": {
+        "value": 420182000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 3676
+      },
+      "Resultat_net_part_du_groupe": {
+        "value": 434829000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 3676
+      },
+      "ROE": {
+        "value": 0.05540649167205547,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": null
+      },
+      "Total_Equity_Group": {
+        "value": 7583624000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": null
+      }
+    },
+    "CIH": {
+      "Cout_du_risque": {
+        "value": -1209369000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 3677
+      },
+      "Equity_Group": {
+        "value": 9768468000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 3677
+      },
+      "Minority_Interest": {
+        "value": 963020000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 3677
+      },
+      "PNB": {
+        "value": 5422526000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 3677
+      },
+      "RBE": {
+        "value": 3094496000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 3677
+      },
+      "Resultat_net": {
+        "value": 1220478000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 3677
+      },
+      "Resultat_net_part_du_groupe": {
+        "value": 1089362000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 3677
+      },
+      "ROE": {
+        "value": 0.11151820326380758,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": null
+      },
+      "Total_Equity_Group": {
+        "value": 9768468000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": null
+      }
+    },
+    "CFG": {
+      "Cout_du_risque": {
+        "value": -45653000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 1564
+      },
+      "Equity_Group": {
+        "value": 2065577000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 1564
+      },
+      "Minority_Interest": {
+        "value": 21553000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 1564
+      },
+      "PNB": {
+        "value": 1247229000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 1564
+      },
+      "RBE": {
+        "value": 633247000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 1564
+      },
+      "Resultat_net": {
+        "value": 381362000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 1564
+      },
+      "Resultat_net_part_du_groupe": {
+        "value": 370445000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 1564
+      },
+      "ROE": {
+        "value": 0.18272085721582135,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 1564
+      },
+      "Total_Equity_Group": {
+        "value": 2087129000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 1564
+      }
+    },
+    "CDM": {
+      "Cout_du_risque": {
+        "value": -383113000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 1631
+      },
+      "Equity_Group": {
+        "value": 8203010000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 1631
+      },
+      "Minority_Interest": {
+        "value": 0.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 1631
+      },
+      "PNB": {
+        "value": 3568401000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 1631
+      },
+      "RBE": {
+        "value": 1915921000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 1631
+      },
+      "Resultat_net": {
+        "value": 863551000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 1631
+      },
+      "Resultat_net_part_du_groupe": {
+        "value": 863551000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 1631
+      },
+      "ROE": {
+        "value": 0.1052724548671768,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 1631
+      },
+      "Total_Equity_Group": {
+        "value": 8203010000.0,
+        "source_sheet": "brief42_fy2025_proof",
+        "source_document_id": 1631
+      }
+    }
+  },
+  "bank_model_inputs": {
+    "ATW": {
+      "ddm": {
+        "fair_value": 382.88716021234734,
+        "upside_pct": -0.43858187652148484,
+        "roe": 0.16728233156499542,
+        "roe_source": "group_roe_rnpg_over_avg_group_equity",
+        "cost_of_equity": 0.0959117093541305,
+        "warnings": [
+          "ddm_projection_driver_unavailable"
+        ]
+      },
+      "justified_multiples": {
+        "fair_value": 1237.722550398746,
+        "upside_pct": 0.8148424492650235,
+        "roe": 0.16728233156499542,
+        "roe_source": "group_roe_rnpg_over_avg_group_equity",
+        "cost_of_equity": 0.0959117093541305,
+        "warnings": []
+      },
+      "residual_income": {
+        "fair_value": null,
+        "upside_pct": null,
+        "roe": 0.16728233156499542,
+        "roe_source": "group_roe_rnpg_over_avg_group_equity",
+        "cost_of_equity": 0.0959117093541305,
+        "warnings": [
+          "residual_income_projection_driver_unavailable",
+          "pnb_growth_unavailable_no_history_no_peer"
+        ]
+      }
+    },
+    "BCP": {
+      "ddm": {
+        "fair_value": 258.21347582988176,
+        "upside_pct": 0.060424952073436344,
+        "roe": 0.12104250229493294,
+        "roe_source": "group_roe_rnpg_over_avg_group_equity",
+        "cost_of_equity": 0.08116107934794466,
+        "warnings": [
+          "ddm_projection_driver_unavailable"
+        ]
+      },
+      "justified_multiples": {
+        "fair_value": 599.950460151318,
+        "upside_pct": 1.4638622593483284,
+        "roe": 0.12104250229493294,
+        "roe_source": "group_roe_rnpg_over_avg_group_equity",
+        "cost_of_equity": 0.08116107934794466,
+        "warnings": []
+      },
+      "residual_income": {
+        "fair_value": null,
+        "upside_pct": null,
+        "roe": 0.12104250229493294,
+        "roe_source": "group_roe_rnpg_over_avg_group_equity",
+        "cost_of_equity": 0.08116107934794466,
+        "warnings": [
+          "residual_income_projection_driver_unavailable",
+          "pnb_growth_unavailable_no_history_no_peer"
+        ]
+      }
+    },
+    "BOA": {
+      "ddm": {
+        "fair_value": 95.88600167700893,
+        "upside_pct": -0.5222421441105682,
+        "roe": 0.13381018959734786,
+        "roe_source": "group_roe_rnpg_over_avg_group_equity",
+        "cost_of_equity": 0.09714415035387641,
+        "warnings": [
+          "ddm_projection_driver_unavailable"
+        ]
+      },
+      "residual_income": {
+        "fair_value": null,
+        "upside_pct": null,
+        "roe": 0.13381018959734786,
+        "roe_source": "group_roe_rnpg_over_avg_group_equity",
+        "cost_of_equity": 0.09714415035387641,
+        "warnings": [
+          "residual_income_projection_driver_unavailable",
+          "pnb_growth_unavailable_no_history_no_peer"
+        ]
+      },
+      "justified_multiples": {
+        "fair_value": 323.58645273542544,
+        "upside_pct": 0.6122892512975857,
+        "roe": 0.13381018959734786,
+        "roe_source": "group_roe_rnpg_over_avg_group_equity",
+        "cost_of_equity": 0.09714415035387641,
+        "warnings": []
+      }
+    },
+    "BCI": {
+      "ddm": {
+        "fair_value": null,
+        "upside_pct": null,
+        "roe": null,
+        "roe_source": null,
+        "cost_of_equity": null,
+        "warnings": [
+          "data_unverified_nr:t3_income_consistency"
+        ]
+      },
+      "justified_multiples": {
+        "fair_value": null,
+        "upside_pct": null,
+        "roe": null,
+        "roe_source": null,
+        "cost_of_equity": null,
+        "warnings": [
+          "data_unverified_nr:t3_income_consistency"
+        ]
+      },
+      "residual_income": {
+        "fair_value": null,
+        "upside_pct": null,
+        "roe": null,
+        "roe_source": null,
+        "cost_of_equity": null,
+        "warnings": [
+          "data_unverified_nr:t3_income_consistency"
+        ]
+      }
+    },
+    "CIH": {
+      "ddm": {
+        "fair_value": 427.02832010772204,
+        "upside_pct": 0.22008091459349144,
+        "roe": 0.11151820326380758,
+        "roe_source": "group_roe_rnpg_over_current_group_equity",
+        "cost_of_equity": 0.07147060765413084,
+        "warnings": [
+          "ddm_projection_driver_unavailable"
+        ]
+      },
+      "justified_multiples": {
+        "fair_value": 788.7003134187246,
+        "upside_pct": 1.2534294669106418,
+        "roe": 0.11151820326380758,
+        "roe_source": "group_roe_rnpg_over_current_group_equity",
+        "cost_of_equity": 0.07147060765413084,
+        "warnings": []
+      },
+      "residual_income": {
+        "fair_value": null,
+        "upside_pct": null,
+        "roe": 0.11151820326380758,
+        "roe_source": "group_roe_rnpg_over_current_group_equity",
+        "cost_of_equity": 0.07147060765413084,
+        "warnings": [
+          "residual_income_projection_driver_unavailable",
+          "pnb_growth_unavailable_no_history_no_peer"
+        ]
+      }
+    },
+    "CFG": {
+      "ddm": {
+        "fair_value": 77.06620022106037,
+        "upside_pct": -0.6222245087202922,
+        "roe": 0.18272085721582135,
+        "roe_source": "no_minority_total_equity",
+        "cost_of_equity": 0.08920722732207068,
+        "warnings": [
+          "ddm_projection_driver_unavailable"
+        ]
+      },
+      "justified_multiples": {
+        "fair_value": 599.6357734217178,
+        "upside_pct": 1.939391046184891,
+        "roe": 0.18272085721582135,
+        "roe_source": "no_minority_total_equity",
+        "cost_of_equity": 0.08920722732207068,
+        "warnings": []
+      },
+      "residual_income": {
+        "fair_value": null,
+        "upside_pct": null,
+        "roe": 0.18272085721582135,
+        "roe_source": "no_minority_total_equity",
+        "cost_of_equity": 0.08920722732207068,
+        "warnings": [
+          "residual_income_projection_driver_unavailable",
+          "pnb_growth_unavailable_no_history_no_peer"
+        ]
+      }
+    },
+    "CDM": {
+      "ddm": {
+        "fair_value": 712.7301959288279,
+        "upside_pct": -0.2879818222489231,
+        "roe": 0.1052724548671768,
+        "roe_source": "no_minority_total_equity",
+        "cost_of_equity": 0.09494230233513332,
+        "warnings": [
+          "ddm_projection_driver_unavailable"
+        ]
+      },
+      "justified_multiples": {
+        "fair_value": 850.975029197805,
+        "upside_pct": -0.1498750957064885,
+        "roe": 0.1052724548671768,
+        "roe_source": "no_minority_total_equity",
+        "cost_of_equity": 0.09494230233513332,
+        "warnings": []
+      },
+      "residual_income": {
+        "fair_value": null,
+        "upside_pct": null,
+        "roe": 0.1052724548671768,
+        "roe_source": "no_minority_total_equity",
+        "cost_of_equity": 0.09494230233513332,
+        "warnings": [
+          "residual_income_projection_driver_unavailable",
+          "pnb_growth_unavailable_no_history_no_peer"
+        ]
+      }
+    }
+  },
+  "verification_status_counts_2025": {
+    "verified": 46,
+    "data_unverified": 25
+  }
+}

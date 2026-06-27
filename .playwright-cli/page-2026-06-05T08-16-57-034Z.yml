@@ -1,0 +1,13 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e129] [cursor=pointer]:
+    - button "Open Next.js Dev Tools" [ref=e130]:
+      - img [ref=e131]
+    - generic [ref=e1372]:
+      - button "Open issues overlay" [ref=e1373]:
+        - generic [ref=e1374]:
+          - generic [ref=e1375]: "0"
+          - generic [ref=e1376]: "1"
+        - generic [ref=e1377]: Issue
+      - button "Collapse issues badge" [ref=e1378]:
+        - img [ref=e1379]
+  - 'heading "Application error: a client-side exception has occurred while loading 127.0.0.1 (see the browser console for more information)." [level=2] [ref=e1383]'

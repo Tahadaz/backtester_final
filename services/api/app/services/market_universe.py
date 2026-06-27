@@ -24,14 +24,14 @@ class MarketUniverseInstrument:
     is_active: bool | None
     track_source: str | None
     bourse_url: str | None
-    shares_outstanding: int | None
-    shares_as_of: dt.date | None
-    shares_source: str | None
-    shares_updated_at: dt.datetime | None
-    notes: str | None
-    asset_type: str
-    market_region: str | None
-    asset_class: str
+    shares_outstanding: int | None = None
+    shares_as_of: dt.date | None = None
+    shares_source: str | None = None
+    shares_updated_at: dt.datetime | None = None
+    notes: str | None = None
+    asset_type: str = "equity"
+    market_region: str | None = None
+    asset_class: str = "equity"
     start_ts: Any = None
     end_ts: Any = None
     row_count: int | None = None
@@ -332,10 +332,10 @@ def list_market_catalog(
                 is_active=bool(row["is_active"]) if row["is_active"] is not None else True,
                 track_source=row["track_source"],
                 bourse_url=row["bourse_url"],
-                shares_outstanding=row["shares_outstanding"],
-                shares_as_of=row["shares_as_of"],
-                shares_source=row["shares_source"],
-                shares_updated_at=row["shares_updated_at"],
+                shares_outstanding=row.get("shares_outstanding"),
+                shares_as_of=row.get("shares_as_of"),
+                shares_source=row.get("shares_source"),
+                shares_updated_at=row.get("shares_updated_at"),
                 notes=row["notes"],
                 asset_type=str(asset_type or "equity"),
                 market_region=market_region,

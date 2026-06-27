@@ -5,6 +5,7 @@ from math import isfinite
 from statistics import mean, median, pstdev
 from typing import Iterable
 
+from .cgnc_mapping import FINANCIAL_ARCHETYPES, FINANCIAL_SUPPRESSED_METRICS, resolve_metric_name
 from .domain import AnnualMetricRow, FundamentalSnapshot
 from .screens import altman_z, eva, magic_formula, peg_garp, regression_adjusted_multiples
 from .valuation import DEFAULT_ASSUMPTIONS
@@ -21,8 +22,15 @@ LOWER_IS_BETTER = {
     "NetDebt_to_Equity",
     "NetDebt_to_EBITDA",
     "Equity_Multiplier",
+    # Bank-specific: lower = better credit quality / efficiency / funding risk
+    "Cout_du_risque",
+    "Cost_to_Income",
+    "Loans_to_Deposits",
+    # Insurance-specific: combined ratio < 1 = underwriting profit
+    "Combined_Ratio",
 }
 
+# Industrial pillar metric sets
 VALUE_METRICS = ("PER", "Price_to_Book", "Price_to_Sales", "EV_to_EBITDA", "FCF_Yield", "Dividend_Yield")
 QUALITY_METRICS = ("ROE", "ROA", "Operating_Margin", "Net_Margin")
 GROWTH_METRICS = ("Revenue_Growth", "EBIT_Growth", "NetIncome_Growth")
@@ -30,6 +38,23 @@ DIVIDEND_METRICS = ("Dividend_Coverage", "Dividend_Payout")
 RISK_METRICS = ("Debt_to_Equity", "NetDebt_to_EBITDA", "Equity_Multiplier")
 CASH_FLOW_METRICS = ("FCF_Margin", "Operating_CF_Margin", "CAF_Margin")
 HEALTH_METRICS = ("Current_Ratio", "Cash_Ratio", "Interest_Coverage")
+
+# Bank pillar metric sets — FINANCIAL_SUPPRESSED_METRICS are never included
+BANK_VALUE_METRICS = ("PER", "Price_to_Book", "Dividend_Yield")
+BANK_QUALITY_METRICS = ("ROE", "ROA", "Net_Interest_Margin", "Cost_to_Income")
+BANK_GROWTH_METRICS = ("Revenue_Growth", "NetIncome_Growth")
+BANK_RISK_METRICS = ("Cout_du_risque", "Loans_to_Deposits")
+BANK_CASH_FLOW_METRICS: tuple[str, ...] = ()
+BANK_HEALTH_METRICS: tuple[str, ...] = ()
+
+# Generic financial archetype (insurance, leasing, …)
+FINANCIAL_VALUE_METRICS = ("PER", "Price_to_Book", "Dividend_Yield")
+FINANCIAL_QUALITY_METRICS = ("ROE", "ROA", "Net_Margin", "Combined_Ratio")
+FINANCIAL_GROWTH_METRICS = ("Revenue_Growth", "NetIncome_Growth")
+FINANCIAL_RISK_METRICS = ("Equity_Multiplier",)
+FINANCIAL_CASH_FLOW_METRICS: tuple[str, ...] = ()
+FINANCIAL_HEALTH_METRICS: tuple[str, ...] = ()
+
 TRAILING_METRICS = (
     "ROE",
     "ROA",
@@ -39,6 +64,12 @@ TRAILING_METRICS = (
     "FCF_Margin",
     "Debt_to_Equity",
 )
+SCORING_TRAILING_METRICS = tuple(dict.fromkeys((
+    *VALUE_METRICS, *QUALITY_METRICS,
+    *BANK_VALUE_METRICS, *BANK_QUALITY_METRICS,
+    *FINANCIAL_VALUE_METRICS, *FINANCIAL_QUALITY_METRICS,
+)))
+SMOOTHING_DIAGNOSTIC_METRICS = tuple(dict.fromkeys((*TRAILING_METRICS, *SCORING_TRAILING_METRICS)))
 
 OVERALL_WEIGHTS = {
     "value": 0.20,
@@ -197,15 +228,15 @@ def _history_by_symbol(rows: Iterable[AnnualMetricRow] | None) -> dict[str, list
 
 
 def _series(history: list[AnnualMetricRow], *metric_names: str) -> list[tuple[int, float]]:
-    names = set(metric_names)
-    values: list[tuple[int, float]] = []
+    canonical_names = {resolve_metric_name(n) for n in metric_names}
+    by_year: dict[int, float] = {}
     for row in history:
-        if row.metric_name not in names:
+        if resolve_metric_name(row.metric_name) not in canonical_names:
             continue
         value = _clean(row.metric_value)
-        if value is not None:
-            values.append((row.statement_year, value))
-    return sorted(values)
+        if value is not None and row.statement_year not in by_year:
+            by_year[row.statement_year] = value
+    return sorted(by_year.items())
 
 
 def _latest(history: list[AnnualMetricRow], *metric_names: str) -> float | None:
@@ -225,6 +256,27 @@ def _trailing_average(history: list[AnnualMetricRow], metric_name: str, years: i
     return mean(value for _, value in values[-years:])
 
 
+def _snapshot_with_smoothed_score_metrics(snapshot: FundamentalSnapshot, history: list[AnnualMetricRow]) -> FundamentalSnapshot:
+    metrics = dict(snapshot.metrics)
+    for metric in SCORING_TRAILING_METRICS:
+        trailing = _trailing_average(history, metric, 3)
+        if trailing is not None:
+            metrics[metric] = trailing
+    return FundamentalSnapshot(
+        symbol=snapshot.symbol,
+        company_name=snapshot.company_name,
+        latest_statement_year=snapshot.latest_statement_year,
+        metrics=metrics,
+        scores=snapshot.scores,
+        diagnostics=snapshot.diagnostics,
+        coverage=snapshot.coverage,
+        model_eligibility=snapshot.model_eligibility,
+        source=snapshot.source,
+        as_of_date=snapshot.as_of_date,
+        source_document_id=snapshot.source_document_id,
+    )
+
+
 def _trend_improved(history: list[AnnualMetricRow], metric_name: str, *, lower_is_better: bool = False) -> bool | None:
     latest = _latest(history, metric_name)
     previous = _previous(history, metric_name)
@@ -234,10 +286,10 @@ def _trend_improved(history: list[AnnualMetricRow], metric_name: str, *, lower_i
 
 
 def _net_income_proxy(snapshot: FundamentalSnapshot, history: list[AnnualMetricRow]) -> tuple[float | None, str | None]:
-    value = _latest(history, "Resultat_net", "Clean_Resultat_net")
+    value = _latest(history, "NetIncome", "Resultat_net", "Clean_Resultat_net")
     if value is not None:
         return value, "reported_resultat_net"
-    revenue = _latest(history, "Chiffre_daffaires", "Clean_Chiffre_daffaires")
+    revenue = _latest(history, "Revenue", "Chiffre_daffaires", "Clean_Chiffre_daffaires")
     net_margin = _ratio(snapshot.metrics.get("Net_Margin"))
     if revenue is not None and net_margin is not None:
         return revenue * net_margin, "revenue_times_net_margin"
@@ -329,6 +381,40 @@ def _weighted_score(parts: dict[str, float | None]) -> tuple[float | None, float
     return _clip_score(raw), coverage
 
 
+def _get_archetype(snapshot: FundamentalSnapshot) -> str:
+    arch = snapshot.diagnostics.get("archetype") or snapshot.source.get("archetype")
+    return str(arch) if arch else "unknown"
+
+
+def _pillar_metrics_for_archetype(archetype: str) -> dict[str, tuple[str, ...]]:
+    if archetype == "bank":
+        return {
+            "value": BANK_VALUE_METRICS,
+            "quality": BANK_QUALITY_METRICS,
+            "growth": BANK_GROWTH_METRICS,
+            "risk": BANK_RISK_METRICS,
+            "cash_flow": BANK_CASH_FLOW_METRICS,
+            "health": BANK_HEALTH_METRICS,
+        }
+    if archetype in FINANCIAL_ARCHETYPES:
+        return {
+            "value": FINANCIAL_VALUE_METRICS,
+            "quality": FINANCIAL_QUALITY_METRICS,
+            "growth": FINANCIAL_GROWTH_METRICS,
+            "risk": FINANCIAL_RISK_METRICS,
+            "cash_flow": FINANCIAL_CASH_FLOW_METRICS,
+            "health": FINANCIAL_HEALTH_METRICS,
+        }
+    return {
+        "value": VALUE_METRICS,
+        "quality": QUALITY_METRICS,
+        "growth": GROWTH_METRICS,
+        "risk": RISK_METRICS,
+        "cash_flow": CASH_FLOW_METRICS,
+        "health": HEALTH_METRICS,
+    }
+
+
 def score_fundamental_snapshots(
     snapshots: list[FundamentalSnapshot],
     annual_metrics: Iterable[AnnualMetricRow] | None = None,
@@ -338,17 +424,40 @@ def score_fundamental_snapshots(
 ) -> list[FundamentalSnapshot]:
     """Attach ranked scores plus explainable fundamental diagnostics."""
 
-    percentiles = _metric_percentiles(snapshots, sectors=sectors, peer_min_count=peer_min_count)
     history = _history_by_symbol(annual_metrics)
+    scoring_snapshots = [
+        _snapshot_with_smoothed_score_metrics(snapshot, history.get(snapshot.symbol, []))
+        for snapshot in snapshots
+    ]
+
+    # Financial-archetype stocks (banks, insurance) rank against archetype peers
+    # only, not the mixed market — reuse sector-segmentation machinery by
+    # assigning a synthetic sector key "__arch_<archetype>__".
+    effective_sectors: dict[str, str | None] = dict(sectors or {})
+    for snap in scoring_snapshots:
+        archetype = _get_archetype(snap)
+        if archetype in FINANCIAL_ARCHETYPES:
+            effective_sectors[snap.symbol] = f"__arch_{archetype}__"
+
+    percentiles = _metric_percentiles(scoring_snapshots, sectors=effective_sectors, peer_min_count=peer_min_count)
     out: list[FundamentalSnapshot] = []
     for snapshot in snapshots:
-        value_score = _score_group(snapshot.symbol, percentiles, VALUE_METRICS)
-        quality_score = _score_group(snapshot.symbol, percentiles, QUALITY_METRICS)
-        growth_score = _score_group(snapshot.symbol, percentiles, GROWTH_METRICS)
+        archetype = _get_archetype(snapshot)
+        pillars = _pillar_metrics_for_archetype(archetype)
+        value_metrics = pillars["value"]
+        quality_metrics = pillars["quality"]
+        growth_metrics = pillars["growth"]
+        risk_metrics = pillars["risk"]
+        cash_flow_metrics = pillars["cash_flow"]
+        health_metrics = pillars["health"]
+
+        value_score = _score_group(snapshot.symbol, percentiles, value_metrics)
+        quality_score = _score_group(snapshot.symbol, percentiles, quality_metrics)
+        growth_score = _score_group(snapshot.symbol, percentiles, growth_metrics)
         dividend_score = _score_group(snapshot.symbol, percentiles, DIVIDEND_METRICS)
-        risk_score = _score_group(snapshot.symbol, percentiles, RISK_METRICS)
-        cash_flow_score = _score_group(snapshot.symbol, percentiles, CASH_FLOW_METRICS)
-        health_score = _score_group(snapshot.symbol, percentiles, HEALTH_METRICS)
+        risk_score = _score_group(snapshot.symbol, percentiles, risk_metrics)
+        cash_flow_score = _score_group(snapshot.symbol, percentiles, cash_flow_metrics)
+        health_score = _score_group(snapshot.symbol, percentiles, health_metrics)
         symbol_history = history.get(snapshot.symbol, [])
         dupont = _dupont(snapshot)
         piotroski = _piotroski_lite(snapshot, symbol_history)
@@ -367,13 +476,13 @@ def score_fundamental_snapshots(
         }
         overall, overall_coverage = _weighted_score(parts)
         score_scopes = {
-            "value": _score_scope(snapshot.symbol, percentiles, VALUE_METRICS),
-            "quality": _score_scope(snapshot.symbol, percentiles, QUALITY_METRICS),
-            "growth": _score_scope(snapshot.symbol, percentiles, GROWTH_METRICS),
+            "value": _score_scope(snapshot.symbol, percentiles, value_metrics),
+            "quality": _score_scope(snapshot.symbol, percentiles, quality_metrics),
+            "growth": _score_scope(snapshot.symbol, percentiles, growth_metrics),
             "dividend": _score_scope(snapshot.symbol, percentiles, DIVIDEND_METRICS),
-            "risk": _score_scope(snapshot.symbol, percentiles, RISK_METRICS),
-            "cash_flow": _score_scope(snapshot.symbol, percentiles, CASH_FLOW_METRICS),
-            "health": _score_scope(snapshot.symbol, percentiles, HEALTH_METRICS),
+            "risk": _score_scope(snapshot.symbol, percentiles, risk_metrics),
+            "cash_flow": _score_scope(snapshot.symbol, percentiles, cash_flow_metrics),
+            "health": _score_scope(snapshot.symbol, percentiles, health_metrics),
         }
         metric_breakdown = {
             metric: entry
@@ -385,8 +494,9 @@ def score_fundamental_snapshots(
                 "latest": snapshot.metrics.get(metric),
                 "trailing_3y": _trailing_average(symbol_history, metric, 3),
                 "trailing_5y": _trailing_average(symbol_history, metric, 5),
+                "scoring_input": percentiles.get(metric, {}).get(snapshot.symbol, {}).get("value"),
             }
-            for metric in TRAILING_METRICS
+            for metric in SMOOTHING_DIAGNOSTIC_METRICS
         }
         sector = (sectors or {}).get(snapshot.symbol)
         screens = {

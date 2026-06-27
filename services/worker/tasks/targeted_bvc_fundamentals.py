@@ -1,3 +1,16 @@
+# =============================================================================
+# DORMANT — BVC/Gemini pipeline (Phase 2 gate, Brief 45)
+#
+# This module is intentionally disabled pending the canonical StockAnalysis
+# re-ingest (Phase 4).  To re-enable, set the env var:
+#   BVC_PIPELINE_ENABLED=1
+# in both the API and worker environments.  The API endpoint
+# (`enqueue_targeted_bvc_fundamental_import`) enforces the same gate and will
+# return HTTP 503 until that flag is present.
+#
+# Do NOT delete this code — it is the only full-history BVC ingest path and
+# will be needed again after Phase 4 validation.
+# =============================================================================
 from __future__ import annotations
 
 import datetime as dt
@@ -19,7 +32,10 @@ from services.api.app.json_sanitize import sanitize_json_compatible
 from services.api.app.services.fundamentals import (
     FUNDAMENTAL_COMPANY_SYMBOL_ALIASES,
     FUNDAMENTAL_SYMBOL_ALIASES,
+    delete_fundamental_import_artifacts,
     execute_import_run,
+    refresh_import_after_pit_sync,
+    sync_bvc_period_metrics_to_annual_and_latest,
 )
 from services.worker.config import settings
 from services.worker.db import SessionLocal
@@ -32,7 +48,8 @@ def _utcnow() -> dt.datetime:
 def _normalize_company(value: Any) -> str:
     text = unicodedata.normalize("NFKD", str(value or ""))
     text = "".join(char for char in text if not unicodedata.combining(char))
-    return " ".join(text.strip().upper().replace(".", " ").split())
+    text = re.sub(r"[^A-Z0-9]+", " ", text.upper())
+    return " ".join(text.strip().split())
 
 
 def _stock_rows(db, symbols: list[str]) -> dict[str, models.StockMaster]:
@@ -184,9 +201,16 @@ def _run_scraper(
 
 def _row_matches_terms(company: str, ticker: str, terms: list[str]) -> bool:
     haystack = _normalize_company(f"{company} {ticker}")
+    tokens = set(haystack.split())
     for term in terms:
         needle = _normalize_company(term)
-        if needle and (needle in haystack or haystack in needle):
+        if not needle:
+            continue
+        if len(needle) <= 3 and needle.isalnum():
+            if needle in tokens:
+                return True
+            continue
+        if needle in haystack or haystack in needle:
             return True
     return False
 
@@ -250,6 +274,21 @@ def _patch_market_map(workbook_path: Path, stocks: dict[str, models.StockMaster]
 
 
 YEAR_FIELD_RE = re.compile(r"^(?P<metric>.+)_(?P<year>20\d{2}|19\d{2})$")
+BVC_OPERATING_CF_METRICS = (
+    "Flux_de_tresorerie_lies_a_lactivite",
+    "Flux_tresorerie_activites_operationnelles",
+    "Operating_Cash_Flow",
+    "CF_Operating",
+)
+BVC_INVESTING_CF_METRICS = (
+    "Flux_de_tresorerie_lies_aux_investissements",
+    "CF_Investing",
+)
+BVC_CAPEX_METRICS = (
+    "Flux_tresorerie_investissement_CAPEX",
+    "Capex",
+    "Capital_Expenditures",
+)
 
 
 def _safe_float(value: Any) -> float | None:
@@ -308,8 +347,85 @@ def _matches_source_urls(row: dict[str, Any], source_urls: list[str]) -> bool:
     return any(url.lower() in normalized or normalized in url.lower() for url in source_urls)
 
 
+BVC_DEFAULT_PERIOD_TYPES = ["annual", "semiannual", "quarterly"]
+BVC_PERIOD_TYPE_ALIASES = {
+    "yearly": ["annual"],
+    "annuel": ["annual"],
+    "annual": ["annual"],
+    "semester": ["semiannual"],
+    "semestriel": ["semiannual"],
+    "semestre": ["semiannual"],
+    "semiannual": ["semiannual"],
+    "quarter": ["quarterly"],
+    "quarterly": ["quarterly"],
+    "trimestriel": ["quarterly"],
+    "trimestre": ["quarterly"],
+    "interim": ["semiannual", "quarterly"],
+    "interimaire": ["semiannual", "quarterly"],
+}
+
+
+def _normalize_period_types(values: list[str] | None) -> list[str]:
+    out: list[str] = []
+    for value in values or BVC_DEFAULT_PERIOD_TYPES:
+        normalized = str(value or "").strip().lower()
+        for period_type in BVC_PERIOD_TYPE_ALIASES.get(normalized, [normalized]):
+            if period_type in {"annual", "semiannual", "quarterly"} and period_type not in out:
+                out.append(period_type)
+    return out or list(BVC_DEFAULT_PERIOD_TYPES)
+
+
+def _period_title(row: dict[str, Any]) -> str:
+    return _normalize_company(f"{row.get('Document_Title') or row.get('title') or ''} {row.get('Source_URL') or row.get('pdf_url') or ''}").lower()
+
+
+def _period_label_from_title(row: dict[str, Any], period_type: str) -> str | None:
+    title = _period_title(row)
+    if period_type == "quarterly":
+        if any(token in title for token in ("t1", "q1", "1er trimestre", "1ere trimestre", "1eme trimestre", "premier trimestre")):
+            return "Q1"
+        if any(token in title for token in ("t2", "q2", "2eme trimestre", "deuxieme trimestre")):
+            return "Q2"
+        if any(token in title for token in ("t3", "q3", "3eme trimestre", "troisieme trimestre")):
+            return "Q3"
+        if any(token in title for token in ("t4", "q4", "4eme trimestre", "quatrieme trimestre")):
+            return "Q4"
+    if period_type == "semiannual":
+        if any(token in title for token in ("s1", "h1", "1er semestre", "1ere semestre", "1eme semestre", "premier semestre")):
+            return "S1"
+        if any(token in title for token in ("s2", "h2", "2eme semestre", "deuxieme semestre")):
+            return "S2"
+    if period_type == "annual":
+        return "FY"
+    return None
+
+
+def _normalized_period_type(row: dict[str, Any]) -> str:
+    raw = str(row.get("Period_Type") or "").strip().lower()
+    if raw in {"annual", "semiannual", "quarterly"}:
+        return raw
+    title = _period_title(row)
+    if any(token in title for token in ("trimestre", "t1", "t2", "t3", "t4", "q1", "q2", "q3", "q4")):
+        return "quarterly"
+    if any(token in title for token in ("semestre", "s1", "s2", "h1", "h2")):
+        return "semiannual"
+    if any(token in title for token in ("rapport financier annuel", "rapport annuel", "resultats financiers", "rfa")):
+        return "annual"
+    return raw or "unknown"
+
+
+def _normalized_period_label(row: dict[str, Any], period_type: str) -> str:
+    inferred = _period_label_from_title(row, period_type)
+    if inferred:
+        return inferred
+    raw = str(row.get("Period_Label") or "").strip().upper()
+    if raw:
+        return raw
+    return "FY" if period_type == "annual" else ""
+
+
 def _matches_period(row: dict[str, Any], period_types: list[str], years: list[int]) -> bool:
-    period_type = str(row.get("Period_Type") or "").strip().lower()
+    period_type = _normalized_period_type(row)
     fiscal_year = _safe_int(row.get("Fiscal_Year"))
     if period_types and period_type not in set(period_types):
         return False
@@ -325,12 +441,24 @@ def _symbol_for_result_row(
     company_terms: dict[str, list[str]],
 ) -> str | None:
     ticker = str(row.get("Ticker") or row.get("Symbol") or "").strip().upper()
-    if ticker in stocks:
-        return ticker
     company = str(row.get("Company") or row.get("company_name") or "")
+    title = str(row.get("Document_Title") or row.get("title") or "")
+    source_url = str(row.get("Source_URL") or row.get("pdf_url") or "")
+    evidence = _normalize_company(f"{company} {title} {source_url}")
+    evidence_matches: list[str] = []
     for symbol, terms in company_terms.items():
-        if _row_matches_terms(company, ticker, terms):
-            return symbol
+        if _row_matches_terms(company, "", terms) or _row_matches_terms(title, source_url, terms):
+            evidence_matches.append(symbol)
+    if ticker in stocks:
+        if not evidence:
+            return ticker
+        if ticker in evidence_matches:
+            return ticker
+        if evidence_matches:
+            return evidence_matches[0]
+        return None
+    if evidence_matches:
+        return evidence_matches[0]
     return None
 
 
@@ -342,13 +470,14 @@ def _period_metric_models_from_result_row(
     symbol: str,
 ) -> list[models.FundamentalPeriodMetric]:
     company = str(row.get("Company") or row.get("company_name") or symbol)
-    period_type = str(row.get("Period_Type") or "annual").strip().lower() or "annual"
-    period_label = str(row.get("Period_Label") or ("FY" if period_type == "annual" else "")).strip()
+    period_type = _normalized_period_type(row)
+    period_label = _normalized_period_label(row, period_type)
     source_url = str(row.get("Source_URL") or row.get("pdf_url") or "") or None
     title = str(row.get("Document_Title") or row.get("title") or "") or None
     period_end = _date_or_none(row.get("Period_End_Date"))
     out: list[models.FundamentalPeriodMetric] = []
     seen: set[tuple[int, str]] = set()
+    values_by_year: dict[int, dict[str, float]] = {}
     for key, value in row.items():
         match = YEAR_FIELD_RE.match(str(key))
         if not match:
@@ -358,6 +487,7 @@ def _period_metric_models_from_result_row(
             continue
         year = int(match.group("year"))
         metric_name = match.group("metric")
+        values_by_year.setdefault(year, {})[metric_name] = metric_value
         dedupe_key = (year, metric_name)
         if dedupe_key in seen:
             continue
@@ -380,7 +510,77 @@ def _period_metric_models_from_result_row(
                 is_proxy=False,
             )
         )
+    for year, values in values_by_year.items():
+        if (year, "Free_Cash_Flow") in seen:
+            continue
+        cfo = _first_metric_value(values, BVC_OPERATING_CF_METRICS)
+        investing = _first_metric_value(values, BVC_INVESTING_CF_METRICS)
+        capex = _first_metric_value(values, BVC_CAPEX_METRICS)
+        if cfo is None:
+            continue
+        if investing is not None:
+            fcf = cfo + investing
+            raw_metric_name = f"derived:cfo_plus_investing_cf:{year}"
+        elif capex is not None:
+            fcf = cfo - abs(capex)
+            raw_metric_name = f"derived:cfo_minus_capex:{year}"
+        else:
+            continue
+        seen.add((year, "Free_Cash_Flow"))
+        out.append(
+            models.FundamentalPeriodMetric(
+                import_id=import_id,
+                source_document_id=source_document_id,
+                symbol=symbol,
+                company_name=company,
+                fiscal_year=year,
+                period_type=period_type,
+                period_label=period_label,
+                period_end_date=period_end,
+                metric_name="Free_Cash_Flow",
+                metric_value=fcf,
+                raw_metric_name=raw_metric_name,
+                source_url=source_url,
+                document_title=title,
+                is_proxy=True,
+            )
+        )
     return out
+
+
+def _first_metric_value(values: dict[str, float], names: tuple[str, ...]) -> float | None:
+    for name in names:
+        value = values.get(name)
+        if value is not None:
+            return value
+    return None
+
+
+DOCUMENT_KIND_RANK = {"RFA": 3, "CP": 2, "NOTICE": 1}
+
+
+def _document_kind(row: dict[str, Any]) -> str | None:
+    kind = str(row.get("Document_Kind") or row.get("document_kind") or "").strip()
+    if kind:
+        return kind.upper() if kind.upper() in {"RFA", "CP"} else kind.lower()
+    haystack = f"{row.get('Document_Title') or row.get('title') or ''} {row.get('Source_URL') or row.get('pdf_url') or ''}".lower()
+    if "rapport financier annuel" in haystack or "rapport annuel" in haystack or "rfa" in haystack:
+        return "RFA"
+    if "communique" in haystack or "communiqu" in haystack or "/cp" in haystack:
+        return "CP"
+    if "notice" in haystack:
+        return "notice"
+    return None
+
+
+def _result_row_priority(row: dict[str, Any]) -> tuple[int, int, dt.date, str]:
+    kind = _document_kind(row)
+    return (
+        DOCUMENT_KIND_RANK.get(str(kind or "").upper(), 0),
+        int(_safe_int(row.get("Extracted_Field_Count")) or 0),
+        _date_or_none(row.get("Publication_Date") or row.get("date")) or dt.date.min,
+        str(row.get("Source_URL") or row.get("pdf_url") or ""),
+    )
 
 
 def _persist_bvc_lineage(
@@ -394,7 +594,11 @@ def _persist_bvc_lineage(
     period_types: list[str],
     years: list[int],
 ) -> tuple[int, int]:
-    rows = _load_bvc_jsonl_rows(Path(settings.FAMA_FRENCH_DIR))
+    rows = sorted(
+        _load_bvc_jsonl_rows(Path(settings.FAMA_FRENCH_DIR)),
+        key=_result_row_priority,
+        reverse=True,
+    )
     wanted_symbols = {symbol.upper() for symbol in symbols}
 
     db.query(models.FundamentalPeriodMetric).filter(models.FundamentalPeriodMetric.import_id == import_id).delete(synchronize_session=False)
@@ -403,6 +607,7 @@ def _persist_bvc_lineage(
 
     document_count = 0
     metric_count = 0
+    document_by_url_symbol: dict[tuple[str, str], models.FundamentalSourceDocument] = {}
     seen_metric_keys: set[tuple[str, int, str, str, str]] = set()
     for row in rows:
         if not _matches_source_urls(row, source_urls):
@@ -419,25 +624,30 @@ def _persist_bvc_lineage(
         if not source_url:
             continue
         status = str(row.get("Status") or "unknown").lower()
-        document = models.FundamentalSourceDocument(
-            import_id=import_id,
-            symbol=symbol,
-            company_name=str(row.get("Company") or row.get("company_name") or "") or None,
-            document_title=str(row.get("Document_Title") or row.get("title") or "") or None,
-            source_url=source_url,
-            publication_date=_date_or_none(row.get("Publication_Date") or row.get("date")),
-            fiscal_year=_safe_int(row.get("Fiscal_Year")),
-            period_type=str(row.get("Period_Type") or "").strip().lower() or None,
-            period_label=str(row.get("Period_Label") or "").strip() or None,
-            period_end_date=_date_or_none(row.get("Period_End_Date")),
-            status="succeeded" if status == "success" else status,
-            error_message=str(row.get("Error") or row.get("error") or "") or None,
-            extracted_field_count=int(_safe_int(row.get("Extracted_Field_Count")) or 0),
-            raw_json=sanitize_json_compatible(row),
-        )
-        db.add(document)
-        db.flush()
-        document_count += 1
+        document_key = (source_url, symbol or "")
+        document = document_by_url_symbol.get(document_key)
+        if document is None:
+            document = models.FundamentalSourceDocument(
+                import_id=import_id,
+                symbol=symbol,
+                company_name=str(row.get("Company") or row.get("company_name") or "") or None,
+                document_title=str(row.get("Document_Title") or row.get("title") or "") or None,
+                source_url=source_url,
+                document_kind=_document_kind(row),
+                publication_date=_date_or_none(row.get("Publication_Date") or row.get("date")),
+                fiscal_year=_safe_int(row.get("Fiscal_Year")),
+                period_type=_normalized_period_type(row),
+                period_label=_normalized_period_label(row, _normalized_period_type(row)) or None,
+                period_end_date=_date_or_none(row.get("Period_End_Date")),
+                status="succeeded" if status == "success" else status,
+                error_message=str(row.get("Error") or row.get("error") or "") or None,
+                extracted_field_count=int(_safe_int(row.get("Extracted_Field_Count")) or 0),
+                raw_json=sanitize_json_compatible(row),
+            )
+            db.add(document)
+            db.flush()
+            document_by_url_symbol[document_key] = document
+            document_count += 1
 
         if symbol and status == "success":
             metrics = []
@@ -461,6 +671,7 @@ def _mark_failed(db, import_id: uuid.UUID, message: str, *, stdout: str = "", st
     row = db.get(models.FundamentalImport, import_id)
     if row is None:
         return
+    delete_fundamental_import_artifacts(db, import_id=import_id, include_statement_rows=True)
     summary = dict(row.summary_json or {})
     summary["targeted_bvc_error"] = message
     if stdout:
@@ -495,11 +706,7 @@ def execute_bvc_fundamental_import(
     symbols = sorted({symbol.strip().upper() for symbol in symbols if symbol and symbol.strip()})
     source_urls = sorted({url.strip() for url in source_urls or [] if url and url.strip()})
     sectors = sorted({sector.strip() for sector in sectors or [] if sector and sector.strip()})
-    period_types = [
-        period
-        for period in dict.fromkeys(str(period or "").strip().lower() for period in (period_types or ["annual"]))
-        if period in {"annual", "semiannual", "quarterly"}
-    ] or ["annual"]
+    period_types = _normalize_period_types(period_types)
     years = [int(year) for year in (years or []) if int(year) > 1900]
     if not years and (start_year is not None or end_year is not None):
         start = int(start_year or end_year or 1900)
@@ -575,6 +782,12 @@ def execute_bvc_fundamental_import(
             period_types=period_types,
             years=years,
         )
+        pit_sync = sync_bvc_period_metrics_to_annual_and_latest(
+            db,
+            import_id=run_id,
+            symbols={symbol.upper() for symbol in symbols} if symbols else None,
+        )
+        refreshed = refresh_import_after_pit_sync(db, import_id=run_id)
         summary = dict(imported.summary_json or {})
         summary["targeted_bvc"] = {
             "batch_id": batch_id,
@@ -592,6 +805,8 @@ def execute_bvc_fundamental_import(
             "mapping_symbol_count": len(mapping_stocks),
             "source_document_count": document_count,
             "period_metric_count": period_metric_count,
+            "pit_sync": pit_sync,
+            "pit_refresh": refreshed,
             "scraper_stdout_tail": _command_output_tail(result.stdout),
             "scraper_stderr_tail": _command_output_tail(result.stderr),
         }

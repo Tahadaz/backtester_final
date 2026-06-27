@@ -515,6 +515,37 @@ class MacroFactorMeta(Base):
     )
 
 
+class FundamentalMacroConfig(Base):
+    """Shared valuation macro assumptions for all fundamental symbols."""
+    __tablename__ = "fundamental_macro_config"
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    scope_key = Column(String, nullable=False, server_default="GLOBAL")
+    version_label = Column(String(80), nullable=False, server_default="base")
+    risk_free_mode = Column(String(20), nullable=False, server_default="tenor")
+    treasury_tenor = Column(String(16), nullable=False, server_default="10Y")
+    treasury_curve_json = Column(JSONB, nullable=False, default=dict)
+    manual_risk_free_rate = Column(Float, nullable=True)
+    erp_mode = Column(String(20), nullable=False, server_default="manual")
+    erp_index_symbol = Column(String, nullable=False, server_default="MASI")
+    erp_index_asset_class = Column(String(20), nullable=False, server_default="index")
+    erp_lookback_years = Column(Float, nullable=False, server_default="10")
+    erp_mean_method = Column(String(20), nullable=False, server_default="geometric")
+    manual_equity_risk_premium = Column(Float, nullable=True)
+    country_risk_mode = Column(String(20), nullable=False, server_default="auto")
+    morocco_country_risk_premium = Column(Float, nullable=False, server_default="0")
+    manual_country_risk_premium = Column(Float, nullable=True)
+    computed_values_json = Column(JSONB, nullable=False, default=dict)
+    source = Column(String(64), nullable=False, server_default="seeded_default")
+    is_active = Column(Boolean, nullable=False, server_default="true")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_fundamental_macro_config_active", "scope_key", "is_active"),
+    )
+
+
 class FundamentalImport(Base):
     """One uploaded/imported structured fundamental workbook and v3 compute run."""
     __tablename__ = "fundamental_import"
@@ -573,7 +604,7 @@ class FundamentalAnnualMetric(Base):
     """Normalized one-value-per-year fundamental metric with source lineage."""
     __tablename__ = "fundamental_annual_metric"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     import_id = Column(UUID(as_uuid=True), ForeignKey("fundamental_import.id", ondelete="CASCADE"), nullable=False)
     symbol = Column(String, nullable=False)
     company_name = Column(String, nullable=False)
@@ -584,11 +615,14 @@ class FundamentalAnnualMetric(Base):
     source_sheet = Column(String, nullable=True)
     source_field = Column(String, nullable=True)
     is_proxy = Column(Boolean, nullable=False, server_default="false")
+    as_of_date = Column(Date, nullable=True)
+    source_document_id = Column(BigInteger, ForeignKey("fundamental_source_document.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     __table_args__ = (
         UniqueConstraint("import_id", "symbol", "statement_year", "metric_name", name="uq_fundamental_annual_metric_key"),
         Index("ix_fundamental_annual_metric_symbol_year", "symbol", "statement_year"),
+        Index("ix_fundamental_annual_metric_symbol_asof", "symbol", "as_of_date"),
     )
 
 
@@ -596,12 +630,13 @@ class FundamentalSourceDocument(Base):
     """BVC source document discovered or processed during a fundamental import."""
     __tablename__ = "fundamental_source_document"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     import_id = Column(UUID(as_uuid=True), ForeignKey("fundamental_import.id", ondelete="CASCADE"), nullable=False)
     symbol = Column(String, nullable=True)
     company_name = Column(String, nullable=True)
     document_title = Column(Text, nullable=True)
     source_url = Column(Text, nullable=False)
+    document_kind = Column(String(20), nullable=True)
     publication_date = Column(Date, nullable=True)
     fiscal_year = Column(Integer, nullable=True)
     period_type = Column(String(20), nullable=True)
@@ -615,9 +650,10 @@ class FundamentalSourceDocument(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     __table_args__ = (
-        UniqueConstraint("import_id", "source_url", name="uq_fundamental_source_document_import_url"),
+        UniqueConstraint("import_id", "source_url", "symbol", name="uq_fundamental_source_document_import_url_symbol"),
         Index("ix_fundamental_source_document_import_symbol", "import_id", "symbol"),
         Index("ix_fundamental_source_document_period", "period_type", "fiscal_year"),
+        Index("ix_fundamental_source_document_kind", "document_kind"),
     )
 
 
@@ -625,7 +661,7 @@ class FundamentalPeriodMetric(Base):
     """Normalized fundamental metric for annual, semiannual, and quarterly periods."""
     __tablename__ = "fundamental_period_metric"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     import_id = Column(UUID(as_uuid=True), ForeignKey("fundamental_import.id", ondelete="CASCADE"), nullable=False)
     source_document_id = Column(BigInteger, ForeignKey("fundamental_source_document.id", ondelete="SET NULL"), nullable=True)
     symbol = Column(String, nullable=False)
@@ -661,7 +697,7 @@ class FundamentalLatestSnapshot(Base):
     """Latest per-symbol fundamentals plus scores and model eligibility."""
     __tablename__ = "fundamental_latest_snapshot"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     import_id = Column(UUID(as_uuid=True), ForeignKey("fundamental_import.id", ondelete="CASCADE"), nullable=False)
     symbol = Column(String, nullable=False)
     company_name = Column(String, nullable=False)
@@ -673,12 +709,17 @@ class FundamentalLatestSnapshot(Base):
     coverage_json = Column(JSONB, nullable=False, default=dict)
     model_eligibility_json = Column(JSONB, nullable=False, default=dict)
     source_json = Column(JSONB, nullable=False, default=dict)
+    as_of_date = Column(Date, nullable=True)
+    source_document_id = Column(BigInteger, ForeignKey("fundamental_source_document.id", ondelete="SET NULL"), nullable=True)
+    is_canonical = Column(Boolean, nullable=True, server_default="false")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     __table_args__ = (
         UniqueConstraint("import_id", "symbol", name="uq_fundamental_latest_snapshot_import_symbol"),
         Index("ix_fundamental_latest_snapshot_symbol", "symbol"),
+        Index("ix_fundamental_latest_snapshot_symbol_asof", "symbol", "as_of_date"),
+        Index("ix_fundamental_latest_snapshot_symbol_canonical", "symbol", "is_canonical"),
     )
 
 
@@ -752,11 +793,40 @@ class FundamentalAssumptionOverride(Base):
     )
 
 
+class FundamentalMetricOverride(Base):
+    """Append-only manual corrections for normalized annual metric values."""
+    __tablename__ = "fundamental_metric_override"
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    symbol = Column(Text, nullable=False)
+    statement_year = Column(Integer, nullable=False)
+    metric_name = Column(Text, nullable=False)
+    metric_value = Column(Float, nullable=True)
+    note = Column(Text, nullable=True)
+    created_by = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    is_current = Column(Boolean, nullable=False, default=True, server_default="true")
+
+    __table_args__ = (
+        Index(
+            "uq_fundamental_metric_override_current",
+            "symbol",
+            "statement_year",
+            "metric_name",
+            unique=True,
+            postgresql_where=text("is_current = true"),
+            sqlite_where=text("is_current = 1"),
+        ),
+        Index("ix_fundamental_metric_override_symbol_created", "symbol", "created_at"),
+        Index("ix_fundamental_metric_override_symbol_year", "symbol", "statement_year"),
+    )
+
+
 class FundamentalValuationResult(Base):
     """Persisted valuation model outputs for a symbol/scenario with model metadata."""
     __tablename__ = "fundamental_valuation_result"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     import_id = Column(UUID(as_uuid=True), ForeignKey("fundamental_import.id", ondelete="CASCADE"), nullable=False)
     symbol = Column(String, nullable=False)
     scenario = Column(String(32), nullable=False, server_default="base")
@@ -788,7 +858,7 @@ class FundamentalEnsembleResult(Base):
     """Confidence-weighted valuation range for a symbol/scenario."""
     __tablename__ = "fundamental_ensemble_result"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     import_id = Column(UUID(as_uuid=True), ForeignKey("fundamental_import.id", ondelete="CASCADE"), nullable=False)
     symbol = Column(String, nullable=False)
     scenario = Column(String(32), nullable=False, server_default="base")
@@ -810,11 +880,96 @@ class FundamentalEnsembleResult(Base):
     monte_carlo_low = Column(Float, nullable=True)
     monte_carlo_base = Column(Float, nullable=True)
     monte_carlo_high = Column(Float, nullable=True)
+    fair_value_mean = Column(Float, nullable=True)
+    model_dispersion_cv = Column(Float, nullable=True)
+    dispersion_factor = Column(Float, nullable=True)
     computed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     __table_args__ = (
         UniqueConstraint("import_id", "symbol", "scenario", name="uq_fundamental_ensemble_key"),
         Index("ix_fundamental_ensemble_symbol", "symbol"),
+    )
+
+
+class FundamentalProjection(Base):
+    """Persisted PIT projection lines and driver evidence for a symbol/scenario."""
+    __tablename__ = "fundamental_projection"
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    import_id = Column(UUID(as_uuid=True), ForeignKey("fundamental_import.id", ondelete="CASCADE"), nullable=False)
+    symbol = Column(String, nullable=False)
+    scenario = Column(String(32), nullable=False, server_default="base")
+    fiscal_year = Column(Integer, nullable=False)
+    periods_per_year = Column(Integer, nullable=False, server_default="1")
+    period_type = Column(String(20), nullable=False, server_default="annual")
+    period_index = Column(Integer, nullable=False, server_default="0")
+    period_label = Column(String(20), nullable=False, server_default="FY")
+    period_end_date = Column(Date, nullable=True)
+    line_item = Column(String(80), nullable=False)
+    projected_value = Column(Float, nullable=True)
+    evidence_json = Column(JSONB, nullable=False, default=dict)
+    as_of = Column(Date, nullable=True)
+    is_override = Column(Boolean, nullable=False, server_default="false")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("import_id", "symbol", "scenario", "fiscal_year", "period_type", "period_index", "line_item", name="uq_fundamental_projection_line"),
+        Index("ix_fundamental_projection_symbol_asof", "symbol", "as_of"),
+        Index("ix_fundamental_projection_symbol_scenario", "symbol", "scenario"),
+        Index("ix_fundamental_projection_symbol_period", "symbol", "scenario", "period_type", "fiscal_year", "period_index"),
+    )
+
+
+class FundamentalSignalBacktest(Base):
+    """Persisted PIT fundamental signal validation exhibit."""
+    __tablename__ = "fundamental_signal_backtest"
+
+    run_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    signal = Column(String(32), nullable=False)
+    universe = Column(String(32), nullable=False)
+    rebalance = Column(String(16), nullable=False, server_default="M")
+    as_of = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    status = Column(String(20), nullable=False, server_default="succeeded")
+    error_message = Column(Text, nullable=True)
+    quintile_returns_json = Column(JSONB, nullable=False, default=list)
+    ic_json = Column(JSONB, nullable=False, default=dict)
+    equity_curve_json = Column(JSONB, nullable=False, default=list)
+    turnover_json = Column(JSONB, nullable=False, default=list)
+    holdings_json = Column(JSONB, nullable=False, default=list)
+    params_json = Column(JSONB, nullable=False, default=dict)
+    warnings_json = Column(JSONB, nullable=False, default=list)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_fundamental_signal_backtest_created", "created_at"),
+        Index("ix_fundamental_signal_backtest_signal_universe", "signal", "universe"),
+    )
+
+
+class FundamentalBetaHistory(Base):
+    """Point-in-time equity beta estimates used by fundamental valuation."""
+    __tablename__ = "fundamental_beta_history"
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    symbol = Column(String, nullable=False)
+    as_of = Column(Date, nullable=False)
+    beta = Column(Float, nullable=False)
+    raw_beta = Column(Float, nullable=True)
+    method = Column(String(32), nullable=False)
+    r2 = Column(Float, nullable=True)
+    n_obs = Column(Integer, nullable=False, server_default="0")
+    zero_week_frac = Column(Float, nullable=True)
+    liquidity_flag = Column(Boolean, nullable=False, server_default="false")
+    proxy = Column(String, nullable=False, server_default="MASI")
+    frequency = Column(String(16), nullable=False, server_default="weekly")
+    window_years = Column(Float, nullable=False, server_default="2")
+    warnings_json = Column(JSONB, nullable=False, default=list)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("symbol", "as_of", "proxy", "frequency", "window_years", name="uq_fundamental_beta_history_key"),
+        Index("ix_fundamental_beta_history_symbol_asof", "symbol", "as_of"),
+        Index("ix_fundamental_beta_history_proxy_asof", "proxy", "as_of"),
     )
 
 
@@ -836,6 +991,36 @@ class FundamentalIntegrityReport(Base):
         UniqueConstraint("symbol", "statement_year", "import_id", name="uq_fundamental_integrity_symbol_year_import"),
         Index("ix_fundamental_integrity_symbol_year", "symbol", "statement_year"),
         CheckConstraint("overall_status in ('pass','derived','warn','fail','unavailable')", name="ck_fundamental_integrity_status"),
+    )
+
+
+class FundamentalDataVerification(Base):
+    """Auditable tie-out verdict for the raw annual data used by valuation."""
+    __tablename__ = "fundamental_data_verification"
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    import_id = Column(UUID(as_uuid=True), ForeignKey("fundamental_import.id", ondelete="CASCADE"), nullable=False)
+    symbol = Column(String, nullable=False)
+    statement_year = Column(Integer, nullable=False)
+    status = Column(String(24), nullable=False)
+    reason = Column(Text, nullable=True)
+    failed_checks_json = Column(JSONB, nullable=False, default=list)
+    warnings_json = Column(JSONB, nullable=False, default=list)
+    offending_metrics_json = Column(JSONB, nullable=False, default=dict)
+    recomputed_metrics_json = Column(JSONB, nullable=False, default=dict)
+    corrections_json = Column(JSONB, nullable=False, default=dict)
+    provenance_json = Column(JSONB, nullable=False, default=dict)
+    source_urls_json = Column(JSONB, nullable=False, default=list)
+    stockanalysis_json = Column(JSONB, nullable=False, default=dict)
+    tieout_report_json = Column(JSONB, nullable=False, default=dict)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("import_id", "symbol", "statement_year", name="uq_fundamental_data_verification_import_symbol_year"),
+        Index("ix_fundamental_data_verification_symbol_year", "symbol", "statement_year"),
+        Index("ix_fundamental_data_verification_status", "status"),
+        CheckConstraint("status in ('verified','data_unverified')", name="ck_fundamental_data_verification_status"),
     )
 
 
@@ -1869,6 +2054,40 @@ class DashboardSnapshot(Base):
 
     __table_args__ = (
         Index("ix_dashboard_snapshot_horizon_computed", "horizon", "computed_at"),
+    )
+
+
+class SignalBestEvidenceSnapshot(Base):
+    """Stored default signal-page artifact for one WFO best method."""
+
+    __tablename__ = "signal_best_evidence_snapshot"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    symbol = Column(String, nullable=False)
+    horizon = Column(String(16), nullable=False)
+    cooldown_bars = Column(Integer, nullable=False, server_default="0")
+    status = Column(String(20), nullable=False, server_default="pending")
+
+    source = Column(String(16), nullable=False, server_default="wfo")
+    variant = Column(String(64), nullable=False)
+    scope = Column(String(20), nullable=False, server_default="global")
+    scope_key = Column(String(64), nullable=False, server_default="global")
+    side_policy = Column(String(16), nullable=False, server_default="long_short")
+
+    evidence_payload_jsonb = Column(JSONB, nullable=True)
+    chart_payload_jsonb = Column(JSONB, nullable=True)
+    upstream_rev = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+
+    data_as_of = Column(Date, nullable=True)
+    market_data_as_of = Column(Date, nullable=True)
+    error_message = Column(Text, nullable=True)
+    computed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("symbol", "horizon", "cooldown_bars", name="uq_signal_best_evidence_snapshot_key"),
+        Index("ix_signal_best_evidence_snapshot_status", "status"),
+        Index("ix_signal_best_evidence_snapshot_symbol_horizon", "symbol", "horizon"),
     )
 
 

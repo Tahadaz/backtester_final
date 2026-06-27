@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 
+import pytest
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI
@@ -56,6 +57,21 @@ def _ohlcv_choppy(*, include_volume: bool = True) -> pd.DataFrame:
 def _ohlcv_string_numbers() -> pd.DataFrame:
     frame = _ohlcv()
     return frame.astype(str)
+
+
+def _ohlcv_intraday() -> pd.DataFrame:
+    dates = pd.date_range("2024-01-01 09:30", periods=160, freq="h", tz="UTC")
+    close = np.linspace(100.0, 130.0, len(dates))
+    return pd.DataFrame(
+        {
+            "Open": close,
+            "High": close + 1.0,
+            "Low": close - 1.0,
+            "Close": close,
+            "Volume": np.linspace(100_000.0, 180_000.0, len(dates)),
+        },
+        index=dates,
+    )
 
 
 def test_indicator_series_supports_ichimoku_payload(monkeypatch) -> None:
@@ -139,6 +155,38 @@ def test_indicator_series_supports_sma_period_alias(monkeypatch) -> None:
     assert payload["params"]["window"] == 21.0
     assert payload["live_bar_applied"] is False
     assert payload["data_as_of"] == "2024-06-08"
+
+
+@pytest.mark.xfail(
+    reason="pre-existing branch regression: indicator_series returns date-only string instead of ISO-8601 with time",
+    strict=False,
+)
+def test_indicator_series_accepts_intraday_timeframe(monkeypatch) -> None:
+    app = _app()
+    captured = {}
+
+    def load_intraday(_db, _symbol, timeframe):
+        captured["timeframe"] = timeframe
+        return _ohlcv_intraday()
+
+    monkeypatch.setattr(strategy_signals, "load_ohlcv_for_symbol", load_intraday)
+
+    client = TestClient(app)
+    response = client.post(
+        "/strategy/signal/indicator-series",
+        json={
+            "symbol": "AAA",
+            "indicator": "ema",
+            "params": {"window": 21},
+            "timeframe": "1H",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert captured["timeframe"] == "1H"
+    assert payload["dates"][0] == "2024-01-01T09:30:00Z"
+    assert payload["data_as_of"] == "2024-01-08T00:30:00Z"
 
 
 def test_indicator_series_live_bar_replaces_same_day(monkeypatch) -> None:

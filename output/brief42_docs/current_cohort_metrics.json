@@ -1,0 +1,1904 @@
+﻿{
+  "AFM": {
+    "year": 2025,
+    "import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+    "metrics": {
+      "Dividend_Per_Share": {
+        "value": 62.0,
+        "raw": "Dividend_Per_Share",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Dividend_Per_Share"
+      },
+      "EBITDA": {
+        "value": 147180000.0,
+        "raw": "EBITDA",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:EBITDA"
+      },
+      "Equity_Group": {
+        "value": 70370000.0,
+        "raw": "Capitaux_propres_part_du_groupe_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Capitaux_propres_part_du_groupe_2025"
+      },
+      "Minority_Interest": {
+        "value": 1130000.0,
+        "raw": "Interets_minoritaires_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Interets_minoritaires_2025"
+      },
+      "Net_Income": {
+        "value": 73451000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025|alias:Resultat_net->Net_Income"
+      },
+      "NetIncome": {
+        "value": 73451000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025|alias:Resultat_net->NetIncome"
+      },
+      "Resultat_net": {
+        "value": 73451000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025"
+      },
+      "Resultat_net_part_du_groupe": {
+        "value": 72656000.0,
+        "raw": "Resultat_net_part_du_groupe_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_part_du_groupe_2025"
+      },
+      "Revenue": {
+        "value": 316421000.0,
+        "raw": "Chiffre_daffaires_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Chiffre_daffaires_2025|alias:Chiffre_daffaires->Revenue"
+      },
+      "Shares_Outstanding": {
+        "value": 1000000.0,
+        "raw": "Shares_Outstanding",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Shares_Outstanding"
+      },
+      "Total_Assets": {
+        "value": 1183270000.0,
+        "raw": "Total_Actif_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Total_Actif_2025|alias:Total_Actif->Total_Assets"
+      },
+      "Total_Equity": {
+        "value": 71500000.0,
+        "raw": "Capitaux_propres_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Capitaux_propres_2025|alias:Capitaux_propres->Total_Equity"
+      },
+      "Total_Equity_Group": {
+        "value": 70370000.0,
+        "raw": "Capitaux_propres_part_du_groupe_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Capitaux_propres_part_du_groupe_2025"
+      },
+      "Total_Liabilities": {
+        "value": 1112000000.0,
+        "raw": "Total_Liabilities",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities"
+      },
+      "Total_Liabilities_And_Equity": {
+        "value": 1183000000.0,
+        "raw": "Total_Liabilities_And_Equity",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities_And_Equity"
+      }
+    }
+  },
+  "AGM": {
+    "year": 2025,
+    "import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+    "metrics": {
+      "Equity_Group": {
+        "value": 171898000.0,
+        "raw": "Capitaux_propres_part_du_groupe_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Capitaux_propres_part_du_groupe_2025"
+      },
+      "Net_Income": {
+        "value": 73801000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025"
+      },
+      "NetIncome": {
+        "value": 73801000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025"
+      },
+      "Resultat_net": {
+        "value": 73801000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025"
+      },
+      "Resultat_net_part_du_groupe": {
+        "value": 73801000.0,
+        "raw": "Resultat_net_part_du_groupe_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_part_du_groupe_2025"
+      },
+      "Revenue": {
+        "value": 188069000.0,
+        "raw": "Chiffre_daffaires_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Chiffre_daffaires_2025"
+      },
+      "Total_Assets": {
+        "value": 731386000.0,
+        "raw": "Total_Actif_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Total_Actif_2025"
+      },
+      "Total_Equity": {
+        "value": 171898000.0,
+        "raw": "Capitaux_propres_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Capitaux_propres_2025"
+      },
+      "Total_Equity_Group": {
+        "value": 171898000.0,
+        "raw": "Capitaux_propres_part_du_groupe_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Capitaux_propres_part_du_groupe_2025"
+      },
+      "Total_Liabilities_And_Equity": {
+        "value": 731386000.0,
+        "raw": "Total_Passif_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Total_Passif_2025"
+      }
+    }
+  },
+  "ATL": {
+    "year": 2025,
+    "import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+    "metrics": {
+      "Dividend_Per_Share": {
+        "value": 5.9,
+        "raw": "Dividend_Per_Share",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Dividend_Per_Share"
+      },
+      "EBITDA": {
+        "value": 579950000.0,
+        "raw": "EBITDA",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:EBITDA"
+      },
+      "Net_Income": {
+        "value": 466000000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025|alias:Resultat_net->Net_Income"
+      },
+      "NetIncome": {
+        "value": 466000000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025|alias:Resultat_net->NetIncome"
+      },
+      "Resultat_net": {
+        "value": 466000000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025"
+      },
+      "Resultat_net_part_du_groupe": {
+        "value": 468000000.0,
+        "raw": "Resultat_net_part_du_groupe_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_part_du_groupe_2025"
+      },
+      "Revenue": {
+        "value": 6050000000.0,
+        "raw": "Chiffre_daffaires_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Chiffre_daffaires_2025"
+      },
+      "Shares_Outstanding": {
+        "value": 60283595.0,
+        "raw": "Shares_Outstanding",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Shares_Outstanding"
+      },
+      "Total_Assets": {
+        "value": 21368000000.0,
+        "raw": "Total_Assets",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Assets"
+      },
+      "Total_Equity": {
+        "value": 2482000000.0,
+        "raw": "Total_Equity",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Equity"
+      },
+      "Total_Liabilities": {
+        "value": 18886000000.0,
+        "raw": "Total_Liabilities",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities"
+      },
+      "Total_Liabilities_And_Equity": {
+        "value": 21368000000.0,
+        "raw": "Total_Liabilities_And_Equity",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities_And_Equity"
+      }
+    }
+  },
+  "ATW": {
+    "year": 2025,
+    "import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+    "metrics": {
+      "Dividend_Per_Share": {
+        "value": 22.0,
+        "raw": "Dividend_Per_Share",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Dividend_Per_Share"
+      },
+      "Net_Income": {
+        "value": 10644852000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025|alias:Resultat_net->Net_Income"
+      },
+      "NetIncome": {
+        "value": 10644852000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025|alias:Resultat_net->NetIncome"
+      },
+      "Resultat_net": {
+        "value": 10644852000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025"
+      },
+      "Revenue": {
+        "value": 34921384000.0,
+        "raw": "Chiffre_daffaires_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Chiffre_daffaires_2025|alias:Chiffre_daffaires->Revenue"
+      },
+      "Shares_Outstanding": {
+        "value": 215140839.0,
+        "raw": "Shares_Outstanding",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Shares_Outstanding"
+      },
+      "Total_Assets": {
+        "value": 795461302000.0,
+        "raw": "Total_Actif_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Total_Actif_2025|alias:Total_Actif->Total_Assets"
+      },
+      "Total_Equity": {
+        "value": 69431269000.0,
+        "raw": "Capitaux_propres_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Capitaux_propres_2025|alias:Capitaux_propres->Total_Equity"
+      },
+      "Total_Liabilities": {
+        "value": 714971000000.0,
+        "raw": "Total_Liabilities",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities"
+      },
+      "Total_Liabilities_And_Equity": {
+        "value": 795461000000.0,
+        "raw": "Total_Liabilities_And_Equity",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities_And_Equity"
+      }
+    }
+  },
+  "BAL": {
+    "year": 2025,
+    "import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+    "metrics": {
+      "EBITDA": {
+        "value": 21320000.0,
+        "raw": "EBITDA",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:EBITDA"
+      },
+      "Equity_Group": {
+        "value": 132950333.0,
+        "raw": "Capitaux_propres_part_du_groupe_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Capitaux_propres_part_du_groupe_2025"
+      },
+      "Net_Income": {
+        "value": 13649664.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025|alias:Resultat_net->Net_Income"
+      },
+      "NetIncome": {
+        "value": 13649664.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025|alias:Resultat_net->NetIncome"
+      },
+      "Resultat_net": {
+        "value": 13649664.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025"
+      },
+      "Resultat_net_part_du_groupe": {
+        "value": 13649664.0,
+        "raw": "Resultat_net_part_du_groupe_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_part_du_groupe_2025"
+      },
+      "Revenue": {
+        "value": 63219911.0,
+        "raw": "Chiffre_daffaires_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Chiffre_daffaires_2025|alias:Chiffre_daffaires->Revenue"
+      },
+      "Shares_Outstanding": {
+        "value": 1744000.0,
+        "raw": "Shares_Outstanding",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Shares_Outstanding"
+      },
+      "Total_Assets": {
+        "value": 177538418.0,
+        "raw": "Total_Actif_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Total_Actif_2025|alias:Total_Actif->Total_Assets"
+      },
+      "Total_Equity": {
+        "value": 132950333.0,
+        "raw": "Capitaux_propres_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Capitaux_propres_2025|alias:Capitaux_propres->Total_Equity"
+      },
+      "Total_Equity_Group": {
+        "value": 132950333.0,
+        "raw": "Capitaux_propres_part_du_groupe_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Capitaux_propres_part_du_groupe_2025"
+      },
+      "Total_Liabilities": {
+        "value": 44590000.0,
+        "raw": "Total_Liabilities",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities"
+      },
+      "Total_Liabilities_And_Equity": {
+        "value": 177540000.0,
+        "raw": "Total_Liabilities_And_Equity",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities_And_Equity"
+      }
+    }
+  },
+  "BCI": {
+    "year": 2025,
+    "import_id": "9aef3b72-35d1-4298-ac1a-ab292924298f",
+    "metrics": {
+      "Net_Income": {
+        "value": 434830000.0,
+        "raw": "Net_Income",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Net_Income"
+      },
+      "NetIncome": {
+        "value": 434830000.0,
+        "raw": "NetIncome",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:NetIncome"
+      },
+      "Resultat_net": {
+        "value": 434830000.0,
+        "raw": "Resultat_net",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Resultat_net"
+      },
+      "Revenue": {
+        "value": 3032000000.0,
+        "raw": "Revenue",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Revenue"
+      },
+      "Shares_Outstanding": {
+        "value": 13279286.0,
+        "raw": "Shares_Outstanding",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Shares_Outstanding"
+      },
+      "Total_Assets": {
+        "value": 78577000000.0,
+        "raw": "Total_Assets",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Assets"
+      },
+      "Total_Equity": {
+        "value": 7584000000.0,
+        "raw": "Total_Equity",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Equity"
+      },
+      "Total_Liabilities": {
+        "value": 70993000000.0,
+        "raw": "Total_Liabilities",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities"
+      },
+      "Total_Liabilities_And_Equity": {
+        "value": 78577000000.0,
+        "raw": "Total_Liabilities_And_Equity",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities_And_Equity"
+      }
+    }
+  },
+  "BCP": {
+    "year": 2025,
+    "import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+    "metrics": {
+      "Equity_Group": {
+        "value": 41452033000.0,
+        "raw": "Capitaux propres part Groupe",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Net_Income": {
+        "value": 5621085000.0,
+        "raw": "Brief 38 derived Net_Income",
+        "sheet": "brief38_curated",
+        "field": "derived"
+      },
+      "NetIncome": {
+        "value": 5621085000.0,
+        "raw": "Brief 38 derived NetIncome",
+        "sheet": "brief38_curated",
+        "field": "derived"
+      },
+      "Resultat_net": {
+        "value": 5621085000.0,
+        "raw": "Résultat net",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Resultat_net_part_du_groupe": {
+        "value": 4503361000.0,
+        "raw": "RÉSULTAT NET-PART DU GROUPE",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Revenue": {
+        "value": 21623000000.0,
+        "raw": "Revenue",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Revenue"
+      },
+      "Shares_Outstanding": {
+        "value": 203312473.0,
+        "raw": "Shares_Outstanding",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Shares_Outstanding"
+      },
+      "Total_Assets": {
+        "value": 571244210000.0,
+        "raw": "TOTAL ACTIF IFRS",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Total_Equity": {
+        "value": 57956029000.0,
+        "raw": "Capitaux propres",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Total_Equity_Group": {
+        "value": 41452033000.0,
+        "raw": "Brief 38 derived Total_Equity_Group",
+        "sheet": "brief38_curated",
+        "field": "derived"
+      },
+      "Total_Liabilities": {
+        "value": 513288181000.0,
+        "raw": "Brief 38 derived Total_Liabilities",
+        "sheet": "brief38_curated",
+        "field": "derived"
+      },
+      "Total_Liabilities_And_Equity": {
+        "value": 571244210000.0,
+        "raw": "TOTAL PASSIF IFRS",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      }
+    }
+  },
+  "BOA": {
+    "year": 2025,
+    "import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+    "metrics": {
+      "Net_Income": {
+        "value": 3814000000.0,
+        "raw": "Net_Income",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Net_Income"
+      },
+      "NetIncome": {
+        "value": 3814000000.0,
+        "raw": "NetIncome",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:NetIncome"
+      },
+      "Resultat_net": {
+        "value": 3814000000.0,
+        "raw": "Resultat_net",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Resultat_net"
+      },
+      "Revenue": {
+        "value": 17051000000.0,
+        "raw": "Revenue",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Revenue"
+      },
+      "Shares_Outstanding": {
+        "value": 220281881.0,
+        "raw": "Shares_Outstanding",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Shares_Outstanding"
+      },
+      "Total_Assets": {
+        "value": 437678000000.0,
+        "raw": "Total_Assets",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Assets"
+      },
+      "Total_Equity": {
+        "value": 40426000000.0,
+        "raw": "Total_Equity",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Equity"
+      },
+      "Total_Liabilities": {
+        "value": 397251000000.0,
+        "raw": "Total_Liabilities",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities"
+      },
+      "Total_Liabilities_And_Equity": {
+        "value": 437678000000.0,
+        "raw": "Total_Liabilities_And_Equity",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities_And_Equity"
+      }
+    }
+  },
+  "CDM": {
+    "year": 2025,
+    "import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+    "metrics": {
+      "Dividend_Per_Share": {
+        "value": 48.0,
+        "raw": "Dividend_Per_Share",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Dividend_Per_Share"
+      },
+      "Equity_Group": {
+        "value": 8203010000.0,
+        "raw": "Capitaux propres / Part du groupe",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Net_Income": {
+        "value": 863551000.0,
+        "raw": "Brief 38 derived Net_Income",
+        "sheet": "brief38_curated",
+        "field": "derived"
+      },
+      "NetIncome": {
+        "value": 863551000.0,
+        "raw": "Brief 38 derived NetIncome",
+        "sheet": "brief38_curated",
+        "field": "derived"
+      },
+      "Resultat_net": {
+        "value": 863551000.0,
+        "raw": "Résultat net de l'exercice",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Resultat_net_part_du_groupe": {
+        "value": 863551000.0,
+        "raw": "Part du groupe",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Revenue": {
+        "value": 3568401000.0,
+        "raw": "Chiffre_daffaires_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Chiffre_daffaires_2025|alias:Chiffre_daffaires->Revenue"
+      },
+      "Shares_Outstanding": {
+        "value": 10881214.0,
+        "raw": "Shares_Outstanding",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Shares_Outstanding"
+      },
+      "Total_Assets": {
+        "value": 83728097000.0,
+        "raw": "TOTAL",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Total_Equity": {
+        "value": 8203010000.0,
+        "raw": "Capitaux propres",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Total_Equity_Group": {
+        "value": 8203010000.0,
+        "raw": "Brief 38 derived Total_Equity_Group",
+        "sheet": "brief38_curated",
+        "field": "derived"
+      },
+      "Total_Liabilities": {
+        "value": 75525087000.0,
+        "raw": "Brief 38 derived Total_Liabilities",
+        "sheet": "brief38_curated",
+        "field": "derived"
+      },
+      "Total_Liabilities_And_Equity": {
+        "value": 83728097000.0,
+        "raw": "TOTAL",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      }
+    }
+  },
+  "CFG": {
+    "year": 2025,
+    "import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+    "metrics": {
+      "Dividend_Per_Share": {
+        "value": 4.0,
+        "raw": "Dividend_Per_Share",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Dividend_Per_Share"
+      },
+      "Net_Income": {
+        "value": 370445000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025|alias:Resultat_net->Net_Income"
+      },
+      "NetIncome": {
+        "value": 370445000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025|alias:Resultat_net->NetIncome"
+      },
+      "Resultat_net": {
+        "value": 370445000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025"
+      },
+      "Revenue": {
+        "value": 1247229000.0,
+        "raw": "Chiffre_daffaires_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Chiffre_daffaires_2025|alias:Chiffre_daffaires->Revenue"
+      },
+      "Shares_Outstanding": {
+        "value": 35007960.0,
+        "raw": "Shares_Outstanding",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Shares_Outstanding"
+      },
+      "Total_Assets": {
+        "value": 30415567000.0,
+        "raw": "Total_Actif_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Total_Actif_2025|alias:Total_Actif->Total_Assets"
+      },
+      "Total_Equity": {
+        "value": 2065577000.0,
+        "raw": "Capitaux_propres_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Capitaux_propres_2025|alias:Capitaux_propres->Total_Equity"
+      },
+      "Total_Liabilities": {
+        "value": 28328000000.0,
+        "raw": "Total_Liabilities",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities"
+      },
+      "Total_Liabilities_And_Equity": {
+        "value": 30416000000.0,
+        "raw": "Total_Liabilities_And_Equity",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities_And_Equity"
+      }
+    }
+  },
+  "CIH": {
+    "year": 2025,
+    "import_id": "9aef3b72-35d1-4298-ac1a-ab292924298f",
+    "metrics": {
+      "Dividend_Per_Share": {
+        "value": 14.0,
+        "raw": "Dividend_Per_Share",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Dividend_Per_Share"
+      },
+      "Net_Income": {
+        "value": 1089000000.0,
+        "raw": "Net_Income",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Net_Income"
+      },
+      "NetIncome": {
+        "value": 1089000000.0,
+        "raw": "NetIncome",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:NetIncome"
+      },
+      "Resultat_net": {
+        "value": 1089000000.0,
+        "raw": "Resultat_net",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Resultat_net"
+      },
+      "Revenue": {
+        "value": 4190000000.0,
+        "raw": "Revenue",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Revenue"
+      },
+      "Shares_Outstanding": {
+        "value": 35605624.0,
+        "raw": "Shares_Outstanding",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Shares_Outstanding"
+      },
+      "Total_Assets": {
+        "value": 163688000000.0,
+        "raw": "Total_Assets",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Assets"
+      },
+      "Total_Equity": {
+        "value": 10731000000.0,
+        "raw": "Total_Equity",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Equity"
+      },
+      "Total_Liabilities": {
+        "value": 152957000000.0,
+        "raw": "Total_Liabilities",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities"
+      },
+      "Total_Liabilities_And_Equity": {
+        "value": 163688000000.0,
+        "raw": "Total_Liabilities_And_Equity",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities_And_Equity"
+      }
+    }
+  },
+  "CMA": {
+    "year": 2025,
+    "import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+    "metrics": {
+      "Dividend_Per_Share": {
+        "value": 65.0,
+        "raw": "Dividend_Per_Share",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Dividend_Per_Share"
+      },
+      "EBITDA": {
+        "value": 4184000000.0,
+        "raw": "EBITDA",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:EBITDA"
+      },
+      "Net_Income": {
+        "value": 1402000000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025|alias:Resultat_net->Net_Income"
+      },
+      "NetIncome": {
+        "value": 1402000000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025|alias:Resultat_net->NetIncome"
+      },
+      "Resultat_net": {
+        "value": 1402000000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025"
+      },
+      "Revenue": {
+        "value": 5349000000.0,
+        "raw": "Chiffre_daffaires_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Chiffre_daffaires_2025|alias:Chiffre_daffaires->Revenue"
+      },
+      "Shares_Outstanding": {
+        "value": 14436004.0,
+        "raw": "Shares_Outstanding",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Shares_Outstanding"
+      },
+      "Total_Assets": {
+        "value": 8892000000.0,
+        "raw": "Total_Assets",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Assets"
+      },
+      "Total_Equity": {
+        "value": 4072000000.0,
+        "raw": "Total_Equity",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Equity"
+      },
+      "Total_Liabilities": {
+        "value": 4820000000.0,
+        "raw": "Total_Liabilities",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities"
+      },
+      "Total_Liabilities_And_Equity": {
+        "value": 8892000000.0,
+        "raw": "Total_Liabilities_And_Equity",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities_And_Equity"
+      }
+    }
+  },
+  "CMT": {
+    "year": 2025,
+    "import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+    "metrics": {
+      "EBITDA": {
+        "value": 472880000.0,
+        "raw": "EBITDA",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:EBITDA"
+      },
+      "Equity_Group": {
+        "value": 901142608.0,
+        "raw": "Capitaux propres groupe / Total capitaux propres part groupe - Consolidé",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Net_Income": {
+        "value": 196458983.0,
+        "raw": "Brief 38 derived Net_Income",
+        "sheet": "brief38_curated",
+        "field": "derived"
+      },
+      "NetIncome": {
+        "value": 196458983.0,
+        "raw": "Brief 38 derived NetIncome",
+        "sheet": "brief38_curated",
+        "field": "derived"
+      },
+      "Resultat_net": {
+        "value": 196458983.0,
+        "raw": "Total des capitaux propres",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Resultat_net_part_du_groupe": {
+        "value": 196465103.0,
+        "raw": "Résultat net (Part du groupe)",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Revenue": {
+        "value": 690451532.0,
+        "raw": "Chiffre_daffaires_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Chiffre_daffaires_2025|alias:Chiffre_daffaires->Revenue"
+      },
+      "Shares_Outstanding": {
+        "value": 1681233.0,
+        "raw": "Shares_Outstanding",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Shares_Outstanding"
+      },
+      "Total_Assets": {
+        "value": 1921575223.0,
+        "raw": "TOTAL ACTIF",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Total_Equity": {
+        "value": 901026895.0,
+        "raw": "Total des capitaux propres",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Total_Equity_Group": {
+        "value": 901026895.0,
+        "raw": "Brief 38 derived Total_Equity_Group",
+        "sheet": "brief38_curated",
+        "field": "derived"
+      },
+      "Total_Liabilities": {
+        "value": 1020548328.0,
+        "raw": "Brief 38 derived Total_Liabilities",
+        "sheet": "brief38_curated",
+        "field": "derived"
+      },
+      "Total_Liabilities_And_Equity": {
+        "value": 1921575223.0,
+        "raw": "TOTAL PASSIF",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      }
+    }
+  },
+  "COL": {
+    "year": 2025,
+    "import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+    "metrics": {
+      "EBITDA": {
+        "value": 1645103000.0,
+        "raw": "Excedent_brut_dexploitation_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Excedent_brut_dexploitation_2025"
+      },
+      "Equity_Group": {
+        "value": 359119876.03,
+        "raw": "Total des capitaux propres (A)",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Minority_Interest": {
+        "value": 664827000.0,
+        "raw": "Interets_minoritaires_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Interets_minoritaires_2025"
+      },
+      "Net_Income": {
+        "value": 65479341.98,
+        "raw": "Brief 38 derived Net_Income",
+        "sheet": "brief38_curated",
+        "field": "derived"
+      },
+      "NetIncome": {
+        "value": 65479341.98,
+        "raw": "Brief 38 derived NetIncome",
+        "sheet": "brief38_curated",
+        "field": "derived"
+      },
+      "Resultat_net": {
+        "value": 65479341.98,
+        "raw": "RESULTAT NET DE L'EXERCICE",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Resultat_net_part_du_groupe": {
+        "value": 65479341.98,
+        "raw": "RESULTAT NET DE L'EXERCICE",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Revenue": {
+        "value": 611402242.34,
+        "raw": "Chiffre d'affaires hors taxes",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Shares_Outstanding": {
+        "value": 16117611.0,
+        "raw": "Shares_Outstanding",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Shares_Outstanding"
+      },
+      "Total_Assets": {
+        "value": 583425099.53,
+        "raw": "TOTAL GENERAL I+II+III",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Total_Equity": {
+        "value": 359119876.03,
+        "raw": "Total des capitaux propres (A)",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Total_Equity_Group": {
+        "value": 359119876.03,
+        "raw": "Brief 38 derived Total_Equity_Group",
+        "sheet": "brief38_curated",
+        "field": "derived"
+      },
+      "Total_Liabilities": {
+        "value": 224305223.5,
+        "raw": "Brief 38 derived Total_Liabilities",
+        "sheet": "brief38_curated",
+        "field": "derived"
+      },
+      "Total_Liabilities_And_Equity": {
+        "value": 583425099.53,
+        "raw": "TOTAL GENERAL I+II+III",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      }
+    }
+  },
+  "DHO": {
+    "year": 2025,
+    "import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+    "metrics": {
+      "Dividend_Per_Share": {
+        "value": 2.0,
+        "raw": "Dividend_Per_Share",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Dividend_Per_Share"
+      },
+      "EBITDA": {
+        "value": 561620000.0,
+        "raw": "EBITDA",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:EBITDA"
+      },
+      "Net_Income": {
+        "value": 307191429.85,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025|alias:Resultat_net->Net_Income"
+      },
+      "NetIncome": {
+        "value": 307191429.85,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025|alias:Resultat_net->NetIncome"
+      },
+      "Resultat_net": {
+        "value": 307191429.85,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025"
+      },
+      "Revenue": {
+        "value": 3049817757.71,
+        "raw": "Chiffre_daffaires_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Chiffre_daffaires_2025|alias:Chiffre_daffaires->Revenue"
+      },
+      "Shares_Outstanding": {
+        "value": 87600000.0,
+        "raw": "Shares_Outstanding",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Shares_Outstanding"
+      },
+      "Total_Assets": {
+        "value": 4471799793.65,
+        "raw": "Total_Actif_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Total_Actif_2025|alias:Total_Actif->Total_Assets"
+      },
+      "Total_Equity": {
+        "value": 2618746244.31,
+        "raw": "Capitaux_propres_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Capitaux_propres_2025|alias:Capitaux_propres->Total_Equity"
+      },
+      "Total_Liabilities": {
+        "value": 1719000000.0,
+        "raw": "Total_Liabilities",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities"
+      },
+      "Total_Liabilities_And_Equity": {
+        "value": 4472000000.0,
+        "raw": "Total_Liabilities_And_Equity",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities_And_Equity"
+      }
+    }
+  },
+  "HPS": {
+    "year": 2025,
+    "import_id": "9aef3b72-35d1-4298-ac1a-ab292924298f",
+    "metrics": {
+      "Dividend_Per_Share": {
+        "value": 8.0,
+        "raw": "Dividend_Per_Share",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Dividend_Per_Share"
+      },
+      "EBITDA": {
+        "value": 254520000.0,
+        "raw": "EBITDA",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:EBITDA"
+      },
+      "Net_Income": {
+        "value": 105780000.0,
+        "raw": "Net_Income",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Net_Income"
+      },
+      "NetIncome": {
+        "value": 105780000.0,
+        "raw": "NetIncome",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:NetIncome"
+      },
+      "Resultat_net": {
+        "value": 105780000.0,
+        "raw": "Resultat_net",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Resultat_net"
+      },
+      "Revenue": {
+        "value": 1521000000.0,
+        "raw": "Revenue",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Revenue"
+      },
+      "Shares_Outstanding": {
+        "value": 7406190.0,
+        "raw": "Shares_Outstanding",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Shares_Outstanding"
+      },
+      "Total_Assets": {
+        "value": 2135000000.0,
+        "raw": "Total_Assets",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Assets"
+      },
+      "Total_Equity": {
+        "value": 816640000.0,
+        "raw": "Total_Equity",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Equity"
+      },
+      "Total_Liabilities": {
+        "value": 1319000000.0,
+        "raw": "Total_Liabilities",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities"
+      },
+      "Total_Liabilities_And_Equity": {
+        "value": 2135000000.0,
+        "raw": "Total_Liabilities_And_Equity",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities_And_Equity"
+      }
+    }
+  },
+  "LHM": {
+    "year": 2025,
+    "import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+    "metrics": {
+      "Dividend_Per_Share": {
+        "value": 96.0,
+        "raw": "Dividend_Per_Share",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Dividend_Per_Share"
+      },
+      "EBITDA": {
+        "value": 4509000000.0,
+        "raw": "EBITDA",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:EBITDA"
+      },
+      "Equity_Group": {
+        "value": 12156299000.0,
+        "raw": "Capitaux propres attribuables aux actionnaires ordinaires de la société mère",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Net_Income": {
+        "value": 2165873000.0,
+        "raw": "Brief 38 derived Net_Income",
+        "sheet": "brief38_curated",
+        "field": "derived"
+      },
+      "NetIncome": {
+        "value": 2165873000.0,
+        "raw": "Brief 38 derived NetIncome",
+        "sheet": "brief38_curated",
+        "field": "derived"
+      },
+      "Resultat_net": {
+        "value": 2165873000.0,
+        "raw": "Résultat net des activités poursuivies",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Resultat_net_part_du_groupe": {
+        "value": 2165873000.0,
+        "raw": "Résultat net - Part du Groupe",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Revenue": {
+        "value": 8936255000.0,
+        "raw": "Chiffre_daffaires_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Chiffre_daffaires_2025|alias:Chiffre_daffaires->Revenue"
+      },
+      "Shares_Outstanding": {
+        "value": 23431240.0,
+        "raw": "Shares_Outstanding",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Shares_Outstanding"
+      },
+      "Total_Assets": {
+        "value": 19994546000.0,
+        "raw": "TOTAL ACTIF",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Total_Equity": {
+        "value": 12156299000.0,
+        "raw": "Capitaux propres de l'ensemble consolidé",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Total_Equity_Group": {
+        "value": 12156299000.0,
+        "raw": "Brief 38 derived Total_Equity_Group",
+        "sheet": "brief38_curated",
+        "field": "derived"
+      },
+      "Total_Liabilities": {
+        "value": 7838247000.0,
+        "raw": "Brief 38 derived Total_Liabilities",
+        "sheet": "brief38_curated",
+        "field": "derived"
+      },
+      "Total_Liabilities_And_Equity": {
+        "value": 19994546000.0,
+        "raw": "Total Passif",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      }
+    }
+  },
+  "MUT": {
+    "year": 2025,
+    "import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+    "metrics": {
+      "Dividend_Per_Share": {
+        "value": 10.5,
+        "raw": "Dividend_Per_Share",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Dividend_Per_Share"
+      },
+      "EBITDA": {
+        "value": 302770000.0,
+        "raw": "EBITDA",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:EBITDA"
+      },
+      "Net_Income": {
+        "value": 127000000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025|alias:Resultat_net->Net_Income"
+      },
+      "NetIncome": {
+        "value": 127000000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025|alias:Resultat_net->NetIncome"
+      },
+      "Resultat_net": {
+        "value": 127000000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025"
+      },
+      "Revenue": {
+        "value": 2022000000.0,
+        "raw": "Chiffre_daffaires_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Chiffre_daffaires_2025|alias:Chiffre_daffaires->Revenue"
+      },
+      "Shares_Outstanding": {
+        "value": 9246737.0,
+        "raw": "Shares_Outstanding",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Shares_Outstanding"
+      },
+      "Total_Assets": {
+        "value": 3383000000.0,
+        "raw": "Total_Assets",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Assets"
+      },
+      "Total_Equity": {
+        "value": 1554000000.0,
+        "raw": "Total_Equity",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Equity"
+      },
+      "Total_Liabilities": {
+        "value": 1829000000.0,
+        "raw": "Total_Liabilities",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities"
+      },
+      "Total_Liabilities_And_Equity": {
+        "value": 3383000000.0,
+        "raw": "Total_Liabilities_And_Equity",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities_And_Equity"
+      }
+    }
+  },
+  "OUL": {
+    "year": 2025,
+    "import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+    "metrics": {
+      "Dividend_Per_Share": {
+        "value": 40.15,
+        "raw": "Dividend_Per_Share",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Dividend_Per_Share"
+      },
+      "EBITDA": {
+        "value": 580360000.0,
+        "raw": "EBITDA",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:EBITDA"
+      },
+      "Net_Income": {
+        "value": 112330000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025|alias:Resultat_net->Net_Income"
+      },
+      "NetIncome": {
+        "value": 112330000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025|alias:Resultat_net->NetIncome"
+      },
+      "Resultat_net": {
+        "value": 112330000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025"
+      },
+      "Revenue": {
+        "value": 3251072000.0,
+        "raw": "Chiffre_daffaires_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Chiffre_daffaires_2025|alias:Chiffre_daffaires->Revenue"
+      },
+      "Shares_Outstanding": {
+        "value": 1980000.0,
+        "raw": "Shares_Outstanding",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Shares_Outstanding"
+      },
+      "Total_Assets": {
+        "value": 3919529000.0,
+        "raw": "Total_Actif_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Total_Actif_2025|alias:Total_Actif->Total_Assets"
+      },
+      "Total_Equity": {
+        "value": 788101000.0,
+        "raw": "Capitaux_propres_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Capitaux_propres_2025|alias:Capitaux_propres->Total_Equity"
+      },
+      "Total_Liabilities": {
+        "value": 3110000000.0,
+        "raw": "Total_Liabilities",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities"
+      },
+      "Total_Liabilities_And_Equity": {
+        "value": 3920000000.0,
+        "raw": "Total_Liabilities_And_Equity",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities_And_Equity"
+      }
+    }
+  },
+  "SAH": {
+    "year": 2025,
+    "import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+    "metrics": {
+      "Dividend_Per_Share": {
+        "value": 98.0,
+        "raw": "Dividend_Per_Share",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Dividend_Per_Share"
+      },
+      "EBITDA": {
+        "value": 1565000000.0,
+        "raw": "EBITDA",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:EBITDA"
+      },
+      "Equity_Group": {
+        "value": 6062749000.0,
+        "raw": "CAPITAUX PROPRES - PART DU GROUPE",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Net_Income": {
+        "value": 676524000.0,
+        "raw": "Brief 38 derived Net_Income",
+        "sheet": "brief38_curated",
+        "field": "derived"
+      },
+      "NetIncome": {
+        "value": 676524000.0,
+        "raw": "Brief 38 derived NetIncome",
+        "sheet": "brief38_curated",
+        "field": "derived"
+      },
+      "Resultat_net": {
+        "value": 676524000.0,
+        "raw": "Résultat net-part du groupe",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Resultat_net_part_du_groupe": {
+        "value": 676523000.0,
+        "raw": "RÉSULTAT NET (PART DU GROUPE)",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Revenue": {
+        "value": 6396362000.0,
+        "raw": "Chiffre_daffaires_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Chiffre_daffaires_2025"
+      },
+      "Shares_Outstanding": {
+        "value": 4116874.0,
+        "raw": "Shares_Outstanding",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Shares_Outstanding"
+      },
+      "Total_Assets": {
+        "value": 24385015000.0,
+        "raw": "TOTAL ACTIF",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Total_Equity": {
+        "value": 6062792000.0,
+        "raw": "CAPITAUX PROPRES",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      },
+      "Total_Equity_Group": {
+        "value": 6062792000.0,
+        "raw": "Brief 38 derived Total_Equity_Group",
+        "sheet": "brief38_curated",
+        "field": "derived"
+      },
+      "Total_Liabilities": {
+        "value": 18322223000.0,
+        "raw": "Brief 38 derived Total_Liabilities",
+        "sheet": "brief38_curated",
+        "field": "derived"
+      },
+      "Total_Liabilities_And_Equity": {
+        "value": 24385015000.0,
+        "raw": "TOTAL PASSIF",
+        "sheet": "brief38_curated",
+        "field": "official_filing"
+      }
+    }
+  },
+  "SID": {
+    "year": 2025,
+    "import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+    "metrics": {
+      "Dividend_Per_Share": {
+        "value": 52.0,
+        "raw": "Dividend_Per_Share",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Dividend_Per_Share"
+      },
+      "EBITDA": {
+        "value": 577800000.0,
+        "raw": "EBITDA",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:EBITDA"
+      },
+      "Net_Income": {
+        "value": 272000000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025|alias:Resultat_net->Net_Income"
+      },
+      "NetIncome": {
+        "value": 272000000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025|alias:Resultat_net->NetIncome"
+      },
+      "Resultat_net": {
+        "value": 272000000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025"
+      },
+      "Resultat_net_part_du_groupe": {
+        "value": 272000000.0,
+        "raw": "Resultat_net_part_du_groupe_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_part_du_groupe_2025"
+      },
+      "Revenue": {
+        "value": 6386000000.0,
+        "raw": "Chiffre_daffaires_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Chiffre_daffaires_2025|alias:Chiffre_daffaires->Revenue"
+      },
+      "Shares_Outstanding": {
+        "value": 3900000.0,
+        "raw": "Shares_Outstanding",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Shares_Outstanding"
+      },
+      "Total_Assets": {
+        "value": 5427000000.0,
+        "raw": "Total_Assets",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Assets"
+      },
+      "Total_Equity": {
+        "value": 1993000000.0,
+        "raw": "Total_Equity",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Equity"
+      },
+      "Total_Liabilities": {
+        "value": 3434000000.0,
+        "raw": "Total_Liabilities",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities"
+      },
+      "Total_Liabilities_And_Equity": {
+        "value": 5427000000.0,
+        "raw": "Total_Liabilities_And_Equity",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities_And_Equity"
+      }
+    }
+  },
+  "TGC": {
+    "year": 2025,
+    "import_id": "9aef3b72-35d1-4298-ac1a-ab292924298f",
+    "metrics": {
+      "Dividend_Per_Share": {
+        "value": 15.0,
+        "raw": "Dividend_Per_Share",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Dividend_Per_Share"
+      },
+      "EBITDA": {
+        "value": 2520000000.0,
+        "raw": "EBITDA",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:EBITDA"
+      },
+      "Net_Income": {
+        "value": 952050000.0,
+        "raw": "Net_Income",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Net_Income"
+      },
+      "NetIncome": {
+        "value": 952050000.0,
+        "raw": "NetIncome",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:NetIncome"
+      },
+      "Resultat_net": {
+        "value": 952050000.0,
+        "raw": "Resultat_net",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Resultat_net"
+      },
+      "Revenue": {
+        "value": 11931000000.0,
+        "raw": "Revenue",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Revenue"
+      },
+      "Shares_Outstanding": {
+        "value": 34674332.0,
+        "raw": "Shares_Outstanding",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Shares_Outstanding"
+      },
+      "Total_Assets": {
+        "value": 15670000000.0,
+        "raw": "Total_Assets",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Assets"
+      },
+      "Total_Equity": {
+        "value": 4884000000.0,
+        "raw": "Total_Equity",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Equity"
+      },
+      "Total_Liabilities": {
+        "value": 10787000000.0,
+        "raw": "Total_Liabilities",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities"
+      },
+      "Total_Liabilities_And_Equity": {
+        "value": 15670000000.0,
+        "raw": "Total_Liabilities_And_Equity",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities_And_Equity"
+      }
+    }
+  },
+  "VCN": {
+    "year": 2025,
+    "import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+    "metrics": {
+      "Dividend_Per_Share": {
+        "value": 8.44,
+        "raw": "Dividend_Per_Share",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Dividend_Per_Share"
+      },
+      "EBITDA": {
+        "value": 237970000.0,
+        "raw": "EBITDA",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:EBITDA"
+      },
+      "Net_Income": {
+        "value": 144000000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025|alias:Resultat_net->Net_Income"
+      },
+      "NetIncome": {
+        "value": 144000000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025|alias:Resultat_net->NetIncome"
+      },
+      "Resultat_net": {
+        "value": 144000000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025"
+      },
+      "Revenue": {
+        "value": 1084000000.0,
+        "raw": "Chiffre_daffaires_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Chiffre_daffaires_2025|alias:Chiffre_daffaires->Revenue"
+      },
+      "Shares_Outstanding": {
+        "value": 10258850.0,
+        "raw": "Shares_Outstanding",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Shares_Outstanding"
+      },
+      "Total_Assets": {
+        "value": 2007000000.0,
+        "raw": "Total_Assets",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Assets"
+      },
+      "Total_Equity": {
+        "value": 1250000000.0,
+        "raw": "Total_Equity",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Equity"
+      },
+      "Total_Liabilities": {
+        "value": 757570000.0,
+        "raw": "Total_Liabilities",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities"
+      },
+      "Total_Liabilities_And_Equity": {
+        "value": 2007000000.0,
+        "raw": "Total_Liabilities_And_Equity",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities_And_Equity"
+      }
+    }
+  },
+  "WAA": {
+    "year": 2025,
+    "import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+    "metrics": {
+      "Dividend_Per_Share": {
+        "value": 150.0,
+        "raw": "Dividend_Per_Share",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Dividend_Per_Share"
+      },
+      "EBITDA": {
+        "value": 1514000000.0,
+        "raw": "EBITDA",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:EBITDA"
+      },
+      "Equity_Group": {
+        "value": 14960337000.0,
+        "raw": "Capitaux_propres_part_du_groupe_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Capitaux_propres_part_du_groupe_2025"
+      },
+      "Minority_Interest": {
+        "value": 270729000.0,
+        "raw": "Interets_minoritaires_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Interets_minoritaires_2025"
+      },
+      "Net_Income": {
+        "value": 1100404000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025|alias:Resultat_net->Net_Income"
+      },
+      "NetIncome": {
+        "value": 1100404000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025|alias:Resultat_net->NetIncome"
+      },
+      "Resultat_net": {
+        "value": 1100404000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025"
+      },
+      "Resultat_net_part_du_groupe": {
+        "value": 1026036000.0,
+        "raw": "Resultat_net_part_du_groupe_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_part_du_groupe_2025"
+      },
+      "Revenue": {
+        "value": 9064653000.0,
+        "raw": "Chiffre_daffaires_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Chiffre_daffaires_2025"
+      },
+      "Shares_Outstanding": {
+        "value": 3500000.0,
+        "raw": "Shares_Outstanding",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Shares_Outstanding"
+      },
+      "Total_Assets": {
+        "value": 75534168000.0,
+        "raw": "Total_Actif_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Total_Actif_2025|alias:Total_Actif->Total_Assets"
+      },
+      "Total_Equity": {
+        "value": 15231066000.0,
+        "raw": "Capitaux_propres_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Capitaux_propres_2025|alias:Capitaux_propres->Total_Equity"
+      },
+      "Total_Equity_Group": {
+        "value": 14960337000.0,
+        "raw": "Capitaux_propres_part_du_groupe_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Capitaux_propres_part_du_groupe_2025"
+      },
+      "Total_Liabilities": {
+        "value": 60303000000.0,
+        "raw": "Total_Liabilities",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities"
+      },
+      "Total_Liabilities_And_Equity": {
+        "value": 75534000000.0,
+        "raw": "Total_Liabilities_And_Equity",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities_And_Equity"
+      }
+    }
+  },
+  "ZDJ": {
+    "year": 2025,
+    "import_id": "fcefad0e-1676-4b4d-8a64-18a465f3e838",
+    "metrics": {
+      "EBITDA": {
+        "value": 38470000.0,
+        "raw": "EBITDA",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:EBITDA"
+      },
+      "Net_Income": {
+        "value": 21588000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025|alias:Resultat_net->Net_Income"
+      },
+      "NetIncome": {
+        "value": 21588000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025|alias:Resultat_net->NetIncome"
+      },
+      "Resultat_net": {
+        "value": 21588000.0,
+        "raw": "Resultat_net_2025",
+        "sheet": "bvc_jsonl",
+        "field": "Resultat_net_2025"
+      },
+      "Revenue": {
+        "value": 768760000.0,
+        "raw": "Revenue",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Revenue"
+      },
+      "Shares_Outstanding": {
+        "value": 572849.0,
+        "raw": "Shares_Outstanding",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Shares_Outstanding"
+      },
+      "Total_Assets": {
+        "value": 775430000.0,
+        "raw": "Total_Assets",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Assets"
+      },
+      "Total_Equity": {
+        "value": 141870000.0,
+        "raw": "Total_Equity",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Equity"
+      },
+      "Total_Liabilities": {
+        "value": 633560000.0,
+        "raw": "Total_Liabilities",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities"
+      },
+      "Total_Liabilities_And_Equity": {
+        "value": 775430000.0,
+        "raw": "Total_Liabilities_And_Equity",
+        "sheet": "stockanalysis_real",
+        "field": "stockanalysis:Total_Liabilities_And_Equity"
+      }
+    }
+  }
+}

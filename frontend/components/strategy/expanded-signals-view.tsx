@@ -11,7 +11,8 @@ type ExpandedSignalsViewProps = {
   onHorizonChange: (value: string) => void
   topbarContent?: ReactNode
   variant?: ExpandedSignalsPageView
-  defaultTab?: "technique" | "evidence" | "indicateurs" | "wfo" | "backtest"
+  defaultTab?: "technique" | "evidence" | "indicateurs" | "wfo" | "backtest" | "portfolio"
+  onTabChange?: (tab: string) => void
   evidenceSource?: "auto" | "signal_engine" | "wfo"
   evidenceVariant?: string | null
   selectedVariantId?: string | null

@@ -22,7 +22,7 @@ export default function LoginPage() {
     })
     setLoading(false)
     if (result?.error) {
-      setError("Email ou mot de passe incorrect.")
+      setError("Identifiant ou mot de passe incorrect.")
     } else {
       router.replace("/dashboard")
       router.refresh()
@@ -40,14 +40,14 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1">
             <label htmlFor="email" className="text-sm font-medium">
-              Email
+              Email ou identifiant
             </label>
             <input
               id="email"
               name="email"
-              type="email"
+              type="text"
               required
-              autoComplete="email"
+              autoComplete="username"
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>

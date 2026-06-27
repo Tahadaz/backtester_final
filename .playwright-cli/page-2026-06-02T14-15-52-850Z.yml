@@ -1,0 +1,937 @@
+- generic [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - link "RDT Alpha" [ref=e4] [cursor=pointer]:
+        - /url: /dashboard
+        - generic [ref=e5]: RDT
+        - generic [ref=e6]:
+          - generic [ref=e7]: RDT Alpha
+          - generic [ref=e8]: Road to Alpha
+      - navigation [ref=e9]:
+        - link "Tableau de Bord" [ref=e10] [cursor=pointer]:
+          - /url: /dashboard
+          - img
+          - text: Tableau de Bord
+        - link "Data" [ref=e11] [cursor=pointer]:
+          - /url: /data
+          - img
+          - text: Data
+        - link "Signals" [ref=e12] [cursor=pointer]:
+          - /url: /signals
+          - img
+          - text: Signals
+        - link "Strategy" [ref=e13] [cursor=pointer]:
+          - /url: /strategy
+          - img
+          - text: Strategy
+        - link "Backtest" [ref=e14] [cursor=pointer]:
+          - /url: /backtest
+          - img
+          - text: Backtest
+        - link "Analytics" [ref=e15] [cursor=pointer]:
+          - /url: /analytics
+          - img
+          - text: Analytics
+        - link "Glossaire" [ref=e16] [cursor=pointer]:
+          - /url: /glossary
+          - img
+          - text: Glossaire
+      - generic [ref=e17]:
+        - generic [ref=e18]: MASI · live
+        - button "Refresh" [ref=e20]:
+          - img
+        - link "Se connecter" [ref=e21] [cursor=pointer]:
+          - /url: /login
+          - img
+          - generic [ref=e22]: Se connecter
+  - main [ref=e23]:
+    - generic [ref=e24]:
+      - generic [ref=e25]:
+        - generic [ref=e26]: Analyse
+        - button "Analyse Technique Signaux TA, evidence, WFO" [ref=e27]:
+          - img [ref=e29]
+          - generic [ref=e31]:
+            - generic [ref=e32]: Analyse Technique
+            - generic [ref=e33]: Signaux TA, evidence, WFO
+        - button "Analyse Fondamentale Valorisation, qualite, financiers" [pressed] [ref=e34]:
+          - img [ref=e36]
+          - generic [ref=e38]:
+            - generic [ref=e39]: Analyse Fondamentale
+            - generic [ref=e40]: Valorisation, qualite, financiers
+        - button "Analyse Quantitative IC, facteurs, macro, stat-arb" [ref=e41]:
+          - img [ref=e43]
+          - generic [ref=e45]:
+            - generic [ref=e46]: Analyse Quantitative
+            - generic [ref=e47]: IC, facteurs, macro, stat-arb
+      - generic [ref=e49]:
+        - complementary [ref=e51]:
+          - generic [ref=e52]:
+            - generic [ref=e53]:
+              - generic [ref=e54]: Couverture - 0/0 titres
+              - generic [ref=e55]: FY -
+            - generic [ref=e56]:
+              - img
+              - textbox "Rechercher un titre..." [ref=e57]
+            - generic [ref=e58]:
+              - generic [ref=e59]:
+                - img [ref=e61]
+                - generic [ref=e62]:
+                  - generic [ref=e63]: Filtre institutionnel
+                  - generic [ref=e64]:
+                    - generic [ref=e65]: Liquidité ADV20
+                    - generic [ref=e66]: Actif
+                - switch "Désactiver le filtre de liquidité" [checked] [ref=e67]
+              - generic [ref=e68]:
+                - generic [ref=e69]:
+                  - generic [ref=e70]: Seuil
+                  - generic [ref=e71]: ">= 500 k MAD"
+                - generic [ref=e72]:
+                  - generic [ref=e73]: Eligibles
+                  - generic [ref=e74]: 0/0
+            - generic [ref=e75]:
+              - generic [ref=e76]:
+                - button "Tous" [ref=e77] [cursor=pointer]
+                - button "Buy" [ref=e78] [cursor=pointer]
+                - button "Hold" [ref=e79] [cursor=pointer]
+                - button "Sell" [ref=e80] [cursor=pointer]
+              - combobox [ref=e81]:
+                - option "Upside" [selected]
+                - option "Score"
+                - option "Conviction"
+                - option "Mkt Cap"
+                - option "Magic"
+                - option "PEG"
+                - option "Altman"
+                - option "EVA"
+                - option "Regression"
+          - table [ref=e83]:
+            - rowgroup [ref=e84]:
+              - row "Titre Rec. Score Upside Rev" [ref=e85]:
+                - columnheader "Titre" [ref=e86]
+                - columnheader "Rec." [ref=e87]
+                - columnheader "Score" [ref=e88]
+                - columnheader "Upside" [ref=e89]
+                - columnheader "Rev" [ref=e90]
+            - rowgroup [ref=e91]:
+              - row [ref=e92]:
+                - cell [ref=e93]
+              - row [ref=e95]:
+                - cell [ref=e96]
+              - row [ref=e98]:
+                - cell [ref=e99]
+              - row [ref=e101]:
+                - cell [ref=e102]
+              - row [ref=e104]:
+                - cell [ref=e105]
+              - row [ref=e107]:
+                - cell [ref=e108]
+              - row [ref=e110]:
+                - cell [ref=e111]
+              - row [ref=e113]:
+                - cell [ref=e114]
+              - row [ref=e116]:
+                - cell [ref=e117]
+              - row [ref=e119]:
+                - cell [ref=e120]
+          - generic [ref=e122]:
+            - generic [ref=e123]:
+              - generic [ref=e124]: 0 Buy
+              - text: "- 0 Hold -"
+              - generic [ref=e125]: 0 Sell
+              - text: "- 0 N/R"
+            - generic [ref=e126]: Upside moy. -
+        - separator [ref=e127]:
+          - img [ref=e129]
+        - generic [ref=e150]:
+          - generic [ref=e153]:
+            - generic [ref=e154]:
+              - generic [ref=e155]:
+                - generic [ref=e156]: ADH
+                - img [ref=e157]
+                - generic [ref=e159]: Douja Promotion Groupe Addoha
+                - generic [ref=e160]:
+                  - strong [ref=e161]: Immobilier
+                  - text: "- Maroc - MAD"
+              - generic [ref=e162]:
+                - generic [ref=e163]:
+                  - generic [ref=e164]: Cours actuel
+                  - generic [ref=e165]: 32,95
+                  - generic [ref=e166]: au 02 juin 2026
+                - generic [ref=e167]:
+                  - generic [ref=e168]: Objectif 12M
+                  - generic [ref=e169]: 21,84
+                  - generic [ref=e170]: "- revision inchangee"
+                - generic [ref=e171]:
+                  - generic [ref=e172]: Upside / Downside
+                  - generic [ref=e173]: "-33.7%"
+                  - generic [ref=e174]: vs cours actuel
+                - generic [ref=e175]:
+                  - generic [ref=e176]: Capitalisation
+                  - generic [ref=e177]: 13,3 Bn
+                  - generic [ref=e178]: Free float - - ADV20 10,2 M MAD
+            - generic [ref=e179]:
+              - generic [ref=e180]:
+                - generic [ref=e181]: Recommandation
+                - generic [ref=e182]: SELL
+                - generic [ref=e184]: Conviction
+              - generic [ref=e190]:
+                - generic [ref=e191]: Analyste - Systeme quantitatif
+                - generic [ref=e192]: v3 - 02 juin 2026
+          - separator [ref=e193]:
+            - img [ref=e195]
+          - generic [ref=e203]:
+            - generic [ref=e204]:
+              - button "These" [ref=e205]
+              - button "Valorisation" [active] [ref=e206]
+              - button "Estimations" [ref=e207]
+              - button "Comparables" [ref=e208]
+              - button "Hypotheses" [ref=e209]
+              - button "Qualite & ROE" [ref=e210]
+            - generic [ref=e308]:
+              - generic [ref=e309]:
+                - generic [ref=e310]: Scenario
+                - generic [ref=e311]:
+                  - button "bear" [ref=e312] [cursor=pointer]
+                  - button "base" [ref=e313] [cursor=pointer]
+                  - button "bull" [ref=e314] [cursor=pointer]
+                - generic [ref=e315]:
+                  - text: WACC 7.9% - g firm/equity
+                  - generic [ref=e316]: 3.0% / 3.0%
+                  - text: "- Devise MAD"
+              - generic [ref=e317]:
+                - button "Synthese" [ref=e318]
+                - button "DCF FCFF" [ref=e319]
+                - button "DCF FCFE" [ref=e320]
+                - button "DDM" [ref=e321]
+                - button "Revenu residuel" [ref=e322]
+                - button "Multiples justifies" [ref=e323]
+                - button "M. relatif" [ref=e324]
+                - button "Reverse DCF" [ref=e325]
+              - generic [ref=e326]:
+                - generic [ref=e327]:
+                  - generic [ref=e328]: Football Field - fourchette de valorisation par methode
+                  - generic [ref=e329]: Cours 33,0 - Cible 21,8
+                - generic [ref=e330]:
+                  - generic [ref=e331]:
+                    - generic [ref=e332]:
+                      - generic [ref=e333]: Modeles inclus dans la cible
+                      - generic [ref=e334]:
+                        - button "Tout inclure" [ref=e335]
+                        - button "Tout exclure" [ref=e336]
+                    - generic [ref=e337]:
+                      - generic [ref=e338]:
+                        - generic [ref=e339]: Cible retenue
+                        - generic [ref=e340]: 21,8 MAD
+                        - generic [ref=e341]: Initiale 13,8 MAD
+                      - generic [ref=e342]:
+                        - generic [ref=e343]: Upside
+                        - generic [ref=e344]: "-33.7%"
+                      - generic [ref=e345]:
+                        - generic [ref=e346]: Modeles
+                        - generic [ref=e347]: 3/6
+                        - generic [ref=e348]: 6 coches
+                      - generic [ref=e349]:
+                        - generic [ref=e350]: Ponderation
+                        - generic [ref=e351]: Modele
+                    - generic [ref=e352]:
+                      - generic [ref=e353] [cursor=pointer]:
+                        - checkbox "DCF FCFF 0,0 MAD No FV" [checked] [ref=e354]
+                        - generic [ref=e355]:
+                          - strong [ref=e356]: DCF FCFF
+                          - emphasis [ref=e357]: 0,0 MAD
+                        - generic [ref=e358]: No FV
+                      - generic [ref=e359] [cursor=pointer]:
+                        - checkbox "DCF FCFE 0,0 MAD No FV" [checked] [ref=e360]
+                        - generic [ref=e361]:
+                          - strong [ref=e362]: DCF FCFE
+                          - emphasis [ref=e363]: 0,0 MAD
+                        - generic [ref=e364]: No FV
+                      - generic [ref=e365] [cursor=pointer]:
+                        - checkbox "DDM No FV No FV" [checked] [ref=e366]
+                        - generic [ref=e367]:
+                          - strong [ref=e368]: DDM
+                          - emphasis [ref=e369]: No FV
+                        - generic [ref=e370]: No FV
+                      - generic [ref=e371] [cursor=pointer]:
+                        - checkbox "Revenu residuel 4,4 MAD 5%" [checked] [ref=e372]
+                        - generic [ref=e373]:
+                          - strong [ref=e374]: Revenu residuel
+                          - emphasis [ref=e375]: 4,4 MAD
+                        - generic [ref=e376]: 5%
+                      - generic [ref=e377] [cursor=pointer]:
+                        - checkbox "Multiples justifies 8,2 MAD 40%" [checked] [ref=e378]
+                        - generic [ref=e379]:
+                          - strong [ref=e380]: Multiples justifies
+                          - emphasis [ref=e381]: 8,2 MAD
+                        - generic [ref=e382]: 40%
+                      - generic [ref=e383] [cursor=pointer]:
+                        - checkbox "Comparables 33,0 MAD 56%" [checked] [ref=e384]
+                        - generic [ref=e385]:
+                          - strong [ref=e386]: Comparables
+                          - emphasis [ref=e387]: 33,0 MAD
+                        - generic [ref=e388]: 56%
+                  - img [ref=e389]:
+                    - generic [ref=e390]:
+                      - generic [ref=e391]: Revenu residuel
+                      - generic [ref=e393]: "4"
+                      - generic [ref=e394]: "5"
+                    - generic [ref=e395]:
+                      - generic [ref=e396]: Multiples justifies
+                      - generic [ref=e398]: "7"
+                      - generic [ref=e399]: "9"
+                    - generic [ref=e400]:
+                      - generic [ref=e401]: Comparables
+                      - generic [ref=e403]: "31"
+                      - generic [ref=e404]: "35"
+                    - generic [ref=e405]:
+                      - generic [ref=e406]: Selection ponderee
+                      - generic [ref=e408]: "20"
+                      - generic [ref=e409]: "23"
+                    - generic [ref=e410]: CP - 33,0
+                    - generic [ref=e411]: Cible - 21,8
+                    - generic [ref=e412]: "4"
+                    - generic [ref=e413]: "12"
+                    - generic [ref=e414]: "20"
+                    - generic [ref=e415]: "29"
+                    - generic [ref=e416]: "37"
+              - generic [ref=e417]:
+                - generic [ref=e418]:
+                  - generic [ref=e419]: Projection operationnelle partagee
+                  - generic [ref=e420]: 5 ans explicites - convention mi-annee
+                - generic [ref=e421]:
+                  - generic [ref=e422]:
+                    - generic [ref=e423]:
+                      - generic [ref=e424]:
+                        - generic [ref=e425]: CA
+                        - generic [ref=e426]: 4 pts
+                      - generic [ref=e427]:
+                        - img "Historique et projection" [ref=e428]
+                        - generic [ref=e440]:
+                          - generic [ref=e441]: Dernier point
+                          - strong [ref=e442]: 3.0%
+                    - generic [ref=e443]:
+                      - generic [ref=e444]:
+                        - generic [ref=e445]: EBIT
+                        - generic [ref=e446]: 3 pts
+                      - generic [ref=e447]:
+                        - img "Historique et projection" [ref=e448]
+                        - generic [ref=e453]:
+                          - generic [ref=e454]: Dernier point
+                          - strong [ref=e455]: "-3.4%"
+                    - generic [ref=e456]:
+                      - generic [ref=e457]:
+                        - generic [ref=e458]: RN
+                        - generic [ref=e459]: 3 pts
+                      - generic [ref=e460]:
+                        - img "Historique et projection" [ref=e461]
+                        - generic [ref=e466]:
+                          - generic [ref=e467]: Dernier point
+                          - strong [ref=e468]: 65.5%
+                    - generic [ref=e469]:
+                      - generic [ref=e470]:
+                        - generic [ref=e471]: FCF
+                        - generic [ref=e472]: 3 pts
+                      - generic [ref=e473]:
+                        - img "Historique et projection" [ref=e474]
+                        - generic [ref=e479]:
+                          - generic [ref=e480]: Dernier point
+                          - strong [ref=e481]: "-109.4%"
+                  - generic [ref=e482]:
+                    - generic [ref=e483]:
+                      - generic [ref=e484]:
+                        - generic [ref=e485]:
+                          - text: Croissance CA
+                          - paragraph [ref=e486]: blend(3y revenue CAGR 42.26%, last-year growth 52.87%) fades to terminal 3.00%
+                        - generic [ref=e487]: Alerte
+                      - generic [ref=e488]:
+                        - img "Historique et projection" [ref=e489]
+                        - generic [ref=e501]:
+                          - generic [ref=e502]: Dernier point
+                          - strong [ref=e503]: 3.0%
+                      - generic [ref=e504]:
+                        - generic [ref=e505]:
+                          - text: Ancrage
+                          - strong [ref=e506]: 42.3%
+                        - generic [ref=e507]:
+                          - text: Ecart
+                          - strong [ref=e508]: "-30.3%"
+                      - text: revenue_growth_diverges_from_history
+                    - generic [ref=e509]:
+                      - generic [ref=e510]:
+                        - generic [ref=e511]:
+                          - text: Marge EBIT
+                          - paragraph [ref=e512]: trailing-3y EBIT margin average 12.58%; outliers fade back to the average
+                        - generic [ref=e513]: OK
+                      - generic [ref=e514]:
+                        - img "Historique et projection" [ref=e515]
+                        - generic [ref=e527]:
+                          - generic [ref=e528]: Dernier point
+                          - strong [ref=e529]: 12.6%
+                      - generic [ref=e530]:
+                        - generic [ref=e531]:
+                          - text: Ancrage
+                          - strong [ref=e532]: 12.6%
+                        - generic [ref=e533]:
+                          - text: Ecart
+                          - strong [ref=e534]: 0.0%
+                    - generic [ref=e535]:
+                      - generic [ref=e536]:
+                        - generic [ref=e537]:
+                          - text: Taux IS
+                          - paragraph [ref=e538]: effective tax rate when cleanly derivable, otherwise registry tax_rate
+                        - generic [ref=e539]: OK
+                      - generic [ref=e540]:
+                        - img "Historique et projection" [ref=e541]
+                        - generic [ref=e547]:
+                          - generic [ref=e548]: Dernier point
+                          - strong [ref=e549]: 35.0%
+                      - generic [ref=e550]:
+                        - generic [ref=e551]:
+                          - text: Ancrage
+                          - strong [ref=e552]: 35.0%
+                        - generic [ref=e553]:
+                          - text: Ecart
+                          - strong [ref=e554]: 0.0%
+                    - generic [ref=e555]:
+                      - generic [ref=e556]:
+                        - generic [ref=e557]:
+                          - text: Capex / CA
+                          - paragraph [ref=e558]: trailing-3y absolute Capex / Revenue average
+                        - generic [ref=e559]: Alerte
+                      - generic [ref=e560]:
+                        - img "Historique et projection" [ref=e561]
+                        - generic [ref=e567]:
+                          - generic [ref=e568]: Dernier point
+                          - strong [ref=e569]: 4.0%
+                      - generic [ref=e570]:
+                        - generic [ref=e571]:
+                          - text: Ancrage
+                          - strong [ref=e572]: 4.0%
+                        - generic [ref=e573]:
+                          - text: Ecart
+                          - strong [ref=e574]: 0.0%
+                      - text: capex_pct_default_no_history
+                  - generic [ref=e575]:
+                    - generic [ref=e576]:
+                      - generic [ref=e577]: Drivers derives
+                      - table [ref=e578]:
+                        - rowgroup [ref=e579]:
+                          - row "Driver 2026 2027 2028 2029 2030 Preuve" [ref=e580]:
+                            - columnheader "Driver" [ref=e581]
+                            - columnheader "2026" [ref=e582]
+                            - columnheader "2027" [ref=e583]
+                            - columnheader "2028" [ref=e584]
+                            - columnheader "2029" [ref=e585]
+                            - columnheader "2030" [ref=e586]
+                            - columnheader "Preuve" [ref=e587]
+                        - rowgroup [ref=e588]:
+                          - row "Croissance CA 12.0% 9.8% 7.5% 5.2% 3.0% Divergence" [ref=e589]:
+                            - cell "Croissance CA" [ref=e590]
+                            - cell "12.0%" [ref=e591]
+                            - cell "9.8%" [ref=e592]
+                            - cell "7.5%" [ref=e593]
+                            - cell "5.2%" [ref=e594]
+                            - cell "3.0%" [ref=e595]
+                            - cell "Divergence" [ref=e596]:
+                              - generic [ref=e597]: Divergence
+                          - row "Marge EBIT 12.6% 12.6% 12.6% 12.6% 12.6% Historique" [ref=e598]:
+                            - cell "Marge EBIT" [ref=e599]
+                            - cell "12.6%" [ref=e600]
+                            - cell "12.6%" [ref=e601]
+                            - cell "12.6%" [ref=e602]
+                            - cell "12.6%" [ref=e603]
+                            - cell "12.6%" [ref=e604]
+                            - cell "Historique" [ref=e605]:
+                              - generic [ref=e606]: Historique
+                          - row "Taux IS 35.0% 35.0% 35.0% 35.0% 35.0% Historique" [ref=e607]:
+                            - cell "Taux IS" [ref=e608]
+                            - cell "35.0%" [ref=e609]
+                            - cell "35.0%" [ref=e610]
+                            - cell "35.0%" [ref=e611]
+                            - cell "35.0%" [ref=e612]
+                            - cell "35.0%" [ref=e613]
+                            - cell "Historique" [ref=e614]:
+                              - generic [ref=e615]: Historique
+                          - row "Capex / CA 4.0% 4.0% 4.0% 4.0% 4.0% Divergence" [ref=e616]:
+                            - cell "Capex / CA" [ref=e617]
+                            - cell "4.0%" [ref=e618]
+                            - cell "4.0%" [ref=e619]
+                            - cell "4.0%" [ref=e620]
+                            - cell "4.0%" [ref=e621]
+                            - cell "4.0%" [ref=e622]
+                            - cell "Divergence" [ref=e623]:
+                              - generic [ref=e624]: Divergence
+                          - row "BFR / CA 461.6% 461.6% 461.6% 461.6% 461.6% Historique" [ref=e625]:
+                            - cell "BFR / CA" [ref=e626]
+                            - cell "461.6%" [ref=e627]
+                            - cell "461.6%" [ref=e628]
+                            - cell "461.6%" [ref=e629]
+                            - cell "461.6%" [ref=e630]
+                            - cell "461.6%" [ref=e631]
+                            - cell "Historique" [ref=e632]:
+                              - generic [ref=e633]: Historique
+                          - row "D&A / CA 0.0% 0.0% 0.0% 0.0% 0.0% Divergence" [ref=e634]:
+                            - cell "D&A / CA" [ref=e635]
+                            - cell "0.0%" [ref=e636]
+                            - cell "0.0%" [ref=e637]
+                            - cell "0.0%" [ref=e638]
+                            - cell "0.0%" [ref=e639]
+                            - cell "0.0%" [ref=e640]
+                            - cell "Divergence" [ref=e641]:
+                              - generic [ref=e642]: Divergence
+                          - row "Payout 55.0% 55.0% 55.0% 55.0% 55.0% Historique" [ref=e643]:
+                            - cell "Payout" [ref=e644]
+                            - cell "55.0%" [ref=e645]
+                            - cell "55.0%" [ref=e646]
+                            - cell "55.0%" [ref=e647]
+                            - cell "55.0%" [ref=e648]
+                            - cell "55.0%" [ref=e649]
+                            - cell "Historique" [ref=e650]:
+                              - generic [ref=e651]: Historique
+                    - generic [ref=e652]:
+                      - generic [ref=e653]: 3 etats projetes
+                      - table [ref=e654]:
+                        - rowgroup [ref=e655]:
+                          - row "Ligne 2026 2027 2028 2029 2030" [ref=e656]:
+                            - columnheader "Ligne" [ref=e657]
+                            - columnheader "2026" [ref=e658]
+                            - columnheader "2027" [ref=e659]
+                            - columnheader "2028" [ref=e660]
+                            - columnheader "2029" [ref=e661]
+                            - columnheader "2030" [ref=e662]
+                        - rowgroup [ref=e663]:
+                          - row "Chiffre d'affaires 4 443 040 000 4 876 236 400 5 241 954 130 5 517 156 722 5 682 671 423" [ref=e664]:
+                            - cell "Chiffre d'affaires" [ref=e665]
+                            - cell "4 443 040 000" [ref=e666]
+                            - cell "4 876 236 400" [ref=e667]
+                            - cell "5 241 954 130" [ref=e668]
+                            - cell "5 517 156 722" [ref=e669]
+                            - cell "5 682 671 423" [ref=e670]
+                          - row "EBITDA 559 107 360 613 620 327 659 641 852 694 273 049 715 101 240" [ref=e671]:
+                            - cell "EBITDA" [ref=e672]
+                            - cell "559 107 360" [ref=e673]
+                            - cell "613 620 327" [ref=e674]
+                            - cell "659 641 852" [ref=e675]
+                            - cell "694 273 049" [ref=e676]
+                            - cell "715 101 240" [ref=e677]
+                          - row "EBIT 559 107 360 613 620 327 659 641 852 694 273 049 715 101 240" [ref=e678]:
+                            - cell "EBIT" [ref=e679]
+                            - cell "559 107 360" [ref=e680]
+                            - cell "613 620 327" [ref=e681]
+                            - cell "659 641 852" [ref=e682]
+                            - cell "694 273 049" [ref=e683]
+                            - cell "715 101 240" [ref=e684]
+                          - row "NOPAT 363 419 784 398 853 213 428 767 204 451 277 482 464 815 806" [ref=e685]:
+                            - cell "NOPAT" [ref=e686]
+                            - cell "363 419 784" [ref=e687]
+                            - cell "398 853 213" [ref=e688]
+                            - cell "428 767 204" [ref=e689]
+                            - cell "451 277 482" [ref=e690]
+                            - cell "464 815 806" [ref=e691]
+                          - row "Capex 177 721 600 195 049 456 209 678 165 220 686 269 227 306 857" [ref=e692]:
+                            - cell "Capex" [ref=e693]
+                            - cell "177 721 600" [ref=e694]
+                            - cell "195 049 456" [ref=e695]
+                            - cell "209 678 165" [ref=e696]
+                            - cell "220 686 269" [ref=e697]
+                            - cell "227 306 857" [ref=e698]
+                          - row "Variation BFR 2 197 363 136 1 999 600 454 1 688 124 229 1 270 313 482 764 002 823" [ref=e699]:
+                            - cell "Variation BFR" [ref=e700]
+                            - cell "2 197 363 136" [ref=e701]
+                            - cell "1 999 600 454" [ref=e702]
+                            - cell "1 688 124 229" [ref=e703]
+                            - cell "1 270 313 482" [ref=e704]
+                            - cell "764 002 823" [ref=e705]
+                          - row "FCFF -2 011 664 952 -1 795 796 697 -1 469 035 191 -1 039 722 270 -526 493 874" [ref=e706]:
+                            - cell "FCFF" [ref=e707]
+                            - cell "-2 011 664 952" [ref=e708]
+                            - cell "-1 795 796 697" [ref=e709]
+                            - cell "-1 469 035 191" [ref=e710]
+                            - cell "-1 039 722 270" [ref=e711]
+                            - cell "-526 493 874" [ref=e712]
+                          - row "FCFE -2 011 664 952 -1 795 796 697 -1 469 035 191 -1 039 722 270 -526 493 874" [ref=e713]:
+                            - cell "FCFE" [ref=e714]
+                            - cell "-2 011 664 952" [ref=e715]
+                            - cell "-1 795 796 697" [ref=e716]
+                            - cell "-1 469 035 191" [ref=e717]
+                            - cell "-1 039 722 270" [ref=e718]
+                            - cell "-526 493 874" [ref=e719]
+                          - row "Resultat net 363 419 784 398 853 213 428 767 204 451 277 482 464 815 806" [ref=e720]:
+                            - cell "Resultat net" [ref=e721]
+                            - cell "363 419 784" [ref=e722]
+                            - cell "398 853 213" [ref=e723]
+                            - cell "428 767 204" [ref=e724]
+                            - cell "451 277 482" [ref=e725]
+                            - cell "464 815 806" [ref=e726]
+                          - row "Dividendes 199 880 881 219 369 267 235 821 962 248 202 615 255 648 693" [ref=e727]:
+                            - cell "Dividendes" [ref=e728]
+                            - cell "199 880 881" [ref=e729]
+                            - cell "219 369 267" [ref=e730]
+                            - cell "235 821 962" [ref=e731]
+                            - cell "248 202 615" [ref=e732]
+                            - cell "255 648 693" [ref=e733]
+                          - row "Tresorerie -2 043 915 833 -4 059 081 797 -5 763 938 950 -7 051 863 835 -7 834 006 402" [ref=e734]:
+                            - cell "Tresorerie" [ref=e735]
+                            - cell "-2 043 915 833" [ref=e736]
+                            - cell "-4 059 081 797" [ref=e737]
+                            - cell "-5 763 938 950" [ref=e738]
+                            - cell "-7 051 863 835" [ref=e739]
+                            - cell "-7 834 006 402" [ref=e740]
+                          - row "Fonds propres 10 574 538 903 10 754 022 848 10 946 968 090 11 150 042 957 11 359 210 070" [ref=e741]:
+                            - cell "Fonds propres" [ref=e742]
+                            - cell "10 574 538 903" [ref=e743]
+                            - cell "10 754 022 848" [ref=e744]
+                            - cell "10 946 968 090" [ref=e745]
+                            - cell "11 150 042 957" [ref=e746]
+                            - cell "11 359 210 070" [ref=e747]
+                  - generic [ref=e748]:
+                    - generic [ref=e749]: Controles projection
+                    - generic [ref=e750]:
+                      - generic [ref=e751]: Tous les liens OK
+                      - generic [ref=e752]: revenue_growth_diverges_from_history
+                      - generic [ref=e753]: capex_pct_default_no_history
+                      - generic [ref=e754]: d_and_a_pct_default_no_history
+              - generic [ref=e755]:
+                - generic [ref=e756]:
+                  - generic [ref=e757]:
+                    - generic [ref=e758]: Synthese projection maison
+                    - generic [ref=e759]: 5 ans explicites
+                  - generic [ref=e760]:
+                    - generic [ref=e761]:
+                      - generic [ref=e762]:
+                        - generic [ref=e763]: Horizon
+                        - generic [ref=e764]: "5"
+                        - generic [ref=e765]: 2026-2030
+                      - generic [ref=e766]:
+                        - generic [ref=e767]: g firm
+                        - generic [ref=e768]: 3.00%
+                        - generic [ref=e769]: fade final
+                      - generic [ref=e770]:
+                        - generic [ref=e771]: Cap croissance
+                        - generic [ref=e772]: 12.00%
+                        - generic [ref=e773]: borne
+                      - generic [ref=e774]:
+                        - generic [ref=e775]: Taux IS
+                        - generic [ref=e776]: 35.00%
+                        - generic [ref=e777]: NOPAT
+                    - generic [ref=e778]:
+                      - generic [ref=e779]: revenue_growth_diverges_from_history
+                      - generic [ref=e780]: capex_pct_default_no_history
+                      - generic [ref=e781]: d_and_a_pct_default_no_history
+                - generic [ref=e782]:
+                  - generic [ref=e783]:
+                    - generic [ref=e784]: Trajectoire de croissance
+                    - generic [ref=e785]: Drivers
+                  - generic [ref=e786]:
+                    - generic [ref=e787]:
+                      - generic [ref=e788]:
+                        - generic [ref=e789]:
+                          - generic [ref=e790]: CA
+                          - generic [ref=e791]: 4 pts
+                        - generic [ref=e792]:
+                          - img "Historique et projection" [ref=e793]
+                          - generic [ref=e805]:
+                            - generic [ref=e806]: Dernier point
+                            - strong [ref=e807]: 3.0%
+                      - generic [ref=e808]:
+                        - generic [ref=e809]:
+                          - generic [ref=e810]: EBIT
+                          - generic [ref=e811]: 3 pts
+                        - generic [ref=e812]:
+                          - img "Historique et projection" [ref=e813]
+                          - generic [ref=e818]:
+                            - generic [ref=e819]: Dernier point
+                            - strong [ref=e820]: "-3.4%"
+                      - generic [ref=e821]:
+                        - generic [ref=e822]:
+                          - generic [ref=e823]: RN
+                          - generic [ref=e824]: 3 pts
+                        - generic [ref=e825]:
+                          - img "Historique et projection" [ref=e826]
+                          - generic [ref=e831]:
+                            - generic [ref=e832]: Dernier point
+                            - strong [ref=e833]: 65.5%
+                      - generic [ref=e834]:
+                        - generic [ref=e835]:
+                          - generic [ref=e836]: FCF
+                          - generic [ref=e837]: 3 pts
+                        - generic [ref=e838]:
+                          - img "Historique et projection" [ref=e839]
+                          - generic [ref=e844]:
+                            - generic [ref=e845]: Dernier point
+                            - strong [ref=e846]: "-109.4%"
+                    - generic [ref=e847]:
+                      - generic [ref=e848]:
+                        - generic [ref=e849]:
+                          - generic [ref=e850]:
+                            - text: Croissance CA
+                            - paragraph [ref=e851]: blend(3y revenue CAGR 42.26%, last-year growth 52.87%) fades to terminal 3.00%
+                          - generic [ref=e852]: Alerte
+                        - generic [ref=e853]:
+                          - img "Historique et projection" [ref=e854]
+                          - generic [ref=e866]:
+                            - generic [ref=e867]: Dernier point
+                            - strong [ref=e868]: 3.0%
+                        - generic [ref=e869]:
+                          - generic [ref=e870]:
+                            - text: Ancrage
+                            - strong [ref=e871]: 42.3%
+                          - generic [ref=e872]:
+                            - text: Ecart
+                            - strong [ref=e873]: "-30.3%"
+                        - text: revenue_growth_diverges_from_history
+                      - generic [ref=e874]:
+                        - generic [ref=e875]:
+                          - generic [ref=e876]:
+                            - text: Marge EBIT
+                            - paragraph [ref=e877]: trailing-3y EBIT margin average 12.58%; outliers fade back to the average
+                          - generic [ref=e878]: OK
+                        - generic [ref=e879]:
+                          - img "Historique et projection" [ref=e880]
+                          - generic [ref=e892]:
+                            - generic [ref=e893]: Dernier point
+                            - strong [ref=e894]: 12.6%
+                        - generic [ref=e895]:
+                          - generic [ref=e896]:
+                            - text: Ancrage
+                            - strong [ref=e897]: 12.6%
+                          - generic [ref=e898]:
+                            - text: Ecart
+                            - strong [ref=e899]: 0.0%
+                      - generic [ref=e900]:
+                        - generic [ref=e901]:
+                          - generic [ref=e902]:
+                            - text: Taux IS
+                            - paragraph [ref=e903]: effective tax rate when cleanly derivable, otherwise registry tax_rate
+                          - generic [ref=e904]: OK
+                        - generic [ref=e905]:
+                          - img "Historique et projection" [ref=e906]
+                          - generic [ref=e912]:
+                            - generic [ref=e913]: Dernier point
+                            - strong [ref=e914]: 35.0%
+                        - generic [ref=e915]:
+                          - generic [ref=e916]:
+                            - text: Ancrage
+                            - strong [ref=e917]: 35.0%
+                          - generic [ref=e918]:
+                            - text: Ecart
+                            - strong [ref=e919]: 0.0%
+                      - generic [ref=e920]:
+                        - generic [ref=e921]:
+                          - generic [ref=e922]:
+                            - text: Capex / CA
+                            - paragraph [ref=e923]: trailing-3y absolute Capex / Revenue average
+                          - generic [ref=e924]: Alerte
+                        - generic [ref=e925]:
+                          - img "Historique et projection" [ref=e926]
+                          - generic [ref=e932]:
+                            - generic [ref=e933]: Dernier point
+                            - strong [ref=e934]: 4.0%
+                        - generic [ref=e935]:
+                          - generic [ref=e936]:
+                            - text: Ancrage
+                            - strong [ref=e937]: 4.0%
+                          - generic [ref=e938]:
+                            - text: Ecart
+                            - strong [ref=e939]: 0.0%
+                        - text: capex_pct_default_no_history
+                - generic [ref=e940]:
+                  - generic [ref=e941]:
+                    - generic [ref=e942]: Drivers par annee
+                    - generic [ref=e943]: Hypotheses
+                  - table [ref=e946]:
+                    - rowgroup [ref=e947]:
+                      - row "Driver 2026 2027 2028 2029 2030 Source" [ref=e948]:
+                        - columnheader "Driver" [ref=e949]
+                        - columnheader "2026" [ref=e950]
+                        - columnheader "2027" [ref=e951]
+                        - columnheader "2028" [ref=e952]
+                        - columnheader "2029" [ref=e953]
+                        - columnheader "2030" [ref=e954]
+                        - columnheader "Source" [ref=e955]
+                    - rowgroup [ref=e956]:
+                      - row "Croissance CA 12.0% 9.8% 7.5% 5.2% 3.0% Alerte" [ref=e957]:
+                        - cell "Croissance CA" [ref=e958]
+                        - cell "12.0%" [ref=e959]
+                        - cell "9.8%" [ref=e960]
+                        - cell "7.5%" [ref=e961]
+                        - cell "5.2%" [ref=e962]
+                        - cell "3.0%" [ref=e963]
+                        - cell "Alerte" [ref=e964]:
+                          - generic [ref=e965]: Alerte
+                      - row "Marge EBIT 12.6% 12.6% 12.6% 12.6% 12.6% Historique" [ref=e966]:
+                        - cell "Marge EBIT" [ref=e967]
+                        - cell "12.6%" [ref=e968]
+                        - cell "12.6%" [ref=e969]
+                        - cell "12.6%" [ref=e970]
+                        - cell "12.6%" [ref=e971]
+                        - cell "12.6%" [ref=e972]
+                        - cell "Historique" [ref=e973]:
+                          - generic [ref=e974]: Historique
+                      - row "Taux IS 35.0% 35.0% 35.0% 35.0% 35.0% Historique" [ref=e975]:
+                        - cell "Taux IS" [ref=e976]
+                        - cell "35.0%" [ref=e977]
+                        - cell "35.0%" [ref=e978]
+                        - cell "35.0%" [ref=e979]
+                        - cell "35.0%" [ref=e980]
+                        - cell "35.0%" [ref=e981]
+                        - cell "Historique" [ref=e982]:
+                          - generic [ref=e983]: Historique
+                      - row "Capex / CA 4.0% 4.0% 4.0% 4.0% 4.0% Alerte" [ref=e984]:
+                        - cell "Capex / CA" [ref=e985]
+                        - cell "4.0%" [ref=e986]
+                        - cell "4.0%" [ref=e987]
+                        - cell "4.0%" [ref=e988]
+                        - cell "4.0%" [ref=e989]
+                        - cell "4.0%" [ref=e990]
+                        - cell "Alerte" [ref=e991]:
+                          - generic [ref=e992]: Alerte
+                      - row "BFR / CA 461.6% 461.6% 461.6% 461.6% 461.6% Historique" [ref=e993]:
+                        - cell "BFR / CA" [ref=e994]
+                        - cell "461.6%" [ref=e995]
+                        - cell "461.6%" [ref=e996]
+                        - cell "461.6%" [ref=e997]
+                        - cell "461.6%" [ref=e998]
+                        - cell "461.6%" [ref=e999]
+                        - cell "Historique" [ref=e1000]:
+                          - generic [ref=e1001]: Historique
+                      - row "D&A / CA 0.0% 0.0% 0.0% 0.0% 0.0% Alerte" [ref=e1002]:
+                        - cell "D&A / CA" [ref=e1003]
+                        - cell "0.0%" [ref=e1004]
+                        - cell "0.0%" [ref=e1005]
+                        - cell "0.0%" [ref=e1006]
+                        - cell "0.0%" [ref=e1007]
+                        - cell "0.0%" [ref=e1008]
+                        - cell "Alerte" [ref=e1009]:
+                          - generic [ref=e1010]: Alerte
+                      - row "Payout 55.0% 55.0% 55.0% 55.0% 55.0% Historique" [ref=e1011]:
+                        - cell "Payout" [ref=e1012]
+                        - cell "55.0%" [ref=e1013]
+                        - cell "55.0%" [ref=e1014]
+                        - cell "55.0%" [ref=e1015]
+                        - cell "55.0%" [ref=e1016]
+                        - cell "55.0%" [ref=e1017]
+                        - cell "Historique" [ref=e1018]:
+                          - generic [ref=e1019]: Historique
+                - generic [ref=e1020]:
+                  - generic [ref=e1021]:
+                    - generic [ref=e1022]: P&L et cash-flow projetes
+                    - generic [ref=e1023]: Maison
+                  - table [ref=e1026]:
+                    - rowgroup [ref=e1027]:
+                      - row "Ligne 2026E 2027E 2028E 2029E 2030E" [ref=e1028]:
+                        - columnheader "Ligne" [ref=e1029]
+                        - columnheader "2026E" [ref=e1030]
+                        - columnheader "2027E" [ref=e1031]
+                        - columnheader "2028E" [ref=e1032]
+                        - columnheader "2029E" [ref=e1033]
+                        - columnheader "2030E" [ref=e1034]
+                    - rowgroup [ref=e1035]:
+                      - row "Chiffre d'affaires 4 443 040 000 4 876 236 400 5 241 954 130 5 517 156 722 5 682 671 423" [ref=e1036]:
+                        - cell "Chiffre d'affaires" [ref=e1037]
+                        - cell "4 443 040 000" [ref=e1038]
+                        - cell "4 876 236 400" [ref=e1039]
+                        - cell "5 241 954 130" [ref=e1040]
+                        - cell "5 517 156 722" [ref=e1041]
+                        - cell "5 682 671 423" [ref=e1042]
+                      - row "EBIT 559 107 360 613 620 327 659 641 852 694 273 049 715 101 240" [ref=e1043]:
+                        - cell "EBIT" [ref=e1044]
+                        - cell "559 107 360" [ref=e1045]
+                        - cell "613 620 327" [ref=e1046]
+                        - cell "659 641 852" [ref=e1047]
+                        - cell "694 273 049" [ref=e1048]
+                        - cell "715 101 240" [ref=e1049]
+                      - row "NOPAT 363 419 784 398 853 213 428 767 204 451 277 482 464 815 806" [ref=e1050]:
+                        - cell "NOPAT" [ref=e1051]
+                        - cell "363 419 784" [ref=e1052]
+                        - cell "398 853 213" [ref=e1053]
+                        - cell "428 767 204" [ref=e1054]
+                        - cell "451 277 482" [ref=e1055]
+                        - cell "464 815 806" [ref=e1056]
+                      - row "Capex 177 721 600 195 049 456 209 678 165 220 686 269 227 306 857" [ref=e1057]:
+                        - cell "Capex" [ref=e1058]
+                        - cell "177 721 600" [ref=e1059]
+                        - cell "195 049 456" [ref=e1060]
+                        - cell "209 678 165" [ref=e1061]
+                        - cell "220 686 269" [ref=e1062]
+                        - cell "227 306 857" [ref=e1063]
+                      - row "Variation BFR 2 197 363 136 1 999 600 454 1 688 124 229 1 270 313 482 764 002 823" [ref=e1064]:
+                        - cell "Variation BFR" [ref=e1065]
+                        - cell "2 197 363 136" [ref=e1066]
+                        - cell "1 999 600 454" [ref=e1067]
+                        - cell "1 688 124 229" [ref=e1068]
+                        - cell "1 270 313 482" [ref=e1069]
+                        - cell "764 002 823" [ref=e1070]
+                      - row "FCFF -2 011 664 952 -1 795 796 697 -1 469 035 191 -1 039 722 270 -526 493 874" [ref=e1071]:
+                        - cell "FCFF" [ref=e1072]
+                        - cell "-2 011 664 952" [ref=e1073]
+                        - cell "-1 795 796 697" [ref=e1074]
+                        - cell "-1 469 035 191" [ref=e1075]
+                        - cell "-1 039 722 270" [ref=e1076]
+                        - cell "-526 493 874" [ref=e1077]
+                      - row "FCFE -2 011 664 952 -1 795 796 697 -1 469 035 191 -1 039 722 270 -526 493 874" [ref=e1078]:
+                        - cell "FCFE" [ref=e1079]
+                        - cell "-2 011 664 952" [ref=e1080]
+                        - cell "-1 795 796 697" [ref=e1081]
+                        - cell "-1 469 035 191" [ref=e1082]
+                        - cell "-1 039 722 270" [ref=e1083]
+                        - cell "-526 493 874" [ref=e1084]
+                      - row "Resultat net 363 419 784 398 853 213 428 767 204 451 277 482 464 815 806" [ref=e1085]:
+                        - cell "Resultat net" [ref=e1086]
+                        - cell "363 419 784" [ref=e1087]
+                        - cell "398 853 213" [ref=e1088]
+                        - cell "428 767 204" [ref=e1089]
+                        - cell "451 277 482" [ref=e1090]
+                        - cell "464 815 806" [ref=e1091]
+                      - row "Dividendes 199 880 881 219 369 267 235 821 962 248 202 615 255 648 693" [ref=e1092]:
+                        - cell "Dividendes" [ref=e1093]
+                        - cell "199 880 881" [ref=e1094]
+                        - cell "219 369 267" [ref=e1095]
+                        - cell "235 821 962" [ref=e1096]
+                        - cell "248 202 615" [ref=e1097]
+                        - cell "255 648 693" [ref=e1098]
+              - generic [ref=e1099]:
+                - generic [ref=e1100]:
+                  - generic [ref=e1101]: Hypotheses cles - DCF
+                  - generic [ref=e1102]: Scenario actif
+                - generic [ref=e1103]:
+                  - generic [ref=e1104]:
+                    - generic [ref=e1105]:
+                      - generic [ref=e1106]: Taux sans risque
+                      - generic [ref=e1107]: 2.9%
+                      - generic [ref=e1108]: risk_free_rate
+                    - generic [ref=e1109]:
+                      - generic [ref=e1110]: Prime actions
+                      - generic [ref=e1111]: 6.0%
+                      - generic [ref=e1112]: equity_risk_premium
+                    - generic [ref=e1113]:
+                      - generic [ref=e1114]: Beta
+                      - generic [ref=e1115]: 133.1%
+                      - generic [ref=e1116]: beta
+                    - generic [ref=e1117]:
+                      - generic [ref=e1118]: g firm
+                      - generic [ref=e1119]: 3.0%
+                      - generic [ref=e1120]: terminal_growth_firm
+                    - generic [ref=e1121]:
+                      - generic [ref=e1122]: g equity
+                      - generic [ref=e1123]: 3.0%
+                      - generic [ref=e1124]: terminal_growth_equity
+                    - generic [ref=e1125]:
+                      - generic [ref=e1126]: Cout dette
+                      - generic [ref=e1127]: 5.0%
+                      - generic [ref=e1128]: cost_of_debt
+                    - generic [ref=e1129]:
+                      - generic [ref=e1130]: Taux IS
+                      - generic [ref=e1131]: 35.0%
+                      - generic [ref=e1132]: tax_rate
+                    - generic [ref=e1133]:
+                      - generic [ref=e1134]: Poids dette
+                      - generic [ref=e1135]: 30.0%
+                      - generic [ref=e1136]: default_debt_weight
+                  - group [ref=e1137]:
+                    - generic "Modifier les hypotheses" [ref=e1138] [cursor=pointer]
+              - generic [ref=e1141]: Sensibilite
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=e146] [cursor=pointer]:
+    - img [ref=e147]
+  - alert [ref=e307]

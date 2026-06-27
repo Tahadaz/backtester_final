@@ -515,6 +515,162 @@ def _compute_cutoff(reference_index: pd.Index, lookback_days: int) -> Optional[p
     return cutoff.tz_convert(tz)
 
 
+def _json_float(value: Any) -> Optional[float]:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if np.isfinite(parsed) else None
+
+
+def _series_json_values(series: pd.Series, index: pd.Index) -> list[Optional[float]]:
+    aligned = series.reindex(index)
+    return [_json_float(value) for value in aligned.tolist()]
+
+
+def _iso_index_value(value: Any) -> str:
+    try:
+        return pd.Timestamp(value).date().isoformat()
+    except Exception:
+        return str(value)[:10]
+
+
+def _next_index_dates(index: pd.Index) -> pd.Series:
+    values = list(index)
+    shifted = values[1:] + values[-1:] if values else []
+    return pd.Series(shifted, index=index)
+
+
+def _macro_execution_price_series(
+    stock_prices: pd.DataFrame,
+    *,
+    return_method: str,
+    close_col: str,
+    open_col: Optional[str],
+) -> tuple[pd.Series, pd.Series]:
+    close = stock_prices[close_col].dropna()
+    if return_method in {"open_to_open", "open_to_close"} and open_col is not None:
+        execution = stock_prices[open_col].dropna().shift(-1)
+        execution_dates = _next_index_dates(stock_prices.index)
+        return execution, execution_dates
+    return close, pd.Series(stock_prices.index, index=stock_prices.index)
+
+
+def _build_macro_backtest_replay(
+    *,
+    stock_prices: pd.DataFrame,
+    close_col: str,
+    open_col: Optional[str],
+    stock_close: pd.Series,
+    aligned_factors: dict[str, pd.Series],
+    signal: pd.Series,
+    spec: Any,
+    forward_returns: Optional[pd.Series],
+    return_method: str,
+    cost_bps: float,
+    signal_threshold: float = 0.0,
+) -> dict[str, Any] | None:
+    primary_factor = aligned_factors.get(spec.factor_id)
+    if primary_factor is None:
+        return None
+
+    fwd = forward_returns if forward_returns is not None else stock_close.pct_change(fill_method=None).shift(-1)
+    frame = pd.concat(
+        {
+            "signal": signal,
+            "stock_close": stock_close,
+            "forward_return": fwd,
+            "factor_close": primary_factor,
+            "factor_return": primary_factor.pct_change(fill_method=None),
+        },
+        axis=1,
+    )
+    for factor_id in spec.requires:
+        factor_series = aligned_factors.get(factor_id)
+        if factor_series is not None:
+            frame[f"factor_{factor_id}"] = factor_series
+
+    frame = frame.dropna(subset=["signal", "stock_close"]).copy()
+    if len(frame) < 2:
+        return None
+    frame["forward_return"] = frame["forward_return"].fillna(0.0)
+
+    position = pd.Series(0.0, index=frame.index, dtype=float)
+    position[frame["signal"] > signal_threshold] = 1.0
+    position[frame["signal"] < -signal_threshold] = -1.0
+
+    position_change = position.diff().fillna(position).abs()
+    cost_rate = float(cost_bps) / 10_000.0
+    strategy_returns = (position * frame["forward_return"]).astype(float) - position_change * cost_rate
+    strategy_returns = strategy_returns.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+    equity = (1.0 + strategy_returns).cumprod()
+    peak = equity.cummax().replace(0.0, np.nan)
+    drawdown = (equity - peak) / peak
+    drawdown = drawdown.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+
+    execution_price, execution_dates = _macro_execution_price_series(
+        stock_prices,
+        return_method=return_method,
+        close_col=close_col,
+        open_col=open_col,
+    )
+    execution_price = execution_price.reindex(frame.index)
+    execution_dates = execution_dates.reindex(frame.index)
+
+    ledger: list[dict[str, Any]] = []
+    previous_position = 0.0
+    for date_value in frame.index:
+        current_position = float(position.loc[date_value])
+        if abs(current_position - previous_position) < 1e-12:
+            continue
+        quantity_delta = current_position - previous_position
+        side = "ACHAT" if quantity_delta > 0 else "VENTE"
+        equity_value = _json_float(equity.loc[date_value])
+        ledger.append(
+            {
+                "date": _iso_index_value(date_value),
+                "execution_date": _iso_index_value(execution_dates.loc[date_value]),
+                "side": side,
+                "position": _json_float(current_position),
+                "previous_position": _json_float(previous_position),
+                "quantity_delta": _json_float(quantity_delta),
+                "signal_value": _json_float(frame.at[date_value, "signal"]),
+                "factor_id": spec.factor_id,
+                "factor_value": _json_float(frame.at[date_value, "factor_close"]),
+                "factor_return": _json_float(frame.at[date_value, "factor_return"]),
+                "prix_execution": _json_float(execution_price.loc[date_value]),
+                "stock_close": _json_float(frame.at[date_value, "stock_close"]),
+                "strategy_return": _json_float(strategy_returns.loc[date_value]),
+                "return_cumule": None if equity_value is None else equity_value - 1.0,
+                "equity": equity_value,
+                "cout": _json_float(abs(quantity_delta) * cost_rate),
+            }
+        )
+        previous_position = current_position
+
+    return {
+        "factor_id": spec.factor_id,
+        "signal_name": spec.signal_name,
+        "return_method": return_method,
+        "cost_bps": float(cost_bps),
+        "dates": [_iso_index_value(value) for value in frame.index],
+        "stock_close": _series_json_values(frame["stock_close"], frame.index),
+        "factor_close": _series_json_values(frame["factor_close"], frame.index),
+        "factor_return": _series_json_values(frame["factor_return"], frame.index),
+        "factor_close_by_id": {
+            factor_id: _series_json_values(frame[f"factor_{factor_id}"], frame.index)
+            for factor_id in spec.requires
+            if f"factor_{factor_id}" in frame.columns
+        },
+        "signal": _series_json_values(frame["signal"], frame.index),
+        "position": _series_json_values(position, frame.index),
+        "strategy_returns": _series_json_values(strategy_returns, frame.index),
+        "equity": _series_json_values(equity, frame.index),
+        "drawdown": _series_json_values(drawdown, frame.index),
+        "trade_ledger": ledger,
+    }
+
+
 @router.get("/factors/leaderboard", response_model=list[FactorLeaderboardRow])
 def get_factor_leaderboard(
     lookback_days: int = Query(default=0, ge=0),
@@ -857,6 +1013,7 @@ def evaluate_factor_signals(
     # Evaluate each registered signal — no sector gate
     n_signals = len(REGISTERED_FACTOR_SIGNALS)
     reports: list[tuple[object, object | None]] = []
+    macro_cost_bps = 33.0
 
     for spec in REGISTERED_FACTOR_SIGNALS:
         has_data = all(req in aligned_factors for req in spec.requires)
@@ -875,7 +1032,7 @@ def evaluate_factor_signals(
                 signal_id=spec.signal_name,
                 symbol=symbol_upper,
                 horizons=[1, 2, 3, 5, 10],
-                costs={"spread_bps": 0.0, "commission_bps": 33.0},
+                costs={"spread_bps": 0.0, "commission_bps": macro_cost_bps},
                 n_variants=n_signals,
                 bootstrap_samples=500,
                 forward_returns=forward_returns,
@@ -928,12 +1085,29 @@ def evaluate_factor_signals(
                 ic_curve=_zeroed_ic_curve(),
                 portfolio=_zeroed_portfolio(),
                 robustness=_zeroed_robustness(),
+                backtest=None,
             ))
             continue
 
         ic_vals = report.ic_curve.ic_values
         ic_h1 = _safe_float(ic_vals[0]) if ic_vals else 0.0
         ic_h5 = _safe_float(ic_vals[4]) if len(ic_vals) > 4 else 0.0
+        try:
+            signal_for_replay = compute_factor_signal(spec, aligned_factors)
+            backtest_replay = _build_macro_backtest_replay(
+                stock_prices=stock_prices,
+                close_col=close_col,
+                open_col=open_col,
+                stock_close=stock_close,
+                aligned_factors=aligned_factors,
+                signal=signal_for_replay,
+                spec=spec,
+                forward_returns=forward_returns,
+                return_method=return_method,
+                cost_bps=macro_cost_bps,
+            )
+        except Exception:
+            backtest_replay = None
 
         out.append(FactorSignalEvalOut(
             factor_id=spec.factor_id,
@@ -989,6 +1163,7 @@ def evaluate_factor_signals(
                 sharpe_cv=_safe_float(report.robustness.sharpe_cv),
                 n_variants=n_signals,
             ),
+            backtest=backtest_replay,
         ))
 
     return out

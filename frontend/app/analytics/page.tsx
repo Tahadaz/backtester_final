@@ -5,9 +5,11 @@ import { useState, useMemo, useEffect, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import { useAnalyticsSignalsOverview } from "@/hooks/use-api"
 import { useDashboardData } from "@/hooks/use-dashboard"
+import { horizonLabel } from "@/lib/horizon"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { MacroCatalogTable } from "@/components/analytics/macro-catalog-table"
 import { FactorRelevancePanel } from "@/components/analytics/factor-relevance-panel"
 import { RecomputeControls } from "@/components/analytics/recompute-controls"
@@ -64,7 +66,7 @@ export function AnalyticsPageInner() {
   }, [])
 
   const { data: allRows, isLoading } = useAnalyticsSignalsOverview()
-  const { data: dashData } = useDashboardData("short")
+  const { data: dashData } = useDashboardData("weekly")
 
   const symbolList = useMemo(
     () => [...new Set((allRows ?? []).map((r) => r.symbol))].sort(),
@@ -151,50 +153,60 @@ export function AnalyticsPageInner() {
 
   return (
     <div className="claude-analytics-shell">
-      <aside className="lb-sidebar">
-        <div className="lsh">
-          <h4>Top Signaux</h4>
-          <div className="eyebrow mb-1">Classement IC - Moyen terme</div>
-          <div className="method-pills">
-            <button type="button" className="method-pill">C-C</button>
-            <button type="button" className="method-pill active">C-O</button>
-            <button type="button" className="method-pill">O-O</button>
-            <button type="button" className="method-pill">O-C</button>
-          </div>
-        </div>
-        <div className="lb-list">
-          {isLoading && topSignals.length === 0 ? (
-            <div className="space-y-1 p-1">
-              {Array.from({ length: 12 }).map((_, index) => <Skeleton key={index} className="h-9 w-full" />)}
+      <ResizablePanelGroup
+        direction="horizontal"
+        autoSaveId="analytics-workspace-layout"
+        className="h-full max-lg:block max-lg:h-auto"
+      >
+        <ResizablePanel defaultSize={18} minSize={13} maxSize={34} className="min-w-0 max-lg:!h-auto">
+          <aside className="lb-sidebar resizable-pane">
+            <div className="lsh">
+              <h4>Top Signaux</h4>
+              <div className="eyebrow mb-1">Classement IC - Mensuel</div>
+              <div className="method-pills">
+                <button type="button" className="method-pill">C-C</button>
+                <button type="button" className="method-pill active">C-O</button>
+                <button type="button" className="method-pill">O-O</button>
+                <button type="button" className="method-pill">O-C</button>
+              </div>
             </div>
-          ) : topSignals.length === 0 ? (
-            <div className="px-3 py-6 text-xs text-muted-foreground">No signal history yet.</div>
-          ) : (
-            topSignals.map((signal, index) => (
-              <button
-                key={signal.signal_id}
-                type="button"
-                className={`lb-item ${selectedSignalId === signal.signal_id ? "active" : ""}`}
-                onClick={() => {
-                  setSelectedSignalId(signal.signal_id)
-                  setTab("signals")
-                  setSubTab("top")
-                }}
-              >
-                <span className="rank">{index + 1}</span>
-                <span className="nm truncate">
-                  {signal.signal_id}
-                  <br />
-                  <span className="text-[10px] text-muted-foreground">{signal.category}</span>
-                </span>
-                <span className={`ic-v ${(signal.meanIc ?? 0) >= 0 ? "t-pos" : "t-neg"}`}>{fmtIc(signal.meanIc)}</span>
-              </button>
-            ))
-          )}
-        </div>
-      </aside>
+            <div className="lb-list">
+              {isLoading && topSignals.length === 0 ? (
+                <div className="space-y-1 p-1">
+                  {Array.from({ length: 12 }).map((_, index) => <Skeleton key={index} className="h-9 w-full" />)}
+                </div>
+              ) : topSignals.length === 0 ? (
+                <div className="px-3 py-6 text-xs text-muted-foreground">No signal history yet.</div>
+              ) : (
+                topSignals.map((signal, index) => (
+                  <button
+                    key={signal.signal_id}
+                    type="button"
+                    className={`lb-item ${selectedSignalId === signal.signal_id ? "active" : ""}`}
+                    onClick={() => {
+                      setSelectedSignalId(signal.signal_id)
+                      setTab("signals")
+                      setSubTab("top")
+                    }}
+                  >
+                    <span className="rank">{index + 1}</span>
+                    <span className="nm truncate">
+                      {signal.signal_id}
+                      <br />
+                      <span className="text-[10px] text-muted-foreground">{signal.category}</span>
+                    </span>
+                    <span className={`ic-v ${(signal.meanIc ?? 0) >= 0 ? "t-pos" : "t-neg"}`}>{fmtIc(signal.meanIc)}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          </aside>
+        </ResizablePanel>
 
-      <section className="analytics-main">
+        <ResizableHandle withHandle className="max-lg:hidden" />
+
+        <ResizablePanel defaultSize={82} minSize={50} className="min-w-0 max-lg:!h-auto">
+          <section className="analytics-main h-full max-lg:h-auto">
         <div className="atabs">
           <button type="button" onClick={() => setTab("signals")} className={tab === "signals" ? "active" : ""}>
             <Activity className="h-3.5 w-3.5" />
@@ -228,15 +240,15 @@ export function AnalyticsPageInner() {
             <label>Horizon</label>
             {tab === "factors" ? (
               <select className="select" value={factorHorizon} onChange={(event) => setFactorHorizon(event.target.value as EngineHorizon)}>
-                <option value="short">5 j (court terme)</option>
-                <option value="medium">21 j (moyen terme)</option>
-                <option value="long">63 j (long terme)</option>
+                <option value="short">Hebdomadaire (5 j)</option>
+                <option value="medium">Mensuel (21 j)</option>
+                <option value="long">Trimestriel (63 j)</option>
               </select>
             ) : (
               <select className="select" defaultValue="medium">
-                <option value="medium">21 j (moyen terme)</option>
-                <option value="short">5 j (court terme)</option>
-                <option value="long">63 j (long terme)</option>
+                <option value="medium">Mensuel (21 j)</option>
+                <option value="short">Hebdomadaire (5 j)</option>
+                <option value="long">Trimestriel (63 j)</option>
               </select>
             )}
           </span>
@@ -498,7 +510,9 @@ export function AnalyticsPageInner() {
             </>
           ) : null}
         </div>
-      </section>
+          </section>
+        </ResizablePanel>
+      </ResizablePanelGroup>
     </div>
   )
 
@@ -747,7 +761,7 @@ export function AnalyticsPageInner() {
                       : "border-line bg-card text-muted-foreground hover:bg-bg3"
                   }`}
                 >
-                  {h}
+                  {horizonLabel(h)}
                 </button>
               ))}
             </div>

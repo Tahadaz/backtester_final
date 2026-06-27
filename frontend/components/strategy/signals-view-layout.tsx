@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import Link from "next/link"
-import { Activity, BookOpen, Download, Gauge, Layers3, Settings } from "lucide-react"
+import { Activity, BookOpen, Download, Gauge, Layers3, Settings, BarChart2 } from "lucide-react"
 import { StockSidebar } from "@/components/strategy/stock-sidebar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useMarketCatalog, usePersistedSignalEngineSummaries, useStockOhlcvHistory } from "@/hooks/use-api"
 import { useWfoSummary } from "@/hooks/use-wfo-summary"
@@ -42,12 +43,14 @@ type SignalsViewLayoutProps = {
   onCooldownBarsChange: (value: number) => void
   topbarContent?: ReactNode
   proofContent?: ReactNode
-  defaultTab?: "technique" | "evidence" | "indicateurs" | "wfo" | "backtest"
+  defaultTab?: "technique" | "evidence" | "indicateurs" | "wfo" | "backtest" | "portfolio"
+  onTabChange?: (tab: string) => void
   techniqueContent: ReactNode
   evidenceContent: ReactNode
   indicatorsContent: ReactNode
   wfoContent: ReactNode
   backtestContent: ReactNode
+  portfolioContent: ReactNode
 }
 
 function displayVariant(variant: SignalsPageView): string {
@@ -255,31 +258,42 @@ export function SignalsViewLayout({
   topbarContent,
   proofContent,
   defaultTab,
+  onTabChange,
   techniqueContent,
   evidenceContent,
   indicatorsContent,
   wfoContent,
   backtestContent,
+  portfolioContent,
 }: SignalsViewLayoutProps) {
   const [activeTab, setActiveTab] = useState(defaultTab ?? "technique")
 
   useEffect(() => {
     setActiveTab(defaultTab ?? "technique")
-  }, [defaultTab, selectedSymbol])
+  }, [defaultTab])
 
   return (
-    <div className="flex h-full overflow-hidden bg-background">
-      <StockSidebar
-        selectedSymbol={selectedSymbol}
-        onSelect={onSelectSymbol}
-        horizon={horizon}
-        onHorizonChange={onHorizonChange}
-        variant={variant}
-        cooldownBars={cooldownBars}
-        className="w-[240px] shrink-0"
-      />
+    <ResizablePanelGroup
+      direction="horizontal"
+      autoSaveId="signals-workspace-layout"
+      className="signals-tech-layout h-full overflow-hidden bg-background max-lg:block max-lg:h-auto max-lg:overflow-visible"
+    >
+      <ResizablePanel defaultSize={18} minSize={14} maxSize={34} className="min-w-0 max-lg:!h-auto">
+        <StockSidebar
+          selectedSymbol={selectedSymbol}
+          onSelect={onSelectSymbol}
+          horizon={horizon}
+          onHorizonChange={onHorizonChange}
+          variant={variant}
+          cooldownBars={cooldownBars}
+          className="signals-tech-sidebar w-full max-lg:max-h-[18rem] shrink-0 max-lg:border-r-0 border-b border-line lg:h-full lg:border-b-0"
+        />
+      </ResizablePanel>
 
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <ResizableHandle withHandle className="max-lg:hidden" />
+
+      <ResizablePanel defaultSize={82} minSize={50} className="min-w-0 max-lg:!h-auto">
+        <div className="signals-tech-detail flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
         <div className="flex shrink-0 items-center gap-2.5 border-b border-line bg-bg2 px-3.5 py-2">
           {topbarContent}
           <Badge variant="outline" className="h-[22px] rounded px-1.5 text-[10px] text-muted-foreground">
@@ -314,7 +328,7 @@ export function SignalsViewLayout({
 
         <SignalSymbolStrip selectedSymbol={selectedSymbol} horizon={horizon} variant={variant} />
 
-        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)} className="flex min-h-0 flex-1 flex-col gap-0">
+        <Tabs value={activeTab} onValueChange={(value) => { setActiveTab(value as typeof activeTab); onTabChange?.(value) }} className="flex min-h-0 flex-1 flex-col gap-0">
           <TabsList className="h-9 w-full justify-start rounded-none border-b border-line bg-bg2 p-0">
             <TabsTrigger value="technique" className="h-9 flex-none rounded-none border-0 border-b-2 border-transparent bg-transparent px-3.5 text-xs shadow-none data-[state=active]:border-primary data-[state=active]:bg-card data-[state=active]:shadow-none">
               <Activity className="h-3.5 w-3.5" />
@@ -335,6 +349,10 @@ export function SignalsViewLayout({
             <TabsTrigger value="backtest" disabled={!selectedSymbol} className="h-9 flex-none rounded-none border-0 border-b-2 border-transparent bg-transparent px-3.5 text-xs shadow-none data-[state=active]:border-primary data-[state=active]:bg-card data-[state=active]:shadow-none">
               <Gauge className="h-3.5 w-3.5" />
               Backtest MC
+            </TabsTrigger>
+            <TabsTrigger value="portfolio" className="h-9 flex-none rounded-none border-0 border-b-2 border-transparent bg-transparent px-3.5 text-xs shadow-none data-[state=active]:border-primary data-[state=active]:bg-card data-[state=active]:shadow-none">
+              <BarChart2 className="h-3.5 w-3.5" />
+              Portefeuille
             </TabsTrigger>
           </TabsList>
 
@@ -360,8 +378,13 @@ export function SignalsViewLayout({
           <TabsContent value="backtest" className="min-h-0 flex-1 overflow-y-auto p-3.5 signals-scrollbar">
             {backtestContent}
           </TabsContent>
+
+          <TabsContent value="portfolio" className="min-h-0 flex-1 overflow-y-auto p-3.5 signals-scrollbar">
+            {portfolioContent}
+          </TabsContent>
         </Tabs>
-      </div>
-    </div>
+        </div>
+      </ResizablePanel>
+    </ResizablePanelGroup>
   )
 }

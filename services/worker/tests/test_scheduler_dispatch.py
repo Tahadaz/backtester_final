@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from types import SimpleNamespace
 
+from core.quant_core.signal_engine.modes import ALL_SIGNAL_MODE_NAMES, signal_mode_storage_name
 from services.api.app.services.scheduler_registry import get_schedule_spec
 from services.worker.tasks import scheduler_dispatch
 
@@ -43,7 +44,34 @@ def test_weekly_fundamental_refresh_is_registered_on_market_refresh_queue() -> N
     assert spec.cron == "0 20 * * sat"
 
 
-def test_dispatch_fundamental_refresh_enqueues_stockanalysis_universe(monkeypatch) -> None:
+def test_weekly_best_evidence_snapshot_is_registered_on_signal_backtest_queue() -> None:
+    spec = get_schedule_spec("weekly_signal_best_evidence_snapshot")
+
+    assert spec.kind == "signal_best_evidence_snapshot"
+    assert spec.queue == "signal_backtest"
+
+
+def test_dispatch_signal_backtests_enqueues_all_signal_modes(monkeypatch) -> None:
+    calls: list[tuple[str, str, str, str]] = []
+    from services.worker.tasks import signal_backtest_batch
+
+    monkeypatch.setattr(scheduler_dispatch, "list_signal_universe_symbols", lambda _db: ["AAA"])
+    monkeypatch.setattr(
+        signal_backtest_batch,
+        "enqueue_signal_backtest_for_symbol",
+        lambda symbol, horizon, *, variant, triggered_by: calls.append((symbol, horizon, variant, triggered_by))
+        or f"{symbol}-{horizon}-{variant}",
+    )
+
+    result = scheduler_dispatch._dispatch_signal_backtests(object(), trigger_source="scheduled")
+
+    expected_variants = [signal_mode_storage_name(variant) for variant in ALL_SIGNAL_MODE_NAMES]
+    assert result["enqueued_jobs"] == 3 * len(expected_variants)
+    assert {call[2] for call in calls} == set(expected_variants)
+    assert {call[1] for call in calls} == {"weekly", "monthly", "quarterly"}
+
+
+def test_dispatch_fundamental_refresh_enqueues_stockanalysis_missing_only(monkeypatch) -> None:
     queue = _CaptureQueue()
     monkeypatch.setattr(scheduler_dispatch, "_queue", lambda name: queue)
 
@@ -65,7 +93,7 @@ def test_dispatch_fundamental_refresh_enqueues_stockanalysis_universe(monkeypatc
             ("services.worker.tasks.refresh_stockanalysis_fundamentals.refresh_stockanalysis_universe",),
             {
                 "symbols": None,
-                "missing_only": False,
+                "missing_only": True,
                 "triggered_by": "scheduled",
                 "batch_id": "batch-123",
                 "job_timeout": 14400,

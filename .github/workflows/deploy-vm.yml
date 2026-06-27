@@ -28,19 +28,19 @@ jobs:
             # Pull new images
             IMAGE_TAG=${{ github.event.workflow_run.head_sha }} \
               docker compose --env-file /etc/bt/env \
-              -f infra/docker-compose.gcp.yml pull
+              -f infra/docker-compose.prod.yml pull
 
             # Run Python DB migrations
             IMAGE_TAG=${{ github.event.workflow_run.head_sha }} \
               docker compose --env-file /etc/bt/env \
-              -f infra/docker-compose.gcp.yml \
+              -f infra/docker-compose.prod.yml \
               run --rm quant_api \
               alembic -c services/api/alembic.ini upgrade head
 
             # Bring everything up
             IMAGE_TAG=${{ github.event.workflow_run.head_sha }} \
               docker compose --env-file /etc/bt/env \
-              -f infra/docker-compose.gcp.yml \
+              -f infra/docker-compose.prod.yml \
               up -d --remove-orphans
 
             # Dashboard snapshot mode serves persisted rows. Rebuild them with
@@ -48,7 +48,7 @@ jobs:
             # the dashboard returning 503 until the nightly refresh runs.
             IMAGE_TAG=${{ github.event.workflow_run.head_sha }} \
               docker compose --env-file /etc/bt/env \
-              -f infra/docker-compose.gcp.yml \
+              -f infra/docker-compose.prod.yml \
               run --rm --no-deps quant_worker \
               python - <<'PY'
             import sys
@@ -58,6 +58,21 @@ jobs:
             print(result)
             if not result or not all(result.values()):
                 sys.exit(1)
+            PY
+
+            # Rebuild best-evidence snapshots so the signal-evidence tab serves fresh data
+            # immediately after deploy rather than waiting until the next Monday refresh.
+            # Non-blocking: exits 0 on partial result so a slow universe doesn't halt the deploy.
+            IMAGE_TAG=${{ github.event.workflow_run.head_sha }} \
+              docker compose --env-file /etc/bt/env \
+              -f infra/docker-compose.prod.yml \
+              run --rm --no-deps quant_worker \
+              python - <<'PY'
+            import sys
+            from services.worker.tasks.signal_best_evidence_snapshot import refresh_signal_best_evidence_snapshot
+            result = refresh_signal_best_evidence_snapshot()
+            print(result)
+            sys.exit(0 if result.get("status") in {"succeeded", "partial"} else 1)
             PY
 
             # Prune old images
@@ -93,7 +108,7 @@ jobs:
             curl -fsS --max-time 10 --resolve "${DOMAIN}:443:127.0.0.1" "https://${DOMAIN}/login" | grep -q "Connexion"
             IMAGE_TAG=${{ github.event.workflow_run.head_sha }} \
               docker compose --env-file /etc/bt/env \
-              -f infra/docker-compose.gcp.yml \
+              -f infra/docker-compose.prod.yml \
               exec -T quant_api \
               python - <<'PY'
             import os
@@ -112,4 +127,4 @@ jobs:
             PY
             IMAGE_TAG=${{ github.event.workflow_run.head_sha }} \
               docker compose --env-file /etc/bt/env \
-              -f infra/docker-compose.gcp.yml ps
+              -f infra/docker-compose.prod.yml ps

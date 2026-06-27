@@ -1,0 +1,21 @@
+# Declares the RAW app tables as dbt "sources". This is how dbt knows these
+# tables exist without us hardcoding "public.stock_master" in every model.
+# In models we write {{ source('app', 'stock_master') }} instead of the raw name —
+# dbt then tracks lineage from source -> staging -> marts, and can check freshness.
+version: 2
+
+sources:
+  - name: app
+    description: >
+      Operational tables owned by the FastAPI + RQ-worker application,
+      living in the Postgres `public` schema. READ-ONLY to dbt — we never write here.
+    schema: public
+    tables:
+      - name: stock_master
+        description: "Canonical registry of tracked Moroccan (MASI) stocks. ~73 rows."
+      - name: signal_score_history
+        description: "Per-bar category-aggregated signal scores. ~6.6M rows — our primary fact source."
+      - name: fundamental_pillar_score_history
+        description: "Per-symbol fundamental pillar scores over time (0-100 scale)."
+      - name: macro_factor_meta
+        description: "Registry of macro factor series (BRENT, DXY, GOLD, ...) — the non-equity symbols the signal fact also scores."

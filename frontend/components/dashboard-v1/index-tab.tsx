@@ -57,6 +57,7 @@ import { cn } from "@/lib/utils"
 
 interface IndexTabProps {
   baseIndex: DashboardIndex
+  baseDefinition?: DashboardCustomIndexDefinition
   stocks: DashboardStock[]
   customDefinitions: DashboardCustomIndexDefinition[]
   readOnly: boolean
@@ -327,6 +328,8 @@ function technicalHref(stock: DashboardStock, horizon: Horizon, mode: DashboardT
     view: variant,
     source: signal?.source ?? "auto",
     evidenceVariant: mode === "classic" ? undefined : signal?.variant,
+    scope: signal?.scope,
+    scopeKey: signal?.scope_key,
     tab: "technique",
   })
 }
@@ -501,6 +504,7 @@ function IndexSignalOverview({
 
 export function IndexTab({
   baseIndex,
+  baseDefinition,
   stocks,
   customDefinitions,
   readOnly,
@@ -637,39 +641,27 @@ export function IndexTab({
       }
     }
 
-    const masiMembers = stocks.map((stock) => makeMember(stock))
-
-    const base: ComputedIndex = {
-      id: MASI_KEY,
-      name: baseIndex.name || "MASI",
-      stock_count: stocks.length,
-      scores: {
-        signal_engine:
-          computeScoreBlock(masiMembers, "signal_engine") ?? emptyIndexScoreBlock(stocks.length),
-        wfo: computeScoreBlock(masiMembers, "wfo"),
-      },
-      bestStats: summarizeBestSignals(stocks),
-      technicalStats: summarizeTechnicalSignals(stocks, technicalDirectionMode),
-      weightSummary: null,
-      portfolioEdge: baseIndex.portfolio_edge ?? null,
-      members: masiMembers,
-      totalMarketValue: 0,
-      isWeightedComplete: true,
-      hasComponentWeights: false,
-      editable: false,
-    }
-
-    const custom = customDefinitions.map((definition) => {
+    const makeWeightedIndex = (
+      definition: DashboardCustomIndexDefinition,
+      portfolioEdge: DashboardPortfolioEdge | null,
+    ): ComputedIndex => {
       const symbols = normalizeSymbols(definition.symbols)
       const componentShares = normalizeComponentShares(definition)
       const hasComponentWeights = Object.keys(componentShares).length > 0
       const rawMembers = symbols.map((symbol) => makeMember(stockBySymbol.get(symbol), symbol, componentShares[symbol] ?? null))
       const totalMarketValue = rawMembers.reduce((sum, member) => sum + member.marketValue, 0)
-      const isWeightedComplete =
+      const hasCompleteWeights =
         Boolean(definition.is_weighted_complete) &&
         symbols.length > 0 &&
         rawMembers.every((member) => member.shares != null && member.shares > 0 && member.price != null && member.price > 0) &&
         totalMarketValue > 0
+      const hasUsableWeights =
+        Boolean(definition.is_weighted_complete) &&
+        symbols.length > 0 &&
+        totalMarketValue > 0 &&
+        rawMembers.some((member) => member.shares != null && member.shares > 0 && member.price != null && member.price > 0)
+      const requireCompleteWeights = definition.editable !== false
+      const isWeightedComplete = requireCompleteWeights ? hasCompleteWeights : hasUsableWeights
       const members = rawMembers.map((member) => {
         const weightFraction = isWeightedComplete && totalMarketValue > 0 ? member.marketValue / totalMarketValue : 0
         return {
@@ -699,17 +691,59 @@ export function IndexTab({
         bestStats: summarizeBestSignals(memberStocks),
         technicalStats: summarizeTechnicalSignals(memberStocks, technicalDirectionMode),
         weightSummary: isWeightedComplete ? summarizeWeightRows(weightRows) : null,
-        portfolioEdge: isWeightedComplete ? definition.portfolio_edge ?? null : null,
+        portfolioEdge: isWeightedComplete ? portfolioEdge : null,
         members,
         totalMarketValue,
         isWeightedComplete,
         hasComponentWeights,
         editable: definition.editable ?? true,
-      } satisfies ComputedIndex
+      }
+    }
+
+    const base: ComputedIndex = baseDefinition
+      ? {
+          ...makeWeightedIndex(
+            {
+              ...baseDefinition,
+              id: MASI_KEY,
+              name: baseDefinition.name || baseIndex.name || "MASI",
+              editable: false,
+            },
+            baseDefinition.portfolio_edge ?? baseIndex.portfolio_edge ?? null,
+          ),
+          id: MASI_KEY,
+          editable: false,
+        }
+      : (() => {
+          const masiMembers = stocks.map((stock) => makeMember(stock))
+
+          return {
+            id: MASI_KEY,
+            name: baseIndex.name || "MASI",
+            stock_count: stocks.length,
+            scores: {
+              signal_engine:
+                computeScoreBlock(masiMembers, "signal_engine") ?? emptyIndexScoreBlock(stocks.length),
+              wfo: computeScoreBlock(masiMembers, "wfo"),
+            },
+            bestStats: summarizeBestSignals(stocks),
+            technicalStats: summarizeTechnicalSignals(stocks, technicalDirectionMode),
+            weightSummary: null,
+            portfolioEdge: baseIndex.portfolio_edge ?? null,
+            members: masiMembers,
+            totalMarketValue: 0,
+            isWeightedComplete: true,
+            hasComponentWeights: false,
+            editable: false,
+          }
+        })()
+
+    const custom = customDefinitions.map((definition) => {
+      return makeWeightedIndex(definition, definition.portfolio_edge ?? null)
     })
 
     return [base, ...custom]
-  }, [baseIndex.name, baseIndex.portfolio_edge, customDefinitions, displayMode, signalView, stockBySymbol, stocks, technicalDirectionMode])
+  }, [baseDefinition, baseIndex.name, baseIndex.portfolio_edge, customDefinitions, displayMode, signalView, stockBySymbol, stocks, technicalDirectionMode])
 
   function symbolOptions(query: string) {
     const normalized = query.trim().toLowerCase()

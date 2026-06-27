@@ -704,6 +704,44 @@ def test_avg_cats_aggregates_correctly() -> None:
     assert result["tendance"]["label"] == "Très haussier"  # "tendance" is a trend type
 
 
+def test_best_technical_signal_can_select_category_scope() -> None:
+    from services.api.app.services.dashboard_builder import (
+        _build_best_technical_signal_payload,
+        _build_technical_signal_candidate,
+        _technical_scoped_candidates,
+    )
+
+    per_family = {
+        "tendance": {"score_pct": 82.0, "label": "Tres haussier"},
+        "momentum": {"score_pct": 4.0, "label": "Pas de momentum"},
+        "oscillation": {"score_pct": -2.0, "label": "Normal"},
+        "volume": {"score_pct": 1.0, "label": "Neutre"},
+    }
+    candidates = [
+        _build_technical_signal_candidate(
+            source="signal_engine",
+            variant="expanded_ta_simple",
+            score=8.0,
+            signal_label="Neutre",
+            per_family=per_family,
+        ),
+        *_technical_scoped_candidates(
+            source="signal_engine",
+            variant="expanded_ta_simple",
+            per_family=per_family,
+        ),
+    ]
+
+    selected = _build_best_technical_signal_payload(candidates)
+
+    assert selected is not None
+    assert selected["scope"] == "per_category"
+    assert selected["scope_key"] == "tendance"
+    assert selected["categories"] == ["tendance"]
+    assert selected["score_pct"] == 82.0
+    assert selected["per_family"] == {"tendance": per_family["tendance"]}
+
+
 def test_dashboard_payload_reads_canonical_expanded_rows(monkeypatch) -> None:
     from types import SimpleNamespace
 

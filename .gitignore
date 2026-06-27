@@ -57,6 +57,8 @@ artifacts/
 *.parquet
 *.pkl
 *.pickle
+*.pdf
+*.zip
 exports/
 market_data_export*.xlsx
 openapi.json
@@ -68,6 +70,7 @@ body.json
 body.txt
 headers.txt
 branches.txt
+top40_*
 
 # ---- Local scratch / agent output ----
 _patch_*/
@@ -76,6 +79,7 @@ _execute_run*.diff
 *.resolved
 CODEX_PLAN_*.md
 CONTEXT_PACKET_*.md
+graphify-out/
 git_reflog_all.txt
 worker_tail.txt
 mc.exe
@@ -93,4 +97,7 @@ docker-data/
 # Legacy / archived
 original backtester/
 quant-backtesting-frontend/
+
+# Academic deliverables — kept locally, never published
+/academic/
 

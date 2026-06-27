@@ -33,6 +33,24 @@ class PortfolioStatsOut(BaseModel):
     total_return: float
 
 
+class MacroBacktestReplayOut(BaseModel):
+    factor_id: str
+    signal_name: str
+    return_method: str
+    cost_bps: float
+    dates: list[str] = Field(default_factory=list)
+    stock_close: list[Optional[float]] = Field(default_factory=list)
+    factor_close: list[Optional[float]] = Field(default_factory=list)
+    factor_return: list[Optional[float]] = Field(default_factory=list)
+    factor_close_by_id: dict[str, list[Optional[float]]] = Field(default_factory=dict)
+    signal: list[Optional[float]] = Field(default_factory=list)
+    position: list[Optional[float]] = Field(default_factory=list)
+    strategy_returns: list[Optional[float]] = Field(default_factory=list)
+    equity: list[Optional[float]] = Field(default_factory=list)
+    drawdown: list[Optional[float]] = Field(default_factory=list)
+    trade_ledger: list[dict[str, Any]] = Field(default_factory=list)
+
+
 class RobustnessOut(BaseModel):
     dsr: float
     psr: float
@@ -307,6 +325,7 @@ class FactorSignalEvalOut(BaseModel):
     ic_curve: ICCurveOut
     portfolio: PortfolioStatsOut
     robustness: RobustnessOut
+    backtest: Optional[MacroBacktestReplayOut] = None
 
 
 # ---------------------------------------------------------------------------

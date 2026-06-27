@@ -17,6 +17,7 @@ import requests
 
 
 DEFAULT_SPOOL_DIR = Path(os.getenv("BT_BLOOMBERG_SPOOL_DIR", "spool"))
+DEFAULT_OHLCV_FIELDS = ["PX_OPEN", "PX_HIGH", "PX_LOW", "PX_LAST", "VOLUME"]
 
 
 def _env(name: str, default: str | None = None) -> str | None:
@@ -215,8 +216,8 @@ def _mock_frame(securities: list[str], fields: list[str], start: str, end: str) 
     return pd.DataFrame(rows)
 
 
-def _normalize_bdh_output(raw: pd.DataFrame, securities: list[str], fields: list[str]) -> pd.DataFrame:
-    if raw.empty:
+def _normalize_bdh_output(raw: pd.DataFrame | None, securities: list[str], fields: list[str]) -> pd.DataFrame:
+    if raw is None or raw.empty:
         return pd.DataFrame(columns=["date", "security", "field", "value"])
 
     frame = raw.copy()
@@ -401,7 +402,7 @@ def _spec_items(spec: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _fields_from_spec(spec: dict[str, Any]) -> list[str]:
     fields = [str(value).strip().upper() for value in spec.get("fields", []) if str(value).strip()]
-    return fields or ["PX_LAST", "VOLUME"]
+    return fields or DEFAULT_OHLCV_FIELDS.copy()
 
 
 def _parse_date(value: str | None, default: dt.date) -> dt.date:
@@ -430,7 +431,22 @@ def _fetch_bdh_frame(security: str, fields: list[str], start: dt.date, end: dt.d
         start_date=start.strftime("%Y%m%d"),
         end_date=end.strftime("%Y%m%d"),
     )
-    return _normalize_bdh_output(raw, [security], fields)
+    frame = _normalize_bdh_output(raw, [security], fields)
+    if not frame.empty or len(fields) <= 1:
+        return frame
+
+    frames: list[pd.DataFrame] = []
+    for field in fields:
+        raw_field = blp.bdh(
+            tickers=[security],
+            flds=[field],
+            start_date=start.strftime("%Y%m%d"),
+            end_date=end.strftime("%Y%m%d"),
+        )
+        field_frame = _normalize_bdh_output(raw_field, [security], [field])
+        if not field_frame.empty:
+            frames.append(field_frame)
+    return pd.concat(frames, ignore_index=True) if frames else frame
 
 
 _BDIB_FIELD_MAP = {
@@ -632,7 +648,7 @@ def _run_backfill(args: argparse.Namespace, job_id: str, spec: dict[str, Any]) -
                     upload = _upload_frame_for_job(
                         args,
                         frame,
-                        source="bdib",
+                        source="bdh",
                         kind="time_series",
                         securities=[selected_security],
                         fields=fields,
@@ -670,7 +686,7 @@ def _run_backfill(args: argparse.Namespace, job_id: str, spec: dict[str, Any]) -
                     upload = _upload_frame_for_job(
                         args,
                         frame,
-                        source="bdh",
+                        source="bdib",
                         kind="time_series",
                         securities=[selected_security],
                         fields=fields,

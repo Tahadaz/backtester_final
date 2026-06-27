@@ -1,0 +1,958 @@
+- generic [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - link "RDT Alpha" [ref=e4] [cursor=pointer]:
+        - /url: /dashboard
+        - generic [ref=e5]: RDT
+        - generic [ref=e6]:
+          - generic [ref=e7]: RDT Alpha
+          - generic [ref=e8]: Road to Alpha
+      - navigation [ref=e9]:
+        - link "Tableau de Bord" [ref=e10] [cursor=pointer]:
+          - /url: /dashboard
+          - img
+          - text: Tableau de Bord
+        - link "Data" [ref=e11] [cursor=pointer]:
+          - /url: /data
+          - img
+          - text: Data
+        - link "Signals" [ref=e12] [cursor=pointer]:
+          - /url: /signals
+          - img
+          - text: Signals
+        - link "Strategy" [ref=e13] [cursor=pointer]:
+          - /url: /strategy
+          - img
+          - text: Strategy
+        - link "Backtest" [ref=e14] [cursor=pointer]:
+          - /url: /backtest
+          - img
+          - text: Backtest
+        - link "Analytics" [ref=e15] [cursor=pointer]:
+          - /url: /analytics
+          - img
+          - text: Analytics
+        - link "Glossaire" [ref=e16] [cursor=pointer]:
+          - /url: /glossary
+          - img
+          - text: Glossaire
+      - generic [ref=e17]:
+        - generic [ref=e18]: MASI · live
+        - button "Refresh" [ref=e20]:
+          - img
+        - link "Se connecter" [ref=e21] [cursor=pointer]:
+          - /url: /login
+          - img
+          - generic [ref=e22]: Se connecter
+  - main [ref=e23]:
+    - generic [ref=e34]:
+      - generic [ref=e35]:
+        - generic [ref=e36]: Analyse
+        - button "Analyse Technique Signaux TA, evidence, WFO" [ref=e37]:
+          - img [ref=e39]
+          - generic [ref=e41]:
+            - generic [ref=e42]: Analyse Technique
+            - generic [ref=e43]: Signaux TA, evidence, WFO
+        - button "Analyse Fondamentale Valorisation, qualite, financiers" [pressed] [ref=e44]:
+          - img [ref=e46]
+          - generic [ref=e48]:
+            - generic [ref=e49]: Analyse Fondamentale
+            - generic [ref=e50]: Valorisation, qualite, financiers
+        - button "Analyse Quantitative IC, facteurs, macro, stat-arb" [ref=e51]:
+          - img [ref=e53]
+          - generic [ref=e55]:
+            - generic [ref=e56]: Analyse Quantitative
+            - generic [ref=e57]: IC, facteurs, macro, stat-arb
+      - generic [ref=e59]:
+        - complementary [ref=e61]:
+          - generic [ref=e62]:
+            - generic [ref=e63]:
+              - generic [ref=e64]: Couverture - 46/89 titres
+              - generic [ref=e65]: FY 2025
+            - generic [ref=e66]:
+              - img
+              - textbox "Rechercher un titre..." [ref=e67]
+            - generic [ref=e68]:
+              - generic [ref=e69]:
+                - img [ref=e71]
+                - generic [ref=e72]:
+                  - generic [ref=e73]: Filtre institutionnel
+                  - generic [ref=e74]:
+                    - generic [ref=e75]: Liquidité ADV20
+                    - generic [ref=e76]: Actif
+                - switch "Désactiver le filtre de liquidité" [checked] [ref=e77]
+              - generic [ref=e78]:
+                - generic [ref=e79]:
+                  - generic [ref=e80]: Seuil
+                  - generic [ref=e81]: ">= 500 k MAD"
+                - generic [ref=e82]:
+                  - generic [ref=e83]: Eligibles
+                  - generic [ref=e84]: 46/89
+            - generic [ref=e85]:
+              - generic [ref=e86]:
+                - button "Tous" [ref=e87] [cursor=pointer]
+                - button "Buy" [ref=e88] [cursor=pointer]
+                - button "Hold" [ref=e89] [cursor=pointer]
+                - button "Sell" [ref=e90] [cursor=pointer]
+              - combobox [ref=e91]:
+                - option "Upside" [selected]
+                - option "Score"
+                - option "Conviction"
+                - option "Mkt Cap"
+                - option "Magic"
+                - option "PEG"
+                - option "Altman"
+                - option "EVA"
+                - option "Regression"
+          - table [ref=e92]:
+            - rowgroup [ref=e93]:
+              - row "Titre Rec. Score Upside Rev" [ref=e94]:
+                - columnheader "Titre" [ref=e95]
+                - columnheader "Rec." [ref=e96]
+                - columnheader "Score" [ref=e97]
+                - columnheader "Upside" [ref=e98]
+                - columnheader "Rev" [ref=e99]
+            - rowgroup [ref=e100]:
+              - row "SNP Chimie HOLD 29 +45.1% -" [ref=e1201] [cursor=pointer]:
+                - cell "SNP Chimie" [ref=e1202]:
+                  - generic [ref=e1204]:
+                    - generic [ref=e1205]: SNP
+                    - generic [ref=e1206]: Chimie
+                - cell "HOLD" [ref=e1207]:
+                  - generic [ref=e1208]: HOLD
+                - cell "29" [ref=e1209]
+                - cell "+45.1%" [ref=e1210]
+                - cell "-" [ref=e1211]
+              - row "BCP Banques BUY 75 +26.7% ^" [ref=e1212] [cursor=pointer]:
+                - cell "BCP Banques" [ref=e1213]:
+                  - generic [ref=e1215]:
+                    - generic [ref=e1216]: BCP
+                    - generic [ref=e1217]: Banques
+                - cell "BUY" [ref=e1218]:
+                  - generic [ref=e1219]: BUY
+                - cell "75" [ref=e1220]
+                - cell "+26.7%" [ref=e1221]
+                - cell "^" [ref=e1222]
+              - row "CIH Banques HOLD 46 +17.5% ^" [ref=e1223] [cursor=pointer]:
+                - cell "CIH Banques" [ref=e1224]:
+                  - generic [ref=e1226]:
+                    - generic [ref=e1227]: CIH
+                    - generic [ref=e1228]: Banques
+                - cell "HOLD" [ref=e1229]:
+                  - generic [ref=e1230]: HOLD
+                - cell "46" [ref=e1231]
+                - cell "+17.5%" [ref=e1232]
+                - cell "^" [ref=e1233]
+              - row "CMA BTP BUY 55 +16.0% v" [ref=e1234] [cursor=pointer]:
+                - cell "CMA BTP" [ref=e1235]:
+                  - generic [ref=e1237]:
+                    - generic [ref=e1238]: CMA
+                    - generic [ref=e1239]: BTP
+                - cell "BUY" [ref=e1240]:
+                  - generic [ref=e1241]: BUY
+                - cell "55" [ref=e1242]
+                - cell "+16.0%" [ref=e1243]
+                - cell "v" [ref=e1244]
+              - row "GAZ Énergie BUY 51 +15.6% ^" [ref=e1245] [cursor=pointer]:
+                - cell "GAZ Énergie" [ref=e1246]:
+                  - generic [ref=e1248]:
+                    - generic [ref=e1249]: GAZ
+                    - generic [ref=e1250]: Énergie
+                - cell "BUY" [ref=e1251]:
+                  - generic [ref=e1252]: BUY
+                - cell "51" [ref=e1253]
+                - cell "+15.6%" [ref=e1254]
+                - cell "^" [ref=e1255]
+              - row "EQD Sociétés de financement HOLD 35 +11.9% ^" [ref=e1256] [cursor=pointer]:
+                - cell "EQD Sociétés de financement" [ref=e1257]:
+                  - generic [ref=e1259]:
+                    - generic [ref=e1260]: EQD
+                    - generic [ref=e1261]: Sociétés de financement
+                - cell "HOLD" [ref=e1262]:
+                  - generic [ref=e1263]: HOLD
+                - cell "35" [ref=e1264]
+                - cell "+11.9%" [ref=e1265]
+                - cell "^" [ref=e1266]
+              - row "IAM Télécommunications HOLD 64 +10.0% v" [ref=e1267] [cursor=pointer]:
+                - cell "IAM Télécommunications" [ref=e1268]:
+                  - generic [ref=e1270]:
+                    - generic [ref=e1271]: IAM
+                    - generic [ref=e1272]: Télécommunications
+                - cell "HOLD" [ref=e1273]:
+                  - generic [ref=e1274]: HOLD
+                - cell "64" [ref=e1275]
+                - cell "+10.0%" [ref=e1276]
+                - cell "v" [ref=e1277]
+              - row "ATW Banques HOLD 64 +3.1% ^" [ref=e1278] [cursor=pointer]:
+                - cell "ATW Banques" [ref=e1279]:
+                  - generic [ref=e1281]:
+                    - generic [ref=e1282]: ATW
+                    - generic [ref=e1283]: Banques
+                - cell "HOLD" [ref=e1284]:
+                  - generic [ref=e1285]: HOLD
+                - cell "64" [ref=e1286]
+                - cell "+3.1%" [ref=e1287]
+                - cell "^" [ref=e1288]
+              - row "DYT Informatique HOLD 57 +3.0% v" [ref=e1289] [cursor=pointer]:
+                - cell "DYT Informatique" [ref=e1290]:
+                  - generic [ref=e1292]:
+                    - generic [ref=e1293]: DYT
+                    - generic [ref=e1294]: Informatique
+                - cell "HOLD" [ref=e1295]:
+                  - generic [ref=e1296]: HOLD
+                - cell "57" [ref=e1297]
+                - cell "+3.0%" [ref=e1298]
+                - cell "v" [ref=e1299]
+              - row "ARD Immobilier HOLD 73 -0.3% v" [ref=e1300] [cursor=pointer]:
+                - cell "ARD Immobilier" [ref=e1301]:
+                  - generic [ref=e1303]:
+                    - generic [ref=e1304]: ARD
+                    - generic [ref=e1305]: Immobilier
+                - cell "HOLD" [ref=e1306]:
+                  - generic [ref=e1307]: HOLD
+                - cell "73" [ref=e1308]
+                - cell "-0.3%" [ref=e1309]
+                - cell "v" [ref=e1310]
+              - row "MUT Agroalimentaire HOLD 61 -1.8% ^" [ref=e1311] [cursor=pointer]:
+                - cell "MUT Agroalimentaire" [ref=e1312]:
+                  - generic [ref=e1314]:
+                    - generic [ref=e1315]: MUT
+                    - generic [ref=e1316]: Agroalimentaire
+                - cell "HOLD" [ref=e1317]:
+                  - generic [ref=e1318]: HOLD
+                - cell "61" [ref=e1319]
+                - cell "-1.8%" [ref=e1320]
+                - cell "^" [ref=e1321]
+              - row "CDM Banques HOLD 62 -3.6% -" [ref=e1322] [cursor=pointer]:
+                - cell "CDM Banques" [ref=e1323]:
+                  - generic [ref=e1325]:
+                    - generic [ref=e1326]: CDM
+                    - generic [ref=e1327]: Banques
+                - cell "HOLD" [ref=e1328]:
+                  - generic [ref=e1329]: HOLD
+                - cell "62" [ref=e1330]
+                - cell "-3.6%" [ref=e1331]
+                - cell "-" [ref=e1332]
+              - row "ATH Distribution HOLD 60 -4.2% -" [ref=e1333] [cursor=pointer]:
+                - cell "ATH Distribution" [ref=e1334]:
+                  - generic [ref=e1336]:
+                    - generic [ref=e1337]: ATH
+                    - generic [ref=e1338]: Distribution
+                - cell "HOLD" [ref=e1339]:
+                  - generic [ref=e1340]: HOLD
+                - cell "60" [ref=e1341]
+                - cell "-4.2%" [ref=e1342]
+                - cell "-" [ref=e1343]
+              - row "CFG Banques HOLD 38 -4.6% ^" [ref=e1344] [cursor=pointer]:
+                - cell "CFG Banques" [ref=e1345]:
+                  - generic [ref=e1347]:
+                    - generic [ref=e1348]: CFG
+                    - generic [ref=e1349]: Banques
+                - cell "HOLD" [ref=e1350]:
+                  - generic [ref=e1351]: HOLD
+                - cell "38" [ref=e1352]
+                - cell "-4.6%" [ref=e1353]
+                - cell "^" [ref=e1354]
+              - row "SLF Sociétés de financement HOLD 65 -4.9% ^" [ref=e1355] [cursor=pointer]:
+                - cell "SLF Sociétés de financement" [ref=e1356]:
+                  - generic [ref=e1358]:
+                    - generic [ref=e1359]: SLF
+                    - generic [ref=e1360]: Sociétés de financement
+                - cell "HOLD" [ref=e1361]:
+                  - generic [ref=e1362]: HOLD
+                - cell "65" [ref=e1363]
+                - cell "-4.9%" [ref=e1364]
+                - cell "^" [ref=e1365]
+              - row "LBV Distribution HOLD 35 -5.5% ^" [ref=e1366] [cursor=pointer]:
+                - cell "LBV Distribution" [ref=e1367]:
+                  - generic [ref=e1369]:
+                    - generic [ref=e1370]: LBV
+                    - generic [ref=e1371]: Distribution
+                - cell "HOLD" [ref=e1372]:
+                  - generic [ref=e1373]: HOLD
+                - cell "35" [ref=e1374]
+                - cell "-5.5%" [ref=e1375]
+                - cell "^" [ref=e1376]
+              - row "BOA Banques HOLD 44 -6.9% v" [ref=e1377] [cursor=pointer]:
+                - cell "BOA Banques" [ref=e1378]:
+                  - generic [ref=e1380]:
+                    - generic [ref=e1381]: BOA
+                    - generic [ref=e1382]: Banques
+                - cell "HOLD" [ref=e1383]:
+                  - generic [ref=e1384]: HOLD
+                - cell "44" [ref=e1385]
+                - cell "-6.9%" [ref=e1386]
+                - cell "v" [ref=e1387]
+              - row "WAA Assurances HOLD 64 -8.4% v" [ref=e1388] [cursor=pointer]:
+                - cell "WAA Assurances" [ref=e1389]:
+                  - generic [ref=e1391]:
+                    - generic [ref=e1392]: WAA
+                    - generic [ref=e1393]: Assurances
+                - cell "HOLD" [ref=e1394]:
+                  - generic [ref=e1395]: HOLD
+                - cell "64" [ref=e1396]
+                - cell "-8.4%" [ref=e1397]
+                - cell "v" [ref=e1398]
+              - row "CSR Agroalimentaire SELL 76 -13.3% ^" [ref=e1399] [cursor=pointer]:
+                - cell "CSR Agroalimentaire" [ref=e1400]:
+                  - generic [ref=e1402]:
+                    - generic [ref=e1403]: CSR
+                    - generic [ref=e1404]: Agroalimentaire
+                - cell "SELL" [ref=e1405]:
+                  - generic [ref=e1406]: SELL
+                - cell "76" [ref=e1407]
+                - cell "-13.3%" [ref=e1408]
+                - cell "^" [ref=e1409]
+              - row "TMA Énergie SELL 55 -14.2% v" [ref=e1410] [cursor=pointer]:
+                - cell "TMA Énergie" [ref=e1411]:
+                  - generic [ref=e1413]:
+                    - generic [ref=e1414]: TMA
+                    - generic [ref=e1415]: Énergie
+                - cell "SELL" [ref=e1416]:
+                  - generic [ref=e1417]: SELL
+                - cell "55" [ref=e1418]
+                - cell "-14.2%" [ref=e1419]
+                - cell "v" [ref=e1420]
+              - row "BCI Banques SELL 35 -19.8% ^" [ref=e1421] [cursor=pointer]:
+                - cell "BCI Banques" [ref=e1422]:
+                  - generic [ref=e1424]:
+                    - generic [ref=e1425]: BCI
+                    - generic [ref=e1426]: Banques
+                - cell "SELL" [ref=e1427]:
+                  - generic [ref=e1428]: SELL
+                - cell "35" [ref=e1429]
+                - cell "-19.8%" [ref=e1430]
+                - cell "^" [ref=e1431]
+              - row "LHM BTP SELL 53 -21.7% v" [ref=e1432] [cursor=pointer]:
+                - cell "LHM BTP" [ref=e1433]:
+                  - generic [ref=e1435]:
+                    - generic [ref=e1436]: LHM
+                    - generic [ref=e1437]: BTP
+                - cell "SELL" [ref=e1438]:
+                  - generic [ref=e1439]: SELL
+                - cell "53" [ref=e1440]
+                - cell "-21.7%" [ref=e1441]
+                - cell "v" [ref=e1442]
+              - row "ADI Immobilier SELL 60 -23.1% v" [ref=e1443] [cursor=pointer]:
+                - cell "ADI Immobilier" [ref=e1444]:
+                  - generic [ref=e1446]:
+                    - generic [ref=e1447]: ADI
+                    - generic [ref=e1448]: Immobilier
+                - cell "SELL" [ref=e1449]:
+                  - generic [ref=e1450]: SELL
+                - cell "60" [ref=e1451]
+                - cell "-23.1%" [ref=e1452]
+                - cell "v" [ref=e1453]
+              - row "ATL Assurances SELL 57 -23.3% ^" [ref=e1454] [cursor=pointer]:
+                - cell "ATL Assurances" [ref=e1455]:
+                  - generic [ref=e1457]:
+                    - generic [ref=e1458]: ATL
+                    - generic [ref=e1459]: Assurances
+                - cell "SELL" [ref=e1460]:
+                  - generic [ref=e1461]: SELL
+                - cell "57" [ref=e1462]
+                - cell "-23.3%" [ref=e1463]
+                - cell "^" [ref=e1464]
+              - row "RIS Loisirs & Hôtels SELL 59 -24.9% ^" [ref=e1465] [cursor=pointer]:
+                - cell "RIS Loisirs & Hôtels" [ref=e1466]:
+                  - generic [ref=e1468]:
+                    - generic [ref=e1469]: RIS
+                    - generic [ref=e1470]: Loisirs & Hôtels
+                - cell "SELL" [ref=e1471]:
+                  - generic [ref=e1472]: SELL
+                - cell "59" [ref=e1473]
+                - cell "-24.9%" [ref=e1474]
+                - cell "^" [ref=e1475]
+              - row "SMI Mines SELL 59 -25.5% v" [ref=e1476] [cursor=pointer]:
+                - cell "SMI Mines" [ref=e1477]:
+                  - generic [ref=e1479]:
+                    - generic [ref=e1480]: SMI
+                    - generic [ref=e1481]: Mines
+                - cell "SELL" [ref=e1482]:
+                  - generic [ref=e1483]: SELL
+                - cell "59" [ref=e1484]
+                - cell "-25.5%" [ref=e1485]
+                - cell "v" [ref=e1486]
+              - row "DHO BTP SELL 72 -26.7% v" [ref=e1487] [cursor=pointer]:
+                - cell "DHO BTP" [ref=e1488]:
+                  - generic [ref=e1490]:
+                    - generic [ref=e1491]: DHO
+                    - generic [ref=e1492]: BTP
+                - cell "SELL" [ref=e1493]:
+                  - generic [ref=e1494]: SELL
+                - cell "72" [ref=e1495]
+                - cell "-26.7%" [ref=e1496]
+                - cell "v" [ref=e1497]
+              - row "CMG Industrie SELL 68 -30.9% v" [ref=e1498] [cursor=pointer]:
+                - cell "CMG Industrie" [ref=e1499]:
+                  - generic [ref=e1501]:
+                    - generic [ref=e1502]: CMG
+                    - generic [ref=e1503]: Industrie
+                - cell "SELL" [ref=e1504]:
+                  - generic [ref=e1505]: SELL
+                - cell "68" [ref=e1506]
+                - cell "-30.9%" [ref=e1507]
+                - cell "v" [ref=e1508]
+              - row "VCN Santé SELL 75 -30.9% ^" [ref=e1509] [cursor=pointer]:
+                - cell "VCN Santé" [ref=e1510]:
+                  - generic [ref=e1512]:
+                    - generic [ref=e1513]: VCN
+                    - generic [ref=e1514]: Santé
+                - cell "SELL" [ref=e1515]:
+                  - generic [ref=e1516]: SELL
+                - cell "75" [ref=e1517]
+                - cell "-30.9%" [ref=e1518]
+                - cell "^" [ref=e1519]
+              - row "CAP Sociétés de financement HOLD 71 -34.6% ^" [ref=e1520] [cursor=pointer]:
+                - cell "CAP Sociétés de financement" [ref=e1521]:
+                  - generic [ref=e1523]:
+                    - generic [ref=e1524]: CAP
+                    - generic [ref=e1525]: Sociétés de financement
+                - cell "HOLD" [ref=e1526]:
+                  - generic [ref=e1527]: HOLD
+                - cell "71" [ref=e1528]
+                - cell "-34.6%" [ref=e1529]
+                - cell "^" [ref=e1530]
+              - row "JET BTP SELL 33 -34.9% ^" [ref=e1531] [cursor=pointer]:
+                - cell "JET BTP" [ref=e1532]:
+                  - generic [ref=e1534]:
+                    - generic [ref=e1535]: JET
+                    - generic [ref=e1536]: BTP
+                - cell "SELL" [ref=e1537]:
+                  - generic [ref=e1538]: SELL
+                - cell "33" [ref=e1539]
+                - cell "-34.9%" [ref=e1540]
+                - cell "^" [ref=e1541]
+              - row "TGC BTP SELL 66 -40.4% v" [ref=e1542] [cursor=pointer]:
+                - cell "TGC BTP" [ref=e1543]:
+                  - generic [ref=e1545]:
+                    - generic [ref=e1546]: TGC
+                    - generic [ref=e1547]: BTP
+                - cell "SELL" [ref=e1548]:
+                  - generic [ref=e1549]: SELL
+                - cell "66" [ref=e1550]
+                - cell "-40.4%" [ref=e1551]
+                - cell "v" [ref=e1552]
+              - row "SOT Santé SELL 50 -45.5% ^" [ref=e1553] [cursor=pointer]:
+                - cell "SOT Santé" [ref=e1554]:
+                  - generic [ref=e1556]:
+                    - generic [ref=e1557]: SOT
+                    - generic [ref=e1558]: Santé
+                - cell "SELL" [ref=e1559]:
+                  - generic [ref=e1560]: SELL
+                - cell "50" [ref=e1561]
+                - cell "-45.5%" [ref=e1562]
+                - cell "^" [ref=e1563]
+              - row "CMT Mines SELL 63 -45.7% v" [ref=e1564] [cursor=pointer]:
+                - cell "CMT Mines" [ref=e1565]:
+                  - generic [ref=e1567]:
+                    - generic [ref=e1568]: CMT
+                    - generic [ref=e1569]: Mines
+                - cell "SELL" [ref=e1570]:
+                  - generic [ref=e1571]: SELL
+                - cell "63" [ref=e1572]
+                - cell "-45.7%" [ref=e1573]
+                - cell "v" [ref=e1574]
+              - row "MSA Transport SELL 70 -47.7% v" [ref=e1575] [cursor=pointer]:
+                - cell "MSA Transport" [ref=e1576]:
+                  - generic [ref=e1578]:
+                    - generic [ref=e1579]: MSA
+                    - generic [ref=e1580]: Transport
+                - cell "SELL" [ref=e1581]:
+                  - generic [ref=e1582]: SELL
+                - cell "70" [ref=e1583]
+                - cell "-47.7%" [ref=e1584]
+                - cell "v" [ref=e1585]
+              - row "AKT Santé SELL 25 -53.1% v" [ref=e1586] [cursor=pointer]:
+                - cell "AKT Santé" [ref=e1587]:
+                  - generic [ref=e1589]:
+                    - generic [ref=e1590]: AKT
+                    - generic [ref=e1591]: Santé
+                - cell "SELL" [ref=e1592]:
+                  - generic [ref=e1593]: SELL
+                - cell "25" [ref=e1594]
+                - cell "-53.1%" [ref=e1595]
+                - cell "v" [ref=e1596]
+              - row "MNG Mines SELL 43 -53.7% ^" [ref=e1597] [cursor=pointer]:
+                - cell "MNG Mines" [ref=e1598]:
+                  - generic [ref=e1600]:
+                    - generic [ref=e1601]: MNG
+                    - generic [ref=e1602]: Mines
+                - cell "SELL" [ref=e1603]:
+                  - generic [ref=e1604]: SELL
+                - cell "43" [ref=e1605]
+                - cell "-53.7%" [ref=e1606]
+                - cell "^" [ref=e1607]
+              - row "HPS Informatique SELL 67 -53.9% ^" [ref=e1608] [cursor=pointer]:
+                - cell "HPS Informatique" [ref=e1609]:
+                  - generic [ref=e1611]:
+                    - generic [ref=e1612]: HPS
+                    - generic [ref=e1613]: Informatique
+                - cell "SELL" [ref=e1614]:
+                  - generic [ref=e1615]: SELL
+                - cell "67" [ref=e1616]
+                - cell "-53.9%" [ref=e1617]
+                - cell "^" [ref=e1618]
+              - row "IMO Immobilier HOLD - -55.3% v" [ref=e1619] [cursor=pointer]:
+                - cell "IMO Immobilier" [ref=e1620]:
+                  - generic [ref=e1622]:
+                    - generic [ref=e1623]: IMO
+                    - generic [ref=e1624]: Immobilier
+                - cell "HOLD" [ref=e1625]:
+                  - generic [ref=e1626]: HOLD
+                - cell "-" [ref=e1627]
+                - cell "-55.3%" [ref=e1628]
+                - cell "v" [ref=e1629]
+              - row "SID BTP SELL 51 -56.3% v" [ref=e1630] [cursor=pointer]:
+                - cell "SID BTP" [ref=e1631]:
+                  - generic [ref=e1633]:
+                    - generic [ref=e1634]: SID
+                    - generic [ref=e1635]: BTP
+                - cell "SELL" [ref=e1636]:
+                  - generic [ref=e1637]: SELL
+                - cell "51" [ref=e1638]
+                - cell "-56.3%" [ref=e1639]
+                - cell "v" [ref=e1640]
+              - row "ADH Immobilier SELL 41 -58.2% -" [ref=e1641] [cursor=pointer]:
+                - cell "ADH Immobilier" [ref=e1642]:
+                  - generic [ref=e1644]:
+                    - generic [ref=e1645]: ADH
+                    - generic [ref=e1646]: Immobilier
+                - cell "SELL" [ref=e1647]:
+                  - generic [ref=e1648]: SELL
+                - cell "41" [ref=e1649]
+                - cell "-58.2%" [ref=e1650]
+                - cell "-" [ref=e1651]
+              - row "STR Industrie HOLD 45 -60.0% -" [ref=e1652] [cursor=pointer]:
+                - cell "STR Industrie" [ref=e1653]:
+                  - generic [ref=e1655]:
+                    - generic [ref=e1656]: STR
+                    - generic [ref=e1657]: Industrie
+                - cell "HOLD" [ref=e1658]:
+                  - generic [ref=e1659]: HOLD
+                - cell "45" [ref=e1660]
+                - cell "-60.0%" [ref=e1661]
+                - cell "-" [ref=e1662]
+              - row "TQM Électricité SELL 49 -65.1% v" [ref=e1663] [cursor=pointer]:
+                - cell "TQM Électricité" [ref=e1664]:
+                  - generic [ref=e1666]:
+                    - generic [ref=e1667]: TQM
+                    - generic [ref=e1668]: Électricité
+                - cell "SELL" [ref=e1669]:
+                  - generic [ref=e1670]: SELL
+                - cell "49" [ref=e1671]
+                - cell "-65.1%" [ref=e1672]
+                - cell "v" [ref=e1673]
+              - row "GTM BTP SELL 42 -73.5% v" [ref=e1674] [cursor=pointer]:
+                - cell "GTM BTP" [ref=e1675]:
+                  - generic [ref=e1677]:
+                    - generic [ref=e1678]: GTM
+                    - generic [ref=e1679]: BTP
+                - cell "SELL" [ref=e1680]:
+                  - generic [ref=e1681]: SELL
+                - cell "42" [ref=e1682]
+                - cell "-73.5%" [ref=e1683]
+                - cell "v" [ref=e1684]
+              - row "SNA Distribution SELL 43 -80.6% ^" [ref=e1685] [cursor=pointer]:
+                - cell "SNA Distribution" [ref=e1686]:
+                  - generic [ref=e1688]:
+                    - generic [ref=e1689]: SNA
+                    - generic [ref=e1690]: Distribution
+                - cell "SELL" [ref=e1691]:
+                  - generic [ref=e1692]: SELL
+                - cell "43" [ref=e1693]
+                - cell "-80.6%" [ref=e1694]
+                - cell "^" [ref=e1695]
+              - row "RDS Immobilier SELL 43 -91.5% v" [ref=e1696] [cursor=pointer]:
+                - cell "RDS Immobilier" [ref=e1697]:
+                  - generic [ref=e1699]:
+                    - generic [ref=e1700]: RDS
+                    - generic [ref=e1701]: Immobilier
+                - cell "SELL" [ref=e1702]:
+                  - generic [ref=e1703]: SELL
+                - cell "43" [ref=e1704]
+                - cell "-91.5%" [ref=e1705]
+                - cell "v" [ref=e1706]
+          - generic [ref=e131]:
+            - generic [ref=e132]:
+              - generic [ref=e133]: 3 Buy
+              - text: "- 18 Hold -"
+              - generic [ref=e134]: 25 Sell
+              - text: "- 0 N/R"
+            - generic [ref=e135]: Upside moy. -23.8%
+        - generic [ref=e138]:
+          - generic [ref=e141]:
+            - generic [ref=e142]:
+              - generic [ref=e143]:
+                - generic [ref=e144]: ADH
+                - generic [ref=e147]: Douja Promotion Groupe Addoha
+                - generic [ref=e148]:
+                  - strong [ref=e149]: Immobilier
+                  - text: "- masi - MAD"
+              - generic [ref=e150]:
+                - generic [ref=e151]:
+                  - generic [ref=e152]: Cours actuel
+                  - generic [ref=e153]: 32,95
+                  - generic [ref=e154]: au 02 juin 2026
+                - generic [ref=e155]:
+                  - generic [ref=e156]: Objectif 12M
+                  - generic [ref=e157]: 31,64
+                  - generic [ref=e158]: "- revision inchangee"
+                - generic [ref=e159]:
+                  - generic [ref=e160]: Upside / Downside
+                  - generic [ref=e161]: "-4.0%"
+                  - generic [ref=e162]: vs cours actuel
+                - generic [ref=e163]:
+                  - generic [ref=e164]: Capitalisation
+                  - generic [ref=e165]: 13,3 Bn
+                  - generic [ref=e166]: Free float - - ADV20 10,2 M MAD
+            - generic [ref=e167]:
+              - generic [ref=e168]:
+                - generic [ref=e169]: Recommandation
+                - generic [ref=e170]: SELL
+                - generic [ref=e172]: Conviction
+              - generic [ref=e178]:
+                - generic [ref=e179]: Analyste - Systeme quantitatif
+                - generic [ref=e180]: v3 - 02 juin 2026
+          - separator [ref=e181]:
+            - img [ref=e183]
+          - generic [ref=e191]:
+            - generic [ref=e192]:
+              - button "These" [ref=e193]
+              - button "Valorisation" [ref=e194]
+              - button "Estimations" [ref=e195]
+              - button "Comparables" [ref=e196]
+              - button "Hypotheses" [active] [ref=e197]
+              - button "Qualite & ROE" [ref=e198]
+            - generic [ref=e1707]:
+              - generic [ref=e1708]:
+                - generic [ref=e1709]:
+                  - generic [ref=e1710]: Carte de modelisation
+                  - generic [ref=e1711]: Flux complet
+                - generic [ref=e1713]:
+                  - generic [ref=e1714]:
+                    - generic [ref=e1715]: Inputs
+                    - generic [ref=e1716]: 5 annees
+                    - generic [ref=e1717]: stockanalysis
+                  - generic [ref=e1718]:
+                    - generic [ref=e1719]: Capital
+                    - generic [ref=e1720]: 7.94%
+                    - generic [ref=e1721]: beta 1.33x
+                  - generic [ref=e1722]:
+                    - generic [ref=e1723]: Projection
+                    - generic [ref=e1724]: 5 ans
+                    - generic [ref=e1725]: 7 drivers
+                  - generic [ref=e1726]:
+                    - generic [ref=e1727]: Modeles
+                    - generic [ref=e1728]: 5/6
+                    - generic [ref=e1729]: fair values
+                  - generic [ref=e1730]:
+                    - generic [ref=e1731]: Ensemble
+                    - generic [ref=e1732]: 13,8
+                    - generic [ref=e1733]: 55.1%
+                  - generic [ref=e1734]:
+                    - generic [ref=e1735]: Integrite
+                    - generic [ref=e1736]: OK
+                    - generic [ref=e1737]: plug max 0
+              - generic [ref=e1738]:
+                - generic [ref=e1739]:
+                  - generic [ref=e1740]: bear
+                  - generic [ref=e1741]:
+                    - generic [ref=e1742]:
+                      - generic [ref=e1743]: WACC
+                      - generic [ref=e1744]: 10.67%
+                    - generic [ref=e1745]:
+                      - generic [ref=e1746]: g firm
+                      - generic [ref=e1747]: 2.00%
+                    - generic [ref=e1748]:
+                      - generic [ref=e1749]: g equity
+                      - generic [ref=e1750]: 2.00%
+                - generic [ref=e1751]:
+                  - generic [ref=e1752]: base
+                  - generic [ref=e1753]:
+                    - generic [ref=e1754]:
+                      - generic [ref=e1755]: WACC
+                      - generic [ref=e1756]: 9.46%
+                    - generic [ref=e1757]:
+                      - generic [ref=e1758]: g firm
+                      - generic [ref=e1759]: 1.35%
+                    - generic [ref=e1760]:
+                      - generic [ref=e1761]: g equity
+                      - generic [ref=e1762]: 1.32%
+                - generic [ref=e1763]:
+                  - generic [ref=e1764]: bull
+                  - generic [ref=e1765]:
+                    - generic [ref=e1766]:
+                      - generic [ref=e1767]: WACC
+                      - generic [ref=e1768]: 7.94%
+                    - generic [ref=e1769]:
+                      - generic [ref=e1770]: g firm
+                      - generic [ref=e1771]: 3.00%
+                    - generic [ref=e1772]:
+                      - generic [ref=e1773]: g equity
+                      - generic [ref=e1774]: 3.00%
+              - generic [ref=e1775]:
+                - generic [ref=e1776]:
+                  - generic [ref=e1777]: WACC
+                  - generic [ref=e1778]: 7.94%
+                  - generic [ref=e1779]: Calcule
+                - generic [ref=e1780]:
+                  - generic [ref=e1781]: Cout equity
+                  - generic [ref=e1782]: 9.55%
+                  - generic [ref=e1783]: CAPM
+                - generic [ref=e1784]:
+                  - generic [ref=e1785]: Beta
+                  - generic [ref=e1786]: 1.33x
+                  - generic [ref=e1787]: beta_history
+                - generic [ref=e1788]:
+                  - generic [ref=e1789]: g firm / equity
+                  - generic [ref=e1790]: 3.00% / 3.00%
+                  - generic [ref=e1791]: scenario / scenario
+              - generic [ref=e1792]:
+                - generic [ref=e1793]: Construction cout du capital
+                - generic [ref=e1794]:
+                  - code [ref=e1795]: Ke = rf 2.90% + beta 1.33x x (ERP 6.00% + add-on scenario -1.00%) = 9.55%
+                  - code [ref=e1796]: WACC = We 74.4% x Ke 9.55% + Wd 25.6% x Kd 5.00% x (1 - IS 35.0%) = 7.94%
+                - generic [ref=e1797]:
+                  - generic [ref=e1798]:
+                    - generic [ref=e1799]: Beta
+                    - generic [ref=e1800]: 1.33x
+                    - generic [ref=e1801]: beta_history
+                  - generic [ref=e1802]:
+                    - generic [ref=e1803]: ERP effective
+                    - generic [ref=e1804]: 5.00%
+                    - generic [ref=e1805]: add-on -1.00%
+                  - generic [ref=e1806]:
+                    - generic [ref=e1807]: Dette effective
+                    - generic [ref=e1808]: 5.00%
+                    - generic [ref=e1809]: registry_default_missing_debt_inputs
+                  - generic [ref=e1810]:
+                    - generic [ref=e1811]: Coverage
+                    - generic [ref=e1812]: "-"
+                    - generic [ref=e1813]: spread -
+                  - generic [ref=e1814]:
+                    - generic [ref=e1815]: Proxy marche
+                    - generic [ref=e1816]: MASI
+                    - generic [ref=e1817]: 2026-06-01
+                  - generic [ref=e1818]:
+                    - generic [ref=e1819]: Obs.
+                    - generic [ref=e1820]: "104"
+                    - generic [ref=e1821]: R2 0,345
+                  - generic [ref=e1822]:
+                    - generic [ref=e1823]: Structure
+                    - generic [ref=e1824]: 74% / 26%
+                    - generic [ref=e1825]: market_cap_plus_debt
+              - generic [ref=e1826]:
+                - generic [ref=e1827]:
+                  - generic [ref=e1828]: Registre des hypotheses
+                  - generic [ref=e1829]: Scenario bull
+                - generic [ref=e1830]:
+                  - generic [ref=e1831]:
+                    - generic [ref=e1832]:
+                      - button "Appliquer au titre" [ref=e1833]
+                      - button "Appliquer au desk" [ref=e1834]
+                    - generic [ref=e1835]: 0 modifs
+                  - generic [ref=e1836]:
+                    - generic [ref=e1837]:
+                      - button "Cost of capital" [ref=e1838]
+                      - button "Projection" [ref=e1839]
+                      - button "DCF FCFF" [ref=e1840]
+                      - button "DCF FCFE" [ref=e1841]
+                      - button "DDM" [ref=e1842]
+                      - button "Revenu residuel" [ref=e1843]
+                      - button "Multiples justifies" [ref=e1844]
+                      - button "Comparables" [ref=e1845]
+                      - button "Reverse DCF" [ref=e1846]
+                    - table [ref=e1849]:
+                      - rowgroup [ref=e1850]:
+                        - row "Hypothese Valeur Provenance Plage Source Regle Edition" [ref=e1851]:
+                          - columnheader "Hypothese" [ref=e1852]
+                          - columnheader "Valeur" [ref=e1853]
+                          - columnheader "Provenance" [ref=e1854]
+                          - columnheader "Plage" [ref=e1855]
+                          - columnheader "Source" [ref=e1856]
+                          - columnheader "Regle" [ref=e1857]
+                          - columnheader "Edition" [ref=e1858]
+                      - rowgroup [ref=e1859]:
+                        - 'row "Fenetre beta beta_window_years 2 default 1 - 5 Decisions log Defaut desk: 2 ans hebdomadaires; 5 ans mensuels en alternative." [ref=e1860]':
+                          - cell "Fenetre beta beta_window_years" [ref=e1861]:
+                            - generic [ref=e1862]: Fenetre beta
+                            - generic [ref=e1863]: beta_window_years
+                          - cell "2" [ref=e1864]
+                          - cell "default" [ref=e1865]
+                          - cell "1 - 5" [ref=e1866]
+                          - cell "Decisions log" [ref=e1867]
+                          - 'cell "Defaut desk: 2 ans hebdomadaires; 5 ans mensuels en alternative." [ref=e1868]'
+                          - cell [ref=e1869]:
+                            - spinbutton [ref=e1871]
+                        - row "Observations beta minimum beta_min_observations 60 default 30 - 120 Decisions log Garde de liquidite sur semaines traitees." [ref=e1872]:
+                          - cell "Observations beta minimum beta_min_observations" [ref=e1873]:
+                            - generic [ref=e1874]: Observations beta minimum
+                            - generic [ref=e1875]: beta_min_observations
+                          - cell "60" [ref=e1876]
+                          - cell "default" [ref=e1877]
+                          - cell "30 - 120" [ref=e1878]
+                          - cell "Decisions log" [ref=e1879]
+                          - cell "Garde de liquidite sur semaines traitees." [ref=e1880]
+                          - cell [ref=e1881]:
+                            - spinbutton [ref=e1883]
+                        - row "Seuil semaines sans variation beta_zero_return_threshold 30.00% default 10.00% - 60.00% Decisions log Au-dessus du seuil, routage Dimson+Blume ou peer beta." [ref=e1884]:
+                          - cell "Seuil semaines sans variation beta_zero_return_threshold" [ref=e1885]:
+                            - generic [ref=e1886]: Seuil semaines sans variation
+                            - generic [ref=e1887]: beta_zero_return_threshold
+                          - cell "30.00%" [ref=e1888]
+                          - cell "default" [ref=e1889]
+                          - cell "10.00% - 60.00%" [ref=e1890]
+                          - cell "Decisions log" [ref=e1891]
+                          - cell "Au-dessus du seuil, routage Dimson+Blume ou peer beta." [ref=e1892]
+                          - cell [ref=e1893]:
+                            - spinbutton [ref=e1895]
+                        - row "Addon cout dette scenario scenario_cost_of_debt_addon -0.50% scenario -2.00% - 3.00% Scenario desk Prime ajoutee au cout de dette par scenario avant le calcul WACC." [ref=e1896]:
+                          - cell "Addon cout dette scenario scenario_cost_of_debt_addon" [ref=e1897]:
+                            - generic [ref=e1898]: Addon cout dette scenario
+                            - generic [ref=e1899]: scenario_cost_of_debt_addon
+                          - cell "-0.50%" [ref=e1900]
+                          - cell "scenario" [ref=e1901]
+                          - cell "-2.00% - 3.00%" [ref=e1902]
+                          - cell "Scenario desk" [ref=e1903]
+                          - cell "Prime ajoutee au cout de dette par scenario avant le calcul WACC." [ref=e1904]
+                          - cell [ref=e1905]:
+                            - spinbutton [ref=e1907]
+                        - row "Addon ERP scenario scenario_erp_addon -1.00% scenario -3.00% - 4.00% Scenario desk Prime ajoutee a l'ERP par scenario avant le calcul CAPM." [ref=e1908]:
+                          - cell "Addon ERP scenario scenario_erp_addon" [ref=e1909]:
+                            - generic [ref=e1910]: Addon ERP scenario
+                            - generic [ref=e1911]: scenario_erp_addon
+                          - cell "-1.00%" [ref=e1912]
+                          - cell "scenario" [ref=e1913]
+                          - cell "-3.00% - 4.00%" [ref=e1914]
+                          - cell "Scenario desk" [ref=e1915]
+                          - cell "Prime ajoutee a l'ERP par scenario avant le calcul CAPM." [ref=e1916]
+                          - cell [ref=e1917]:
+                            - spinbutton [ref=e1919]
+                        - row "Beta fallback beta 1.33x beta_history 0.40x - 2.00x FundamentalBetaHistory puis fallback registry Utilise seulement si aucun beta PIT n'est disponible." [ref=e1920]:
+                          - cell "Beta fallback beta" [ref=e1921]:
+                            - generic [ref=e1922]: Beta fallback
+                            - generic [ref=e1923]: beta
+                          - cell "1.33x" [ref=e1924]
+                          - cell "beta_history" [ref=e1925]
+                          - cell "0.40x - 2.00x" [ref=e1926]
+                          - cell "FundamentalBetaHistory puis fallback registry" [ref=e1927]
+                          - cell "Utilise seulement si aucun beta PIT n'est disponible." [ref=e1928]
+                          - cell [ref=e1929]:
+                            - spinbutton [ref=e1931]
+                        - row "Cout de la dette cost_of_debt 5.00% computed 3.50% - 8.50% Calibration SGTM / broker Spread corporate MAD estime." [ref=e1932]:
+                          - cell "Cout de la dette cost_of_debt" [ref=e1933]:
+                            - generic [ref=e1934]: Cout de la dette
+                            - generic [ref=e1935]: cost_of_debt
+                          - cell "5.00%" [ref=e1936]
+                          - cell "computed" [ref=e1937]
+                          - cell "3.50% - 8.50%" [ref=e1938]
+                          - cell "Calibration SGTM / broker" [ref=e1939]
+                          - cell "Spread corporate MAD estime." [ref=e1940]
+                          - cell [ref=e1941]:
+                            - spinbutton [ref=e1943]
+                        - row "Cout des fonds propres calcule cost_of_equity 9.55% computed 4.50% - 18.00% CAPM Rf + beta x ERP. Calcule" [ref=e1944]:
+                          - cell "Cout des fonds propres calcule cost_of_equity" [ref=e1945]:
+                            - generic [ref=e1946]: Cout des fonds propres calcule
+                            - generic [ref=e1947]: cost_of_equity
+                          - cell "9.55%" [ref=e1948]
+                          - cell "computed" [ref=e1949]
+                          - cell "4.50% - 18.00%" [ref=e1950]
+                          - cell "CAPM" [ref=e1951]
+                          - cell "Rf + beta x ERP." [ref=e1952]
+                          - cell "Calcule" [ref=e1953]
+                        - row "Poids bilan / capitalisation use_balance_sheet_capital_weights Oui default Non - Oui Assumption registry 1 = poids marche par defaut; 0 = forcer les poids cible desk." [ref=e1954]:
+                          - cell "Poids bilan / capitalisation use_balance_sheet_capital_weights" [ref=e1955]:
+                            - generic [ref=e1956]: Poids bilan / capitalisation
+                            - generic [ref=e1957]: use_balance_sheet_capital_weights
+                          - cell "Oui" [ref=e1958]
+                          - cell "default" [ref=e1959]
+                          - cell "Non - Oui" [ref=e1960]
+                          - cell "Assumption registry" [ref=e1961]
+                          - cell "1 = poids marche par defaut; 0 = forcer les poids cible desk." [ref=e1962]
+                          - cell [ref=e1963]:
+                            - spinbutton [ref=e1965]
+                        - row "Poids dette par defaut default_debt_weight 30.00% default 0.00% - 70.00% Assumption registry Structure cible 30/70 si les poids marche ne sont pas actives." [ref=e1966]:
+                          - cell "Poids dette par defaut default_debt_weight" [ref=e1967]:
+                            - generic [ref=e1968]: Poids dette par defaut
+                            - generic [ref=e1969]: default_debt_weight
+                          - cell "30.00%" [ref=e1970]
+                          - cell "default" [ref=e1971]
+                          - cell "0.00% - 70.00%" [ref=e1972]
+                          - cell "Assumption registry" [ref=e1973]
+                          - cell "Structure cible 30/70 si les poids marche ne sont pas actives." [ref=e1974]
+                          - cell [ref=e1975]:
+                            - spinbutton [ref=e1977]
+                        - row "Poids fonds propres par defaut default_equity_weight 70.00% default 30.00% - 100.00% Assumption registry Structure cible 70/30 si les poids marche ne sont pas actives." [ref=e1978]:
+                          - cell "Poids fonds propres par defaut default_equity_weight" [ref=e1979]:
+                            - generic [ref=e1980]: Poids fonds propres par defaut
+                            - generic [ref=e1981]: default_equity_weight
+                          - cell "70.00%" [ref=e1982]
+                          - cell "default" [ref=e1983]
+                          - cell "30.00% - 100.00%" [ref=e1984]
+                          - cell "Assumption registry" [ref=e1985]
+                          - cell "Structure cible 70/30 si les poids marche ne sont pas actives." [ref=e1986]
+                          - cell [ref=e1987]:
+                            - spinbutton [ref=e1989]
+                        - row "Prime de risque actions equity_risk_premium 6.00% default 3.50% - 9.00% Attijari, CFG, BMCE Capital GR Consensus brokers marocains, pays inclus." [ref=e1990]:
+                          - cell "Prime de risque actions equity_risk_premium" [ref=e1991]:
+                            - generic [ref=e1992]: Prime de risque actions
+                            - generic [ref=e1993]: equity_risk_premium
+                          - cell "6.00%" [ref=e1994]
+                          - cell "default" [ref=e1995]
+                          - cell "3.50% - 9.00%" [ref=e1996]
+                          - cell "Attijari, CFG, BMCE Capital GR" [ref=e1997]
+                          - cell "Consensus brokers marocains, pays inclus." [ref=e1998]
+                          - cell [ref=e1999]:
+                            - spinbutton [ref=e2001]
+                        - row "Prime pays separee country_risk_premium 0.00% default 0.00% - 4.00% Damodaran / calibration Maroc Defaut a zero car la prime pays est deja incluse dans l'ERP." [ref=e2002]:
+                          - cell "Prime pays separee country_risk_premium" [ref=e2003]:
+                            - generic [ref=e2004]: Prime pays separee
+                            - generic [ref=e2005]: country_risk_premium
+                          - cell "0.00%" [ref=e2006]
+                          - cell "default" [ref=e2007]
+                          - cell "0.00% - 4.00%" [ref=e2008]
+                          - cell "Damodaran / calibration Maroc" [ref=e2009]
+                          - cell "Defaut a zero car la prime pays est deja incluse dans l'ERP." [ref=e2010]
+                          - cell [ref=e2011]:
+                            - spinbutton [ref=e2013]
+                        - row "Taux IS tax_rate 35.00% default 20.00% - 40.00% Reforme IS post-2023 Taux effectif cible pour grands groupes marocains." [ref=e2014]:
+                          - cell "Taux IS tax_rate" [ref=e2015]:
+                            - generic [ref=e2016]: Taux IS
+                            - generic [ref=e2017]: tax_rate
+                          - cell "35.00%" [ref=e2018]
+                          - cell "default" [ref=e2019]
+                          - cell "20.00% - 40.00%" [ref=e2020]
+                          - cell "Reforme IS post-2023" [ref=e2021]
+                          - cell "Taux effectif cible pour grands groupes marocains." [ref=e2022]
+                          - cell [ref=e2023]:
+                            - spinbutton [ref=e2025]
+                        - row "Taux sans risque risk_free_rate 2.90% default 1.50% - 5.50% Courbe BDT / convention broker Maroc BDT 10 ans, marche secondaire." [ref=e2026]:
+                          - cell "Taux sans risque risk_free_rate" [ref=e2027]:
+                            - generic [ref=e2028]: Taux sans risque
+                            - generic [ref=e2029]: risk_free_rate
+                          - cell "2.90%" [ref=e2030]
+                          - cell "default" [ref=e2031]
+                          - cell "1.50% - 5.50%" [ref=e2032]
+                          - cell "Courbe BDT / convention broker Maroc" [ref=e2033]
+                          - cell "BDT 10 ans, marche secondaire." [ref=e2034]
+                          - cell [ref=e2035]:
+                            - spinbutton [ref=e2037]
+                        - row "WACC calcule wacc 7.94% computed 5.00% - 14.00% CAPM + structure capital Ke et Kd apres impot ponderes par les poids dette/fonds propres. Calcule" [ref=e2038]:
+                          - cell "WACC calcule wacc" [ref=e2039]:
+                            - generic [ref=e2040]: WACC calcule
+                            - generic [ref=e2041]: wacc
+                          - cell "7.94%" [ref=e2042]
+                          - cell "computed" [ref=e2043]
+                          - cell "5.00% - 14.00%" [ref=e2044]
+                          - cell "CAPM + structure capital" [ref=e2045]
+                          - cell "Ke et Kd apres impot ponderes par les poids dette/fonds propres." [ref=e2046]
+                          - cell "Calcule" [ref=e2047]
+                  - generic [ref=e2048]:
+                    - button "Enregistrer titre" [disabled]:
+                      - img
+                      - text: Enregistrer titre
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=e30] [cursor=pointer]:
+    - img [ref=e31]
+  - alert [ref=e295]

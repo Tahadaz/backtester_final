@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatNumber } from "@/lib/format"
+import { horizonLabel } from "@/lib/horizon"
 import type { SupportResistanceMethod } from "@/lib/api"
 import { ICStatsChip } from "@/components/signals/ic-stats-chip"
 
@@ -34,7 +35,7 @@ function SupportResistanceFamilyContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const symbol = (searchParams.get("symbol") ?? "").trim().toUpperCase()
-  const horizon = (searchParams.get("horizon") ?? "medium").trim().toLowerCase()
+  const horizon = (searchParams.get("horizon") ?? "monthly").trim().toLowerCase()
   const variant = (searchParams.get("variant") ?? "expanded").trim().toLowerCase()
   const cooldownBars = Number(searchParams.get("cooldown") ?? 0)
   const costBps = 33
@@ -92,7 +93,7 @@ function SupportResistanceFamilyContent() {
           <h1 className="text-base font-bold">Support et resistance</h1>
           <div className="flex items-center gap-2 mt-0.5">
             <p className="text-xs text-muted-foreground">
-              {symbol} - {horizon} - {data.as_of}
+              {symbol} - {horizonLabel(horizon)} - {data.as_of}
             </p>
             <ICStatsChip symbol={symbol} horizon={horizon} />
           </div>

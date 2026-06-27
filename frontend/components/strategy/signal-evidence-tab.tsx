@@ -4,6 +4,7 @@ import { useMemo, useState } from "react"
 import useSWR from "swr"
 import { Activity, BarChart3, CheckCircle2, Layers3, ListChecks } from "lucide-react"
 import {
+  fetchBestSignalEvidence,
   fetchSignalEvidence,
   type SignalEvidence,
   type SignalEvidenceContributor,
@@ -943,19 +944,26 @@ export function SignalEvidenceTab({
 }: SignalEvidenceTabProps) {
   const requestedVariant = variant || undefined
   const normalizedCooldownBars = Math.max(0, Math.floor(cooldownBars || 0))
+  const useStoredBest = source === "auto" || (source === "wfo" && !requestedVariant)
   const [proofLimit, setProofLimit] = useState<ProofLimitKey>("100")
   const { data, error, isLoading } = useSWR(
-    ["signal-evidence", symbol, horizon, source, requestedVariant, normalizedCooldownBars, proofLimit],
+    ["signal-evidence", useStoredBest ? "best" : "live", symbol, horizon, source, requestedVariant, normalizedCooldownBars, proofLimit],
     () =>
-      fetchSignalEvidence({
-        symbol,
-        horizon,
-        source,
-        variant: requestedVariant,
-        costBps: EDGE_COST_BPS,
-        cooldownBars: normalizedCooldownBars,
-        proofLimit,
-      }),
+      useStoredBest
+        ? fetchBestSignalEvidence({
+            symbol,
+            horizon,
+            cooldownBars: normalizedCooldownBars,
+          })
+        : fetchSignalEvidence({
+            symbol,
+            horizon,
+            source,
+            variant: requestedVariant,
+            costBps: EDGE_COST_BPS,
+            cooldownBars: normalizedCooldownBars,
+            proofLimit,
+          }),
     { revalidateOnFocus: false },
   )
 

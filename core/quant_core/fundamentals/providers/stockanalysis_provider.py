@@ -22,6 +22,16 @@ from . import ProviderUnavailableError
 BASE_URL = "https://stockanalysis.com/quote/cbse/{symbol}"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 MONEY_SCALE = 1_000_000.0
+SUPPORTED_CURRENCY = "MAD"
+CORE_STATEMENT_FIELDS = (
+    "Revenue",
+    "NetIncome",
+    "Total_Assets",
+    "Total_Equity",
+    "Operating_Cash_Flow",
+    "Free_Cash_Flow",
+    "Total_Debt",
+)
 
 
 class _FirstTableParser(HTMLParser):
@@ -102,20 +112,40 @@ def _safe_float(value: Any) -> float | None:
     return out if isfinite(out) else None
 
 
-def _safe_ratio(numerator: float | None, denominator: float | None) -> float | None:
-    if numerator is None or denominator in (None, 0):
-        return None
-    return numerator / denominator
-
-
 def _scaled_money(value: Any) -> float | None:
     out = _safe_float(value)
     return None if out is None else out * MONEY_SCALE
 
 
+def _scaled_money_first(*values: Any) -> float | None:
+    for value in values:
+        out = _scaled_money(value)
+        if out is not None:
+            return out
+    return None
+
+
+def _first_non_null(*values: float | None) -> float | None:
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
+def _abs_money(value: float | None) -> float | None:
+    return None if value is None else abs(value)
+
+
 def _scaled_shares(value: Any) -> float | None:
     out = _safe_float(value)
     return None if out is None else out * MONEY_SCALE
+
+
+def _currency_from_html(html: str) -> str | None:
+    match = re.search(r"Financials\s+in\s+millions\s+([A-Z]{3})", html or "", flags=re.IGNORECASE)
+    if not match:
+        return None
+    return match.group(1).upper()
 
 
 def _table_values_by_year(rows: list[list[str]]) -> dict[int, dict[str, float | None]]:
@@ -134,20 +164,17 @@ def _table_values_by_year(rows: list[list[str]]) -> dict[int, dict[str, float | 
 
 
 def _latest_year(annual: dict[int, dict[str, float | None]]) -> int | None:
-    years = [year for year, values in annual.items() if any(value is not None for value in values.values())]
+    years = [year for year, values in annual.items() if _has_core_statement_values(values)]
     return max(years) if years else None
 
 
-def _growth(annual: dict[int, dict[str, float | None]], metric: str, latest_year: int) -> float | None:
-    previous_year = latest_year - 1
-    latest = annual.get(latest_year, {}).get(metric)
-    previous = annual.get(previous_year, {}).get(metric)
-    if latest is None or previous in (None, 0):
-        return None
-    return (latest - previous) / abs(previous)
+def _has_core_statement_values(values: dict[str, float | None]) -> bool:
+    # Require at least 2 non-null core fields to reject all-null or near-empty
+    # years (e.g., TTM / partial columns that would create phantom statement years).
+    return sum(1 for metric in CORE_STATEMENT_FIELDS if values.get(metric) is not None) >= 2
 
 
-def _dividend_history_by_year(rows: list[list[str]]) -> dict[int, float]:
+def _dividend_history_by_fiscal_year(rows: list[list[str]]) -> dict[int, float]:
     out: dict[int, float] = {}
     if not rows:
         return out
@@ -159,7 +186,10 @@ def _dividend_history_by_year(rows: list[list[str]]) -> dict[int, float]:
             continue
         cash_amount = _safe_float(row[1])
         if cash_amount is not None:
-            out[int(year_match.group(1))] = cash_amount
+            # StockAnalysis' dividend table is event-dated by ex-date/payment year.
+            # Moroccan annual dividends are normally detached in the following
+            # calendar year, while financial tables are keyed by fiscal year.
+            out[int(year_match.group(1)) - 1] = cash_amount
     return out
 
 
@@ -207,10 +237,15 @@ class StockAnalysisFundamentalProvider:
             raise ProviderUnavailableError(f"could not fetch {url}: {exc}") from exc
 
     def _fetch_table(self, url: str) -> list[list[str]]:
-        rows = _first_table_rows(self._fetch_url(url))
+        rows, _currency = self._fetch_table_with_currency(url)
+        return rows
+
+    def _fetch_table_with_currency(self, url: str) -> tuple[list[list[str]], str | None]:
+        html = self._fetch_url(url)
+        rows = _first_table_rows(html)
         if not rows:
             raise ProviderUnavailableError(f"no financial table found at {url}")
-        return rows
+        return rows, _currency_from_html(html)
 
     def _fetch_once(
         self,
@@ -228,11 +263,27 @@ class StockAnalysisFundamentalProvider:
             "cash_flow": f"{base}/financials/cash-flow-statement/",
             "dividends": f"{base}/dividend/",
         }
-        tables = {
-            "income": self._fetch_table(urls["income"]),
-            "balance": self._fetch_table(urls["balance"]),
-        }
-        for optional_name in ("cash_flow", "dividends"):
+        tables: dict[str, list[list[str]]] = {}
+        currencies: set[str] = set()
+        for statement_name in ("income", "balance", "cash_flow"):
+            try:
+                rows, currency = self._fetch_table_with_currency(urls[statement_name])
+            except ProviderUnavailableError:
+                tables[statement_name] = []
+                continue
+            tables[statement_name] = rows
+            if currency:
+                currencies.add(currency)
+        if not any(tables.values()):
+            raise ProviderUnavailableError(f"no financial statement tables found for {provider_symbol}")
+        currency = next(iter(currencies)) if len(currencies) == 1 else SUPPORTED_CURRENCY
+        if len(currencies) > 1:
+            raise ProviderUnavailableError(f"mixed StockAnalysis statement currencies for {provider_symbol}: {sorted(currencies)}")
+        if currency != SUPPORTED_CURRENCY:
+            raise ProviderUnavailableError(
+                f"StockAnalysis reports {provider_symbol} financials in {currency}; {SUPPORTED_CURRENCY} conversion is not implemented"
+            )
+        for optional_name in ("dividends",):
             try:
                 tables[optional_name] = self._fetch_table(urls[optional_name])
             except ProviderUnavailableError:
@@ -255,6 +306,7 @@ class StockAnalysisFundamentalProvider:
             )
             for year in sorted(annual)
             for metric, value in sorted(annual[year].items())
+            if value is not None  # never write null rows — they pollute the resolver
         ]
         mapping = CompanyMapping(
             company_name=company_name,
@@ -282,7 +334,7 @@ class StockAnalysisFundamentalProvider:
             source={
                 "data_source": "stockanalysis",
                 "provider_symbol": provider_symbol,
-                "currency": "MAD",
+                "currency": currency,
                 "market_region": market_region,
                 "source_urls": source_urls,
             },
@@ -317,10 +369,10 @@ class StockAnalysisFundamentalProvider:
         *,
         shares_outstanding: float | None,
     ) -> dict[int, dict[str, float | None]]:
-        income = _table_values_by_year(tables["income"])
-        balance = _table_values_by_year(tables["balance"])
-        cash_flow = _table_values_by_year(tables["cash_flow"])
-        dividend_history = _dividend_history_by_year(tables.get("dividends", []))
+        income = _table_values_by_year(tables.get("income", []))
+        balance = _table_values_by_year(tables.get("balance", []))
+        cash_flow = _table_values_by_year(tables.get("cash_flow", []))
+        dividend_history = _dividend_history_by_fiscal_year(tables.get("dividends", []))
         annual: dict[int, dict[str, float | None]] = {}
         years = sorted(set(income) | set(balance) | set(cash_flow))
 
@@ -337,68 +389,110 @@ class StockAnalysisFundamentalProvider:
             cash = _scaled_money(bal.get("Cash & Equivalents"))
             net_cash = _scaled_money(bal.get("Net Cash (Debt)"))
             net_debt = -net_cash if net_cash is not None else (total_debt - cash if total_debt is not None and cash is not None else None)
-            revenue = _scaled_money(inc.get("Revenue"))
+            revenue = _scaled_money_first(inc.get("Revenue"), inc.get("Total Revenue"))
             net_income = _scaled_money(inc.get("Net Income"))
             total_assets = _scaled_money(bal.get("Total Assets"))
             equity = _scaled_money(bal.get("Shareholders' Equity"))
             operating_cf = _scaled_money(cf.get("Operating Cash Flow"))
             free_cf = _scaled_money(cf.get("Free Cash Flow"))
+            gross_profit = _scaled_money(inc.get("Gross Profit"))
+            operating_expenses = _scaled_money_first(inc.get("Operating Expenses"), inc.get("Total Non-Interest Expense"))
+            ebit = _scaled_money_first(inc.get("EBIT"), inc.get("Operating Income"))
+            ebitda = _scaled_money(inc.get("EBITDA"))
+            depreciation_amortization = _scaled_money_first(
+                inc.get("D&A For EBITDA"),
+                cf.get("Depreciation & Amortization"),
+            )
+            interest_expense = _abs_money(_scaled_money_first(inc.get("Interest Expense"), inc.get("Interest Paid on Deposits")))
+            income_tax = _scaled_money(inc.get("Income Tax Expense"))
+            current_assets = _scaled_money(bal.get("Total Current Assets"))
+            current_liabilities = _scaled_money(bal.get("Total Current Liabilities"))
+            accounts_receivable = _scaled_money_first(bal.get("Receivables"), bal.get("Accounts Receivable"))
+            accounts_payable = _scaled_money(bal.get("Accounts Payable"))
+            inventory = _scaled_money(bal.get("Inventory"))
+            retained_earnings = _scaled_money(bal.get("Retained Earnings"))
+            working_capital = _scaled_money(bal.get("Working Capital"))
+            capital_expenditures = _scaled_money(cf.get("Capital Expenditures"))
+            common_dividends_paid = _scaled_money(cf.get("Common Dividends Paid"))
+            change_in_working_capital = _scaled_money(cf.get("Change in Working Capital"))
             dividend_per_share = inc.get("Dividend Per Share")
             if dividend_per_share is None:
                 dividend_per_share = dividend_history.get(year)
-            dividends = dividend_per_share * shares if dividend_per_share is not None and shares else None
-            annual[year] = {
+            dividends: float | None = None
+            if dividend_per_share is not None and shares is not None and shares > 0:
+                raw_total = dividend_per_share * shares
+                # Sanity-guard: total dividends > 5× |net_income| implies a unit
+                # mismatch (DPS treated as total, or wrong-scale DPS). Discard.
+                if net_income is not None and net_income != 0 and raw_total > abs(net_income) * 5.0:
+                    dividend_per_share = None  # clear so Dividend_Per_Share is not written either
+                else:
+                    dividends = raw_total
+            dividends = _first_non_null(dividends, _abs_money(common_dividends_paid))
+            premiums_earned = _scaled_money(inc.get("Premiums & Annuity Revenue"))
+            policy_benefits = _scaled_money(inc.get("Policy Benefits"))
+            policy_acquisition_costs = _scaled_money(inc.get("Policy Acquisition & Underwriting Costs"))
+            values = {
                 "Has_Core_Fundamentals": 1.0,
-                "Chiffre_daffaires": revenue,
                 "Revenue": revenue,
+                "Cost_of_Revenue": _scaled_money(inc.get("Cost of Revenue")),
+                "Gross_Profit": gross_profit,
+                "Operating_Expenses": operating_expenses,
+                "Selling_General_Admin": _scaled_money(inc.get("Selling, General & Admin")),
+                "Other_Operating_Expenses": _scaled_money(inc.get("Other Operating Expenses")),
+                "Occupancy_Expenses": _scaled_money(inc.get("Occupancy Expenses")),
+                "Other_NonInterest_Expense": _scaled_money(inc.get("Other Non-Interest Expense")),
+                "EBITDA": ebitda,
+                "EBIT": ebit,
+                "Depreciation_Amortization": depreciation_amortization,
+                "Interest_Expense": interest_expense,
                 "Net_Interest_Income": _scaled_money(inc.get("Net Interest Income")),
+                "Total_Interest_Income": _scaled_money(inc.get("Total Interest Income")),
+                "Interest_Income_on_Loans": _scaled_money(inc.get("Interest Income on Loans")),
+                "Interest_Paid_on_Deposits": _scaled_money(inc.get("Interest Paid on Deposits")),
+                "Total_NonInterest_Income": _scaled_money(inc.get("Total Non-Interest Income")),
+                "Revenues_Before_Loan_Losses": _scaled_money(inc.get("Revenues Before Loan Losses")),
                 "Provision_for_Loan_Losses": _scaled_money(inc.get("Provision for Loan Losses")),
+                "Premiums_Earned": premiums_earned,
+                "Policy_Benefits": policy_benefits,
+                "Policy_Acquisition_Costs": policy_acquisition_costs,
                 "Pretax_Income": _scaled_money(inc.get("Pretax Income")),
-                "Resultat_net": net_income,
+                "Income_Tax_Expense": income_tax,
                 "NetIncome": net_income,
                 "Basic_EPS": inc.get("EPS (Basic)"),
                 "Diluted_EPS": inc.get("EPS (Diluted)"),
                 "Dividend_Per_Share": dividend_per_share,
                 "Dividendes": dividends,
-                "Clean_Dividendes": dividends,
-                "Total_Actif": total_assets,
+                "Common_Dividends_Paid": common_dividends_paid,
                 "Total_Assets": total_assets,
                 "Total_Liabilities": _scaled_money(bal.get("Total Liabilities")),
-                "Capitaux_propres": equity,
-                "Clean_Capitaux_propres": equity,
+                "Total_Liabilities_And_Equity": _scaled_money(bal.get("Total Liabilities & Equity")),
                 "Total_Equity": equity,
                 "Total_Debt": total_debt,
                 "Cash": cash,
-                "Cash_and_Equivalents": cash,
-                "NetDebt": net_debt,
+                "Net_Debt": net_debt,
                 "Loans_Net": _scaled_money(bal.get("Net Loans")),
                 "Customer_Deposits": _scaled_money(bal.get("Total Deposits")),
+                "Current_Assets": current_assets,
+                "Current_Liabilities": current_liabilities,
+                "Inventory": inventory,
+                "Accounts_Receivable": accounts_receivable,
+                "Accounts_Payable": accounts_payable,
+                "Retained_Earnings": retained_earnings,
+                "Working_Capital": working_capital,
                 "Shares_Outstanding": shares,
                 "Book_Value_Per_Share": bal.get("Book Value Per Share"),
+                "CFS_Net_Income_Top_Of_CFS": _scaled_money(cf.get("Net Income")),
                 "Operating_Cash_Flow": operating_cf,
-                "CF_Operating": operating_cf,
                 "CF_Investing": _scaled_money(cf.get("Investing Cash Flow")),
                 "CF_Financing": _scaled_money(cf.get("Financing Cash Flow")),
                 "CF_FX_Effect": _scaled_money(cf.get("Foreign Exchange Rate Adjustments")),
+                "Change_in_Cash": _scaled_money(cf.get("Net Cash Flow")),
+                "Change_in_Working_Capital": change_in_working_capital,
                 "Free_Cash_Flow": free_cf,
-                "Capital_Expenditures": _scaled_money(cf.get("Capital Expenditures")),
-                "Net_Margin": _safe_ratio(net_income, revenue),
-                "FCF_Margin": _safe_ratio(free_cf, revenue),
-                "Operating_CF_Margin": _safe_ratio(operating_cf, revenue),
-                "Asset_Turnover": _safe_ratio(revenue, total_assets),
-                "Debt_to_Equity": _safe_ratio(total_debt, equity),
-                "NetDebt_to_Equity": _safe_ratio(net_debt, equity),
-                "ROE": _safe_ratio(net_income, equity),
-                "ROA": _safe_ratio(net_income, total_assets),
-                "Dividend_Payout": _safe_ratio(dividends, net_income),
-                "Dividend_Coverage": _safe_ratio(net_income, dividends),
+                "Capital_Expenditures": capital_expenditures,
+                "Capex": _abs_money(capital_expenditures),
             }
-
-        for year in years:
-            values = annual[year]
-            values["Revenue_Growth"] = _growth(annual, "Revenue", year)
-            values["NetIncome_Growth"] = _growth(annual, "NetIncome", year)
-            values["OperatingCF_Growth"] = _growth(annual, "Operating_Cash_Flow", year)
-            values["FCF_Growth"] = _growth(annual, "Free_Cash_Flow", year)
+            if _has_core_statement_values(values):
+                annual[year] = values
 
         return annual

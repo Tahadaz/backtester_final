@@ -7,6 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { usePredictiveAbility, useCategoryCombinations } from "@/hooks/use-api"
 import { triggerPredictiveHistory } from "@/lib/api"
+import { horizonLabel, horizonLabelWithDays } from "@/lib/horizon"
 import { useToast } from "@/hooks/use-toast"
 import { BucketMatrix } from "./bucket-matrix"
 
@@ -52,9 +53,9 @@ function parseInitialSource(value?: string): { sourceKind: SourceKind; mode: Sig
 }
 
 const HORIZONS = [
-  { value: "short", label: "Court (1-5j)" },
-  { value: "medium", label: "Moyen (6-21j)" },
-  { value: "long", label: "Long (22-200j)" },
+  { value: "short", label: horizonLabelWithDays("short") },
+  { value: "medium", label: horizonLabelWithDays("medium") },
+  { value: "long", label: horizonLabelWithDays("long") },
 ] as const
 
 const CATEGORIES = ["tendance", "momentum", "oscillation", "volume"] as const
@@ -184,7 +185,7 @@ export function PredictiveAbilityPanel({ symbol, initialSource, initialHorizon, 
         </div>
 
         <div className="flex flex-col gap-1">
-          <Label className="text-[10px] uppercase text-muted-foreground">Horizon (engine)</Label>
+          <Label className="text-[10px] uppercase text-muted-foreground">Horizon</Label>
           <div className="flex rounded-md border bg-background">
             {HORIZONS.map((h) => (
               <button
@@ -269,7 +270,7 @@ export function PredictiveAbilityPanel({ symbol, initialSource, initialHorizon, 
           <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
             <Badge variant="outline">n_obs = {matrix.n_obs}</Badge>
             <span>
-              {symbol} · {source} · {horizon} ·{" "}
+              {symbol} · {source} · {horizonLabel(horizon)} ·{" "}
               {matrix.categories.length === CATEGORIES.length
                 ? "toutes catégories"
                 : matrix.categories.join(" + ")}

@@ -75,7 +75,39 @@ def _add_registered_jobs(scheduler: BlockingScheduler) -> None:
         )
 
 
+def _scheduler_enabled() -> bool:
+    return os.getenv("WORKER_SCHEDULER_ENABLED", "0").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _idle_until_signalled() -> None:
+    """Stay alive without dispatching anything.
+
+    The container runs under ``restart: unless-stopped``; exiting would trigger a
+    restart loop. Block instead and shut down cleanly on SIGTERM/SIGINT.
+    """
+    import threading
+
+    stop = threading.Event()
+
+    def _handle_sig(signum, _frame):
+        log.info("scheduler(idle): received signal %s, exiting.", signum)
+        stop.set()
+
+    signal.signal(signal.SIGTERM, _handle_sig)
+    signal.signal(signal.SIGINT, _handle_sig)
+    stop.wait()
+
+
 def main() -> None:
+    if not _scheduler_enabled():
+        log.info(
+            "scheduler: disabled (WORKER_SCHEDULER_ENABLED not set). No schedules will be "
+            "dispatched. Set WORKER_SCHEDULER_ENABLED=1 to enable (deployed environments only). "
+            "Manual triggers via the API are unaffected. Idling..."
+        )
+        _idle_until_signalled()
+        return
+
     started_at = datetime.now(timezone.utc).isoformat()
     removed = cleanup_legacy_rq_scheduler_entries()
     if removed:

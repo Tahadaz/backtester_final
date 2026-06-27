@@ -1,0 +1,163 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - link "RDT Alpha" [ref=e4] [cursor=pointer]:
+        - /url: /dashboard
+        - generic [ref=e5]: RDT
+        - generic [ref=e6]:
+          - generic [ref=e7]: RDT Alpha
+          - generic [ref=e8]: Road to Alpha
+      - navigation [ref=e9]:
+        - link "Tableau de Bord" [ref=e10] [cursor=pointer]:
+          - /url: /dashboard
+          - img
+          - text: Tableau de Bord
+        - link "Data" [ref=e11] [cursor=pointer]:
+          - /url: /data
+          - img
+          - text: Data
+        - link "Signals" [ref=e12] [cursor=pointer]:
+          - /url: /signals
+          - img
+          - text: Signals
+        - link "Strategy" [ref=e13] [cursor=pointer]:
+          - /url: /strategy
+          - img
+          - text: Strategy
+        - link "Backtest" [ref=e14] [cursor=pointer]:
+          - /url: /backtest
+          - img
+          - text: Backtest
+        - link "Analytics" [ref=e15] [cursor=pointer]:
+          - /url: /analytics
+          - img
+          - text: Analytics
+        - link "Glossaire" [ref=e16] [cursor=pointer]:
+          - /url: /glossary
+          - img
+          - text: Glossaire
+      - generic [ref=e17]:
+        - generic [ref=e18]: MASI · live
+        - button "Refresh" [ref=e20]:
+          - img
+        - link "Se connecter" [ref=e21] [cursor=pointer]:
+          - /url: /login
+          - img
+          - generic [ref=e22]: Se connecter
+  - main [ref=e23]:
+    - generic [ref=e24]:
+      - generic [ref=e25]:
+        - generic [ref=e26]: Analyse
+        - button "Analyse Technique Signaux TA, evidence, WFO" [pressed] [ref=e27]:
+          - img [ref=e29]
+          - generic [ref=e31]:
+            - generic [ref=e32]: Analyse Technique
+            - generic [ref=e33]: Signaux TA, evidence, WFO
+        - button "Analyse Fondamentale Valorisation, qualite, financiers" [ref=e34]:
+          - img [ref=e36]
+          - generic [ref=e38]:
+            - generic [ref=e39]: Analyse Fondamentale
+            - generic [ref=e40]: Valorisation, qualite, financiers
+        - button "Analyse Quantitative IC, facteurs, macro, stat-arb" [ref=e41]:
+          - img [ref=e43]
+          - generic [ref=e45]:
+            - generic [ref=e46]: Analyse Quantitative
+            - generic [ref=e47]: IC, facteurs, macro, stat-arb
+      - generic [ref=e49]:
+        - complementary [ref=e51]:
+          - generic [ref=e52]:
+            - generic [ref=e53]:
+              - generic [ref=e54]: Titres
+              - generic [ref=e55]: 0 / 0
+            - generic [ref=e56]:
+              - generic [ref=e57]:
+                - img [ref=e58]
+                - textbox "Rechercher un titre..." [ref=e61]
+              - button "Masquer non disponibles" [ref=e62]:
+                - img [ref=e63]
+          - generic [ref=e84]:
+            - generic [ref=e85]: Horizon
+            - group [ref=e86]:
+              - radio "Hebdomadaire" [checked] [ref=e87]
+              - radio "Mensuel" [ref=e88]
+              - radio "Trimestriel" [ref=e89]
+        - separator [ref=e90]:
+          - img [ref=e92]
+        - generic [ref=e100]:
+          - generic [ref=e101]:
+            - generic [ref=e102]:
+              - generic [ref=e103]:
+                - generic [ref=e104]: Universe
+                - generic [ref=e105]:
+                  - button "Expanded" [pressed] [ref=e106]
+                  - button "Legacy" [ref=e107]
+              - generic [ref=e108]:
+                - generic [ref=e109]: Source
+                - generic [ref=e110]:
+                  - button "Pure TA" [pressed] [ref=e111]
+                  - button "Factor x TA" [ref=e112]
+              - generic [ref=e113]:
+                - generic [ref=e114]: Mode
+                - generic [ref=e115]:
+                  - button "Simple" [pressed] [ref=e116]
+                  - button "Combo" [ref=e117]
+            - generic [ref=e118]: Expanded TA
+            - generic [ref=e119]:
+              - generic [ref=e120]: "Mode actif:"
+              - generic [ref=e121]: Expanded
+              - generic [ref=e122]: Pure TA
+              - generic [ref=e123]: Simple
+            - generic [ref=e124]:
+              - generic [ref=e125]: "Cooldown:"
+              - spinbutton [ref=e126]: "0"
+              - generic [ref=e127]: bars
+              - button "Export" [ref=e128]:
+                - img
+                - text: Export
+              - link "Glossaire" [ref=e129] [cursor=pointer]:
+                - /url: /glossary#signals
+                - img
+                - text: Glossaire
+          - generic [ref=e130]:
+            - generic [ref=e131]: Signaux
+            - generic [ref=e132]: Selectionnez un titre dans la liste
+            - generic [ref=e133]:
+              - generic [ref=e134]: "--"
+              - generic [ref=e135]: MAD / --
+            - generic [ref=e136]:
+              - generic [ref=e137]:
+                - generic [ref=e138]: ADV20 MAD
+                - generic [ref=e139]: "--"
+              - generic [ref=e140]:
+                - generic [ref=e141]: Score
+                - generic [ref=e142]: "--"
+              - generic [ref=e143]:
+                - generic [ref=e144]: Signal SE
+                - generic [ref=e145]: "--"
+              - generic [ref=e146]:
+                - generic [ref=e147]: Signal WFO
+                - generic [ref=e148]: "--"
+          - generic [ref=e149]:
+            - tablist [ref=e150]:
+              - tab "Technique" [selected] [ref=e151]:
+                - img
+                - text: Technique
+              - tab "Signal Evidence" [disabled]:
+                - img
+                - text: Signal Evidence
+              - tab "Indicateurs" [disabled]:
+                - img
+                - text: Indicateurs
+              - tab "WFO" [disabled]:
+                - img
+                - text: WFO
+              - tab "Backtest MC" [disabled]:
+                - img
+                - text: Backtest MC
+            - tabpanel "Technique" [ref=e152]:
+              - generic [ref=e155]:
+                - img [ref=e156]
+                - paragraph [ref=e158]: Selectionnez un titre pour afficher l'analyse.
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=e164] [cursor=pointer]:
+    - img [ref=e165]

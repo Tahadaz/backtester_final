@@ -42,6 +42,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { PlotlyChart } from "@/components/run/plotly-chart"
 import { RetractableSavedSidebar } from "@/components/layout/retractable-saved-sidebar"
 import { useStrategies, useStrategy, useStrategyBacktestRun, useStrategyBacktestRuns, useStrategyBacktestStockDetail } from "@/hooks/use-api"
@@ -537,6 +538,7 @@ function BacktestContentSaved() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isRunning, setIsRunning] = useState(false)
   const [directResult, setDirectResult] = useState<StrategyBacktestResponse | null>(null)
+  const [runModeOverride, setRunModeOverride] = useState<"direct" | "wfo" | null>(null)
   const [wfoMinWalkForwards, setWfoMinWalkForwards] = useState(5)
   const [costModel, setCostModel] = useState({ brokerage_bps: 0.2, comm_bourse_bps: 0.1, reg_liv_bps: 0, slippage_bps: 0, tva_rate: 0.1 })
   const [volumeGateEnabled, setVolumeGateEnabled] = useState(false)
@@ -570,7 +572,7 @@ function BacktestContentSaved() {
   })
   const { data: activeRunStockDetail } = useStrategyBacktestStockDetail(strategyRun ? runId : null, activeStock)
 
-  const runMode = useMemo<"direct" | "wfo">(() => {
+  const autoRunMode = useMemo<"direct" | "wfo">(() => {
     // When viewing a saved run, respect its stored mode
     // (strategy may have been edited since the run was created)
     if (strategyRun) return strategyRun.mode === "wfo" ? "wfo" : "direct"
@@ -579,6 +581,7 @@ function BacktestContentSaved() {
     const config = strategy.config_json as Record<string, unknown> | undefined
     return config && hasWfoValues(config) ? "wfo" : "direct"
   }, [strategy, strategyRun])
+  const runMode = strategyRun ? autoRunMode : runModeOverride ?? autoRunMode
 
   useEffect(() => {
     if (searchRunId) return
@@ -655,6 +658,7 @@ function BacktestContentSaved() {
     if (searchRunId || !setupStrategyId) return
     setDirectResult(null)
     setActiveStock(null)
+    setRunModeOverride(null)
   }, [searchRunId, setupStrategyId])
 
   const compatibility = useMemo(
@@ -822,92 +826,116 @@ function BacktestContentSaved() {
   return (
     <>
       <div className="claude-backtest-shell">
-        <aside className="runs-sidebar">
-          <div className="rsh">
-            <h4>Saved Backtests</h4>
-            <Button asChild variant="ghost" size="icon" className="h-7 w-7">
-              <Link href={selectedStrategyId ? `/strategy?strategyId=${selectedStrategyId}` : "/strategy"}>+</Link>
-            </Button>
-          </div>
-          <div className="space-y-2 border-b border-line p-2">
-            <Input value={librarySearch} onChange={(event) => setLibrarySearch(event.target.value)} placeholder="Search runs" className="h-8 text-xs" />
-            <div className="grid grid-cols-2 gap-2">
-              <Select value={libraryModeFilter} onValueChange={setLibraryModeFilter}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All modes</SelectItem>
-                  <SelectItem value="direct">Direct</SelectItem>
-                  <SelectItem value="wfo">WFO</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={libraryStatusFilter} onValueChange={setLibraryStatusFilter}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All status</SelectItem>
-                  <SelectItem value="queued">Queued</SelectItem>
-                  <SelectItem value="running">Running</SelectItem>
-                  <SelectItem value="succeeded">Succeeded</SelectItem>
-                  <SelectItem value="failed">Failed</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Select value={libraryStrategyFilter} onValueChange={setLibraryStrategyFilter}>
-              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All strategies</SelectItem>
-                {(strategies ?? []).map((item) => (
-                  <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="runs">
-            {(savedRuns ?? []).length === 0 ? (
-              <div className="rounded-md border border-dashed border-line px-3 py-6 text-xs text-muted-foreground">
-                No saved backtests yet.
+        <ResizablePanelGroup
+          direction="horizontal"
+          autoSaveId="backtest-workspace-layout"
+          className="h-full max-lg:block max-lg:h-auto"
+        >
+          <ResizablePanel defaultSize={17} minSize={13} maxSize={34} className="min-w-0 max-lg:!h-auto">
+            <aside className="runs-sidebar resizable-pane">
+              <div className="rsh">
+                <h4>Saved Backtests</h4>
+                <Button asChild variant="ghost" size="icon" className="h-7 w-7">
+                  <Link href={selectedStrategyId ? `/strategy?strategyId=${selectedStrategyId}` : "/strategy"}>+</Link>
+                </Button>
               </div>
-            ) : (
-              (savedRuns ?? []).map((item) => (
-                <div key={item.run_id} className={`run-item ${item.run_id === runId ? "active" : ""}`}>
-                  <div className="flex items-start gap-2">
-                    <button type="button" className="min-w-0 flex-1 text-left" onClick={() => openSavedRun(item.run_id, item.mode)}>
-                      <div className="ri-name truncate">{item.title}</div>
-                      <div className="ri-meta">{formatDateTime(item.created_at)}</div>
-                      <div className="ri-stats">
-                        <span className={item.status === "succeeded" ? "t-pos" : item.status === "failed" ? "t-neg" : "t-mut"}>{item.status}</span>
-                        <span className="t-mut">-</span>
-                        <span>{item.mode.toUpperCase()}</span>
-                      </div>
-                    </button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button type="button" variant="ghost" size="icon" className="h-7 w-7 shrink-0">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {isActiveStrategyBacktestStatus(item.status) ? (
-                          <DropdownMenuItem disabled={item.status === "cancel_requested" || cancelingRunId === item.run_id} onClick={() => void cancelSavedRun(item.run_id)}>
-                            {item.status === "cancel_requested" ? "Cancel requested" : cancelingRunId === item.run_id ? "Canceling..." : "Cancel"}
-                          </DropdownMenuItem>
-                        ) : null}
-                        <DropdownMenuItem onClick={() => { setRenameRunId(item.run_id); setRenameTitle(item.title) }}>Rename</DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeleteRunId(item.run_id)}>Delete</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
+              <div className="space-y-2 border-b border-line p-2">
+                <Input value={librarySearch} onChange={(event) => setLibrarySearch(event.target.value)} placeholder="Search runs" className="h-8 text-xs" />
+                <div className="grid grid-cols-2 gap-2">
+                  <Select value={libraryModeFilter} onValueChange={setLibraryModeFilter}>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All modes</SelectItem>
+                      <SelectItem value="direct">Direct</SelectItem>
+                      <SelectItem value="wfo">WFO</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={libraryStatusFilter} onValueChange={setLibraryStatusFilter}>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All status</SelectItem>
+                      <SelectItem value="queued">Queued</SelectItem>
+                      <SelectItem value="running">Running</SelectItem>
+                      <SelectItem value="succeeded">Succeeded</SelectItem>
+                      <SelectItem value="failed">Failed</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-              ))
-            )}
-          </div>
-        </aside>
+                <Select value={libraryStrategyFilter} onValueChange={setLibraryStrategyFilter}>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All strategies</SelectItem>
+                    {(strategies ?? []).map((item) => (
+                      <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="runs">
+                {(savedRuns ?? []).length === 0 ? (
+                  <div className="rounded-md border border-dashed border-line px-3 py-6 text-xs text-muted-foreground">
+                    No saved backtests yet.
+                  </div>
+                ) : (
+                  (savedRuns ?? []).map((item) => (
+                    <div key={item.run_id} className={`run-item ${item.run_id === runId ? "active" : ""}`}>
+                      <div className="flex items-start gap-2">
+                        <button type="button" className="min-w-0 flex-1 text-left" onClick={() => openSavedRun(item.run_id, item.mode)}>
+                          <div className="ri-name truncate">{item.title}</div>
+                          <div className="ri-meta">{formatDateTime(item.created_at)}</div>
+                          <div className="ri-stats">
+                            <span className={item.status === "succeeded" ? "t-pos" : item.status === "failed" ? "t-neg" : "t-mut"}>{item.status}</span>
+                            <span className="t-mut">-</span>
+                            <span>{item.mode.toUpperCase()}</span>
+                          </div>
+                        </button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button type="button" variant="ghost" size="icon" className="h-7 w-7 shrink-0">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {isActiveStrategyBacktestStatus(item.status) ? (
+                              <DropdownMenuItem disabled={item.status === "cancel_requested" || cancelingRunId === item.run_id} onClick={() => void cancelSavedRun(item.run_id)}>
+                                {item.status === "cancel_requested" ? "Cancel requested" : cancelingRunId === item.run_id ? "Canceling..." : "Cancel"}
+                              </DropdownMenuItem>
+                            ) : null}
+                            <DropdownMenuItem onClick={() => { setRenameRunId(item.run_id); setRenameTitle(item.title) }}>Rename</DropdownMenuItem>
+                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeleteRunId(item.run_id)}>Delete</DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </aside>
+          </ResizablePanel>
 
-        <section className="bt-main">
+          <ResizableHandle withHandle className="max-lg:hidden" />
+
+          <ResizablePanel defaultSize={83} minSize={50} className="min-w-0 max-lg:!h-auto">
+            <section className="bt-main h-full max-lg:h-auto">
           <div className="mode-bar">
             <h3>Configurer le backtest</h3>
             <span className="seg ml-auto">
-              <button type="button" className={runMode === "direct" ? "active" : ""}>Direct</button>
-              <button type="button" className={runMode === "wfo" ? "active" : ""}>WFO</button>
+              <button
+                type="button"
+                className={runMode === "direct" ? "active" : ""}
+                disabled={Boolean(strategyRun)}
+                onClick={() => setRunModeOverride("direct")}
+              >
+                Direct
+              </button>
+              <button
+                type="button"
+                className={runMode === "wfo" ? "active" : ""}
+                disabled={Boolean(strategyRun)}
+                onClick={() => setRunModeOverride("wfo")}
+              >
+                WFO
+              </button>
             </span>
             <Button type="button" size="sm" onClick={runBacktest} disabled={!selectedStrategyId || isRunning || Boolean(compatibility?.blocking)} className="gap-2">
               <Play className="h-4 w-4" />
@@ -967,9 +995,12 @@ function BacktestContentSaved() {
                 <Input className="input" type="number" value={costModel.slippage_bps} onChange={(event) => setCostModel((prev) => ({ ...prev, slippage_bps: Number(event.target.value) }))} />
               </div>
               <div className="cfg-field">
-                <label>Volume gate</label>
+                <label className="flex items-center justify-between gap-2">
+                  <span>Volume gate</span>
+                  <Switch checked={volumeGateEnabled} onCheckedChange={setVolumeGateEnabled} />
+                </label>
                 <Select value={volumeGateKind} onValueChange={(value) => setVolumeGateKind(value as "min_abs" | "min_ratio_adv")}>
-                  <SelectTrigger className="select"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="select" disabled={!volumeGateEnabled}><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="min_ratio_adv">Min ratio ADV</SelectItem>
                     <SelectItem value="min_abs">Min absolute volume</SelectItem>
@@ -979,10 +1010,14 @@ function BacktestContentSaved() {
               <div className="cfg-field">
                 <label>Gate value</label>
                 {volumeGateKind === "min_abs" ? (
-                  <Input className="input" type="number" value={volumeGateMinAbs} onChange={(event) => setVolumeGateMinAbs(Number(event.target.value))} />
+                  <Input className="input" type="number" value={volumeGateMinAbs} disabled={!volumeGateEnabled} onChange={(event) => setVolumeGateMinAbs(Number(event.target.value))} />
                 ) : (
-                  <Input className="input" type="number" step="0.01" value={volumeGateMinRatioAdv} onChange={(event) => setVolumeGateMinRatioAdv(Number(event.target.value))} />
+                  <Input className="input" type="number" step="0.01" value={volumeGateMinRatioAdv} disabled={!volumeGateEnabled} onChange={(event) => setVolumeGateMinRatioAdv(Number(event.target.value))} />
                 )}
+              </div>
+              <div className="cfg-field">
+                <label>ADV window</label>
+                <Input className="input" type="number" min={1} value={volumeGateAdvWindow} disabled={!volumeGateEnabled} onChange={(event) => setVolumeGateAdvWindow(Number(event.target.value))} />
               </div>
               <div className="cfg-field">
                 <label>Family history</label>
@@ -1237,7 +1272,9 @@ function BacktestContentSaved() {
               </div>
             ) : null}
           </div>
-        </section>
+            </section>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </div>
 
       <Dialog open={Boolean(renameRunId)} onOpenChange={(open) => { if (!open) { setRenameRunId(null); setRenameTitle("") } }}>

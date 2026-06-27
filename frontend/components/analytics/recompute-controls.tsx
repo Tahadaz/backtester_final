@@ -22,6 +22,7 @@ import {
   triggerAllPredictiveHistory,
   triggerPredictiveHistory,
 } from "@/lib/api"
+import { horizonLabel } from "@/lib/horizon"
 import { RefreshCw } from "lucide-react"
 
 interface RecomputeControlsProps {
@@ -36,6 +37,7 @@ export function RecomputeControls({ scope, symbol, horizon = "weekly", variant =
   const [wfoLoading, setWfoLoading] = useState(false)
   const [engineLoading, setEngineLoading] = useState(false)
   const [historyLoading, setHistoryLoading] = useState(false)
+  const displayHorizon = horizonLabel(horizon)
 
   async function handleHistory() {
     setHistoryLoading(true)
@@ -62,7 +64,7 @@ export function RecomputeControls({ scope, symbol, horizon = "weekly", variant =
         toast({ title: "WFO lancé", description: `${res.total_jobs} jobs enqueued.` })
       } else if (symbol) {
         await triggerWfoComputation({ symbol, horizon })
-        toast({ title: "WFO lancé", description: `${symbol} / ${horizon}` })
+        toast({ title: "WFO lancé", description: `${symbol} / ${displayHorizon}` })
       }
     } catch (e) {
       toast({ title: "Erreur WFO", description: String(e), variant: "destructive" })
@@ -79,7 +81,7 @@ export function RecomputeControls({ scope, symbol, horizon = "weekly", variant =
         toast({ title: "Signal Engine lancé", description: `${res.total_jobs} jobs enqueued.` })
       } else if (symbol) {
         await triggerSignalEngine({ symbol, horizon, variant })
-        toast({ title: "Signal Engine lancé", description: `${symbol} / ${horizon}` })
+        toast({ title: "Signal Engine lancé", description: `${symbol} / ${displayHorizon}` })
       }
     } catch (e) {
       toast({ title: "Erreur Signal Engine", description: String(e), variant: "destructive" })
@@ -97,11 +99,11 @@ export function RecomputeControls({ scope, symbol, horizon = "weekly", variant =
 
   const wfoConfirmBody = scope === "all"
     ? "Lance ~600 jobs WFO (toutes symboles × horizons). Durée estimée : 1–3 hrs."
-    : `Lance le calcul WFO pour ${symbol} / ${horizon}.`
+    : `Lance le calcul WFO pour ${symbol} / ${displayHorizon}.`
 
   const engineConfirmBody = scope === "all"
     ? "Lance ~600 jobs Signal Engine (toutes symboles × horizons). Durée estimée : 30–60 min avec le pool dédié."
-    : `Lance le calcul Signal Engine pour ${symbol} / ${horizon}.`
+    : `Lance le calcul Signal Engine pour ${symbol} / ${displayHorizon}.`
 
   return (
     <div className="flex items-center gap-2">

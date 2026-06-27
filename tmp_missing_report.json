@@ -1,0 +1,3901 @@
+{
+  "symbols_checked": 73,
+  "symbols_with_any_missing": 73,
+  "total_missing_cells": 2797,
+  "target": "up_to_5_most_recent_non_null_years_in_latest_import",
+  "symbols_missing": [
+    "ADH",
+    "ADI",
+    "AFI",
+    "AFM",
+    "AGM",
+    "AKT",
+    "ALM",
+    "ARD",
+    "ATH",
+    "ATL",
+    "ATW",
+    "BAL",
+    "BCI",
+    "BCP",
+    "BOA",
+    "CAP",
+    "CDM",
+    "CFG",
+    "CIH",
+    "CMA",
+    "CMG",
+    "CMT",
+    "COL",
+    "CRS",
+    "CSR",
+    "CTM",
+    "DHO",
+    "DWY",
+    "DYT",
+    "EQD",
+    "FBR",
+    "GAZ",
+    "GTM",
+    "HPS",
+    "IAM",
+    "IBC",
+    "IMO",
+    "INV",
+    "JET",
+    "LBV",
+    "LES",
+    "LHM",
+    "M2M",
+    "MAB",
+    "MDP",
+    "MIC",
+    "MLE",
+    "MNG",
+    "MOX",
+    "MSA",
+    "MUT",
+    "NKL",
+    "OUL",
+    "RDS",
+    "REB",
+    "RIS",
+    "S2M",
+    "SAH",
+    "SBM",
+    "SID",
+    "SLF",
+    "SMI",
+    "SNA",
+    "SNP",
+    "SOT",
+    "SRM",
+    "STR",
+    "TGC",
+    "TMA",
+    "TQM",
+    "VCN",
+    "WAA",
+    "ZDJ"
+  ],
+  "missing_by_symbol": {
+    "ADH": {
+      "missing_years": {
+        "2025": [
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "ADI": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "AFI": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ]
+      }
+    },
+    "AFM": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "AGM": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Depenses d'investissement",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Depenses d'investissement",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Depenses d'investissement",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Depenses d'investissement",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ]
+      }
+    },
+    "AKT": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "ALM": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "ARD": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux de financement",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux de financement",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de financement",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "ATH": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "ATL": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "Resultat d'exploitation",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "ATW": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "Resultat d'exploitation",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "Resultat d'exploitation",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "BAL": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "BCI": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ]
+      }
+    },
+    "BCP": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "BOA": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "Resultat d'exploitation",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "Resultat d'exploitation",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "CAP": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Tresorerie et equivalents",
+          "Dette totale",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Tresorerie et equivalents",
+          "Dette totale",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ]
+      }
+    },
+    "CDM": {
+      "missing_years": {
+        "2025": [
+          "Chiffre d'affaires",
+          "Marge brute",
+          "EBITDA",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Chiffre d'affaires",
+          "Marge brute",
+          "EBITDA",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "CFG": {
+      "missing_years": {
+        "2025": [
+          "Chiffre d'affaires",
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Chiffre d'affaires",
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Depenses d'investissement",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ]
+      }
+    },
+    "CIH": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ]
+      }
+    },
+    "CMA": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "Dette totale",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "CMG": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ]
+      }
+    },
+    "CMT": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "COL": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "Total actif",
+          "Dette totale",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Total actif",
+          "Dette totale",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "EBITDA",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "EBITDA",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux de financement",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2021": [
+          "EBITDA",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ]
+      }
+    },
+    "CRS": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ]
+      }
+    },
+    "CSR": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "CTM": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ]
+      }
+    },
+    "DHO": {
+      "missing_years": {
+        "2025": [
+          "Chiffre d'affaires",
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Chiffre d'affaires",
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Dette totale",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "DWY": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "DYT": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "EQD": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de financement",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "FBR": {
+      "missing_years": {
+        "2025": [
+          "Chiffre d'affaires",
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Chiffre d'affaires",
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "GAZ": {
+      "missing_years": {
+        "2025": [
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "GTM": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ]
+      }
+    },
+    "HPS": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ]
+      }
+    },
+    "IAM": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ]
+      }
+    },
+    "IBC": {
+      "missing_years": {
+        "2021": [
+          "EBITDA",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2020": [
+          "EBITDA",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2019": [
+          "EBITDA",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2018": [
+          "EBITDA",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2017": [
+          "EBITDA",
+          "Dette totale",
+          "Dette nette",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ]
+      }
+    },
+    "IMO": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Total passif",
+          "Resultats reportes",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de financement",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de financement",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "INV": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux de financement",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux de financement",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Depenses d'investissement",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "JET": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "LBV": {
+      "missing_years": {
+        "2025": [
+          "Chiffre d'affaires",
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Chiffre d'affaires",
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "LES": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ]
+      }
+    },
+    "LHM": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "M2M": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "MAB": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ]
+      }
+    },
+    "MDP": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux d'investissement",
+          "Depenses d'investissement",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de financement",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "MIC": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Dette totale",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "MLE": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ]
+      }
+    },
+    "MNG": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Chiffre d'affaires",
+          "Marge brute",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Chiffre d'affaires",
+          "Marge brute",
+          "Resultat d'exploitation",
+          "Resultat net",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2022": [
+          "Chiffre d'affaires",
+          "Marge brute",
+          "Resultat d'exploitation",
+          "Resultat net",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "Resultat net",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ]
+      }
+    },
+    "MOX": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ]
+      }
+    },
+    "MSA": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "MUT": {
+      "missing_years": {
+        "2025": [
+          "Chiffre d'affaires",
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Chiffre d'affaires",
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "NKL": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "OUL": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "RDS": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Depenses d'investissement",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "REB": {
+      "missing_years": {
+        "2025": [
+          "Chiffre d'affaires",
+          "Resultat net",
+          "Resultats reportes",
+          "Flux de financement",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Chiffre d'affaires",
+          "EBITDA",
+          "Tresorerie et equivalents",
+          "Resultats reportes",
+          "Flux de financement",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "EBITDA",
+          "Tresorerie et equivalents",
+          "Resultats reportes",
+          "Flux de financement",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "RIS": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "S2M": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ]
+      }
+    },
+    "SAH": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "SBM": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Dette totale",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "SID": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "SLF": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "SMI": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ]
+      },
+      "note": "only 4 annual years present in latest import"
+    },
+    "SNA": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "SNP": {
+      "missing_years": {
+        "2026": [
+          "Chiffre d'affaires",
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Resultat net",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2025": [
+          "Marge brute",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Depenses d'investissement",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Depenses d'investissement",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Depenses d'investissement",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ]
+      }
+    },
+    "SOT": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ]
+      }
+    },
+    "SRM": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Total passif",
+          "Passif courant",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ]
+      }
+    },
+    "STR": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Tresorerie et equivalents",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "Tresorerie et equivalents",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "TGC": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Depenses d'investissement",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Total actif",
+          "Actif courant",
+          "Tresorerie et equivalents",
+          "Total passif",
+          "Passif courant",
+          "Dette totale",
+          "Dette nette",
+          "Capitaux propres",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ]
+      }
+    },
+    "TMA": {
+      "missing_years": {
+        "2025": [
+          "Chiffre d'affaires",
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Chiffre d'affaires",
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "TQM": {
+      "missing_years": {
+        "2025": [
+          "Chiffre d'affaires",
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Chiffre d'affaires",
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "Resultat d'exploitation",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "VCN": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "EBITDA",
+          "Resultat d'exploitation",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Flux d'exploitation",
+          "Flux d'investissement",
+          "Flux de financement",
+          "Depenses d'investissement",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ]
+      }
+    },
+    "WAA": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Dette totale",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Dette totale",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Marge brute",
+          "EBITDA",
+          "Dette totale",
+          "Resultats reportes",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "EBITDA",
+          "Dette totale",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Tresorerie debut periode"
+        ]
+      }
+    },
+    "ZDJ": {
+      "missing_years": {
+        "2025": [
+          "Marge brute",
+          "EBITDA",
+          "Actif courant",
+          "Passif courant",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode",
+          "Tresorerie fin periode"
+        ],
+        "2024": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2023": [
+          "Chiffre d'affaires",
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2022": [
+          "Marge brute",
+          "EBITDA",
+          "Resultats reportes",
+          "Flux de tresorerie disponible",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ],
+        "2021": [
+          "Marge brute",
+          "Resultats reportes",
+          "Dividendes verses",
+          "Tresorerie debut periode"
+        ]
+      }
+    }
+  }
+}

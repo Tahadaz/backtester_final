@@ -8,7 +8,7 @@ The safest workflow on a locked-down Bloomberg computer is the Jupyter notebook 
 powershell -ExecutionPolicy Bypass -File .\prepare_jupyter_kit.ps1
 ```
 
-That creates `dist\bloomberg-jupyter-kit.zip`. Open `Bloomberg_Jupyter_Bridge.ipynb` on the Bloomberg computer and follow `JUPYTER_RUNBOOK.md`.
+That creates `dist\bloomberg-jupyter-kit.zip`. Open `Bloomberg_Jupyter_Bridge.ipynb` on the Bloomberg computer and follow `JUPYTER_RUNBOOK.md`. The notebook supports both manual uploads and an app-controlled listener cell for the Bloomberg tab's queued jobs.
 
 The browser link alone cannot directly read Bloomberg Terminal data. The notebook, script, or listener must run on the Bloomberg computer and upload data over HTTPS.
 

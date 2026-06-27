@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from .. import models
 from ..config import settings
 from ..db import get_db
-from ..market_data_loader import load_ohlcv_for_symbol
+from ..market_data_loader import format_ohlcv_timestamp, load_ohlcv_for_symbol
 from ..market_holidays import get_holiday_info
 from ..queue import get_market_refresh_queue
 from ..storage import presign_get, put_bytes, s3_client
@@ -81,7 +81,7 @@ def _frame_to_ohlcv_bars(frame: pd.DataFrame) -> list[OhlcvBarOut]:
     for ts, row in frame.iterrows():
         bars.append(
             OhlcvBarOut(
-                date=ts.strftime("%Y-%m-%d"),
+                date=format_ohlcv_timestamp(ts),
                 open=float(row["Open"]) if "Open" in row and pd.notna(row["Open"]) else None,
                 high=float(row["High"]) if "High" in row and pd.notna(row["High"]) else None,
                 low=float(row["Low"]) if "Low" in row and pd.notna(row["Low"]) else None,

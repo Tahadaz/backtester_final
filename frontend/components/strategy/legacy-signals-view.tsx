@@ -8,6 +8,7 @@ import { SignalEngineResultsPanel } from "@/components/strategy/signal-engine-re
 import { SignalEvidenceTab } from "@/components/strategy/signal-evidence-tab"
 import { WfoEvidenceTab } from "@/components/strategy/wfo-evidence-tab"
 import { BacktestMCPanel } from "@/components/signals/backtest-mc-panel"
+import { PortfolioBacktestPanel } from "@/components/signals/portfolio-backtest-panel"
 import type { LegacySignalsPageView } from "@/components/strategy/signals-view-layout"
 
 type LegacySignalsViewProps = {
@@ -17,7 +18,8 @@ type LegacySignalsViewProps = {
   onHorizonChange: (value: string) => void
   topbarContent?: ReactNode
   variant?: LegacySignalsPageView
-  defaultTab?: "technique" | "evidence" | "indicateurs" | "wfo" | "backtest"
+  defaultTab?: "technique" | "evidence" | "indicateurs" | "wfo" | "backtest" | "portfolio"
+  onTabChange?: (tab: string) => void
   evidenceSource?: "auto" | "signal_engine" | "wfo"
   evidenceVariant?: string | null
   selectedVariantId?: string | null
@@ -48,6 +50,7 @@ export function LegacySignalsView({
   topbarContent,
   variant = "legacy_ta_simple",
   defaultTab,
+  onTabChange,
   evidenceSource = "auto",
   evidenceVariant = null,
   selectedVariantId = null,
@@ -65,6 +68,7 @@ export function LegacySignalsView({
       onCooldownBarsChange={setCooldownBars}
       topbarContent={topbarContent}
       defaultTab={defaultTab}
+      onTabChange={onTabChange}
       techniqueContent={
         selectedSymbol ? (
           <SignalTechniqueDashboard
@@ -114,7 +118,7 @@ export function LegacySignalsView({
       }
       wfoContent={
         selectedSymbol ? (
-          <WfoEvidenceTab symbol={selectedSymbol} horizon={horizon} variant={variant} />
+          <WfoEvidenceTab symbol={selectedSymbol} horizon={horizon} variant={variant} cooldownBars={cooldownBars} />
         ) : (
           <EmptyState
             icon={Settings}
@@ -132,6 +136,7 @@ export function LegacySignalsView({
           />
         )
       }
+      portfolioContent={<PortfolioBacktestPanel horizon={horizon} />}
     />
   )
 }

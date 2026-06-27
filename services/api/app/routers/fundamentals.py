@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import datetime as dt
+import os
 import uuid
 from collections import defaultdict
 from math import isfinite
@@ -12,9 +13,11 @@ from typing import Any
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
 from fastapi.responses import HTMLResponse
 from sqlalchemy import func
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from core.quant_core.fundamentals import DEFAULT_ASSUMPTIONS
+from core.quant_core.fundamentals import DEFAULT_ASSUMPTIONS, eva, scenario_probabilities_from_assumptions
+from core.quant_core.fundamentals.domain import AnnualMetricRow, FundamentalSnapshot
 
 from .. import models
 from ..auth import AppUser, optional_app_user, require_admin, require_app_user
@@ -41,14 +44,23 @@ from ..schemas.fundamentals import (
     FundamentalCoverageRow,
     FundamentalImportOut,
     FundamentalLightSnapshot,
+    FundamentalMethodologyOut,
+    FundamentalMetricOverrideIn,
+    FundamentalMetricOverrideOut,
     FundamentalProviderStatusItemOut,
     FundamentalProviderStatusOut,
     FundamentalScreenRankedRow,
+    FundamentalSignalRecomputeIn,
+    FundamentalSignalRecomputeOut,
+    FundamentalSignalBacktestIn,
+    FundamentalSignalBacktestOut,
     FundamentalSnapshotBatchIn,
     FundamentalSourceDocumentOut,
     FundamentalStockDetailOut,
     IntegrityCheckOut,
     IntegrityReportOut,
+    MissingFinancialDataSummaryOut,
+    MissingFinancialMetricOut,
     PillarHistoryOut,
     PeriodMetricOut,
     StockanalysisFundamentalImportIn,
@@ -65,10 +77,13 @@ from ..schemas.fundamentals import (
     YfinanceFundamentalImportIn,
     YfinanceFundamentalImportQueuedOut,
 )
+from ..services.fundamental_beta import recompute_universe_betas
 from ..services.fundamentals import (
+    CORE_STATEMENT_METRIC_GROUPS,
     SUCCEEDED_IMPORT_STATUSES,
     VALUATION_SCENARIOS,
     annual_by_year,
+    annual_metric_rows_for_symbol,
     clean_assumption_override_values,
     compute_symbol_sensitivity,
     create_import_run,
@@ -81,10 +96,18 @@ from ..services.fundamentals import (
     latest_snapshot_rows_by_symbol,
     lightweight_enriched_snapshots_by_symbol,
     make_bulk_overrides_loader,
+    market_price_context_by_symbol,
+    methodology_payload,
+    normalize_period_label,
     pillar_history_for_symbol,
+    persist_pillar_history_for_import,
+    current_metric_overrides,
+    refresh_symbol_after_metric_override,
     recompute_symbol_valuations,
     recompute_symbol_valuations_all_scenarios,
     resolved_assumptions_with_provenance,
+    rescore_universe,
+    run_and_persist_fundamental_signal_backtest,
     technical_context,
     upsert_assumptions,
 )
@@ -98,6 +121,22 @@ REQUIRED_COVERAGE_METRICS = ("Current_Price", "PER", "Price_to_Book", "ROE", "De
 TARGETED_BVC_IGNORED_SYMBOLS = {"INSTRUMENT", "MAJ"}
 FUNDAMENTAL_NON_STOCK_SYMBOLS = {"INSTRUMENT", "MAJ", "MAJJ", "WORKSHEET"}
 BVC_PERIOD_TYPES = {"annual", "semiannual", "quarterly"}
+BVC_DEFAULT_PERIOD_TYPES = ["annual", "semiannual", "quarterly"]
+BVC_PERIOD_TYPE_ALIASES = {
+    "yearly": ["annual"],
+    "annuel": ["annual"],
+    "annual": ["annual"],
+    "semester": ["semiannual"],
+    "semestriel": ["semiannual"],
+    "semestre": ["semiannual"],
+    "semiannual": ["semiannual"],
+    "quarter": ["quarterly"],
+    "quarterly": ["quarterly"],
+    "trimestriel": ["quarterly"],
+    "trimestre": ["quarterly"],
+    "interim": ["semiannual", "quarterly"],
+    "interimaire": ["semiannual", "quarterly"],
+}
 DEFAULT_COMPARABLE_METRICS = (
     "PER",
     "EV_to_EBITDA",
@@ -106,6 +145,39 @@ DEFAULT_COMPARABLE_METRICS = (
     "ROE",
     "Dividend_Yield",
     "Revenue_Growth",
+)
+HEADLINE_SCENARIO = "base"
+CORE_MISSING_METRIC_LABELS = {
+    "Revenue": "Chiffre d'affaires",
+    "NetIncome": "Resultat net",
+    "Total_Assets": "Total actif",
+    "Total_Equity": "Capitaux propres",
+    "Operating_Cash_Flow": "Flux d'exploitation",
+}
+CORE_MISSING_METRIC_CATEGORIES = {
+    "Revenue": "income",
+    "NetIncome": "income",
+    "Total_Assets": "balance",
+    "Total_Equity": "balance",
+    "Operating_Cash_Flow": "cashflow",
+}
+SUPPLEMENTAL_MISSING_METRIC_GROUPS: tuple[tuple[str, str, str, str, tuple[str, ...]], ...] = (
+    ("annual", "income", "EBIT", "Resultat d'exploitation", ("EBIT", "Operating_Income", "OperatingIncome", "Resultat_Exploitation")),
+    ("annual", "income", "EBITDA", "EBITDA", ("EBITDA", "Normalized_EBITDA")),
+    ("annual", "income", "Depreciation_Amortization", "D&A", ("Depreciation_Amortization", "DandA", "Dotations_dexploitation")),
+    ("annual", "balance", "Total_Liabilities", "Total passif", ("Total_Liabilities", "Total_Passif", "Passif_Total")),
+    ("annual", "balance", "Total_Debt", "Dette totale", ("Total_Debt", "Debt", "Financial_Debt", "Dette_Financiere", "Dettes")),
+    ("annual", "balance", "Cash_and_Equivalents", "Tresorerie", ("Cash_and_Equivalents", "BS_Cash_and_Equivalents", "Cash", "Tresorerie")),
+    ("annual", "cashflow", "Free_Cash_Flow", "Flux de tresorerie disponible", ("Free_Cash_Flow", "Levered_Free_Cash_Flow")),
+    ("annual", "cashflow", "Capex", "Depenses d'investissement", ("Capex", "CAPEX", "Capital_Expenditure", "Capital_Expenditures", "Flux_tresorerie_investissement_CAPEX")),
+)
+LATEST_MISSING_METRIC_GROUPS: tuple[tuple[str, str, str, str, tuple[str, ...]], ...] = (
+    ("latest", "coverage", "Current_Price", "Cours actuel", ("Current_Price",)),
+    ("latest", "ratios", "PER", "PER", ("PER", "Price_to_Earnings", "PE_Ratio")),
+    ("latest", "ratios", "Price_to_Book", "Cours / valeur comptable", ("Price_to_Book", "P_B")),
+    ("latest", "ratios", "ROE", "Rentabilite des capitaux propres", ("ROE",)),
+    ("latest", "ratios", "Debt_to_Equity", "Dette / capitaux propres", ("Debt_to_Equity", "Debt_Equity")),
+    ("latest", "ratios", "FCF_Yield", "Rendement FCF", ("FCF_Yield",)),
 )
 
 
@@ -117,20 +189,32 @@ def _num(value: Any) -> float | None:
     return out if isfinite(out) else None
 
 
+def _positive_num(value: Any) -> float | None:
+    out = _num(value)
+    return out if out is not None and out > 0 else None
+
+
+def _upside_from_price(fair_value: Any, current_price: Any) -> float | None:
+    fair = _num(fair_value)
+    current = _positive_num(current_price)
+    if fair is None or current is None:
+        return None
+    return fair / current - 1.0
+
+
 def _split_secret_list(raw: str | None) -> list[str]:
     return [item.strip() for item in (raw or "").replace(";", ",").split(",") if item.strip()]
 
 
 def _normalize_period_types(values: list[str] | None, *, default_all: bool = False) -> list[str]:
     period_types = []
-    default_values = sorted(BVC_PERIOD_TYPES) if default_all else ["annual"]
+    default_values = BVC_DEFAULT_PERIOD_TYPES
     for value in values or default_values:
         normalized = str(value or "").strip().lower()
-        if normalized == "semester":
-            normalized = "semiannual"
-        if normalized in BVC_PERIOD_TYPES and normalized not in period_types:
-            period_types.append(normalized)
-    return period_types or ["annual"]
+        for period_type in BVC_PERIOD_TYPE_ALIASES.get(normalized, [normalized]):
+            if period_type in BVC_PERIOD_TYPES and period_type not in period_types:
+                period_types.append(period_type)
+    return period_types or list(BVC_DEFAULT_PERIOD_TYPES)
 
 
 def _years_from_request(body: TargetedBvcFundamentalImportIn) -> list[int]:
@@ -168,13 +252,26 @@ def _import_out(row: models.FundamentalImport) -> FundamentalImportOut:
     )
 
 
-def _valuation_out(row: models.FundamentalValuationResult) -> ValuationResultOut:
+def _valuation_out(
+    row: models.FundamentalValuationResult,
+    *,
+    current_price_override: Any = None,
+) -> ValuationResultOut:
+    override_price = _positive_num(current_price_override)
+    current_price = override_price
+    if override_price is None:
+        current_price = row.current_price
+    upside_pct = (
+        _upside_from_price(row.fair_value, override_price)
+        if override_price is not None
+        else row.upside_pct
+    )
     return ValuationResultOut(
         model=row.model,
         scenario=row.scenario,
         fair_value=row.fair_value,
-        current_price=row.current_price,
-        upside_pct=row.upside_pct,
+        current_price=current_price,
+        upside_pct=upside_pct,
         confidence=row.confidence,
         confidence_score=row.confidence_score,
         weight=row.weight,
@@ -192,14 +289,24 @@ def _valuation_out(row: models.FundamentalValuationResult) -> ValuationResultOut
 
 
 def _annual_raw_out(row: models.FundamentalAnnualMetric) -> AnnualMetricRawOut:
+    override_created_at = getattr(row, "_manual_override_created_at", None)
+    override_id = getattr(row, "_manual_override_id", None)
     return AnnualMetricRawOut(
         statement_year=row.statement_year,
         metric_name=row.metric_name,
         metric_value=row.metric_value,
+        original_metric_value=getattr(row, "_manual_override_original_value", None),
         raw_metric_name=row.raw_metric_name,
         source_sheet=row.source_sheet,
         source_field=row.source_field,
         is_proxy=bool(row.is_proxy),
+        as_of_date=row.as_of_date.isoformat() if row.as_of_date else None,
+        source_document_id=row.source_document_id,
+        is_overridden=override_id is not None,
+        manual_override_id=int(override_id) if override_id is not None else None,
+        manual_override_note=getattr(row, "_manual_override_note", None),
+        manual_override_created_by=getattr(row, "_manual_override_created_by", None),
+        manual_override_created_at=override_created_at.isoformat() if override_created_at else None,
     )
 
 
@@ -207,28 +314,42 @@ def _period_metric_out(row: models.FundamentalPeriodMetric) -> PeriodMetricOut:
     return PeriodMetricOut(
         fiscal_year=row.fiscal_year,
         period_type=row.period_type,
-        period_label=row.period_label,
+        period_label=normalize_period_label(row.period_type, row.period_label),
         metric_name=row.metric_name,
         metric_value=row.metric_value,
         raw_metric_name=row.raw_metric_name,
         period_end_date=row.period_end_date.isoformat() if row.period_end_date else None,
         source_url=row.source_url,
         document_title=row.document_title,
+        source_document_id=row.source_document_id,
         is_proxy=bool(row.is_proxy),
     )
 
 
-def _ensemble_out(row: models.FundamentalEnsembleResult | None) -> EnsembleOut | None:
+def _ensemble_out(
+    row: models.FundamentalEnsembleResult | None,
+    *,
+    current_price_override: Any = None,
+) -> EnsembleOut | None:
     if row is None:
         return None
+    override_price = _positive_num(current_price_override)
+    current_price = override_price
+    if override_price is None:
+        current_price = row.current_price
+    upside_pct = (
+        _upside_from_price(row.fair_value_base, override_price)
+        if override_price is not None
+        else row.upside_pct
+    )
     return EnsembleOut(
         symbol=row.symbol,
         scenario=row.scenario,
         fair_value_low=row.fair_value_low,
         fair_value_base=row.fair_value_base,
         fair_value_high=row.fair_value_high,
-        current_price=row.current_price,
-        upside_pct=row.upside_pct,
+        current_price=current_price,
+        upside_pct=upside_pct,
         confidence_score=row.confidence_score,
         usable_model_count=int(row.usable_model_count or 0),
         excluded_model_count=int(row.excluded_model_count or 0),
@@ -241,8 +362,51 @@ def _ensemble_out(row: models.FundamentalEnsembleResult | None) -> EnsembleOut |
         monte_carlo_low=row.monte_carlo_low,
         monte_carlo_base=row.monte_carlo_base,
         monte_carlo_high=row.monte_carlo_high,
+        fair_value_mean=row.fair_value_mean,
+        model_dispersion_cv=row.model_dispersion_cv,
+        dispersion_factor=row.dispersion_factor,
         sensitivity_grids=dict(row.sensitivity_grids_json or {}) if getattr(row, "sensitivity_grids_json", None) else None,
     )
+
+
+def _scenario_vintage_key(row: models.FundamentalEnsembleResult) -> str | None:
+    value = row.computed_at
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=dt.timezone.utc)
+    else:
+        value = value.astimezone(dt.timezone.utc)
+    return value.isoformat()
+
+
+def _scenario_rows_are_coherent(rows_by_scenario: dict[str, models.FundamentalEnsembleResult | None]) -> bool:
+    rows = {scenario: rows_by_scenario.get(scenario) for scenario in VALUATION_SCENARIOS}
+    if any(row is None for row in rows.values()):
+        return False
+    vintages = {_scenario_vintage_key(row) for row in rows.values() if row is not None}
+    if len(vintages) != 1 or None in vintages:
+        return False
+    values = {scenario: _num(row.fair_value_base) for scenario, row in rows.items() if row is not None}
+    if all(values.get(scenario) is not None for scenario in VALUATION_SCENARIOS):
+        return bool(values["bear"] <= values["base"] <= values["bull"])
+    return True
+
+
+def _coherent_scenario_rows(
+    rows_by_scenario: dict[str, models.FundamentalEnsembleResult | None],
+) -> tuple[dict[str, models.FundamentalEnsembleResult], bool]:
+    rows = {
+        scenario: row
+        for scenario in VALUATION_SCENARIOS
+        if (row := rows_by_scenario.get(scenario)) is not None
+    }
+    if not rows:
+        return {}, False
+    if _scenario_rows_are_coherent(rows):
+        return rows, False
+    base = rows.get(HEADLINE_SCENARIO)
+    return ({HEADLINE_SCENARIO: base} if base is not None else {}, True)
 
 
 def _quality_issue_out(row: models.FundamentalQualityIssue) -> QualityIssueOut:
@@ -299,6 +463,25 @@ def _integrity_out(row: models.FundamentalIntegrityReport | None) -> IntegrityRe
         confidence_haircut=float(row.confidence_haircut or 0.0),
         projected_statements=list(row.projected_statements_json or []),
         projection_checks=[_integrity_check_out(item) for item in list(row.projection_checks_json or []) if isinstance(item, dict)],
+    )
+
+
+def _signal_backtest_out(row: models.FundamentalSignalBacktest) -> FundamentalSignalBacktestOut:
+    return FundamentalSignalBacktestOut(
+        run_id=str(row.run_id),
+        signal=row.signal,
+        universe=row.universe,
+        rebalance=row.rebalance,
+        as_of=row.as_of.isoformat() if row.as_of else None,
+        status=row.status,
+        error_message=row.error_message,
+        quintile_returns=list(row.quintile_returns_json or []),
+        ic=dict(row.ic_json or {}),
+        equity_curve=list(row.equity_curve_json or []),
+        turnover=list(row.turnover_json or []),
+        holdings=list(row.holdings_json or []),
+        params=dict(row.params_json or {}),
+        warnings=list(row.warnings_json or []),
     )
 
 
@@ -373,10 +556,26 @@ def _scenario_or_422(scenario: str) -> str:
 
 
 def _scenario_or_auto(scenario: str) -> str:
-    normalized = (scenario or "auto").strip().lower()
+    normalized = (scenario or HEADLINE_SCENARIO).strip().lower()
     if normalized == "auto":
-        return normalized
+        return HEADLINE_SCENARIO
     return _scenario_or_422(normalized)
+
+
+def _fundamental_recompute_scenarios(scenario: str) -> list[str]:
+    normalized = (scenario or "all").strip().lower()
+    if normalized == "all":
+        return list(VALUATION_SCENARIOS)
+    return [_scenario_or_422(normalized)]
+
+
+def _sync_fundamental_signal_rows(db: Session, symbols: list[str]) -> dict[str, int]:
+    clean_symbols = sorted({str(symbol or "").strip().upper() for symbol in symbols if str(symbol or "").strip()})
+    if not clean_symbols:
+        return {"total": 0, "succeeded": 0, "failed": 0}
+    from ..services.fundamental_signal_engine import upsert_fundamental_signal_rows
+
+    return upsert_fundamental_signal_rows(db, symbols=clean_symbols)
 
 
 def _auto_scenario_from_ensembles(
@@ -399,6 +598,59 @@ def _auto_scenario_from_ensembles(
     if not candidates:
         return "base"
     return min(candidates)[2]
+
+
+def _scenario_probabilities_payload(assumptions: dict[str, Any]) -> dict[str, float]:
+    try:
+        return scenario_probabilities_from_assumptions(assumptions)
+    except Exception:
+        return scenario_probabilities_from_assumptions(DEFAULT_ASSUMPTIONS)
+
+
+def _assumption_warnings_payload(assumptions: dict[str, Any]) -> list[str]:
+    raw = assumptions.get("scenario_probability_warnings")
+    if not isinstance(raw, list):
+        return []
+    return [str(item) for item in raw if str(item)]
+
+
+def _headline_overlay(
+    db: Session,
+    *,
+    symbol: str,
+    viewed_scenario: str,
+    base_ensemble: models.FundamentalEnsembleResult | None,
+    import_row: models.FundamentalImport | None,
+    current_price: Any,
+    market_implied_scenario: str | None = None,
+    free_float_pct: float | None = None,
+) -> dict[str, Any]:
+    overlay = derive_research_overlay(
+        db,
+        symbol=symbol,
+        scenario=HEADLINE_SCENARIO,
+        ensemble=base_ensemble,
+        import_row=import_row,
+        current_price=current_price,
+        free_float_pct=free_float_pct,
+    )
+    if base_ensemble is None:
+        overlay.update(
+            {
+                "recommendation": "NR",
+                "target_price": None,
+                "conviction": 0,
+                "revision_direction": "=",
+            }
+        )
+    overlay.update(
+        {
+            "headline_scenario": HEADLINE_SCENARIO,
+            "viewed_scenario": viewed_scenario,
+            "market_implied_scenario": market_implied_scenario,
+        }
+    )
+    return overlay
 
 
 def _created_by(user: AppUser) -> str:
@@ -429,6 +681,20 @@ def _assumption_override_out(row: models.FundamentalAssumptionOverride) -> Assum
         symbol=row.symbol,
         scenario=row.scenario,
         overrides=clean_assumption_override_values(dict(row.overrides or {})),
+        note=row.note,
+        created_by=row.created_by,
+        created_at=row.created_at.isoformat() if row.created_at else None,
+        is_current=bool(row.is_current),
+    )
+
+
+def _metric_override_out(row: models.FundamentalMetricOverride) -> FundamentalMetricOverrideOut:
+    return FundamentalMetricOverrideOut(
+        id=int(row.id),
+        symbol=row.symbol,
+        statement_year=int(row.statement_year),
+        metric_name=row.metric_name,
+        metric_value=row.metric_value,
         note=row.note,
         created_by=row.created_by,
         created_at=row.created_at.isoformat() if row.created_at else None,
@@ -573,16 +839,25 @@ def _valuation_summary(
     ensemble: models.FundamentalEnsembleResult | None,
     *,
     snapshot_import_id: uuid.UUID | None = None,
+    current_price_override: Any = None,
 ) -> dict[str, Any]:
     confidence_by_model = {row.model: row.confidence for row in rows}
     valuation_import_id = ensemble.import_id if ensemble else None
     is_stale = bool(snapshot_import_id is not None and valuation_import_id is not None and valuation_import_id != snapshot_import_id)
+    consensus_upside = None
+    if ensemble is not None:
+        override_price = _positive_num(current_price_override)
+        consensus_upside = (
+            _upside_from_price(ensemble.fair_value_base, override_price)
+            if override_price is not None
+            else ensemble.upside_pct
+        )
     return {
         "model_count": len(rows),
         "usable_model_count": int(ensemble.usable_model_count or 0) if ensemble else 0,
         "excluded_model_count": int(ensemble.excluded_model_count or 0) if ensemble else len(rows),
         "consensus_fair_value": ensemble.fair_value_base if ensemble else None,
-        "consensus_upside_pct": ensemble.upside_pct if ensemble else None,
+        "consensus_upside_pct": consensus_upside,
         "confidence_score": ensemble.confidence_score if ensemble else None,
         "confidence_by_model": confidence_by_model,
         "model_weights": dict(ensemble.model_weights_json or {}) if ensemble else {},
@@ -652,7 +927,9 @@ def _ensembles_by_scenario(
     *,
     import_id: uuid.UUID | None,
     symbol: str,
-) -> dict[str, EnsembleOut]:
+    current_price_override: Any = None,
+    allow_fallback: bool = True,
+) -> tuple[dict[str, EnsembleOut], bool]:
     symbol = symbol.upper()
     rows: list[models.FundamentalEnsembleResult] = []
     if import_id is not None:
@@ -665,15 +942,89 @@ def _ensembles_by_scenario(
             )
             .all()
         )
-    out = {row.scenario: rendered for row in rows if (rendered := _ensemble_out(row)) is not None}
+    coherent_rows, scenario_trio_stale = _coherent_scenario_rows({row.scenario: row for row in rows})
+    out = {
+        row.scenario: rendered
+        for row in coherent_rows.values()
+        if (rendered := _ensemble_out(row, current_price_override=current_price_override)) is not None
+    }
     for scenario_key in VALUATION_SCENARIOS:
         if scenario_key in out:
             continue
+        if scenario_trio_stale or not allow_fallback:
+            continue
         fallback_ensembles, _fallback_valuations = _latest_available_valuation_bundle(db, [symbol], scenario_key)
-        rendered = _ensemble_out(fallback_ensembles.get(symbol))
+        rendered = _ensemble_out(fallback_ensembles.get(symbol), current_price_override=current_price_override)
         if rendered is not None:
             out[scenario_key] = rendered
-    return out
+    return out, scenario_trio_stale
+
+
+def _ensure_latest_symbol_valuations(
+    db: Session,
+    *,
+    import_id: uuid.UUID,
+    symbol: str,
+    scenario: str,
+) -> None:
+    symbol = symbol.upper()
+    if scenario != "auto":
+        _scenario_or_422(scenario)
+    scenarios = list(VALUATION_SCENARIOS)
+    _lock_symbol_valuation_refresh(db, import_id=import_id, symbol=symbol)
+    existing_rows = (
+        db.query(models.FundamentalEnsembleResult)
+        .filter(
+            models.FundamentalEnsembleResult.import_id == import_id,
+            models.FundamentalEnsembleResult.symbol == symbol,
+            models.FundamentalEnsembleResult.scenario.in_(scenarios),
+        )
+        .all()
+    )
+    existing = {str(row.scenario) for row in existing_rows}
+    existing_by_scenario = {str(row.scenario): row for row in existing_rows}
+    stale = [
+        str(row.scenario)
+        for row in existing_rows
+        if _stale_valuation_ensemble(row)
+    ]
+    needed = [item for item in scenarios if item not in existing]
+    for item in stale:
+        if item not in needed:
+            needed.append(item)
+    if existing_rows and not _scenario_rows_are_coherent(existing_by_scenario):
+        needed = list(scenarios)
+    if not needed:
+        return
+    overrides_loader = make_bulk_overrides_loader(db, [symbol])
+    recompute_symbol_valuations_all_scenarios(
+        db,
+        import_id=import_id,
+        symbol=symbol,
+        scenarios=scenarios,
+        overrides_loader=overrides_loader,
+    )
+    db.commit()
+
+
+def _stale_valuation_ensemble(row: models.FundamentalEnsembleResult) -> bool:
+    warnings = [str(warning) for warning in (row.warnings_json or [])]
+    if any(warning.startswith("withheld_") for warning in warnings):
+        return True
+    return bool(row.fair_value_base is None and row.model_dispersion_base is not None)
+
+
+def _lock_symbol_valuation_refresh(db: Session, *, import_id: uuid.UUID, symbol: str) -> None:
+    try:
+        bind = db.get_bind()
+        if bind.dialect.name != "postgresql":
+            return
+        db.query(models.FundamentalLatestSnapshot.id).filter(
+            models.FundamentalLatestSnapshot.import_id == import_id,
+            models.FundamentalLatestSnapshot.symbol == symbol.upper(),
+        ).with_for_update().one_or_none()
+    except SQLAlchemyError:
+        return
 
 
 def _filter_universe_rows(
@@ -853,6 +1204,105 @@ def _coverage_pct(coverage: dict[str, Any]) -> float | None:
         return None
 
 
+def _metric_key(value: str) -> str:
+    return "".join(ch for ch in str(value).lower() if ch.isalnum())
+
+
+def _has_metric_value(metrics: dict[str, Any], aliases: tuple[str, ...]) -> bool:
+    normalized = {_metric_key(key): value for key, value in metrics.items()}
+    for alias in aliases:
+        value = metrics.get(alias)
+        if _num(value) is not None:
+            return True
+        normalized_value = normalized.get(_metric_key(alias))
+        if _num(normalized_value) is not None:
+            return True
+    return False
+
+
+def _annual_metric_values_for_year(
+    rows: list[models.FundamentalAnnualMetric],
+    statement_year: int | None,
+) -> dict[str, Any]:
+    if statement_year is None:
+        return {}
+    out: dict[str, Any] = {}
+    for row in rows:
+        if row.statement_year == statement_year:
+            out[str(row.metric_name)] = row.metric_value
+    return out
+
+
+def _missing_financial_check_specs() -> list[tuple[str, str, str, str, tuple[str, ...]]]:
+    specs: list[tuple[str, str, str, str, tuple[str, ...]]] = []
+    for group in CORE_STATEMENT_METRIC_GROUPS:
+        primary = str(group[0])
+        specs.append(
+            (
+                "annual",
+                CORE_MISSING_METRIC_CATEGORIES.get(primary, "summary"),
+                primary,
+                CORE_MISSING_METRIC_LABELS.get(primary, primary),
+                tuple(str(item) for item in group),
+            )
+        )
+    specs.extend(SUPPLEMENTAL_MISSING_METRIC_GROUPS)
+    specs.extend(LATEST_MISSING_METRIC_GROUPS)
+    return specs
+
+
+def _missing_financial_data_summary(
+    *,
+    latest_metrics: dict[str, Any],
+    annual_rows: list[models.FundamentalAnnualMetric],
+    statement_year: int | None,
+) -> MissingFinancialDataSummaryOut:
+    annual_years = [int(row.statement_year) for row in annual_rows if row.statement_year is not None]
+    target_year = int(statement_year) if statement_year is not None else max(annual_years) if annual_years else None
+    if target_year is None:
+        return MissingFinancialDataSummaryOut()
+
+    annual_metrics = _annual_metric_values_for_year(annual_rows, target_year)
+    items: list[MissingFinancialMetricOut] = []
+    seen: set[tuple[str, str]] = set()
+    for scope, category, metric_name, label, aliases in _missing_financial_check_specs():
+        key = (scope, metric_name)
+        if key in seen:
+            continue
+        seen.add(key)
+        source_metrics = latest_metrics if scope == "latest" else annual_metrics
+        if _has_metric_value(source_metrics, aliases):
+            continue
+        items.append(
+            MissingFinancialMetricOut(
+                statement_year=target_year,
+                metric_name=metric_name,
+                label=label,
+                category=category,
+                scope="latest" if scope == "latest" else "annual",
+                aliases=list(aliases),
+            )
+        )
+
+    categories: dict[str, int] = defaultdict(int)
+    latest_missing = 0
+    annual_missing = 0
+    for item in items:
+        categories[item.category] += 1
+        if item.scope == "latest":
+            latest_missing += 1
+        else:
+            annual_missing += 1
+    return MissingFinancialDataSummaryOut(
+        statement_year=target_year,
+        total_missing=len(items),
+        latest_missing=latest_missing,
+        annual_missing=annual_missing,
+        categories=dict(categories),
+        items=items,
+    )
+
+
 def _confidence_label(score: float | None) -> str | None:
     if score is None:
         return None
@@ -866,11 +1316,124 @@ def _confidence_label(score: float | None) -> str | None:
 
 
 SCREEN_NAMES = {"magic_formula", "peg_garp", "altman_z", "eva", "regression_adj"}
+VISIBLE_FACTOR_SCORE_KEYS = ("value", "quality", "quality_components")
+VISIBLE_FACTOR_SCORE_SCOPE_KEYS = {"value", "quality"}
+VISIBLE_FACTOR_METRIC_KEYS = {
+    "PER",
+    "Price_to_Book",
+    "Price_to_Sales",
+    "EV_to_EBITDA",
+    "FCF_Yield",
+    "Dividend_Yield",
+    "ROE",
+    "ROA",
+    "Operating_Margin",
+    "Net_Margin",
+    "FCF_Margin",
+    "Operating_CF_Margin",
+    "CAF_Margin",
+    "Interest_Coverage",
+    "Debt_to_Equity",
+    "NetDebt_to_EBITDA",
+    "Current_Ratio",
+    "Cash_Ratio",
+    "Equity_Multiplier",
+    "Asset_Turnover",
+}
+
+
+def _visible_factor_scores(scores: dict[str, Any] | None) -> dict[str, Any]:
+    raw = dict(scores or {})
+    return {key: raw.get(key) for key in VISIBLE_FACTOR_SCORE_KEYS if key in raw}
+
+
+def _visible_factor_diagnostics(diagnostics: dict[str, Any] | None) -> dict[str, Any]:
+    raw = dict(diagnostics or {})
+    scopes = raw.get("score_scopes")
+    if isinstance(scopes, dict):
+        raw["score_scopes"] = {
+            key: value
+            for key, value in scopes.items()
+            if key in VISIBLE_FACTOR_SCORE_SCOPE_KEYS
+        }
+    breakdown = raw.get("metric_breakdown")
+    if isinstance(breakdown, dict):
+        raw["metric_breakdown"] = {
+            key: value
+            for key, value in breakdown.items()
+            if key in VISIBLE_FACTOR_METRIC_KEYS
+        }
+    return raw
 
 
 def _screens_from_diagnostics(diagnostics: dict[str, Any] | None) -> dict[str, Any]:
     raw = (diagnostics or {}).get("screens")
     return dict(raw) if isinstance(raw, dict) else {}
+
+
+def _snapshot_for_detail_screens(
+    snapshot: models.FundamentalLatestSnapshot,
+    enriched_snapshot: FundamentalSnapshot | None,
+) -> FundamentalSnapshot:
+    if enriched_snapshot is not None:
+        return enriched_snapshot
+    return FundamentalSnapshot(
+        symbol=snapshot.symbol,
+        company_name=snapshot.company_name,
+        latest_statement_year=snapshot.latest_statement_year,
+        metrics=dict(snapshot.metrics_json or {}),
+        scores=dict(snapshot.scores_json or {}),
+        diagnostics=dict(snapshot.diagnostics_json or {}),
+        coverage=dict(snapshot.coverage_json or {}),
+        model_eligibility=dict(snapshot.model_eligibility_json or {}),
+        source=dict(snapshot.source_json or {}),
+        as_of_date=snapshot.as_of_date,
+        source_document_id=snapshot.source_document_id,
+    )
+
+
+def _annual_rows_for_detail_screens(rows: list[models.FundamentalAnnualMetric]) -> list[AnnualMetricRow]:
+    return [
+        AnnualMetricRow(
+            symbol=row.symbol,
+            company_name=row.company_name,
+            statement_year=row.statement_year,
+            metric_name=row.metric_name,
+            metric_value=row.metric_value,
+            raw_metric_name=row.raw_metric_name,
+            source_sheet=row.source_sheet,
+            source_field=row.source_field,
+            is_proxy=bool(row.is_proxy),
+            as_of_date=row.as_of_date,
+            source_document_id=row.source_document_id,
+        )
+        for row in rows
+    ]
+
+
+def _overlay_detail_eva_screen(
+    *,
+    snapshot: models.FundamentalLatestSnapshot,
+    enriched_snapshot: FundamentalSnapshot | None,
+    annual_rows: list[models.FundamentalAnnualMetric],
+    assumptions: dict[str, Any],
+    sector: str | None,
+    diagnostics: dict[str, Any],
+    screens: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    eva_screen = eva(
+        _snapshot_for_detail_screens(snapshot, enriched_snapshot),
+        _annual_rows_for_detail_screens(annual_rows),
+        assumptions,
+        sector,
+    )
+    next_screens = dict(screens)
+    next_screens["eva"] = eva_screen
+    next_diagnostics = dict(diagnostics)
+    diagnostic_screens = _screens_from_diagnostics(next_diagnostics)
+    diagnostic_screens["eva"] = eva_screen
+    next_diagnostics["screens"] = diagnostic_screens
+    return next_diagnostics, next_screens
 
 
 def _screen_score(screens: dict[str, Any], screen_name: str) -> float | None:
@@ -1182,6 +1745,11 @@ def enqueue_targeted_bvc_fundamental_import(
     body: TargetedBvcFundamentalImportIn,
     db: Session = Depends(get_db),
 ) -> TargetedBvcFundamentalImportQueuedOut:
+    if not os.environ.get("BVC_PIPELINE_ENABLED"):
+        raise HTTPException(
+            status_code=503,
+            detail="BVC pipeline is dormant. Set BVC_PIPELINE_ENABLED=1 in the API and worker environments to re-enable.",
+        )
     source_urls = sorted({item.strip() for item in body.source_urls if item and item.strip()})
     years = _years_from_request(body)
     sectors = sorted({item.strip() for item in body.sectors if item and item.strip()})
@@ -1450,18 +2018,20 @@ def get_fundamental_snapshot_batch(
     if not symbols:
         return {}
     import_ids = sorted({row.import_id for row in snapshots.values()})
+    for row in snapshots.values():
+        _ensure_latest_symbol_valuations(
+            db,
+            import_id=row.import_id,
+            symbol=row.symbol,
+            scenario=scenario,
+        )
     ensembles = {}
     if import_ids:
-        ensemble_filter = (
-            models.FundamentalEnsembleResult.scenario.in_(list(VALUATION_SCENARIOS))
-            if scenario == "auto"
-            else models.FundamentalEnsembleResult.scenario == scenario
-        )
         rows = (
             db.query(models.FundamentalEnsembleResult)
             .filter(
                 models.FundamentalEnsembleResult.import_id.in_(import_ids),
-                ensemble_filter,
+                models.FundamentalEnsembleResult.scenario == scenario,
             )
             .all()
         )
@@ -1470,17 +2040,10 @@ def get_fundamental_snapshot_batch(
         symbol
         for symbol in symbols
         if snapshots.get(symbol) is not None
-        and (
-            scenario == "auto"
-            or (snapshots[symbol].import_id, symbol, scenario) not in ensembles
-        )
+        and (snapshots[symbol].import_id, symbol, scenario) not in ensembles
     ]
     fallback_by_scenario: dict[str, dict[str, models.FundamentalEnsembleResult]] = {}
-    if scenario == "auto":
-        for scenario_key in VALUATION_SCENARIOS:
-            fallback_by_scenario[scenario_key], _fallback_valuations = _latest_available_valuation_bundle(db, fallback_symbols, scenario_key)
-    else:
-        fallback_by_scenario[scenario], _fallback_valuations = _latest_available_valuation_bundle(db, fallback_symbols, scenario)
+    fallback_by_scenario[scenario], _fallback_valuations = _latest_available_valuation_bundle(db, fallback_symbols, scenario)
     imports = latest_imports_by_symbol(db, symbols=symbols)
     out: dict[str, FundamentalLightSnapshot | None] = {}
     for symbol in symbols:
@@ -1492,28 +2055,17 @@ def get_fundamental_snapshot_batch(
         enriched_snapshot = enriched.get(symbol)
         coverage = dict(enriched_snapshot.coverage or {}) if enriched_snapshot is not None else dict(snapshot.coverage_json or {})
         metrics = dict(enriched_snapshot.metrics or {}) if enriched_snapshot is not None else dict(snapshot.metrics_json or {})
-        if scenario == "auto":
-            candidates = {
-                scenario_key: ensembles.get((snapshot.import_id, symbol, scenario_key)) or fallback_by_scenario.get(scenario_key, {}).get(symbol)
-                for scenario_key in VALUATION_SCENARIOS
-            }
-            selected_scenario = _auto_scenario_from_ensembles(candidates, current_price=metrics.get("Current_Price"))
-        else:
-            selected_scenario = scenario
+        selected_scenario = scenario
         ensemble = ensembles.get((snapshot.import_id, symbol, selected_scenario)) or fallback_by_scenario.get(selected_scenario, {}).get(symbol)
+        current_price = metrics.get("Current_Price")
         import_row = imports.get(symbol)
         when = (import_row.completed_at or import_row.imported_at or import_row.created_at) if import_row else None
         out[symbol] = FundamentalLightSnapshot(
             symbol=symbol,
-            overall_score=scores.get("overall"),
             value_score=scores.get("value"),
             quality_score=scores.get("quality"),
-            growth_score=scores.get("growth"),
-            risk_score=scores.get("risk"),
-            cash_flow_score=scores.get("cash_flow"),
-            health_score=scores.get("health"),
             fair_value=ensemble.fair_value_base if ensemble else None,
-            upside_pct=ensemble.upside_pct if ensemble else None,
+            upside_pct=_upside_from_price(ensemble.fair_value_base, current_price) if ensemble else None,
             confidence=_confidence_label(ensemble.confidence_score if ensemble else None),
             confidence_score=ensemble.confidence_score if ensemble else None,
             coverage_pct=_coverage_pct(coverage),
@@ -1539,6 +2091,7 @@ def get_fundamental_universe(
     import_by_symbol = latest_imports_by_symbol(db)
     if not snapshots_by_symbol:
         metadata = _metadata_by_symbol(db, signal_symbols)
+        market_context = market_price_context_by_symbol(db, signal_symbols)
         tech = technical_context(db, signal_symbols)
         rows = [
             FundamentalUniverseRow(
@@ -1547,6 +2100,7 @@ def get_fundamental_universe(
                 display_name=metadata.get(symbol, {}).get("display_name"),
                 sector=metadata.get(symbol, {}).get("sector"),
                 market_region=metadata.get(symbol, {}).get("market_region"),
+                adv20=market_context.get(symbol, {}).get("adv20"),
                 coverage={"status": "no_succeeded_import"},
                 model_eligibility={},
                 valuation_summary={"model_count": 0, "usable_model_count": 0},
@@ -1564,18 +2118,18 @@ def get_fundamental_universe(
     symbols = [row.symbol for row in snapshots]
     all_symbols = sorted(set(symbols) | set(signal_symbols))
     metadata = _metadata_by_symbol(db, all_symbols)
+    market_context = market_price_context_by_symbol(db, all_symbols)
     tech = technical_context(db, all_symbols)
     import_ids = sorted({row.import_id for row in snapshots})
-    scenario_filter_valuation = (
-        models.FundamentalValuationResult.scenario.in_(list(VALUATION_SCENARIOS))
-        if scenario == "auto"
-        else models.FundamentalValuationResult.scenario == scenario
-    )
-    scenario_filter_ensemble = (
-        models.FundamentalEnsembleResult.scenario.in_(list(VALUATION_SCENARIOS))
-        if scenario == "auto"
-        else models.FundamentalEnsembleResult.scenario == scenario
-    )
+    for row in snapshots:
+        _ensure_latest_symbol_valuations(
+            db,
+            import_id=row.import_id,
+            symbol=row.symbol,
+            scenario=scenario,
+        )
+    scenario_filter_valuation = models.FundamentalValuationResult.scenario.in_(list(VALUATION_SCENARIOS))
+    scenario_filter_ensemble = models.FundamentalEnsembleResult.scenario.in_(list(VALUATION_SCENARIOS))
     valuations = (
         db.query(models.FundamentalValuationResult)
         .filter(models.FundamentalValuationResult.import_id.in_(import_ids), scenario_filter_valuation)
@@ -1593,15 +2147,12 @@ def get_fundamental_universe(
     fallback_symbols = [
         row.symbol
         for row in snapshots
-        if scenario == "auto" or (row.import_id, row.symbol, scenario) not in ensemble_by_symbol
+        if (row.import_id, row.symbol, scenario) not in ensemble_by_symbol
     ]
     fallback_ensembles_by_scenario: dict[str, dict[str, models.FundamentalEnsembleResult]] = {}
     fallback_valuations_by_scenario: dict[str, dict[str, list[models.FundamentalValuationResult]]] = {}
-    if scenario == "auto":
-        for scenario_key in VALUATION_SCENARIOS:
-            fallback_ensembles_by_scenario[scenario_key], fallback_valuations_by_scenario[scenario_key] = _latest_available_valuation_bundle(db, fallback_symbols, scenario_key)
-    else:
-        fallback_ensembles_by_scenario[scenario], fallback_valuations_by_scenario[scenario] = _latest_available_valuation_bundle(db, fallback_symbols, scenario)
+    for fallback_scenario in sorted({scenario, HEADLINE_SCENARIO}):
+        fallback_ensembles_by_scenario[fallback_scenario], fallback_valuations_by_scenario[fallback_scenario] = _latest_available_valuation_bundle(db, fallback_symbols, fallback_scenario)
 
     output = []
     for row in snapshots:
@@ -1610,27 +2161,28 @@ def get_fundamental_universe(
         coverage = dict(enriched_snapshot.coverage or {}) if enriched_snapshot is not None else dict(row.coverage_json or {})
         diagnostics = dict(row.diagnostics_json or {})
         screens = _screens_from_diagnostics(diagnostics)
-        if scenario == "auto":
-            candidates = {
-                scenario_key: ensemble_by_symbol.get((row.import_id, row.symbol, scenario_key))
-                or fallback_ensembles_by_scenario.get(scenario_key, {}).get(row.symbol)
-                for scenario_key in VALUATION_SCENARIOS
-            }
-            selected_scenario = _auto_scenario_from_ensembles(candidates, current_price=metrics.get("Current_Price"))
-        else:
-            selected_scenario = scenario
-        ensemble = ensemble_by_symbol.get((row.import_id, row.symbol, selected_scenario))
+        candidates = {
+            scenario_key: ensemble_by_symbol.get((row.import_id, row.symbol, scenario_key))
+            for scenario_key in VALUATION_SCENARIOS
+        }
+        coherent_candidates, scenario_trio_stale = _coherent_scenario_rows(candidates)
+        market_implied_scenario = _auto_scenario_from_ensembles(coherent_candidates, current_price=metrics.get("Current_Price"))
+        selected_scenario = HEADLINE_SCENARIO if scenario_trio_stale else scenario
+        ensemble = coherent_candidates.get(selected_scenario)
         valuation_rows = valuations_by_symbol.get((row.import_id, row.symbol, selected_scenario), [])
         if ensemble is None:
             ensemble = fallback_ensembles_by_scenario.get(selected_scenario, {}).get(row.symbol)
             valuation_rows = fallback_valuations_by_scenario.get(selected_scenario, {}).get(row.symbol, [])
         import_row = import_by_symbol.get(row.symbol)
-        overlay = derive_research_overlay(
+        base_ensemble = coherent_candidates.get(HEADLINE_SCENARIO)
+        overlay = _headline_overlay(
             db,
             symbol=row.symbol,
-            scenario=selected_scenario,
-            ensemble=ensemble,
+            viewed_scenario=selected_scenario,
+            base_ensemble=base_ensemble,
             import_row=import_row,
+            current_price=metrics.get("Current_Price"),
+            market_implied_scenario=market_implied_scenario,
         )
         output.append(
             FundamentalUniverseRow(
@@ -1641,16 +2193,10 @@ def get_fundamental_universe(
                 market_region=metadata.get(row.symbol, {}).get("market_region"),
                 latest_statement_year=enriched_snapshot.latest_statement_year if enriched_snapshot is not None else row.latest_statement_year,
                 current_price=metrics.get("Current_Price"),
+                adv20=metrics.get("ADV20") or market_context.get(row.symbol, {}).get("adv20"),
                 market_cap=metrics.get("MarketCap_Calc"),
-                overall_score=(row.scores_json or {}).get("overall"),
                 value_score=(row.scores_json or {}).get("value"),
                 quality_score=(row.scores_json or {}).get("quality"),
-                growth_score=(row.scores_json or {}).get("growth"),
-                dividend_score=(row.scores_json or {}).get("dividend"),
-                risk_score=(row.scores_json or {}).get("risk"),
-                cash_flow_score=(row.scores_json or {}).get("cash_flow"),
-                health_score=(row.scores_json or {}).get("health"),
-                accrual_quality_score=(row.scores_json or {}).get("accrual_quality"),
                 magic_formula_score=_screen_score(screens, "magic_formula"),
                 peg_value=_peg_value(screens),
                 peg_garp_score=_screen_score(screens, "peg_garp"),
@@ -1661,10 +2207,17 @@ def get_fundamental_universe(
                 regression_richness_avg=_regression_richness_avg(screens),
                 screens=screens,
                 **overlay,
+                scenario_trio_stale=scenario_trio_stale,
+                scenario_probabilities=_scenario_probabilities_payload(DEFAULT_ASSUMPTIONS),
                 coverage=coverage,
                 model_eligibility=dict(row.model_eligibility_json or {}),
-                valuation_summary=_valuation_summary(valuation_rows, ensemble, snapshot_import_id=row.import_id),
-                ensemble=_ensemble_out(ensemble),
+                valuation_summary=_valuation_summary(
+                    valuation_rows,
+                    ensemble,
+                    snapshot_import_id=row.import_id,
+                    current_price_override=metrics.get("Current_Price"),
+                ),
+                ensemble=_ensemble_out(ensemble, current_price_override=metrics.get("Current_Price")),
                 technical=tech.get(row.symbol),
                 data_source=row.data_source or (import_row.data_source if import_row else None),
                 imported_at=(
@@ -1688,6 +2241,7 @@ def get_fundamental_universe(
                 display_name=meta.get("display_name"),
                 sector=meta.get("sector"),
                 market_region=meta.get("market_region"),
+                adv20=market_context.get(symbol, {}).get("adv20"),
                 coverage={"status": "no_coverage"},
                 model_eligibility={},
                 valuation_summary={"model_count": 0, "usable_model_count": 0},
@@ -1978,7 +2532,7 @@ def get_fundamental_stock_detail(symbol: str, db: Session = Depends(get_db), sce
     if snapshot is None:
         if not metadata:
             raise HTTPException(status_code=404, detail=f"No fundamentals for {symbol}")
-        selected_scenario = "base" if scenario == "auto" else scenario
+        selected_scenario = scenario
         assumptions, provenance_by_scenario = _assumption_bundle(
             db,
             symbol=symbol,
@@ -1995,19 +2549,15 @@ def get_fundamental_stock_detail(symbol: str, db: Session = Depends(get_db), sce
             valuations=[],
             assumptions=assumptions,
             assumption_provenance=provenance_by_scenario,
+            headline_scenario=HEADLINE_SCENARIO,
+            viewed_scenario=selected_scenario,
+            scenario_trio_stale=False,
+            scenario_probabilities=_scenario_probabilities_payload(assumptions),
+            assumption_warnings=_assumption_warnings_payload(assumptions),
             technical=technical_context(db, [symbol]).get(symbol),
         )
 
-    annual_rows = (
-        db.query(models.FundamentalAnnualMetric)
-        .filter(
-            models.FundamentalAnnualMetric.import_id == import_row.id,
-            models.FundamentalAnnualMetric.symbol == symbol,
-            models.FundamentalAnnualMetric.metric_value.isnot(None),
-        )
-        .order_by(models.FundamentalAnnualMetric.statement_year.asc(), models.FundamentalAnnualMetric.metric_name.asc())
-        .all()
-    )
+    annual_rows = annual_metric_rows_for_symbol(db, import_id=import_row.id, symbol=symbol)
     period_rows = (
         db.query(models.FundamentalPeriodMetric)
         .filter(
@@ -2025,11 +2575,25 @@ def get_fundamental_stock_detail(symbol: str, db: Session = Depends(get_db), sce
     )
     enriched_snapshot = enriched_snapshots_by_symbol(db, {symbol: snapshot}).get(symbol)
     metrics_for_selection = dict(enriched_snapshot.metrics or {}) if enriched_snapshot is not None else dict(snapshot.metrics_json or {})
-    scenario_ensembles = _ensembles_by_scenario(db, import_id=import_row.id if import_row else snapshot.import_id, symbol=symbol)
-    selected_scenario = (
-        _auto_scenario_from_ensembles(scenario_ensembles, current_price=metrics_for_selection.get("Current_Price"))
-        if scenario == "auto"
-        else scenario
+    current_price = metrics_for_selection.get("Current_Price")
+    _ensure_latest_symbol_valuations(
+        db,
+        import_id=import_row.id if import_row else snapshot.import_id,
+        symbol=symbol,
+        scenario=scenario,
+    )
+    db.refresh(snapshot)
+    scenario_ensembles, scenario_trio_stale = _ensembles_by_scenario(
+        db,
+        import_id=import_row.id if import_row else snapshot.import_id,
+        symbol=symbol,
+        current_price_override=current_price,
+        allow_fallback=False,
+    )
+    selected_scenario = HEADLINE_SCENARIO if scenario_trio_stale else scenario
+    market_implied_scenario = _auto_scenario_from_ensembles(
+        scenario_ensembles,
+        current_price=metrics_for_selection.get("Current_Price"),
     )
     valuations = (
         db.query(models.FundamentalValuationResult)
@@ -2042,11 +2606,15 @@ def get_fundamental_stock_detail(symbol: str, db: Session = Depends(get_db), sce
         .filter(models.FundamentalEnsembleResult.import_id == import_row.id, models.FundamentalEnsembleResult.symbol == symbol, models.FundamentalEnsembleResult.scenario == selected_scenario)
         .first()
     )
-    if ensemble is None:
-        fallback_ensembles, fallback_valuations = _latest_available_valuation_bundle(db, [symbol], selected_scenario)
-        ensemble = fallback_ensembles.get(symbol)
-        if ensemble is not None:
-            valuations = fallback_valuations.get(symbol, [])
+    base_ensemble = ensemble if selected_scenario == HEADLINE_SCENARIO else (
+        db.query(models.FundamentalEnsembleResult)
+        .filter(
+            models.FundamentalEnsembleResult.import_id == import_row.id,
+            models.FundamentalEnsembleResult.symbol == symbol,
+            models.FundamentalEnsembleResult.scenario == HEADLINE_SCENARIO,
+        )
+        .first()
+    )
     quality_issues = (
         db.query(models.FundamentalQualityIssue)
         .filter(models.FundamentalQualityIssue.import_id == import_row.id, models.FundamentalQualityIssue.symbol == symbol)
@@ -2061,7 +2629,17 @@ def get_fundamental_stock_detail(symbol: str, db: Session = Depends(get_db), sce
         sector=metadata.get("sector"),
         selected_scenario=selected_scenario,
     )
+    diagnostics, screens = _overlay_detail_eva_screen(
+        snapshot=snapshot,
+        enriched_snapshot=enriched_snapshot,
+        annual_rows=annual_rows,
+        assumptions=assumptions,
+        sector=metadata.get("sector"),
+        diagnostics=diagnostics,
+        screens=screens,
+    )
     integrity_row = _latest_integrity_model(db, snapshot)
+    metric_override_rows = current_metric_overrides(db, symbol=symbol)
     thesis_row = _current_thesis(db, symbol)
     catalyst_rows = _upcoming_catalysts(db, symbol)
     _history_items, trend = pillar_history_for_symbol(db, symbol=symbol, limit=12)
@@ -2074,12 +2652,19 @@ def get_fundamental_stock_detail(symbol: str, db: Session = Depends(get_db), sce
         ).model_dump()
     except Exception:
         comps_table = None
-    overlay = derive_research_overlay(
+    overlay = _headline_overlay(
         db,
         symbol=symbol,
-        scenario=selected_scenario,
-        ensemble=ensemble,
+        viewed_scenario=selected_scenario,
+        base_ensemble=base_ensemble,
         import_row=import_row,
+        current_price=current_price,
+        market_implied_scenario=market_implied_scenario,
+    )
+    detail_missing_financial_data = _missing_financial_data_summary(
+        latest_metrics=metrics_for_selection,
+        annual_rows=annual_rows,
+        statement_year=enriched_snapshot.latest_statement_year if enriched_snapshot is not None else snapshot.latest_statement_year,
     )
     return FundamentalStockDetailOut(
         symbol=symbol,
@@ -2088,19 +2673,24 @@ def get_fundamental_stock_detail(symbol: str, db: Session = Depends(get_db), sce
         sector=metadata.get("sector"),
         latest_statement_year=enriched_snapshot.latest_statement_year if enriched_snapshot is not None else snapshot.latest_statement_year,
         metrics=dict(enriched_snapshot.metrics or {}) if enriched_snapshot is not None else dict(snapshot.metrics_json or {}),
-        scores=dict(snapshot.scores_json or {}),
-        diagnostics=diagnostics,
+        scores=_visible_factor_scores(snapshot.scores_json),
+        diagnostics=_visible_factor_diagnostics(diagnostics),
         screens=screens,
         coverage=dict(enriched_snapshot.coverage or {}) if enriched_snapshot is not None else dict(snapshot.coverage_json or {}),
         model_eligibility=dict(snapshot.model_eligibility_json or {}),
+        missing_financial_data=detail_missing_financial_data,
         annual=annual_by_year(annual_rows),
         annual_raw=[_annual_raw_out(row) for row in annual_rows],
+        metric_overrides=[_metric_override_out(row) for row in metric_override_rows],
         period_metrics=[_period_metric_out(row) for row in period_rows],
-        valuations=[_valuation_out(row) for row in valuations],
-        ensemble=_ensemble_out(ensemble),
+        valuations=[_valuation_out(row, current_price_override=current_price) for row in valuations],
+        ensemble=_ensemble_out(ensemble, current_price_override=current_price),
         ensembles=scenario_ensembles,
         assumptions=assumptions,
         assumption_provenance=provenance_by_scenario,
+        scenario_trio_stale=scenario_trio_stale,
+        scenario_probabilities=_scenario_probabilities_payload(assumptions),
+        assumption_warnings=_assumption_warnings_payload(assumptions),
         integrity=_integrity_out(integrity_row),
         thesis=_thesis_out(thesis_row),
         catalysts=[_catalyst_out(row) for row in catalyst_rows],
@@ -2122,7 +2712,9 @@ def get_fundamental_stock_detail(symbol: str, db: Session = Depends(get_db), sce
 
 @router.get("/stocks/{symbol}/valuation", response_model=list[ValuationResultOut])
 def get_stock_valuation(symbol: str, db: Session = Depends(get_db), scenario: str = "base") -> list[ValuationResultOut]:
-    snapshot, import_row = _latest_snapshot_or_404(db, symbol)
+    snapshot, _import_row = _latest_snapshot_or_404(db, symbol)
+    enriched_snapshot = enriched_snapshots_by_symbol(db, {symbol.upper(): snapshot}).get(symbol.upper())
+    current_price = (enriched_snapshot.metrics or {}).get("Current_Price") if enriched_snapshot is not None else None
     rows = (
         db.query(models.FundamentalValuationResult)
         .filter(models.FundamentalValuationResult.import_id == snapshot.import_id, models.FundamentalValuationResult.symbol == symbol.upper(), models.FundamentalValuationResult.scenario == scenario)
@@ -2130,9 +2722,14 @@ def get_stock_valuation(symbol: str, db: Session = Depends(get_db), scenario: st
         .all()
     )
     if not rows:
-        _fallback_ensembles, fallback_valuations = _latest_available_valuation_bundle(db, [symbol], scenario)
-        rows = fallback_valuations.get(symbol.upper(), [])
-    return [_valuation_out(row) for row in rows]
+        _ensure_latest_symbol_valuations(db, import_id=snapshot.import_id, symbol=symbol.upper(), scenario=scenario)
+        rows = (
+            db.query(models.FundamentalValuationResult)
+            .filter(models.FundamentalValuationResult.import_id == snapshot.import_id, models.FundamentalValuationResult.symbol == symbol.upper(), models.FundamentalValuationResult.scenario == scenario)
+            .order_by(models.FundamentalValuationResult.family.asc(), models.FundamentalValuationResult.model.asc())
+            .all()
+        )
+    return [_valuation_out(row, current_price_override=current_price) for row in rows]
 
 
 @router.get("/stocks/{symbol}/sensitivity", response_model=dict[str, Any])
@@ -2373,6 +2970,187 @@ def get_stock_pillar_history(symbol: str, db: Session = Depends(get_db), limit: 
     return PillarHistoryOut(symbol=symbol.upper(), items=items, trend=trend)
 
 
+@router.get("/methodology", response_model=FundamentalMethodologyOut)
+def get_fundamental_methodology() -> FundamentalMethodologyOut:
+    return FundamentalMethodologyOut(**methodology_payload())
+
+
+@router.post("/recompute-betas", dependencies=[Depends(require_admin)])
+def recompute_fundamental_betas(
+    db: Session = Depends(get_db),
+    as_of: str | None = None,
+    window_years: float = 2.0,
+    frequency: str = "weekly",
+    proxy_symbol: str = "MASI",
+    recompute_valuations: bool = True,
+) -> dict[str, Any]:
+    parsed_as_of = _parse_date(as_of, default=None) if as_of else None
+    try:
+        summary = recompute_universe_betas(
+            db,
+            as_of=parsed_as_of,
+            window_years=window_years,
+            frequency=frequency,
+            proxy_symbol=proxy_symbol,
+        )
+        valuation_symbols = 0
+        valuation_count = 0
+        computed_symbols = [str(symbol).upper() for symbol in summary.get("computed_symbols", [])]
+        if recompute_valuations and computed_symbols:
+            snapshots = latest_snapshot_rows_by_symbol(db, symbols=computed_symbols)
+            overrides_loader = make_bulk_overrides_loader(db, list(snapshots))
+            for symbol, snapshot in snapshots.items():
+                valuation_count += len(
+                    recompute_symbol_valuations_all_scenarios(
+                        db,
+                        import_id=snapshot.import_id,
+                        symbol=symbol,
+                        overrides_loader=overrides_loader,
+                    )
+                )
+                valuation_symbols += 1
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise HTTPException(status_code=503, detail=f"Could not persist fundamental betas: {exc}") from exc
+    db.commit()
+    return {
+        **summary,
+        "recompute_valuations": recompute_valuations,
+        "valuation_symbols": valuation_symbols,
+        "valuation_count": valuation_count,
+    }
+
+
+@router.post("/signal-backtest", response_model=FundamentalSignalBacktestOut, dependencies=[Depends(require_admin)])
+def create_fundamental_signal_backtest(body: FundamentalSignalBacktestIn, db: Session = Depends(get_db)) -> FundamentalSignalBacktestOut:
+    start = _parse_date(body.start, default=None) if body.start else None
+    end = _parse_date(body.end, default=None) if body.end else None
+    scenario = _scenario_or_422(body.scenario)
+    if body.universe == "custom" and not body.symbols:
+        raise HTTPException(status_code=422, detail="custom universe requires symbols")
+    try:
+        row = run_and_persist_fundamental_signal_backtest(
+            db,
+            signal=body.signal,
+            universe=body.universe,
+            start=start,
+            end=end,
+            transaction_cost_bps=body.transaction_cost_bps,
+            long_short=body.long_short,
+            symbols=body.symbols or None,
+            scenario=scenario,
+        )
+        db.commit()
+        db.refresh(row)
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail="Fundamental signal backtest storage is not ready. Run the Alembic migration before launching a persisted live backtest.",
+        ) from exc
+    return _signal_backtest_out(row)
+
+
+@router.get("/signal-backtest/{run_id}", response_model=FundamentalSignalBacktestOut)
+def get_fundamental_signal_backtest(run_id: uuid.UUID, db: Session = Depends(get_db)) -> FundamentalSignalBacktestOut:
+    row = db.get(models.FundamentalSignalBacktest, run_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"No fundamental signal backtest {run_id}")
+    return _signal_backtest_out(row)
+
+
+@router.get("/stocks/{symbol}/metric-overrides", response_model=list[FundamentalMetricOverrideOut])
+def get_stock_metric_overrides(symbol: str, db: Session = Depends(get_db)) -> list[FundamentalMetricOverrideOut]:
+    symbol = symbol.upper()
+    _ensure_known_fundamental_symbol(db, symbol)
+    return [_metric_override_out(row) for row in current_metric_overrides(db, symbol=symbol)]
+
+
+@router.put("/stocks/{symbol}/metric-overrides", response_model=FundamentalMetricOverrideOut)
+def put_stock_metric_override(
+    symbol: str,
+    body: FundamentalMetricOverrideIn,
+    db: Session = Depends(get_db),
+    user: AppUser = Depends(require_app_user),
+    _admin: None = Depends(require_admin),
+) -> FundamentalMetricOverrideOut:
+    symbol = symbol.upper()
+    _ensure_known_fundamental_symbol(db, symbol)
+    metric_name = _clean_text(body.metric_name)
+    if not metric_name:
+        raise HTTPException(status_code=422, detail="metric_name is required")
+    if body.statement_year < 1900 or body.statement_year > 2200:
+        raise HTTPException(status_code=422, detail="statement_year is invalid")
+    metric_value = body.metric_value
+    if metric_value is not None and (not isinstance(metric_value, (int, float)) or not isfinite(float(metric_value))):
+        raise HTTPException(status_code=422, detail="metric_value must be a finite number or null")
+    db.query(models.FundamentalMetricOverride).filter(
+        models.FundamentalMetricOverride.symbol == symbol,
+        models.FundamentalMetricOverride.statement_year == int(body.statement_year),
+        models.FundamentalMetricOverride.metric_name == metric_name,
+        models.FundamentalMetricOverride.is_current.is_(True),
+    ).update({"is_current": False}, synchronize_session=False)
+    row = models.FundamentalMetricOverride(
+        symbol=symbol,
+        statement_year=int(body.statement_year),
+        metric_name=metric_name,
+        metric_value=float(metric_value) if metric_value is not None else None,
+        note=_clean_text(body.note or "") or None,
+        created_by=_created_by(user),
+        is_current=True,
+    )
+    db.add(row)
+    db.flush()
+    row_id = int(row.id)
+    db.commit()
+
+    try:
+        refresh_symbol_after_metric_override(db, symbol=symbol)
+        _sync_fundamental_signal_rows(db, [symbol])
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Metric override was saved but refresh failed: {exc}") from exc
+
+    current = db.get(models.FundamentalMetricOverride, row_id)
+    if current is None:
+        raise HTTPException(status_code=500, detail="Metric override was committed but could not be reloaded")
+    return _metric_override_out(current)
+
+
+@router.delete("/stocks/{symbol}/metric-overrides/{statement_year}/{metric_name}", status_code=204)
+def delete_stock_metric_override(
+    symbol: str,
+    statement_year: int,
+    metric_name: str,
+    db: Session = Depends(get_db),
+    user: AppUser = Depends(require_app_user),
+    _admin: None = Depends(require_admin),
+) -> Response:
+    del user
+    symbol = symbol.upper()
+    metric_name = _clean_text(metric_name)
+    _ensure_known_fundamental_symbol(db, symbol)
+    db.query(models.FundamentalMetricOverride).filter(
+        models.FundamentalMetricOverride.symbol == symbol,
+        models.FundamentalMetricOverride.statement_year == int(statement_year),
+        models.FundamentalMetricOverride.metric_name == metric_name,
+        models.FundamentalMetricOverride.is_current.is_(True),
+    ).update({"is_current": False}, synchronize_session=False)
+    db.commit()
+    try:
+        refresh_symbol_after_metric_override(db, symbol=symbol)
+        _sync_fundamental_signal_rows(db, [symbol])
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Metric override was cleared but refresh failed: {exc}") from exc
+    return Response(status_code=204)
+
+
 @router.get("/{symbol}/assumptions/{scenario}", response_model=AssumptionResolvedOut)
 @router.get("/stocks/{symbol}/assumptions/{scenario}", response_model=AssumptionResolvedOut)
 def get_stock_assumptions(symbol: str, scenario: str, db: Session = Depends(get_db)) -> AssumptionResolvedOut:
@@ -2387,7 +3165,14 @@ def get_stock_assumptions(symbol: str, scenario: str, db: Session = Depends(get_
         scenario=scenario,
         overrides_loader=overrides_loader,
     )
-    return AssumptionResolvedOut(symbol=symbol, scenario=scenario, assumptions=assumptions, provenance=provenance)
+    return AssumptionResolvedOut(
+        symbol=symbol,
+        scenario=scenario,
+        assumptions=assumptions,
+        provenance=provenance,
+        scenario_probabilities=_scenario_probabilities_payload(assumptions),
+        warnings=_assumption_warnings_payload(assumptions),
+    )
 
 
 @router.get("/{symbol}/assumptions/{scenario}/override", response_model=AssumptionOverrideOut)
@@ -2433,16 +3218,18 @@ def put_stock_assumption_override(
     db.flush()
     snapshot = latest_snapshot_rows_by_symbol(db, symbols=[symbol]).get(symbol)
     if snapshot is not None:
-        recompute_symbol_valuations(
+        recompute_symbol_valuations_all_scenarios(
             db,
             import_id=snapshot.import_id,
             symbol=symbol,
-            scenario=scenario,
             overrides_loader=make_bulk_overrides_loader(db, [symbol]),
         )
+        _sync_fundamental_signal_rows(db, [symbol])
     db.commit()
-    db.refresh(row)
-    return _assumption_override_out(row)
+    current = _current_assumption_override(db, symbol=symbol, scenario=scenario)
+    if current is None:
+        raise HTTPException(status_code=500, detail="Assumption override was committed but could not be reloaded")
+    return _assumption_override_out(current)
 
 
 @router.delete("/{symbol}/assumptions/{scenario}/override", status_code=204)
@@ -2465,13 +3252,13 @@ def delete_stock_assumption_override(
     ).update({"is_current": False}, synchronize_session=False)
     snapshot = latest_snapshot_rows_by_symbol(db, symbols=[symbol]).get(symbol)
     if snapshot is not None:
-        recompute_symbol_valuations(
+        recompute_symbol_valuations_all_scenarios(
             db,
             import_id=snapshot.import_id,
             symbol=symbol,
-            scenario=scenario,
             overrides_loader=make_bulk_overrides_loader(db, [symbol]),
         )
+        _sync_fundamental_signal_rows(db, [symbol])
     db.commit()
     return Response(status_code=204)
 
@@ -2486,7 +3273,7 @@ def delete_stock_assumptions(symbol: str, scenario: str, db: Session = Depends(g
     ).update({"is_active": False}, synchronize_session=False)
     snapshot = latest_snapshot_rows_by_symbol(db, symbols=[symbol.upper()]).get(symbol.upper())
     if snapshot is not None:
-        recompute_symbol_valuations(db, import_id=snapshot.import_id, symbol=symbol, scenario=scenario)
+        recompute_symbol_valuations_all_scenarios(db, import_id=snapshot.import_id, symbol=symbol)
     db.commit()
     return Response(status_code=204)
 
@@ -2551,17 +3338,24 @@ def get_morning_note(
 
 @router.put("/assumptions/{scenario}", response_model=AssumptionSetOut, dependencies=[Depends(require_admin)])
 def update_assumptions(scenario: str, body: AssumptionUpdateIn, db: Session = Depends(get_db)) -> AssumptionSetOut:
+    scenario_key = _scenario_or_422(scenario)
     unknown = sorted(set(body.assumptions) - set(DEFAULT_ASSUMPTIONS) - {"currency"})
     if unknown:
         raise HTTPException(status_code=422, detail=f"unknown assumption keys: {', '.join(unknown)}")
     row = upsert_assumptions(
         db,
-        scenario=scenario,
+        scenario=scenario_key,
         assumptions=body.assumptions,
         scope_type=body.scope_type,
         scope_key=body.scope_key,
         version_label=body.version_label,
     )
+    recomputed_symbols: list[str] = []
+    if body.scope_type.strip().lower() == "desk":
+        for symbol, snapshot in latest_snapshot_rows_by_symbol(db).items():
+            recompute_symbol_valuations_all_scenarios(db, import_id=snapshot.import_id, symbol=symbol)
+            recomputed_symbols.append(symbol)
+    _sync_fundamental_signal_rows(db, recomputed_symbols)
     db.commit()
     return AssumptionSetOut(
         scope_type=row.scope_type,
@@ -2577,21 +3371,24 @@ def update_assumptions(scenario: str, body: AssumptionUpdateIn, db: Session = De
 
 @router.put("/stocks/{symbol}/assumptions/{scenario}", response_model=AssumptionSetOut, dependencies=[Depends(require_admin)])
 def update_stock_assumptions(symbol: str, scenario: str, body: AssumptionUpdateIn, db: Session = Depends(get_db)) -> AssumptionSetOut:
+    scenario_key = _scenario_or_422(scenario)
     snapshot, _import_row = _latest_snapshot_or_404(db, symbol)
     unknown = sorted(set(body.assumptions) - set(DEFAULT_ASSUMPTIONS) - {"currency"})
     if unknown:
         raise HTTPException(status_code=422, detail=f"unknown assumption keys: {', '.join(unknown)}")
     row = upsert_assumptions(
         db,
-        scenario=scenario,
+        scenario=scenario_key,
         assumptions=body.assumptions,
         scope_type="symbol",
         scope_key=symbol.upper(),
         version_label=body.version_label,
     )
-    valuations = recompute_symbol_valuations(db, import_id=snapshot.import_id, symbol=symbol, scenario=scenario)
+    valuation_rows = recompute_symbol_valuations_all_scenarios(db, import_id=snapshot.import_id, symbol=symbol)
+    valuations = [row for row in valuation_rows if str(row.scenario) == scenario_key]
+    _sync_fundamental_signal_rows(db, [symbol])
     metadata = _metadata_by_symbol(db, [symbol.upper()]).get(symbol.upper(), {})
-    _assumptions, provenance = resolved_assumptions_with_provenance(db, symbol=symbol, sector=metadata.get("sector"), scenario=scenario)
+    _assumptions, provenance = resolved_assumptions_with_provenance(db, symbol=symbol, sector=metadata.get("sector"), scenario=scenario_key)
     db.commit()
     return AssumptionSetOut(
         scope_type=row.scope_type,
@@ -2607,24 +3404,170 @@ def update_stock_assumptions(symbol: str, scenario: str, body: AssumptionUpdateI
     )
 
 
+@router.post("/recompute-signals", response_model=FundamentalSignalRecomputeOut, dependencies=[Depends(require_admin)])
+def recompute_fundamental_signals(
+    body: FundamentalSignalRecomputeIn,
+    db: Session = Depends(get_db),
+) -> FundamentalSignalRecomputeOut:
+    scenarios = _fundamental_recompute_scenarios(body.scenario)
+    symbol = str(body.symbol or "").strip().upper() or None
+    failures: list[dict[str, str | None]] = []
+    snapshot_count = 0
+    pillar_history_count = 0
+    valuation_count = 0
+
+    if symbol:
+        _latest_snapshot_or_404(db, symbol)
+        symbols = [symbol]
+        if body.refresh_scores:
+            try:
+                refreshed = refresh_symbol_after_metric_override(db, symbol=symbol)
+                snapshot_count += int(refreshed.get("snapshot_count") or 0)
+                valuation_count += int(refreshed.get("valuation_count") or 0)
+                db.commit()
+            except Exception as exc:
+                db.rollback()
+                failures.append({"symbol": symbol, "scenario": None, "error": str(exc)})
+        else:
+            snapshots = latest_snapshot_rows_by_symbol(db, symbols=[symbol])
+            snapshot = snapshots.get(symbol)
+            if snapshot is None:
+                failures.append({"symbol": symbol, "scenario": None, "error": "No fundamental snapshot"})
+            else:
+                overrides_loader = make_bulk_overrides_loader(db, [symbol])
+                if set(scenarios) == set(VALUATION_SCENARIOS):
+                    try:
+                        valuation_count += len(
+                            recompute_symbol_valuations_all_scenarios(
+                                db,
+                                import_id=snapshot.import_id,
+                                symbol=symbol,
+                                scenarios=VALUATION_SCENARIOS,
+                                overrides_loader=overrides_loader,
+                            )
+                        )
+                        db.commit()
+                    except Exception as exc:
+                        db.rollback()
+                        failures.append({"symbol": symbol, "scenario": "all", "error": str(exc)})
+                else:
+                    for scenario_key in scenarios:
+                        try:
+                            valuation_count += len(
+                                recompute_symbol_valuations(
+                                    db,
+                                    import_id=snapshot.import_id,
+                                    symbol=symbol,
+                                    scenario=scenario_key,
+                                    overrides_loader=overrides_loader,
+                                )
+                            )
+                            db.commit()
+                        except Exception as exc:
+                            db.rollback()
+                            failures.append({"symbol": symbol, "scenario": scenario_key, "error": str(exc)})
+
+        signal_summary = _sync_fundamental_signal_rows(db, symbols)
+        db.commit()
+        return FundamentalSignalRecomputeOut(
+            symbol_count=len(symbols),
+            scenario=body.scenario,
+            scenarios=scenarios,
+            snapshot_count=snapshot_count,
+            pillar_history_count=pillar_history_count,
+            valuation_count=valuation_count,
+            signal_summary=signal_summary,
+            failures=failures,
+        )
+
+    snapshots = latest_snapshot_rows_by_symbol(db)
+    if not snapshots:
+        raise HTTPException(status_code=404, detail="No succeeded fundamental import found")
+
+    if body.refresh_scores:
+        snapshot_count = rescore_universe(db, scope="all")
+        db.commit()
+        snapshots = latest_snapshot_rows_by_symbol(db)
+        for import_id in sorted({row.import_id for row in snapshots.values()}, key=str):
+            pillar_history_count += persist_pillar_history_for_import(db, import_id=import_id)
+            db.commit()
+
+    symbols = sorted(snapshots)
+    overrides_loader = make_bulk_overrides_loader(db, symbols)
+    for item in symbols:
+        snapshot = snapshots[item]
+        if set(scenarios) == set(VALUATION_SCENARIOS):
+            try:
+                valuation_count += len(
+                    recompute_symbol_valuations_all_scenarios(
+                        db,
+                        import_id=snapshot.import_id,
+                        symbol=item,
+                        scenarios=VALUATION_SCENARIOS,
+                        overrides_loader=overrides_loader,
+                    )
+                )
+                db.commit()
+            except Exception as exc:
+                db.rollback()
+                failures.append({"symbol": item, "scenario": "all", "error": str(exc)})
+        else:
+            for scenario_key in scenarios:
+                try:
+                    valuation_count += len(
+                        recompute_symbol_valuations(
+                            db,
+                            import_id=snapshot.import_id,
+                            symbol=item,
+                            scenario=scenario_key,
+                            overrides_loader=overrides_loader,
+                        )
+                    )
+                    db.commit()
+                except Exception as exc:
+                    db.rollback()
+                    failures.append({"symbol": item, "scenario": scenario_key, "error": str(exc)})
+
+    signal_summary = _sync_fundamental_signal_rows(db, symbols)
+    db.commit()
+    return FundamentalSignalRecomputeOut(
+        symbol_count=len(symbols),
+        scenario=body.scenario,
+        scenarios=scenarios,
+        snapshot_count=snapshot_count,
+        pillar_history_count=pillar_history_count,
+        valuation_count=valuation_count,
+        signal_summary=signal_summary,
+        failures=failures,
+    )
+
+
 @router.post("/recompute", response_model=FundamentalImportOut, dependencies=[Depends(require_admin)])
-def recompute_fundamentals(db: Session = Depends(get_db), scenario: str = "base", symbol: str | None = None) -> FundamentalImportOut:
+def recompute_fundamentals(db: Session = Depends(get_db), scenario: str = "all", symbol: str | None = None) -> FundamentalImportOut:
+    scenario_key = (scenario or "all").strip().lower()
+    if scenario_key != "all":
+        scenario_key = _scenario_or_422(scenario_key)
+    recomputed_symbols: list[str] = []
     if symbol:
         snapshot, import_row = _latest_snapshot_or_404(db, symbol)
-        if scenario == "all":
-            recompute_symbol_valuations_all_scenarios(db, import_id=snapshot.import_id, symbol=symbol)
+        if scenario_key == "all":
+            recompute_symbol_valuations_all_scenarios(db, import_id=snapshot.import_id, symbol=symbol, scenarios=VALUATION_SCENARIOS)
         else:
-            recompute_symbol_valuations(db, import_id=snapshot.import_id, symbol=symbol, scenario=scenario)
+            recompute_symbol_valuations(db, import_id=snapshot.import_id, symbol=symbol, scenario=scenario_key)
+        recomputed_symbols.append(symbol.upper())
     else:
         snapshots = latest_snapshot_rows_by_symbol(db)
         if not snapshots:
             raise HTTPException(status_code=404, detail="No succeeded fundamental import found")
         import_row = latest_import(db) or db.get(models.FundamentalImport, next(iter(snapshots.values())).import_id)
         for item, snapshot_row in snapshots.items():
-            if scenario == "all":
-                recompute_symbol_valuations_all_scenarios(db, import_id=snapshot_row.import_id, symbol=item)
+            if scenario_key == "all":
+                recompute_symbol_valuations_all_scenarios(db, import_id=snapshot_row.import_id, symbol=item, scenarios=VALUATION_SCENARIOS)
             else:
-                recompute_symbol_valuations(db, import_id=snapshot_row.import_id, symbol=item, scenario=scenario)
+                recompute_symbol_valuations(db, import_id=snapshot_row.import_id, symbol=item, scenario=scenario_key)
+            recomputed_symbols.append(item)
+    if scenario_key in {"base", "all"}:
+        _sync_fundamental_signal_rows(db, recomputed_symbols)
     db.commit()
     db.refresh(import_row)
     return _import_out(import_row)

@@ -1,0 +1,18 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e3]:
+      - heading "www.investing.com" [level=1] [ref=e5]
+      - heading "Vérification de sécurité en cours" [level=2] [ref=e6]
+      - paragraph [ref=e7]: Ce site utilise un service de sécurité pour se protéger contre les bots malveillants. Cette page s’affiche pendant que le site vérifie que vous n’êtes pas un bot.
+  - contentinfo [ref=e11]:
+    - generic [ref=e13]:
+      - generic [ref=e15]:
+        - text: "Ray ID:"
+        - code [ref=e16]: a06d8381a85fa315
+      - generic [ref=e17]:
+        - generic [ref=e18]:
+          - text: Performances et sécurité par
+          - link "Cloudflare" [ref=e19] [cursor=pointer]:
+            - /url: https://www.cloudflare.com?utm_source=challenge&utm_campaign=m
+        - link "Confidentialité" [ref=e21] [cursor=pointer]:
+          - /url: https://www.cloudflare.com/fr-fr/privacypolicy/

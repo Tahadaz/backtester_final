@@ -1,0 +1,323 @@
+- generic [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - link "RDT Alpha" [ref=e4] [cursor=pointer]:
+        - /url: /dashboard
+        - generic [ref=e5]: RDT
+        - generic [ref=e6]:
+          - generic [ref=e7]: RDT Alpha
+          - generic [ref=e8]: Road to Alpha
+      - navigation [ref=e9]:
+        - link "Tableau de Bord" [ref=e10] [cursor=pointer]:
+          - /url: /dashboard
+          - img
+          - text: Tableau de Bord
+        - link "Data" [ref=e11] [cursor=pointer]:
+          - /url: /data
+          - img
+          - text: Data
+        - link "Signals" [ref=e12] [cursor=pointer]:
+          - /url: /signals
+          - img
+          - text: Signals
+        - link "Strategy" [ref=e13] [cursor=pointer]:
+          - /url: /strategy
+          - img
+          - text: Strategy
+        - link "Backtest" [ref=e14] [cursor=pointer]:
+          - /url: /backtest
+          - img
+          - text: Backtest
+        - link "Analytics" [ref=e15] [cursor=pointer]:
+          - /url: /analytics
+          - img
+          - text: Analytics
+        - link "Glossaire" [ref=e16] [cursor=pointer]:
+          - /url: /glossary
+          - img
+          - text: Glossaire
+      - generic [ref=e17]:
+        - generic [ref=e18]: MASI · live
+        - button "Refresh" [ref=e20]:
+          - img
+        - link "Se connecter" [ref=e21] [cursor=pointer]:
+          - /url: /login
+          - img
+          - generic [ref=e22]: Se connecter
+  - main [ref=e23]:
+    - generic [ref=e24]:
+      - generic [ref=e25]:
+        - generic [ref=e26]: Analyse
+        - button "Analyse Technique Signaux TA, evidence, WFO" [ref=e27]:
+          - img [ref=e29]
+          - generic [ref=e31]:
+            - generic [ref=e32]: Analyse Technique
+            - generic [ref=e33]: Signaux TA, evidence, WFO
+        - button "Analyse Fondamentale Valorisation, qualite, financiers" [pressed] [ref=e34]:
+          - img [ref=e36]
+          - generic [ref=e38]:
+            - generic [ref=e39]: Analyse Fondamentale
+            - generic [ref=e40]: Valorisation, qualite, financiers
+        - button "Analyse Quantitative IC, facteurs, macro, stat-arb" [ref=e41]:
+          - img [ref=e43]
+          - generic [ref=e45]:
+            - generic [ref=e46]: Analyse Quantitative
+            - generic [ref=e47]: IC, facteurs, macro, stat-arb
+      - generic [ref=e49]:
+        - complementary [ref=e51]:
+          - generic [ref=e52]:
+            - generic [ref=e53]:
+              - generic [ref=e54]: Couverture - 0/0 titres
+              - generic [ref=e55]: FY -
+            - generic [ref=e56]:
+              - img
+              - textbox "Rechercher un titre..." [ref=e57]
+            - generic [ref=e58]:
+              - generic [ref=e59]:
+                - img [ref=e61]
+                - generic [ref=e62]:
+                  - generic [ref=e63]: Filtre institutionnel
+                  - generic [ref=e64]:
+                    - generic [ref=e65]: Liquidité ADV20
+                    - generic [ref=e66]: Actif
+                - switch "Désactiver le filtre de liquidité" [checked] [ref=e67]
+              - generic [ref=e68]:
+                - generic [ref=e69]:
+                  - generic [ref=e70]: Seuil
+                  - generic [ref=e71]: ">= 500 k MAD"
+                - generic [ref=e72]:
+                  - generic [ref=e73]: Eligibles
+                  - generic [ref=e74]: 0/0
+            - generic [ref=e75]:
+              - generic [ref=e76]:
+                - button "Tous" [ref=e77] [cursor=pointer]
+                - button "Buy" [ref=e78] [cursor=pointer]
+                - button "Hold" [ref=e79] [cursor=pointer]
+                - button "Sell" [ref=e80] [cursor=pointer]
+              - combobox [ref=e81]:
+                - option "Upside" [selected]
+                - option "Score"
+                - option "Conviction"
+                - option "Mkt Cap"
+                - option "Magic"
+                - option "PEG"
+                - option "Altman"
+                - option "EVA"
+                - option "Regression"
+          - table [ref=e82]:
+            - rowgroup [ref=e83]:
+              - row "Titre Rec. Score Upside Rev" [ref=e84]:
+                - columnheader "Titre" [ref=e85]
+                - columnheader "Rec." [ref=e86]
+                - columnheader "Score" [ref=e87]
+                - columnheader "Upside" [ref=e88]
+                - columnheader "Rev" [ref=e89]
+            - rowgroup [ref=e90]:
+              - row [ref=e91]:
+                - cell [ref=e92]
+              - row [ref=e94]:
+                - cell [ref=e95]
+              - row [ref=e97]:
+                - cell [ref=e98]
+              - row [ref=e100]:
+                - cell [ref=e101]
+              - row [ref=e103]:
+                - cell [ref=e104]
+              - row [ref=e106]:
+                - cell [ref=e107]
+              - row [ref=e109]:
+                - cell [ref=e110]
+              - row [ref=e112]:
+                - cell [ref=e113]
+              - row [ref=e115]:
+                - cell [ref=e116]
+              - row [ref=e118]:
+                - cell [ref=e119]
+          - generic [ref=e121]:
+            - generic [ref=e122]:
+              - generic [ref=e123]: 0 Buy
+              - text: "- 0 Hold -"
+              - generic [ref=e124]: 0 Sell
+              - text: "- 0 N/R"
+            - generic [ref=e125]: Upside moy. -
+        - generic [ref=e140]:
+          - generic [ref=e143]:
+            - generic [ref=e144]:
+              - generic [ref=e145]:
+                - generic [ref=e146]: ADH
+                - img [ref=e147]
+                - generic [ref=e149]: Douja Promotion Groupe Addoha
+                - generic [ref=e150]:
+                  - strong [ref=e151]: Immobilier
+                  - text: "- Maroc - MAD"
+              - generic [ref=e152]:
+                - generic [ref=e153]:
+                  - generic [ref=e154]: Cours actuel
+                  - generic [ref=e155]: 32,95
+                  - generic [ref=e156]: au 02 juin 2026
+                - generic [ref=e157]:
+                  - generic [ref=e158]: Objectif 12M
+                  - generic [ref=e159]: 21,84
+                  - generic [ref=e160]: "- revision inchangee"
+                - generic [ref=e161]:
+                  - generic [ref=e162]: Upside / Downside
+                  - generic [ref=e163]: "-33.7%"
+                  - generic [ref=e164]: vs cours actuel
+                - generic [ref=e165]:
+                  - generic [ref=e166]: Capitalisation
+                  - generic [ref=e167]: 13,3 Bn
+                  - generic [ref=e168]: Free float - - ADV20 10,2 M MAD
+            - generic [ref=e169]:
+              - generic [ref=e170]:
+                - generic [ref=e171]: Recommandation
+                - generic [ref=e172]: SELL
+                - generic [ref=e174]: Conviction
+              - generic [ref=e180]:
+                - generic [ref=e181]: Analyste - Systeme quantitatif
+                - generic [ref=e182]: v3 - 02 juin 2026
+          - separator [ref=e183]:
+            - img [ref=e185]
+          - generic [ref=e193]:
+            - generic [ref=e194]:
+              - button "These" [ref=e195]
+              - button "Valorisation" [ref=e196]
+              - button "Estimations" [ref=e197]
+              - button "Comparables" [active] [ref=e198]
+              - button "Hypotheses" [ref=e199]
+              - button "Qualite & ROE" [ref=e200]
+            - generic [ref=e298]:
+              - generic [ref=e299]:
+                - generic [ref=e300]:
+                  - generic [ref=e301]: Comparables - benchmark detaille
+                  - generic [ref=e302]: market cap
+                - generic [ref=e303]:
+                  - generic [ref=e304]:
+                    - combobox [ref=e305]:
+                      - option "Secteur - Immobilier" [selected]
+                      - option "MASI - membre"
+                      - option "MASI20 - actions flottantes - membre"
+                      - option "MASI PARTICIPATION ET PROMOTION IMMOBILIERES - membre"
+                    - generic [ref=e306]:
+                      - button "P/E" [ref=e307]
+                      - button "EV/EBITDA" [ref=e308]
+                      - button "P/B" [ref=e309]
+                      - button "P/S" [ref=e310]
+                      - button "ROE" [ref=e311]
+                      - button "Div Yield" [ref=e312]
+                      - button "g CA" [ref=e313]
+                  - generic [ref=e314]:
+                    - generic [ref=e315]:
+                      - generic [ref=e316]: ADH
+                      - generic [ref=e317]: 26.6x
+                      - generic [ref=e318]: P/E estime
+                    - generic [ref=e319]:
+                      - generic [ref=e320]: Benchmark
+                      - generic [ref=e321]: 26.6x
+                      - generic [ref=e322]: incl. titre
+                    - generic [ref=e323]:
+                      - generic [ref=e324]: Peer-only
+                      - generic [ref=e325]: "-"
+                      - generic [ref=e326]: 1 valeurs ponderees
+                    - generic [ref=e327]:
+                      - generic [ref=e328]: Mediane
+                      - generic [ref=e329]: 26.6x
+                      - generic [ref=e330]: 1 valeurs eligibles
+                    - generic [ref=e331]:
+                      - generic [ref=e332]: FV modele
+                      - generic [ref=e333]: 33,0 MAD
+                      - generic [ref=e334]: 4 multiples
+                    - generic [ref=e335]:
+                      - generic [ref=e336]: Ecart peer-only
+                      - generic [ref=e337]: +0.0%
+                      - generic [ref=e338]: plus bas = moins cher
+                  - generic [ref=e339]:
+                    - generic [ref=e340]: Historique P/E
+                    - generic [ref=e341]:
+                      - generic [ref=e342]:
+                        - generic [ref=e343]: "2025"
+                        - generic [ref=e344]: 29.2x
+                      - generic [ref=e345]:
+                        - generic [ref=e346]: "2024"
+                        - generic [ref=e347]: 48.4x
+                      - generic [ref=e348]:
+                        - generic [ref=e349]: "2023"
+                        - generic [ref=e350]: 75.9x
+                      - generic [ref=e351]:
+                        - generic [ref=e352]: "2022"
+                        - generic [ref=e353]: 353.5x
+                  - generic [ref=e355]: Pas assez de titres sectoriels disponibles dans l'univers courant.
+                  - table [ref=e357]:
+                    - rowgroup [ref=e358]:
+                      - row "Ticker Nom Secteur P/E est. Poids Contribution Cours Base poids Qualite" [ref=e359]:
+                        - columnheader "Ticker" [ref=e360]
+                        - columnheader "Nom" [ref=e361]
+                        - columnheader "Secteur" [ref=e362]
+                        - columnheader "P/E est." [ref=e363]
+                        - columnheader "Poids" [ref=e364]
+                        - columnheader "Contribution" [ref=e365]
+                        - columnheader "Cours" [ref=e366]
+                        - columnheader "Base poids" [ref=e367]
+                        - columnheader "Qualite" [ref=e368]
+                    - rowgroup [ref=e369]:
+                      - row "ADH Douja Promotion Groupe Addoha Immobilier 26.6x 100.0% 26.6x 32,95 13,3 Bn OK" [ref=e370]:
+                        - cell "ADH" [ref=e371]
+                        - cell "Douja Promotion Groupe Addoha" [ref=e372]
+                        - cell "Immobilier" [ref=e373]
+                        - cell "26.6x" [ref=e374]
+                        - cell "100.0%" [ref=e375]
+                        - cell "26.6x" [ref=e376]
+                        - cell "32,95" [ref=e377]
+                        - cell "13,3 Bn" [ref=e378]
+                        - cell "OK" [ref=e379]
+              - generic [ref=e380]:
+                - generic [ref=e381]:
+                  - generic [ref=e382]:
+                    - generic [ref=e383]: Magic Formula - Greenblatt
+                    - generic [ref=e384]: "-"
+                  - generic [ref=e385]:
+                    - generic [ref=e386]:
+                      - generic [ref=e387]:
+                        - generic [ref=e388]: ROC
+                        - generic [ref=e389]: "-"
+                        - generic [ref=e390]: Rank -
+                      - generic [ref=e391]:
+                        - generic [ref=e392]: Earnings yield
+                        - generic [ref=e393]: "-"
+                        - generic [ref=e394]: Rank -
+                    - generic [ref=e396]: missing_ebit
+                - generic [ref=e397]:
+                  - generic [ref=e398]:
+                    - generic [ref=e399]: PEG - GARP
+                    - generic [ref=e400]: "100"
+                  - generic [ref=e402]:
+                    - generic [ref=e403]:
+                      - generic [ref=e404]: PEG
+                      - generic [ref=e405]: 0,45
+                      - generic [ref=e406]: very_cheap_growth
+                    - generic [ref=e407]:
+                      - generic [ref=e408]: P/E
+                      - generic [ref=e409]: 29.2x
+                    - generic [ref=e410]:
+                      - generic [ref=e411]: Growth
+                      - generic [ref=e412]: 65.5%
+              - generic [ref=e413]:
+                - generic [ref=e414]:
+                  - generic [ref=e415]: Multiples ajustes par regression
+                  - generic [ref=e416]: "46"
+                - generic [ref=e418]:
+                  - generic [ref=e419]:
+                    - generic [ref=e420]: PER
+                    - generic [ref=e423]: 0,33z
+                  - generic [ref=e424]:
+                    - generic [ref=e425]: EV_to_EBITDA
+                    - generic [ref=e428]: 0,88z
+                  - generic [ref=e429]:
+                    - generic [ref=e430]: Price_to_Book
+                    - generic [ref=e433]: "-0,35z"
+                  - generic [ref=e434]:
+                    - generic [ref=e435]: Price_to_Sales
+                    - generic [ref=e438]: 0,03z
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=e136] [cursor=pointer]:
+    - img [ref=e137]
+  - alert [ref=e297]

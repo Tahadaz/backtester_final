@@ -15,10 +15,12 @@ ScheduleKind = Literal[
     "dashboard_snapshot",
     "factor_monitor",
     "factor_recalibration",
+    "fundamental_beta_refresh",
     "fundamental_refresh",
     "wfo_dispatch",
     "signal_engine_dispatch",
     "signal_backtest_dispatch",
+    "signal_best_evidence_snapshot",
 ]
 
 
@@ -87,6 +89,15 @@ SCHEDULE_SPECS: tuple[ScheduleSpec, ...] = (
         description="Refresh MASI fundamentals from StockAnalysis before weekly signal dispatch.",
     ),
     ScheduleSpec(
+        id="weekly_fundamental_beta_refresh",
+        label="Weekly fundamental beta refresh",
+        kind="fundamental_beta_refresh",
+        queue="market_refresh",
+        cron="0 19 * * sat",
+        timezone="UTC",
+        description="Refresh market-data-derived fundamental betas and valuation WACC inputs.",
+    ),
+    ScheduleSpec(
         id="weekly_wfo_dispatch",
         label="Weekly WFO dispatch",
         kind="wfo_dispatch",
@@ -112,6 +123,15 @@ SCHEDULE_SPECS: tuple[ScheduleSpec, ...] = (
         cron="0 23 * * sun",
         timezone="UTC",
         description="Enqueue signal backtest jobs after weekly Signal Engine dispatch.",
+    ),
+    ScheduleSpec(
+        id="weekly_signal_best_evidence_snapshot",
+        label="Weekly best signal evidence snapshot",
+        kind="signal_best_evidence_snapshot",
+        queue="signal_backtest",
+        cron="30 1 * * mon",
+        timezone="UTC",
+        description="Persist one WFO-best signal evidence and chart artifact per stock/horizon.",
     ),
 )
 

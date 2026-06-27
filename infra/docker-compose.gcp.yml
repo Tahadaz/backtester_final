@@ -290,6 +290,7 @@ services:
     image: ghcr.io/tahadaz/bt-worker:${IMAGE_TAG:-latest}
     container_name: quant_scheduler
     environment:
+      WORKER_SCHEDULER_ENABLED: "1"
       REDIS_URL: redis://quant_redis:6379/0
       DATABASE_URL: postgresql+psycopg2://app:app@quant_postgres:5432/quant
       RUNS_QUEUE_NAME: runs
@@ -358,7 +359,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./Caddyfile.gcp:/etc/caddy/Caddyfile:ro
+      - ./Caddyfile.prod:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     restart: unless-stopped

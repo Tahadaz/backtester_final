@@ -16,6 +16,7 @@ from services.api.app.services.fundamentals import (
     _build_integrity_reports,
     _persist_integrity_reports,
     create_import_run,
+    delete_fundamental_import_artifacts,
     make_bulk_overrides_loader,
     persist_pillar_history_for_import,
     recompute_symbol_valuations_all_scenarios,
@@ -87,6 +88,8 @@ def _persist_workbook(db, import_id: uuid.UUID, workbook: FundamentalWorkbook, *
                 source_sheet=row.source_sheet,
                 source_field=row.source_field,
                 is_proxy=row.is_proxy,
+                as_of_date=row.as_of_date,
+                source_document_id=row.source_document_id,
             )
             for row in workbook.annual_metrics
         ]
@@ -120,6 +123,8 @@ def _persist_workbook(db, import_id: uuid.UUID, workbook: FundamentalWorkbook, *
                 coverage_json=sanitize_json_compatible(snapshot.coverage),
                 model_eligibility_json={},
                 source_json=sanitize_json_compatible(snapshot.source),
+                as_of_date=snapshot.as_of_date,
+                source_document_id=snapshot.source_document_id,
             )
             for snapshot in workbook.latest_snapshots
         ]
@@ -208,6 +213,7 @@ def refresh_yfinance_universe(
         else:
             run.status = "failed"
             run.error_message = "All yfinance symbols failed"
+            delete_fundamental_import_artifacts(db, import_id=run.id, include_statement_rows=True)
         db.add(run)
         db.commit()
         if succeeded:

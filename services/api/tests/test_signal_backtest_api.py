@@ -13,6 +13,7 @@ from services.api.app.db import get_db
 from services.api.app.models import (
     MarketDataStore,
     SignalBacktestRun,
+    SignalBestEvidenceSnapshot,
     SignalEngineBatchJob,
     SignalEngineFamilyResult,
     SignalEngineGlobalResult,
@@ -834,6 +835,128 @@ def test_signal_evidence_proof_limit_uses_latest_bucket_trades_and_keeps_full_st
     assert all_payload["stitched_oos_backtest"]["metrics"]["n_trades"] == 120
 
 
+def test_signal_best_evidence_reads_stored_payload_without_live_build(monkeypatch):
+    payload = {
+        "symbol": "AAA",
+        "horizon": "weekly",
+        "source": "wfo",
+        "variant": "expanded_ta_simple",
+        "method_label": "WFO - Expanded TA Simple",
+        "current_signal": {"bucket": "buy", "direction": "long", "data_as_of": "2026-01-08"},
+        "edge": {"bucket": "buy", "direction": "long", "n": 42},
+        "oos": {"proof_n": 42},
+        "contributors": [],
+        "contributor_count": 0,
+        "factor_condition_count": 0,
+        "oos_periods": [],
+        "evidence_trade_count": 0,
+        "stitched_oos_backtest": None,
+        "sr_overlay": {"status": "unavailable", "reason": "not_requested"},
+    }
+    snapshot = SignalBestEvidenceSnapshot(
+        symbol="AAA",
+        horizon="weekly",
+        cooldown_bars=0,
+        status="succeeded",
+        source="wfo",
+        variant="expanded_ta_simple",
+        evidence_payload_jsonb=payload,
+        chart_payload_jsonb=None,
+        data_as_of=dt.date(2026, 1, 8),
+        market_data_as_of=dt.date(2026, 1, 8),
+    )
+    market_row = MarketDataStore(symbol="AAA", timeframe="1D", data_as_of=dt.date(2026, 1, 8))
+    client = TestClient(_app(_FakeDB({SignalBestEvidenceSnapshot: [snapshot], MarketDataStore: [market_row]})))
+
+    monkeypatch.setattr(
+        strategy_signals,
+        "_select_signal_evidence_edge",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("live selector should not run")),
+    )
+
+    response = client.get("/strategy/signal/best-evidence?symbol=AAA&horizon=weekly")
+
+    assert response.status_code == 200
+    assert response.json() == payload
+
+
+def test_signal_best_backtest_chart_reads_stored_payload_without_trigger():
+    chart_payload = {
+        "symbol": "AAA",
+        "horizon": "weekly",
+        "variant": "expanded_ta_simple",
+        "market_data_as_of": "2026-01-08",
+        "results": [
+            {
+                "source": "wfo",
+                "scope": "global",
+                "scope_key": "global",
+                "status": "succeeded",
+                "side_policy": "long_short",
+                "cooldown_bars": 0,
+                "dates": ["2026-01-07", "2026-01-08"],
+                "close_series": [100.0, 101.0],
+                "position_series": [0.0, 1.0],
+            }
+        ],
+    }
+    snapshot = SignalBestEvidenceSnapshot(
+        symbol="AAA",
+        horizon="weekly",
+        cooldown_bars=0,
+        status="succeeded",
+        source="wfo",
+        variant="expanded_ta_simple",
+        evidence_payload_jsonb=None,
+        chart_payload_jsonb=chart_payload,
+        data_as_of=dt.date(2026, 1, 8),
+        market_data_as_of=dt.date(2026, 1, 8),
+    )
+    market_row = MarketDataStore(symbol="AAA", timeframe="1D", data_as_of=dt.date(2026, 1, 8))
+    client = TestClient(_app(_FakeDB({SignalBestEvidenceSnapshot: [snapshot], MarketDataStore: [market_row]})))
+
+    response = client.get("/strategy/backtest-mc/best-chart?symbol=AAA&horizon=weekly")
+
+    assert response.status_code == 200
+    assert response.json() == chart_payload
+
+
+def test_signal_best_snapshot_rejects_stale_payload():
+    payload = {
+        "symbol": "AAA",
+        "horizon": "weekly",
+        "source": "wfo",
+        "variant": "expanded_ta_simple",
+        "method_label": "WFO",
+        "current_signal": {},
+        "edge": {},
+        "oos": {},
+        "contributors": [],
+        "contributor_count": 0,
+        "factor_condition_count": 0,
+        "oos_periods": [],
+        "evidence_trade_count": 0,
+    }
+    snapshot = SignalBestEvidenceSnapshot(
+        symbol="AAA",
+        horizon="weekly",
+        cooldown_bars=0,
+        status="succeeded",
+        source="wfo",
+        variant="expanded_ta_simple",
+        evidence_payload_jsonb=payload,
+        data_as_of=dt.date(2026, 1, 7),
+        market_data_as_of=dt.date(2026, 1, 7),
+    )
+    market_row = MarketDataStore(symbol="AAA", timeframe="1D", data_as_of=dt.date(2026, 1, 8))
+    client = TestClient(_app(_FakeDB({SignalBestEvidenceSnapshot: [snapshot], MarketDataStore: [market_row]})))
+
+    response = client.get("/strategy/signal/best-evidence?symbol=AAA&horizon=weekly")
+
+    assert response.status_code == 409
+    assert "stale" in response.json()["detail"]
+
+
 def test_normalize_wfo_folds_rebases_stale_horizon_capped_rows():
     from services.api.app.services.wfo_folds import normalize_wfo_folds_json
 
@@ -1228,7 +1351,133 @@ def test_signal_backtest_results_include_accounting_trade_ledger():
     assert result["trade_ledger"][1]["pnl_realise"] == 8.0
     assert result["trade_ledger"][1]["pnl_realise_cumule"] == 8.0
     assert result["trade_ledger"][1]["global_score_pct"] == 60.0
+    assert result["score_series"] == [None, 30.0, None, 60.0]
     assert result["global_score_series"] == [None, 30.0, None, 60.0]
+
+
+def test_signal_backtest_results_enqueues_and_returns_404_on_cache_miss(monkeypatch):
+    # The read endpoint must never compute the heavy WFO + Monte Carlo in-band. On a
+    # cache miss it enqueues the worker job and returns 404 immediately so the frontend
+    # can poll via fetchSignalBacktestResultsWithBootstrap.
+    market_row = MarketDataStore(symbol="AAA", timeframe="1D", data_as_of=dt.date(2026, 1, 6))
+    fake_db = _FakeDB({SignalBacktestRun: [], MarketDataStore: [market_row]})
+    calls: list[dict[str, object]] = []
+
+    def _fake_enqueue(symbol, horizon, *, variant="expanded", triggered_by="manual", **_kwargs):
+        calls.append(
+            {
+                "symbol": symbol,
+                "horizon": horizon,
+                "variant": variant,
+                "triggered_by": triggered_by,
+            }
+        )
+        return "job-1"
+
+    fake_enqueue_module = types.ModuleType("services.worker.tasks.signal_enqueue")
+    fake_enqueue_module.enqueue_signal_backtest_for_symbol = _fake_enqueue
+    monkeypatch.setitem(sys.modules, "services.worker.tasks.signal_enqueue", fake_enqueue_module)
+    client = TestClient(_app(fake_db))
+
+    response = client.get("/strategy/backtest-mc?symbol=AAA&horizon=weekly&variant=expanded_ta_simple")
+
+    assert response.status_code == 404
+    assert "no backtest results" in response.json()["detail"].lower()
+    assert calls == [
+        {
+            "symbol": "AAA",
+            "horizon": "weekly",
+            "variant": "expanded_ta_simple",
+            "triggered_by": "api_read_miss",
+        }
+    ]
+
+
+def test_signal_backtest_results_expanded_alias_enqueues_canonical_variant(monkeypatch):
+    # The `expanded` alias must be resolved to its canonical storage variant before the
+    # worker job is enqueued on a cache miss.
+    market_row = MarketDataStore(symbol="AAA", timeframe="1D", data_as_of=dt.date(2026, 1, 6))
+    fake_db = _FakeDB({SignalBacktestRun: [], MarketDataStore: [market_row]})
+    enqueued_variants: list[str] = []
+
+    def _fake_enqueue(symbol, horizon, *, variant="expanded", **_kwargs):
+        enqueued_variants.append(variant)
+        return "job-1"
+
+    fake_enqueue_module = types.ModuleType("services.worker.tasks.signal_enqueue")
+    fake_enqueue_module.enqueue_signal_backtest_for_symbol = _fake_enqueue
+    monkeypatch.setitem(sys.modules, "services.worker.tasks.signal_enqueue", fake_enqueue_module)
+    client = TestClient(_app(fake_db))
+
+    response = client.get("/strategy/backtest-mc?symbol=AAA&horizon=weekly&variant=expanded")
+
+    assert response.status_code == 404
+    assert enqueued_variants == ["expanded_ta_simple"]
+
+
+def test_signal_backtest_results_score_series_uses_row_scope():
+    base_kwargs = dict(
+        symbol="AAA",
+        horizon="weekly",
+        variant="expanded_ta_simple",
+        source="engine",
+        status="succeeded",
+        window_start=dt.date(2026, 1, 1),
+        window_end=dt.date(2026, 1, 6),
+        n_bars=3,
+        n_trades=0,
+        dates_json=["2026-01-01", "2026-01-02", "2026-01-05", "2026-01-06"],
+        equity_json=[1.0, 1.0, 1.0, 1.0],
+        close_series_json=[100.0, 101.0, 110.0, 109.0],
+        position_series_json=[0.0, 0.0, 0.0, 0.0],
+        trades_json=[],
+        total_return=0.0,
+        cagr=0.0,
+        sharpe=0.0,
+        max_drawdown=0.0,
+        win_rate=0.0,
+        cost_bps=0.0,
+        slippage_bps=0.0,
+        side_policy="long_short",
+        cooldown_bars=0,
+        mc_method="block_bootstrap",
+        n_paths=10,
+        computed_at=dt.datetime(2026, 1, 6, tzinfo=dt.timezone.utc),
+        data_as_of=dt.date(2026, 1, 6),
+    )
+    rows = [
+        SignalBacktestRun(scope="per_category", scope_key="tendance", **base_kwargs),
+        SignalBacktestRun(scope="combination", scope_key="tendance+volume", **base_kwargs),
+    ]
+    market_row = MarketDataStore(symbol="AAA", timeframe="1D", data_as_of=dt.date(2026, 1, 6))
+    score_rows = [
+        SignalScoreHistory(date=dt.date(2026, 1, 2), symbol="AAA", source="engine:expanded_ta_simple", category="tendance", horizon="weekly", score_pct=20.0),
+        SignalScoreHistory(date=dt.date(2026, 1, 2), symbol="AAA", source="engine:expanded_ta_simple", category="momentum", horizon="weekly", score_pct=40.0),
+        SignalScoreHistory(date=dt.date(2026, 1, 2), symbol="AAA", source="engine:expanded_ta_simple", category="volume", horizon="weekly", score_pct=100.0),
+        SignalScoreHistory(date=dt.date(2026, 1, 6), symbol="AAA", source="engine:expanded_ta_simple", category="tendance", horizon="weekly", score_pct=50.0),
+        SignalScoreHistory(date=dt.date(2026, 1, 6), symbol="AAA", source="engine:expanded_ta_simple", category="momentum", horizon="weekly", score_pct=70.0),
+        SignalScoreHistory(date=dt.date(2026, 1, 6), symbol="AAA", source="engine:expanded_ta_simple", category="volume", horizon="weekly", score_pct=80.0),
+    ]
+    client = TestClient(_app(_FakeDB({
+        SignalBacktestRun: rows,
+        MarketDataStore: [market_row],
+        SignalScoreHistory: score_rows,
+    })))
+
+    response = client.get("/strategy/backtest-mc?symbol=AAA&horizon=weekly&variant=expanded_ta_simple")
+
+    assert response.status_code == 200
+    by_scope = {(row["scope"], row["scope_key"]): row for row in response.json()["results"]}
+    per_category = by_scope[("per_category", "tendance")]
+    combination = by_scope[("combination", "tendance+volume")]
+    assert per_category["score_series"] == [None, 20.0, None, 50.0]
+    assert per_category["global_score_series"] == [None, 20.0, None, 50.0]
+    assert per_category["score_scope"] == "per_category"
+    assert per_category["score_scope_key"] == "tendance"
+    assert combination["score_series"] == [None, 60.0, None, 65.0]
+    assert combination["global_score_series"] == [None, 60.0, None, 65.0]
+    assert combination["score_scope"] == "combination"
+    assert combination["score_scope_key"] == "tendance+volume"
 
 
 def test_signal_backtest_results_accounting_trade_ledger_handles_short_positions():

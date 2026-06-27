@@ -36,6 +36,7 @@ def client_and_session():
     models.MarketDataStore.__table__.create(engine)
     models.StockMaster.__table__.create(engine)
     models.FundamentalImport.__table__.create(engine)
+    models.FundamentalSourceDocument.__table__.create(engine)
     models.FundamentalAnnualMetric.__table__.create(engine)
     models.FundamentalLatestSnapshot.__table__.create(engine)
 

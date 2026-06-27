@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import json
+from core.quant_core.plotly_compat import disable_broken_narwhals_optional_plugins
 from ..data import MarketData, drop_incomplete_ohlcv_rows
 from ..engine import BacktestBundle, build_strategy
 from ..indicators import FeaturesData, IndicatorEngine
@@ -16,6 +17,8 @@ from ..results import ResultsAnalyzer
 from ..strategy import SignalFrame, default_plot_indicators
 from .decision_page import build_decision_page
 from .levels import compute_levels_support_resistance
+
+disable_broken_narwhals_optional_plugins()
 from .risk import compute_rr_and_invalidation
 from .scoring import (
     compute_confidence_score,

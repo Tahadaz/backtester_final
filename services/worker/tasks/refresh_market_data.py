@@ -53,6 +53,7 @@ from services.api.app.services.weekly_recompute_policy import (
 
 
 DASHBOARD_SNAPSHOT_JOB_TIMEOUT_SECONDS = 3600
+BEST_SIGNAL_EVIDENCE_SNAPSHOT_JOB_TIMEOUT_SECONDS = 7200
 
 
 def _finite_float(value) -> float | None:
@@ -69,6 +70,50 @@ def _positive_int(value) -> int | None:
         return None
     rounded = int(round(number))
     return rounded if rounded > 0 else None
+
+
+def _parse_bourse_french_number(value: str) -> float | None:
+    normalized = (
+        str(value or "")
+        .replace("\u00a0", "")
+        .replace(" ", "")
+        .replace(",", ".")
+        .strip()
+    )
+    return _finite_float(normalized)
+
+
+def _parse_bourse_session_date(html: str) -> datetime.date | None:
+    import re
+
+    date_m = re.search(
+        r"(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)"
+        r"\s+(\d{1,2})\s+"
+        r"(janvier|f[e\u00e9]vrier|mars|avril|mai|juin|juillet|ao[u\u00fb]t"
+        r"|septembre|octobre|novembre|d[e\u00e9]cembre)\s+(\d{4})",
+        html,
+        re.IGNORECASE,
+    )
+    if not date_m:
+        return None
+    month = BDCSessionAdapter._MONTH_MAP.get(date_m.group(2).lower())
+    if month is None:
+        return None
+    return datetime.date(int(date_m.group(3)), month, int(date_m.group(1)))
+
+
+def _parse_bourse_share_count(html: str) -> int | None:
+    import re
+
+    match = re.search(
+        r"<th[^>]*>\s*Nombre de titres[^<]*</th>\s*<td[^>]*>.*?"
+        r"<span\s+dir=[\"']ltr[\"']>([^<]+)</span>",
+        html,
+        re.DOTALL | re.IGNORECASE,
+    )
+    if not match:
+        return None
+    return _positive_int(_parse_bourse_french_number(match.group(1)))
 
 
 def _update_stock_share_count_from_frame(
@@ -207,6 +252,15 @@ def _market_refresh_queue():
     return Queue(settings.MARKET_REFRESH_QUEUE_NAME, connection=redis)
 
 
+def _signal_backtest_queue():
+    from rq import Queue
+
+    from services.worker.redis_utils import connect_redis_with_fallback
+
+    redis = connect_redis_with_fallback(settings.REDIS_URL, decode_responses=False)
+    return Queue(settings.SIGNAL_BACKTEST_QUEUE_NAME, connection=redis)
+
+
 def _dashboard_snapshot_dependency(job_ids: list[str]):
     from rq.job import Dependency
 
@@ -240,6 +294,39 @@ def _enqueue_dashboard_snapshot_after_signal_jobs(
         import logging
         logging.getLogger(__name__).warning(
             "Could not enqueue dashboard snapshot after market refresh signal jobs.",
+            exc_info=True,
+        )
+        return None
+
+
+def _enqueue_best_evidence_snapshot_after_signal_jobs(
+    signal_job_ids: list[str],
+    *,
+    symbols: list[str],
+    triggered_by: str,
+) -> str | None:
+    unique_job_ids = list(dict.fromkeys(str(job_id) for job_id in signal_job_ids if str(job_id).strip()))
+    try:
+        dependency = _dashboard_snapshot_dependency(unique_job_ids) if unique_job_ids else None
+        job = _signal_backtest_queue().enqueue(
+            "services.worker.tasks.signal_best_evidence_snapshot.refresh_signal_best_evidence_snapshot",
+            symbols[0] if len(symbols) == 1 else None,
+            None,
+            0,
+            job_timeout=BEST_SIGNAL_EVIDENCE_SNAPSHOT_JOB_TIMEOUT_SECONDS,
+            depends_on=dependency,
+            meta={
+                "triggered_by": triggered_by,
+                "updated_symbols_count": len(symbols),
+                "updated_symbols_sample": symbols[:20],
+                "signal_dependency_count": len(unique_job_ids),
+            },
+        )
+        return str(job.id)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).warning(
+            "Could not enqueue best signal evidence snapshot after market refresh signal jobs.",
             exc_info=True,
         )
         return None
@@ -468,6 +555,8 @@ def _update_stock_metadata_from_bourse(db: Session, symbol: str, provider_symbol
         isin = isin_match.group(1) if isin_match else None
         sector = _html.unescape(sector_match.group(1)).strip() if sector_match else None
         display_name = _html.unescape(name_match.group(1)).strip() if name_match else None
+        share_count = _parse_bourse_share_count(html)
+        share_as_of = _parse_bourse_session_date(html)
 
         db.execute(
             text(
@@ -478,6 +567,22 @@ def _update_stock_metadata_from_bourse(db: Session, symbol: str, provider_symbol
                   sector = COALESCE(NULLIF(sector, ''), :sector),
                   display_name = COALESCE(NULLIF(display_name, ''), :display_name),
                   bourse_url = COALESCE(NULLIF(bourse_url, ''), :bourse_url),
+                  shares_outstanding = CASE
+                    WHEN :shares_outstanding IS NOT NULL THEN :shares_outstanding
+                    ELSE shares_outstanding
+                  END,
+                  shares_source = CASE
+                    WHEN :shares_outstanding IS NOT NULL THEN :shares_source
+                    ELSE shares_source
+                  END,
+                  shares_as_of = CASE
+                    WHEN :shares_outstanding IS NOT NULL THEN :shares_as_of
+                    ELSE shares_as_of
+                  END,
+                  shares_updated_at = CASE
+                    WHEN :shares_outstanding IS NOT NULL THEN now()
+                    ELSE shares_updated_at
+                  END,
                   updated_at = now()
                 WHERE symbol = :symbol
                 """
@@ -488,6 +593,9 @@ def _update_stock_metadata_from_bourse(db: Session, symbol: str, provider_symbol
                 "sector": sector,
                 "display_name": display_name if display_name and display_name.upper() != provider_symbol else None,
                 "bourse_url": url,
+                "shares_outstanding": share_count,
+                "shares_source": "bourse_direct",
+                "shares_as_of": share_as_of,
             },
         )
         db.commit()
@@ -524,6 +632,10 @@ def _do_refresh_symbol(
         if isinstance(existing_data_as_of, datetime.datetime):
             existing_data_as_of = existing_data_as_of.date()
 
+    provider_symbol = _resolve_provider_symbol(db, symbol, source)
+    if is_bourse_source(source):
+        _update_stock_metadata_from_bourse(db, symbol, provider_symbol)
+
     if (
         is_bourse_source(source)
         and is_before_bourse_refresh_cutoff()
@@ -539,10 +651,6 @@ def _do_refresh_symbol(
             "inserted_count": 0,
             "overwritten_overlap_count": 0,
         }
-
-    provider_symbol = _resolve_provider_symbol(db, symbol, source)
-    if is_bourse_source(source):
-        _update_stock_metadata_from_bourse(db, symbol, provider_symbol)
 
     # Pick adapter
     use_session_adapter = False
@@ -658,10 +766,16 @@ def refresh_single_symbol(
 
         result = _do_refresh_symbol(db, run_id, symbol, timeframe, source)
         dashboard_snapshot_job_id: str | None = None
+        best_evidence_snapshot_job_id: str | None = None
         if result["status"] in {"created", "updated"}:
             # Enqueue lightweight signal refresh so DB-cached results stay aligned with latest close.
             signal_job_ids = _enqueue_signal_layers_after_refresh(symbol, db=db, now=refresh_now)
             dashboard_snapshot_job_id = _enqueue_dashboard_snapshot_after_signal_jobs(
+                signal_job_ids,
+                symbols=[symbol],
+                triggered_by="market_refresh_single",
+            )
+            best_evidence_snapshot_job_id = _enqueue_best_evidence_snapshot_after_signal_jobs(
                 signal_job_ids,
                 symbols=[symbol],
                 triggered_by="market_refresh_single",
@@ -676,6 +790,8 @@ def refresh_single_symbol(
         payload = {"refresh_run_id": refresh_run_id, "symbol": symbol, **result}
         if dashboard_snapshot_job_id:
             payload["dashboard_snapshot_job_id"] = dashboard_snapshot_job_id
+        if best_evidence_snapshot_job_id:
+            payload["best_evidence_snapshot_job_id"] = best_evidence_snapshot_job_id
         return payload
 
     except Exception as exc:
@@ -775,11 +891,17 @@ def refresh_all_tracked_symbols(
             final_status = "partial"
 
         dashboard_snapshot_job_id: str | None = None
+        best_evidence_snapshot_job_id: str | None = None
         signal_job_ids: list[str] = []
         if updated_symbols > 0:
             for symbol in refreshed_symbols:
                 signal_job_ids.extend(_enqueue_signal_layers_after_refresh(symbol, db=db, now=refresh_now))
             dashboard_snapshot_job_id = _enqueue_dashboard_snapshot_after_signal_jobs(
+                signal_job_ids,
+                symbols=refreshed_symbols,
+                triggered_by="market_refresh_all",
+            )
+            best_evidence_snapshot_job_id = _enqueue_best_evidence_snapshot_after_signal_jobs(
                 signal_job_ids,
                 symbols=refreshed_symbols,
                 triggered_by="market_refresh_all",
@@ -800,6 +922,8 @@ def refresh_all_tracked_symbols(
         }
         if dashboard_snapshot_job_id:
             payload["dashboard_snapshot_job_id"] = dashboard_snapshot_job_id
+        if best_evidence_snapshot_job_id:
+            payload["best_evidence_snapshot_job_id"] = best_evidence_snapshot_job_id
         return payload
 
     except Exception as exc:

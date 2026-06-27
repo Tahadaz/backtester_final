@@ -1,0 +1,12 @@
+quant_warehouse:
+  target: "{{ env_var('DBT_TARGET', 'dev') }}"
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('DBT_PG_HOST', 'localhost') }}"
+      port: "{{ env_var('DBT_PG_PORT', '5432') | as_number }}"
+      user: "{{ env_var('DBT_PG_USER', 'app') }}"
+      password: "{{ env_var('DBT_PG_PASSWORD', 'app') }}"
+      dbname: "{{ env_var('DBT_PG_DBNAME', 'quant') }}"
+      schema: "{{ env_var('DBT_PG_SCHEMA', 'analytics') }}"
+      threads: 4

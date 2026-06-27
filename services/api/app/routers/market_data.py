@@ -25,7 +25,7 @@ from ..market_refresh_window import (
     is_before_bourse_refresh_cutoff,
     is_bourse_source,
 )
-from ..market_holidays import get_holiday_info
+from ..market_holidays import get_holiday_info, load_holiday_lookup
 from ..masi_tickers import is_masi_ticker, get_masi_info, all_masi_tickers
 from ..asset_taxonomy import detect_asset_type as _detect_asset_type
 from ..queue import get_queue, get_market_refresh_queue
@@ -139,6 +139,7 @@ def _is_data_page_excluded_stock(*, symbol: str | None = None, display_name: str
 
 # Data-loading helpers — delegated to market_data_loader (shared public module)
 from ..market_data_loader import (
+    format_ohlcv_timestamp,
     load_modify_save_ohlcv,
     load_ohlcv_for_symbol,
     load_close_series_from_store as _load_close_series_from_store,
@@ -611,7 +612,7 @@ def _frame_to_ohlcv_bars(frame: pd.DataFrame) -> list[OhlcvBarOut]:
     for ts, row in frame.iterrows():
         bars.append(
             OhlcvBarOut(
-                date=ts.strftime("%Y-%m-%d"),
+                date=format_ohlcv_timestamp(ts),
                 open=_safe_optional_float(row.get("Open"), zero_as_none=True),
                 high=_safe_optional_float(row.get("High"), zero_as_none=True),
                 low=_safe_optional_float(row.get("Low"), zero_as_none=True),
@@ -629,15 +630,21 @@ def _calendar_day_state(
     first_date: datetime.date,
     last_date: datetime.date,
     present_dates: set[datetime.date],
+    holiday_lookup: dict[datetime.date, dict[str, Any]] | None = None,
 ) -> tuple[str, dict[str, Any] | None]:
+    def holiday_for(day: datetime.date) -> dict[str, Any] | None:
+        if holiday_lookup is not None:
+            return holiday_lookup.get(day)
+        return get_holiday_info(day, symbol=symbol)
+
     if day in present_dates:
-        return "present_data", get_holiday_info(day, symbol=symbol)
+        return "present_data", holiday_for(day)
     if day < first_date or day > last_date:
         return "outside_series_range", None
     if day.weekday() >= 5:
         return "weekend", None
 
-    holiday = get_holiday_info(day, symbol=symbol)
+    holiday = holiday_for(day)
     if holiday:
         certainty = str(holiday.get("certainty") or "tentative")
         if certainty == "confirmed":
@@ -705,6 +712,8 @@ def add_tracked_stock(
     symbol = str(body.symbol or "").strip().upper()
     if not symbol:
         raise HTTPException(status_code=400, detail="symbol is required")
+    if _is_data_page_excluded_stock(symbol=symbol, display_name=body.display_name):
+        raise HTTPException(status_code=400, detail=f"'{symbol}' is not a valid stock symbol")
 
     existing = db.query(models.StockMaster).filter(models.StockMaster.symbol == symbol).one_or_none()
     if existing:
@@ -1142,6 +1151,7 @@ def get_stock_availability_calendar(
     first_date = frame.index.min().date()
     last_date = frame.index.max().date()
     present_dates = {ts.date() for ts in frame.index}
+    holiday_lookup = load_holiday_lookup(symbol)
     no_trading_dates = {
         ts.date()
         for ts, row_data in frame.iterrows()
@@ -1184,6 +1194,7 @@ def get_stock_availability_calendar(
             first_date=first_date,
             last_date=last_date,
             present_dates=present_dates,
+            holiday_lookup=holiday_lookup,
         )
         if state == "present_data" and cursor in no_trading_dates:
             state = "no_trading_day"

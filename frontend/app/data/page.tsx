@@ -10,6 +10,7 @@ import {
   useTrackedStocks,
   useMasiTickers,
   useMacroCatalog,
+  useIndicesCatalog,
 } from "@/hooks/use-api"
 import {
   ApiError,
@@ -28,11 +29,13 @@ import type {
   BloombergJob,
   BloombergJobCreateInput,
   BloombergSeries,
+  IndicesCatalogRow,
   MarketCatalogRow,
   MasiTicker,
 } from "@/lib/api"
 import { PublicDataPage } from "@/components/data/public-data-page"
 import { StockDetailPanel } from "@/components/data/stock-detail-panel"
+import { IndexDetailPanel } from "@/components/data/index-detail-panel"
 import { ExcelUploadDialog } from "@/components/data/excel-upload-dialog"
 import { RefreshStatusBar } from "@/components/data/refresh-status-bar"
 import { FreshnessBadge } from "@/components/data/freshness-badge"
@@ -76,6 +79,7 @@ import {
 import { cn } from "@/lib/utils"
 import {
   CheckCircle2,
+  BarChart3,
   Coins,
   Database,
   Download,
@@ -97,11 +101,12 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 
-type CategoryTab = "equity" | "commodity" | "forex" | "bond" | "crypto" | "bloomberg" | "fundamentals"
+type CategoryTab = "equity" | "index" | "commodity" | "forex" | "bond" | "crypto" | "bloomberg" | "fundamentals"
 type SubcategoryTab = "all" | "masi" | "us" | "european" | "asian"
 
 const CATEGORY_TABS: { key: CategoryTab; label: string; icon: LucideIcon }[] = [
   { key: "equity", label: "Actions", icon: TrendingUp },
+  { key: "index", label: "Indices", icon: BarChart3 },
   { key: "commodity", label: "Matieres premieres", icon: Package },
   { key: "forex", label: "Devises", icon: Globe },
   { key: "bond", label: "Obligations", icon: Landmark },
@@ -185,6 +190,8 @@ function getCategoryLabel(tab: CategoryTab | string | null | undefined) {
   switch (tab) {
     case "equity":
       return "Actions"
+    case "index":
+      return "Indices"
     case "commodity":
       return "Matieres premieres"
     case "forex":
@@ -221,6 +228,7 @@ function getSubcategoryLabel(tab: SubcategoryTab | string | null | undefined) {
 
 function getSourceLabel(row: MarketCatalogRow) {
   if (row.source_provider === "bmce_excel") return "Excel"
+  if (row.asset_class === "index" && row.source_provider === "casablanca_bourse_excel") return "Excel"
   if (row.source_provider === "yahoo" || row.track_source === "yahoo") return "Yahoo"
   if (row.source_provider === "bourse_direct" || row.track_source === "bourse_direct") return "Bourse"
   if (row.source_provider) return row.source_provider
@@ -245,6 +253,12 @@ function rowMatchesQuery(row: MarketCatalogRow, query: string) {
 
 function PrivateDataPage() {
   const { data: catalog, error: catalogError, isLoading, mutate: mutateCatalog } = useMarketCatalog()
+  const {
+    data: indicesCatalog,
+    error: indicesCatalogError,
+    isLoading: indicesLoading,
+    mutate: mutateIndicesCatalog,
+  } = useIndicesCatalog()
   const { mutate: mutateTracked } = useTrackedStocks()
   const { data: masiTickers } = useMasiTickers()
   const { data: macroCatalog, mutate: mutateMacroCatalog } = useMacroCatalog()
@@ -272,6 +286,7 @@ function PrivateDataPage() {
   const [categoryTab, setCategoryTab] = useState<CategoryTab>("equity")
   const [subcategoryTab, setSubcategoryTab] = useState<SubcategoryTab>("all")
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null)
+  const [selectedIndexSymbol, setSelectedIndexSymbol] = useState<string | null>(null)
   const [editCategoryRow, setEditCategoryRow] = useState<MarketCatalogRow | null>(null)
   const [uploadOpen, setUploadOpen] = useState(false)
   const [addStockOpen, setAddStockOpen] = useState(false)
@@ -297,6 +312,43 @@ function PrivateDataPage() {
       ),
     [masiTickers],
   )
+  const visibleIndexCatalog = useMemo(
+    () =>
+      (indicesCatalog ?? []).filter(
+        (row) => !isHiddenOnDataPage(row.symbol, row.display_name),
+      ),
+    [indicesCatalog],
+  )
+  const indexRows = useMemo<MarketCatalogRow[]>(
+    () =>
+      visibleIndexCatalog.map((row) => ({
+        symbol: row.symbol,
+        display_name: row.display_name,
+        isin: null,
+        sector: row.family ?? "Indice",
+        is_active: row.is_active ?? true,
+        track_source: "index",
+        bourse_url: null,
+        shares_outstanding: null,
+        shares_as_of: null,
+        shares_source: null,
+        shares_updated_at: null,
+        notes: row.family ?? null,
+        start_ts: row.start_ts,
+        end_ts: row.end_ts,
+        row_count: row.row_count,
+        source_provider: row.source_provider,
+        data_as_of: row.data_as_of,
+        is_stale: row.is_stale,
+        is_tracked: row.is_tracked,
+        has_canonical_data: row.has_canonical_data,
+        market: "masi",
+        asset_type: "index",
+        market_region: "masi",
+        asset_class: "index",
+      })),
+    [visibleIndexCatalog],
+  )
 
   const trackedSet = new Set(visibleCatalog.filter((r) => r.is_tracked).map((r) => r.symbol))
   const macroFactorSet = useMemo(
@@ -305,6 +357,8 @@ function PrivateDataPage() {
   )
   const selectedRow: MarketCatalogRow | null =
     visibleCatalog.find((r) => r.symbol === selectedSymbol) ?? null
+  const selectedIndexRow: IndicesCatalogRow | null =
+    visibleIndexCatalog.find((r) => r.symbol === selectedIndexSymbol) ?? null
 
   // Counts per category for tab badges
   const categoryCounts = useMemo(() => {
@@ -312,16 +366,18 @@ function PrivateDataPage() {
     for (const r of visibleCatalog) {
       counts[r.asset_type ?? "equity"] = (counts[r.asset_type ?? "equity"] ?? 0) + 1
     }
+    counts.index = visibleIndexCatalog.length
     counts.bloomberg = bloombergSeries?.length ?? 0
     return counts
-  }, [visibleCatalog, bloombergSeries])
+  }, [visibleCatalog, visibleIndexCatalog, bloombergSeries])
 
   const activeRows = useMemo(() => {
     if (categoryTab === "fundamentals") return []
+    if (categoryTab === "index") return indexRows
     const byType = visibleCatalog.filter((r) => (r.asset_type ?? "equity") === categoryTab)
     if (subcategoryTab === "all") return byType
     return byType.filter((r) => r.market_region === subcategoryTab)
-  }, [visibleCatalog, categoryTab, subcategoryTab])
+  }, [visibleCatalog, indexRows, categoryTab, subcategoryTab])
 
   const filteredRows = useMemo(
     () => activeRows.filter((row) => rowMatchesQuery(row, searchQuery)),
@@ -344,6 +400,7 @@ function PrivateDataPage() {
     mutateCatalog()
     mutateTracked()
     mutateMacroCatalog()
+    mutateIndicesCatalog()
   }
 
   function isYahooRow(row: MarketCatalogRow) {
@@ -489,6 +546,8 @@ function PrivateDataPage() {
     categoryTab === "equity" && subcategoryTab !== "all"
       ? `${getCategoryLabel(categoryTab)} / ${getSubcategoryLabel(subcategoryTab)}`
       : getCategoryLabel(categoryTab)
+  const activeCatalogError = categoryTab === "index" ? indicesCatalogError : catalogError
+  const activeIsLoading = categoryTab === "index" ? indicesLoading : isLoading
   const defaultDownloadSymbols = useMemo(
     () => filteredRows.map((row) => row.symbol),
     [filteredRows],
@@ -515,7 +574,7 @@ function PrivateDataPage() {
               Ajouter un titre
             </Button>
           )}
-          {categoryTab !== "bloomberg" && categoryTab !== "fundamentals" && (
+          {categoryTab !== "bloomberg" && categoryTab !== "fundamentals" && categoryTab !== "index" && (
             <>
               <Button
                 variant="outline"
@@ -609,9 +668,6 @@ function PrivateDataPage() {
         </div>
       )}
 
-      {/* Indices data page content — kept for reference, tab no longer shown */}
-      {/* IndicesTabContent removed: indices now surface in Actions/MASI subtab */}
-
       {categoryTab === "fundamentals" ? (
         <FundamentalsCatalog />
       ) : categoryTab === "bloomberg" ? (
@@ -703,7 +759,7 @@ function PrivateDataPage() {
                   {subcategoryTab.toUpperCase()}
                 </Badge>
               )}
-              {!isLoading && (
+              {!activeIsLoading && (
                 <span className="font-normal text-muted-foreground">
                   ({filteredCountWithData} avec donnees
                   {filteredRows.length > filteredCountWithData ? `, ${filteredRows.length - filteredCountWithData} sans` : ""}
@@ -713,19 +769,19 @@ function PrivateDataPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="!p-0">
-            {isLoading ? (
+            {activeIsLoading ? (
               <div className="space-y-2 p-5">
                 {[...Array(6)].map((_, i) => (
                   <Skeleton key={i} className="h-10 w-full" />
                 ))}
               </div>
-            ) : catalogError ? (
+            ) : activeCatalogError ? (
               <div className="flex min-h-32 flex-col items-center justify-center gap-2 px-5 py-8 text-center">
                 <p className="text-sm font-medium text-destructive">
                   Impossible de charger les donnees du catalogue.
                 </p>
                 <p className="max-w-xl text-sm text-muted-foreground">
-                  {catalogError instanceof Error ? catalogError.message : "Erreur proxy/API inconnue."}
+                  {activeCatalogError instanceof Error ? activeCatalogError.message : "Erreur proxy/API inconnue."}
                 </p>
               </div>
             ) : filteredRows.length === 0 ? (
@@ -772,11 +828,17 @@ function PrivateDataPage() {
                         ? "Excel"
                         : "Bourse"
                       return (
-                        <TableRow
-                          key={row.symbol}
-                          className="cursor-pointer hover:bg-slate-50"
-                          onClick={() => setSelectedSymbol(row.symbol)}
-                        >
+                          <TableRow
+                            key={row.symbol}
+                            className="cursor-pointer hover:bg-slate-50"
+                            onClick={() => {
+                              if (categoryTab === "index") {
+                                setSelectedIndexSymbol(row.symbol)
+                              } else {
+                                setSelectedSymbol(row.symbol)
+                              }
+                            }}
+                          >
                           <TableCell className="font-mono font-semibold">{row.symbol}</TableCell>
 
                           <TableCell className="hidden font-mono text-[11px] text-fg3 lg:table-cell">
@@ -840,7 +902,11 @@ function PrivateDataPage() {
                                     className="h-7 w-7 p-0 text-fg2 hover:bg-bg3 hover:text-fg1"
                                     onClick={(event) => {
                                       event.stopPropagation()
-                                      setSelectedSymbol(row.symbol)
+                                      if (categoryTab === "index") {
+                                        setSelectedIndexSymbol(row.symbol)
+                                      } else {
+                                        setSelectedSymbol(row.symbol)
+                                      }
                                     }}
                                   >
                                     <Eye className="h-3.5 w-3.5" />
@@ -849,64 +915,68 @@ function PrivateDataPage() {
                                 <TooltipContent>Graphique &amp; calendrier</TooltipContent>
                               </Tooltip>
 
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-7 w-7 p-0 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-                                    onClick={(event) => {
-                                      event.stopPropagation()
-                                      setEditCategoryRow(row)
-                                    }}
-                                  >
-                                    <Pencil className="h-3.5 w-3.5" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Modifier la catégorie</TooltipContent>
-                              </Tooltip>
+                              {categoryTab !== "index" && (
+                                <>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 w-7 p-0 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                                        onClick={(event) => {
+                                          event.stopPropagation()
+                                          setEditCategoryRow(row)
+                                        }}
+                                      >
+                                        <Pencil className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Modifier la catégorie</TooltipContent>
+                                  </Tooltip>
 
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-7 w-7 p-0 text-green-600 hover:bg-green-50 hover:text-green-700"
-                                    onClick={(event) => {
-                                      event.stopPropagation()
-                                      setUploadOpen(true)
-                                    }}
-                                  >
-                                    <FileSpreadsheet className="h-3.5 w-3.5" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Importer Excel</TooltipContent>
-                              </Tooltip>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 w-7 p-0 text-green-600 hover:bg-green-50 hover:text-green-700"
+                                        onClick={(event) => {
+                                          event.stopPropagation()
+                                          setUploadOpen(true)
+                                        }}
+                                      >
+                                        <FileSpreadsheet className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Importer Excel</TooltipContent>
+                                  </Tooltip>
 
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-7 gap-1 px-2 text-[11px] text-blue-600 border-blue-200 hover:bg-blue-50 hover:text-blue-700"
-                                    disabled={isRefreshing || isWaitingForYahooCatalog}
-                                    onClick={(event) => {
-                                      event.stopPropagation()
-                                      handleRowRefresh(row)
-                                    }}
-                                  >
-                                    <RefreshCw
-                                      className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`}
-                                    />
-                                    <span>{rowRefreshLabel}</span>
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  {isWaitingForYahooCatalog
-                                    ? "Chargement du catalogue Yahoo"
-                                    : `Mettre à jour via ${isYahooRow(row) ? "Yahoo" : "Bourse"}`}
-                                </TooltipContent>
-                              </Tooltip>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-7 gap-1 px-2 text-[11px] text-blue-600 border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                                        disabled={isRefreshing || isWaitingForYahooCatalog}
+                                        onClick={(event) => {
+                                          event.stopPropagation()
+                                          handleRowRefresh(row)
+                                        }}
+                                      >
+                                        <RefreshCw
+                                          className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`}
+                                        />
+                                        <span>{rowRefreshLabel}</span>
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      {isWaitingForYahooCatalog
+                                        ? "Chargement du catalogue Yahoo"
+                                        : `Mettre à jour via ${isYahooRow(row) ? "Yahoo" : "Bourse"}`}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>
@@ -927,6 +997,12 @@ function PrivateDataPage() {
             open={selectedSymbol !== null}
             onClose={() => setSelectedSymbol(null)}
             onSaved={mutateAll}
+          />
+
+          <IndexDetailPanel
+            row={selectedIndexRow}
+            open={selectedIndexSymbol !== null}
+            onClose={() => setSelectedIndexSymbol(null)}
           />
 
           <ExcelUploadDialog

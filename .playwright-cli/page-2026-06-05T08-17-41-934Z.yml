@@ -1,0 +1,153 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - link "RDT Alpha" [ref=e4] [cursor=pointer]:
+        - /url: /dashboard
+        - generic [ref=e5]: RDT
+        - generic [ref=e6]:
+          - generic [ref=e7]: RDT Alpha
+          - generic [ref=e8]: Road to Alpha
+      - navigation [ref=e9]:
+        - link "Tableau de Bord" [ref=e10] [cursor=pointer]:
+          - /url: /dashboard
+          - img
+          - text: Tableau de Bord
+        - link "Data" [ref=e11] [cursor=pointer]:
+          - /url: /data
+          - img
+          - text: Data
+        - link "Signals" [ref=e12] [cursor=pointer]:
+          - /url: /signals
+          - img
+          - text: Signals
+        - link "Strategy" [ref=e13] [cursor=pointer]:
+          - /url: /strategy
+          - img
+          - text: Strategy
+        - link "Backtest" [ref=e14] [cursor=pointer]:
+          - /url: /backtest
+          - img
+          - text: Backtest
+        - link "Analytics" [ref=e15] [cursor=pointer]:
+          - /url: /analytics
+          - img
+          - text: Analytics
+        - link "Glossaire" [ref=e16] [cursor=pointer]:
+          - /url: /glossary
+          - img
+          - text: Glossaire
+      - generic [ref=e17]:
+        - generic [ref=e18]: MASI · live
+        - button "Refresh" [ref=e20]:
+          - img
+        - link "Se connecter" [ref=e21] [cursor=pointer]:
+          - /url: /login
+          - img
+          - generic [ref=e22]: Se connecter
+  - main [ref=e23]:
+    - generic [ref=e24]:
+      - generic [ref=e25]:
+        - generic [ref=e26]:
+          - heading "Tableau de Bord v1" [level=1] [ref=e27]
+          - paragraph [ref=e28]: Signaux techniques · Univers multi-actifs
+        - generic [ref=e29]:
+          - generic [ref=e30]:
+            - button "Complet" [ref=e31]:
+              - img [ref=e32]
+              - text: Complet
+            - button "MASI Actions" [ref=e37]:
+              - img [ref=e38]
+              - text: MASI Actions
+          - button "Filtres" [ref=e40]:
+            - img
+            - text: Filtres
+          - button "Masquer top signaux" [pressed] [ref=e41]:
+            - img
+            - text: Masquer top signaux
+          - button "Exporter" [ref=e42]:
+            - img
+            - text: Exporter
+          - button "Recalculer" [ref=e43]:
+            - img
+            - text: Recalculer
+      - generic [ref=e44]:
+        - generic [ref=e45]:
+          - paragraph [ref=e46]: Univers actif
+          - generic [ref=e47]: "0"
+          - paragraph [ref=e48]: titres après filtres
+        - generic [ref=e49]:
+          - paragraph [ref=e50]: Opportunites long
+          - generic [ref=e51]: "0"
+          - paragraph [ref=e52]: edge eligible
+        - generic [ref=e53]:
+          - paragraph [ref=e54]: Opportunites short
+          - generic [ref=e55]: "0"
+          - paragraph [ref=e56]: edge eligible
+        - generic [ref=e57]:
+          - paragraph [ref=e58]: Action E[R] opt. median
+          - generic [ref=e59]: "--"
+          - paragraph [ref=e60]: en attente données Edge
+      - generic [ref=e61]:
+        - generic [ref=e62]:
+          - heading "Configurez l'analyse" [level=2] [ref=e63]
+          - paragraph [ref=e64]: 3 paramètres · valeurs par défaut MASI
+        - generic [ref=e65]:
+          - generic [ref=e66]:
+            - paragraph [ref=e67]:
+              - generic [ref=e68]: "1."
+              - text: Horizon de temps
+            - generic [ref=e70]:
+              - button "Hebdomadaire" [ref=e71]
+              - button "Mensuel" [ref=e72]
+              - button "Trimestriel" [ref=e73]
+            - paragraph [ref=e74]: 5 j · 21 j · 63 j
+          - generic [ref=e75]:
+            - paragraph [ref=e76]:
+              - generic [ref=e77]: "2."
+              - text: Univers d'analyse
+            - generic [ref=e79]:
+              - button "Stocks" [ref=e80]
+              - button "Sectors" [ref=e81]
+              - button "Indices" [ref=e82]
+              - button "Portfolio" [ref=e83]
+            - paragraph [ref=e84]: 0 titres MASI
+          - generic [ref=e85]:
+            - paragraph [ref=e86]:
+              - generic [ref=e87]: "3."
+              - text: Mode dashboard
+            - generic [ref=e89]:
+              - button "Trade opportunities" [ref=e90]
+              - button "Technical directions" [ref=e91]
+              - button "Fondamental" [ref=e92]
+            - paragraph [ref=e93]: Edge tradable, technique ou fondamental
+        - generic [ref=e94]:
+          - generic [ref=e95]:
+            - generic [ref=e96]: Secteur · Tous
+            - generic [ref=e98]:
+              - img [ref=e99]
+              - textbox "Rechercher ticker ou nom..." [ref=e102]
+            - generic [ref=e103]:
+              - generic [ref=e104]: Bourse Fermee
+              - button "Live" [disabled]:
+                - img
+                - text: Live
+              - link "Glossaire" [ref=e106] [cursor=pointer]:
+                - /url: /glossary#dashboard
+                - img
+                - text: Glossaire
+          - generic [ref=e107]:
+            - generic [ref=e108]:
+              - switch [ref=e109]
+              - checkbox
+              - generic [ref=e110]: Liquidité
+            - generic [ref=e111]:
+              - button "Coûts inclus" [ref=e112]
+              - button "Coûts exclus" [ref=e113]
+            - generic [ref=e114]:
+              - checkbox "Edge prouvé seulement" [ref=e115]
+              - checkbox
+              - text: Edge prouvé seulement
+      - paragraph [ref=e124]: Trade Opportunities sélectionne automatiquement le meilleur edge exploitable. Technical Directions affiche Best ou Classic par titre. Fondamental classe les titres par score, upside et couverture. Liquidité = ADV20 (valeur moyenne échangée 20 j).
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=e130] [cursor=pointer]:
+    - img [ref=e131]
