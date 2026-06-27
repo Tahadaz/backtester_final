@@ -111,6 +111,77 @@ def test_confident_downside_on_shared_bias_routes_to_review() -> None:
     assert "headline_review_confident_downside_low_information" in ensemble.warnings
 
 
+def test_lone_thin_comp_extreme_headline_routes_to_review() -> None:
+    # WAA defect: for an insurer the only positive-IC model is relative_multiples (fcff_dcf
+    # is ineligible), so IC-weighting collapses the headline onto that single comp at weight
+    # 1.0. When the comp is thin (few peers), prints an EXTREME upside (here +120% vs price
+    # 100), AND is far from every zero-weighted intrinsic model, the headline is one
+    # low-information data point -> route to review.
+    ensemble = compute_valuation_ensemble(
+        "INS",
+        "base",
+        [
+            _row("relative_multiples", 220.0, family="relative", warnings=["relative_peers_count_below_5"]),
+            _row("ddm", 95.0),
+            _row("residual_income", 102.0),
+        ],
+    )
+    assert ensemble.model_weights["relative_multiples"] == pytest.approx(1.0)
+    assert ensemble.fair_value_base is None
+    assert "headline_review_lone_thin_comp" in ensemble.warnings
+
+
+def test_lone_well_populated_comp_extreme_headline_is_not_reviewed() -> None:
+    # A lone comp that is NOT thin (full peer set) is trusted enough to drive even an
+    # extreme headline; only the thin-comp case is the defect, so names like SID
+    # (well-populated comp) are spared. Identical to the case above but for the thin flag.
+    ensemble = compute_valuation_ensemble(
+        "IND",
+        "base",
+        [
+            _row("relative_multiples", 220.0, family="relative"),
+            _row("ddm", 95.0),
+            _row("residual_income", 102.0),
+        ],
+    )
+    assert ensemble.fair_value_base is not None
+    assert "headline_review_lone_thin_comp" not in ensemble.warnings
+
+
+def test_contained_lone_thin_comp_headline_still_ships() -> None:
+    # A thin lone comp whose upside is contained (here +40%, below the lone-comp ceiling)
+    # is not extreme enough to block on a single data point — it must still publish, even if
+    # it diverges from the intrinsic models (cf. OVR +67% / AAA +52% repro fixtures).
+    ensemble = compute_valuation_ensemble(
+        "OVR",
+        "base",
+        [
+            _row("relative_multiples", 140.0, family="relative", warnings=["relative_peers_count_below_5"]),
+            _row("ddm", 60.0),
+            _row("residual_income", 80.0),
+        ],
+    )
+    assert ensemble.fair_value_base is not None
+    assert "headline_review_lone_thin_comp" not in ensemble.warnings
+
+
+def test_extreme_lone_thin_comp_corroborated_by_intrinsic_still_ships() -> None:
+    # An extreme thin-comp headline that AGREES with a zero-weighted intrinsic model is
+    # corroborated, not a lone bet — it must still publish (nearest-model gap below the
+    # band, no review) even above the lone-comp upside ceiling.
+    ensemble = compute_valuation_ensemble(
+        "COR",
+        "base",
+        [
+            _row("relative_multiples", 210.0, family="relative", warnings=["relative_peers_count_below_5"]),
+            _row("ddm", 200.0),
+            _row("residual_income", 205.0),
+        ],
+    )
+    assert ensemble.fair_value_base is not None
+    assert "headline_review_lone_thin_comp" not in ensemble.warnings
+
+
 def test_clean_inputs_leave_ic_weights_unchanged() -> None:
     # Regression guard: with no low-information flags, reliability == 1 and the headline
     # weights reduce to the pure IC weights (no behavior change for clean names).

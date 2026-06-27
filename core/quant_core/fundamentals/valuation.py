@@ -99,6 +99,9 @@ DEFAULT_ASSUMPTIONS: dict[str, float] = {
     "headline_review_min_class_agreement": 0.40,
     "headline_review_confident_downside_band": -0.60,
     "headline_review_shared_flag_majority": 0.50,
+    "headline_review_lone_driver_share": 0.90,
+    "headline_review_lone_comp_divergence": 0.25,
+    "headline_review_lone_thin_comp_upside_ceiling": 1.00,
     "ensemble_reliability_floor": 0.10,
     "ensemble_reliability_structural_flag_penalty": 0.75,
     "minority_materiality_epsilon": 0.05,
@@ -482,6 +485,30 @@ _ASSUMPTION_META_OVERRIDES: dict[str, dict[str, Any]] = {
         "derivation": "Si une majorite des modeles utilisables portent le meme drapeau a faible information (midcycle_*, *_fallback, earnings_growth_proxy, relative_peers_*, terminal_value_above_75pct*), l'accord numerique est traite comme un biais partage et non comme une confirmation: routage en revue.",
         "source": "Brief 44 ensemble review policy",
         "plausible_range": [0.0, 1.0],
+    },
+    "headline_review_lone_driver_share": {
+        "label": "Part dominante driver unique headline",
+        "unit": "ratio",
+        "group": "ensemble",
+        "derivation": "Part de poids au-dela de laquelle le headline est considere porte par un seul modele. Combine avec un comparable peu peuple (relative_peers_count_below_5) et une divergence materielle vis-a-vis des modeles co-utilisables ignores, ce cas (ex. assureur dont le seul modele a IC positif est le comparable) passe en revue au lieu d'etre publie.",
+        "source": "Brief 44 lone thin-comp review (WAA)",
+        "plausible_range": [0.50, 1.00],
+    },
+    "headline_review_lone_comp_divergence": {
+        "label": "Divergence comparable unique vs corroborateurs",
+        "unit": "percent",
+        "group": "ensemble",
+        "derivation": "Ecart relatif au modele independant le PLUS PROCHE en-deca duquel le comparable unique dominant est considere corrobore (et publie). Un comparable proche d'au moins un autre modele utilisable est corrobore; un comparable eloigne de tous est un pari isole et passe en revue.",
+        "source": "Brief 44 lone thin-comp review (WAA)",
+        "plausible_range": [0.05, 1.00],
+    },
+    "headline_review_lone_thin_comp_upside_ceiling": {
+        "label": "Plafond upside comparable unique peu peuple",
+        "unit": "percent",
+        "group": "ensemble",
+        "derivation": "Un comparable unique peu peuple (relative_peers_count_below_5) ne peut justifier seul un upside extreme. Au-dela de ce plafond, et sans corroboration par un modele proche, le headline passe en revue plutot que d'etre publie (cas WAA +148% vs modeles intrinseques negatifs). Plus strict que le plafond general (+150%) qui suppose une corroboration.",
+        "source": "Brief 44 lone thin-comp review (WAA)",
+        "plausible_range": [0.50, 1.50],
     },
     "ensemble_reliability_floor": {
         "label": "Plancher de fiabilite modele",
@@ -3698,6 +3725,47 @@ def compute_valuation_ensemble(
         if upside_pct < confident_downside_band and shared_bias_flag is not None:
             review_required = True
             warnings.append("headline_review_confident_downside_low_information")
+    # Lone thin-comp headline (brief 44 — WAA defect): IC-weighting can collapse the
+    # headline onto a single comp model (e.g. an insurer whose only positive-IC model is
+    # relative_multiples) at effective weight ~1.0, where the reliability discount cancels
+    # out because it is the sole survivor. A single thin comp must not justify an EXTREME
+    # upside call on its own: when it drives the headline, prints an upside above the
+    # lone-comp ceiling, AND is not corroborated by any nearby independent model, the
+    # number is one low-information data point — route it to review. A well-populated comp
+    # (no thin flag), a contained upside (e.g. OVR +67%, AAA +52%), or a nearby corroborator
+    # all let the headline ship. User-pinned weights are an explicit desk choice and are
+    # left untouched.
+    if not positive_manual and len(usable_rows) >= 2 and upside_pct is not None:
+        lone_share = float(DEFAULT_ASSUMPTIONS["headline_review_lone_driver_share"])
+        lone_ceiling = float(DEFAULT_ASSUMPTIONS["headline_review_lone_thin_comp_upside_ceiling"])
+        lone_divergence = float(DEFAULT_ASSUMPTIONS["headline_review_lone_comp_divergence"])
+        dominant = max(usable_rows, key=lambda r: model_weights.get(r.model, 0.0))
+        dominant_value = float(dominant.fair_value) if dominant.fair_value is not None else None
+        if (
+            dominant_value is not None
+            and upside_pct > lone_ceiling
+            and model_weights.get(dominant.model, 0.0) >= lone_share
+            and dominant.model in ENSEMBLE_MARKET_METHOD_MODELS
+            and any("relative_peers_count_below_5" in str(flag) for flag in dominant.warnings)
+        ):
+            # Corroboration is measured against the NEAREST independent model: a thin comp
+            # that sits next to any one of the zero-weighted models is corroborated and may
+            # ship even at extreme upside, while a comp far from every other model is a lone
+            # bet on a single low-information data point and routes to review.
+            corroborators = [
+                float(row.fair_value)
+                for row in usable_rows
+                if row is not dominant
+                and row.fair_value is not None
+                and isfinite(float(row.fair_value))
+                and float(row.fair_value) > 0
+            ]
+            corroborated = bool(corroborators) and min(
+                abs(dominant_value - c) / c for c in corroborators
+            ) <= lone_divergence
+            if not corroborated:
+                review_required = True
+                warnings.append("headline_review_lone_thin_comp")
     if integrity_failed:
         warnings.append("integrity_fail_diagnostic")
     return EnsembleResult(
