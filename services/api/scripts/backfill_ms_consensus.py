@@ -68,7 +68,7 @@ def _build_cache(cache_dir: Path, tmp_dir: Path) -> Path:
         dest = merged / f"ms_{ms_id}.html"
         if not dest.exists() and src.exists():
             shutil.copy2(src, dest)
-            print(f"  Linked fixture: {src.name} → ms_{ms_id}.html")
+            print(f"  Linked fixture: {src.name} -> ms_{ms_id}.html")
 
     return merged
 
