@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import datetime as dt
+from types import SimpleNamespace
+
 import pytest
 
 from core.quant_core.fundamentals.integrity import build_data_tieout_report
+from services.api.app.services.fundamentals import _latest_symbol_rank
 
 
 def _base_rows() -> dict[str, float]:
@@ -154,20 +158,22 @@ def test_t2_minority_aware_fallback_does_not_fail_on_legitimate_minority_gap() -
 # CMG t6_ni_link — group/total net income basis
 # ---------------------------------------------------------------------------
 
-def test_ni_link_passes_when_consolidated_ni_matches_cfs_and_group_differs() -> None:
-    """CMG fixed: _ni_link picks total basis when consolidated NI == CFS, group NI differs.
+def test_ni_link_passes_when_is_ni_matches_corrected_cfs_no_minority() -> None:
+    """CMG Correction A: IS NetIncome (244.01M) is the truth; CFS corrected to match.
 
-    After the data fix (NetIncome reclassified to consolidated, NetIncome_Group added as RNPG)
-    the 'total' candidate ties exactly to CFS and t6 passes.
+    FY2021-2024 show CFS == IS with no minority gap every year; the FY2025 CFS figure of
+    252.75M is an anomaly in the lone CFS scrape, not a real minority.  Two independent IS
+    sources (stockanalysis + bvc) both report 244.01M.  The fix is to correct
+    CFS_Net_Income_Top_Of_CFS to 244.01M, not to invent a minority interest.
     """
     rows = _base_rows()
-    rows["Resultat_net"] = 252_750_000.0
-    rows["NetIncome"] = 252_750_000.0
-    rows["Resultat_net_part_du_groupe"] = 244_010_000.0
-    rows["CFS_Net_Income_Top_Of_CFS"] = 252_750_000.0
-    rows["ROE"] = 244_010_000.0 / rows["Equity_Group"]
+    rows["Resultat_net"] = 244_010_000.0
+    rows["NetIncome"] = 244_010_000.0
+    rows.pop("Resultat_net_part_du_groupe")          # no minority / group split
+    rows["CFS_Net_Income_Top_Of_CFS"] = 244_010_000.0  # corrected from anomalous 252.75M
+    rows["ROE"] = 244_010_000.0 / rows["Total_Equity"]
 
-    report = build_data_tieout_report("CMG_FIXED", 2025, rows, snapshot_year=2025, period_type="annual")
+    report = build_data_tieout_report("CMG_CORRECTED", 2025, rows, snapshot_year=2025, period_type="annual")
 
     assert "t6_ni_link" not in report.failed_checks
 
@@ -187,3 +193,49 @@ def test_ni_link_fails_when_rnpg_misclassified_as_consolidated_ni() -> None:
     report = build_data_tieout_report("CMG_UNFIXED", 2025, rows, snapshot_year=2025, period_type="annual")
 
     assert "t6_ni_link" in report.failed_checks
+
+
+# ---------------------------------------------------------------------------
+# Canonical ranking: verified status must beat proof-rank reingestion (BCI pattern)
+# ---------------------------------------------------------------------------
+
+def _fake_snap(status: str | None, has_proof: bool = False) -> SimpleNamespace:
+    coverage = {"data_verification": {"status": status}} if status else {}
+    source = {"brief42_fy2025_reingestion": True} if has_proof else {}
+    return SimpleNamespace(source_json=source, coverage_json=coverage, metrics_json={})
+
+
+def _fake_import(ts: dt.datetime | None = None) -> SimpleNamespace:
+    t = ts or dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc)
+    return SimpleNamespace(
+        data_source="stockanalysis",
+        source_universe=None,
+        completed_at=None,
+        imported_at=t,
+        created_at=t,
+    )
+
+
+def test_verified_import_ranks_above_data_unverified_with_proof_flag() -> None:
+    """Regression (BCI): a verified import must rank above data_unverified+proof_rank.
+
+    Before the fix, proof_rank came before status_rank in the tuple, so a
+    data_unverified import with brief42_fy2025_reingestion (proof_rank=1) beat a
+    verified one (status_rank=2, proof_rank=0).  BCI was stuck on the stale import.
+    """
+    rank_verified = _latest_symbol_rank(
+        _fake_snap("verified"),
+        _fake_import(dt.datetime(2026, 6, 18, tzinfo=dt.timezone.utc)),
+        stock=None,
+        required_complete=1,
+    )
+    rank_unverified_proof = _latest_symbol_rank(
+        _fake_snap("data_unverified", has_proof=True),
+        _fake_import(dt.datetime(2026, 5, 26, tzinfo=dt.timezone.utc)),
+        stock=None,
+        required_complete=1,
+    )
+
+    assert rank_verified > rank_unverified_proof, (
+        f"verified {rank_verified} must beat unverified+proof {rank_unverified_proof}"
+    )

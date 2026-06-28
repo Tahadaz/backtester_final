@@ -2103,3 +2103,45 @@ class SnapshotColumns:
     upstream_rev = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     computed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     as_of_date = Column(Date, nullable=True)
+
+
+# ---------------------------------------------------------------------------
+# Forward-estimate consensus store (brief 54)
+# ---------------------------------------------------------------------------
+
+
+class FundamentalConsensusEstimate(Base):
+    """Forward-estimate consensus rows, isolated from reported actuals.
+
+    Upsert key: (symbol, fiscal_year, metric, source) — latest as_of_date wins.
+    is_estimate is always True; these rows MUST NOT be commingled with reported
+    fundamentals in fundamental_annual_metric or fundamental_period_metric.
+    """
+    __tablename__ = "fundamental_consensus_estimate"
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    symbol = Column(String, nullable=False)
+    fiscal_year = Column(Integer, nullable=False)
+    period_type = Column(String(20), nullable=False, server_default="annual")
+    metric = Column(String(40), nullable=False)   # canonical: EPS_Forward, PER_Forward, etc.
+    value = Column(Float, nullable=True)
+    source = Column(String(32), nullable=False)   # "bkgr", "marketscreener", …
+    as_of_date = Column(Date, nullable=False)
+    currency = Column(String(8), nullable=False, server_default="MAD")
+    raw_label = Column(String(80), nullable=True)
+    data_source = Column(String(16), nullable=False, server_default="bkgr")
+    is_estimate = Column(Boolean, nullable=False, server_default="true")
+    analyst_count = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "symbol", "fiscal_year", "metric", "source",
+            name="uq_fundamental_consensus_estimate_key",
+        ),
+        Index("ix_fundamental_consensus_estimate_symbol_year", "symbol", "fiscal_year"),
+        Index("ix_fundamental_consensus_estimate_symbol_asof", "symbol", "as_of_date"),
+        Index("ix_fundamental_consensus_estimate_metric_source", "metric", "source"),
+        CheckConstraint("is_estimate = true", name="ck_fundamental_consensus_estimate_is_estimate"),
+    )

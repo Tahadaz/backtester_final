@@ -1660,11 +1660,15 @@ def _latest_symbol_rank(
     # from fundamental_annual_metric (the same source the verification gate reads), not
     # from the snapshot's metrics_json, which holds derived ratios for some imports.
     proof_rank, status_rank = _data_verification_rank(snapshot)
+    # Tuple comparison: higher is better.
+    # status_rank (verified=2 > data_unverified=1 > unknown=0) must come before proof_rank so
+    # a verified import always beats a data_unverified one regardless of proof flags.
+    # proof_rank then tiebreaks between imports with equal status (prefer deliberate re-ingest).
     return (
         required_complete,
-        source_rank,     # preferred source wins outright; proof/status only tiebreak within same source
-        proof_rank,
+        source_rank,
         status_rank,
+        proof_rank,
         has_core_statement,
         core_metric_count,
         _latest_key(import_row),

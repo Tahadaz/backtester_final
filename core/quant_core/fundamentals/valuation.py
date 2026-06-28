@@ -1426,7 +1426,13 @@ def _normalized_flow_multiple(
     assumptions: dict[str, Any] | None = None,
 ) -> tuple[float | None, str]:
     if metric == "PER":
-        midcycle_basis = _midcycle_basis(assumptions or {})
+        assum = assumptions or {}
+        forward_eps = _positive(assum.get("forward_eps"))
+        if forward_eps is not None and current_price is not None and current_price > 0:
+            # Forward P/E: price / forward EPS.  When peer P/E is then applied:
+            #   fair_value = current_price × peer_PER / forward_PER = peer_PER × forward_EPS
+            return current_price / forward_eps, "forward_eps_per"
+        midcycle_basis = _midcycle_basis(assum)
         flow = (
             _num(midcycle_basis.get("normalized_net_income"))
             if midcycle_basis and midcycle_basis.get("status") == "available"
