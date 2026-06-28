@@ -246,6 +246,31 @@ def build_projection(
     if historical_growth_bound is not None:
         year1_growth = min(year1_growth, historical_growth_bound)
     year1_growth = max(-0.10, year1_growth)
+
+    # brief 54 §3 Phase 3.2: seed near-year revenue growth from consensus forward view.
+    # Only fires when the forward fiscal year is immediately next (start_year+1) so we
+    # never extrapolate a two-year-out estimate back onto the near-year growth path.
+    _fwd_rev = _finite(assumptions.get("forward_revenue"))
+    _fwd_ni = _finite(assumptions.get("forward_net_income"))
+    _fwd_year_raw = assumptions.get("forward_fiscal_year")
+    _fwd_near_year = int(_fwd_year_raw) if _fwd_year_raw is not None else start_year + 1
+    _fwd_rev_seeded = False
+    if (
+        _fwd_near_year == start_year + 1
+        and _fwd_rev is not None
+        and _fwd_rev > 0
+        and latest_revenue is not None
+        and latest_revenue > 0
+    ):
+        _fwd_growth = (_fwd_rev / latest_revenue) - 1.0
+        year1_growth = max(-0.10, _fwd_growth)
+        growth_method = (
+            f"forward revenue {_fwd_rev:,.0f} MAD (consensus); "
+            f"seeded growth {year1_growth:.2%} fades to terminal {terminal_growth:.2%}"
+        )
+        growth_warning = None
+        _fwd_rev_seeded = True
+
     growth_path = _fade_path(year1_growth, terminal_growth, years)
     growth_path = _apply_override_series("revenue_growth", growth_path, start_year, overrides)
     growth_anchor = cagr_3y if cagr_3y is not None else last_year_growth
@@ -275,6 +300,18 @@ def build_projection(
         ebit_anchor = midcycle_margin
         year1_margin = latest_margin
         recovery_or_fade = "recovery" if latest_margin < midcycle_margin else "fade"
+
+    # brief 54 §3 Phase 3.2: seed near-year EBIT margin from consensus forward NI/Rev.
+    # Gross-up NI margin → EBIT margin using the tax-rate assumption (effective tax is
+    # computed later; tax_rate_assumption is the best available rate at this point).
+    # Caps at 60 % to avoid blowups from near-zero revenue years.
+    _fwd_ebit_margin: float | None = None
+    if _fwd_rev_seeded and _fwd_ni is not None and _fwd_ni > 0:
+        _implied_ni_margin = _fwd_ni / _fwd_rev  # type: ignore[operator]
+        _tax_denom = max(0.01, 1.0 - tax_rate_assumption)
+        _fwd_ebit_margin = max(0.0, min(0.60, _implied_ni_margin / _tax_denom))
+        year1_margin = _fwd_ebit_margin
+
     margin_path = _fade_path(year1_margin, ebit_anchor, years)
     margin_path = _apply_override_series("ebit_margin", margin_path, start_year, overrides)
     margin_divergence, margin_warning = _divergence(margin_path[0], ebit_anchor, name="ebit_margin", absolute_band=0.05)
@@ -526,14 +563,20 @@ def build_projection(
             name="ebit_margin",
             projected_by_year=_year_map(fiscal_years, margin_path),
             method=(
-                f"latest EBIT margin {latest_margin:.2%} {recovery_or_fade or 'reverts'}s "
-                f"to mid-cycle median {ebit_anchor:.2%} over the horizon"
-                if midcycle_margin is not None
-                else f"latest realized EBIT margin {latest_margin:.2%} fades to trailing-3y average {ebit_anchor:.2%}"
+                f"forward NI/Rev gross-up → seeded EBIT margin {_fwd_ebit_margin:.2%}; "
+                f"fades to {'mid-cycle median' if midcycle_margin is not None else 'trailing average'} {ebit_anchor:.2%}"
+                if _fwd_ebit_margin is not None
+                else (
+                    f"latest EBIT margin {latest_margin:.2%} {recovery_or_fade or 'reverts'}s "
+                    f"to mid-cycle median {ebit_anchor:.2%} over the horizon"
+                    if midcycle_margin is not None
+                    else f"latest realized EBIT margin {latest_margin:.2%} fades to trailing-3y average {ebit_anchor:.2%}"
+                )
             ),
             inputs={
                 "trailing_3y_average": ebit_anchor,
                 "latest_margin": latest_margin,
+                "forward_seeded_ebit_margin": _fwd_ebit_margin,
                 "peer_median": ebit_peer,
                 "cyclical": cyclical,
                 "midcycle_margin": midcycle_margin,

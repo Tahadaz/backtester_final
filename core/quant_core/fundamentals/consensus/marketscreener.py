@@ -55,6 +55,11 @@ logger = logging.getLogger(__name__)
 SOURCE_NAME = "marketscreener"
 _BASE_URL = "https://www.marketscreener.com/quote/stock"
 
+# MarketScreener income-statement tables report revenue and net income in
+# MAD millions.  Convert to absolute MAD at ingest so every ConsensusEstimate
+# that leaves this module carries the same unit as actuals in the DB.
+_MAD_M_SCALE = 1_000_000
+
 # Known MarketScreener numeric IDs for BKGR-covered Casablanca names.
 # Add more via id_map_path (JSON) or discover().
 KNOWN_IDS: dict[int, str] = {
@@ -282,9 +287,9 @@ def _parse_soup(
                 if val is not None:
                     estimates.append(ConsensusEstimate(
                         symbol=sym, fiscal_year=fy, period_type="annual",
-                        metric=METRIC_REV_FORWARD, value=val,
-                        source=SOURCE_NAME, as_of_date=aod, currency="MAD_M",
-                        raw_label=f"Net sales {years[i]} (MAD M)",
+                        metric=METRIC_REV_FORWARD, value=val * _MAD_M_SCALE,
+                        source=SOURCE_NAME, as_of_date=aod, currency="MAD",
+                        raw_label=f"Net sales {years[i]} (MAD M→MAD)",
                         analyst_count=analyst_count,
                     ))
             if ni_row and i < len(ni_row):
@@ -292,9 +297,9 @@ def _parse_soup(
                 if val is not None:
                     estimates.append(ConsensusEstimate(
                         symbol=sym, fiscal_year=fy, period_type="annual",
-                        metric=METRIC_NI_FORWARD, value=val,
-                        source=SOURCE_NAME, as_of_date=aod, currency="MAD_M",
-                        raw_label=f"Net income {years[i]} (MAD M)",
+                        metric=METRIC_NI_FORWARD, value=val * _MAD_M_SCALE,
+                        source=SOURCE_NAME, as_of_date=aod, currency="MAD",
+                        raw_label=f"Net income {years[i]} (MAD M→MAD)",
                         analyst_count=analyst_count,
                     ))
 

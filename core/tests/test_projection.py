@@ -419,3 +419,173 @@ def test_high_capex_projection_fades_to_positive_terminal_fcff_and_nonzero_dcf()
 
     assert fcff.fair_value is not None
     assert fcff.fair_value > 0
+
+
+# ---------------------------------------------------------------------------
+# brief 54 §3 Phase 3.2: forward-estimate seeding for fcff_dcf
+# ---------------------------------------------------------------------------
+
+def _history_iam_like() -> list[AnnualMetricRow]:
+    """IAM-like history: latest_statement_year=2025, 10% CAGR, 30% EBIT margin."""
+    revenues = {2021: 30_000.0, 2022: 33_000.0, 2023: 36_300.0, 2024: 39_930.0, 2025: 43_923.0}
+    rows: list[AnnualMetricRow] = []
+    for year, rev in revenues.items():
+        rows.extend([
+            _row(year, "Revenue", rev),
+            _row(year, "EBIT", rev * 0.30),
+            _row(year, "Depreciation_Amortization", rev * 0.08),
+            _row(year, "Capex", rev * 0.12),
+            _row(year, "Working_Capital", rev * 0.05),
+            _row(year, "NetIncome", rev * 0.17),
+            _row(year, "Total_Equity", 60_000.0),
+            _row(year, "Total_Debt", 15_000.0),
+            _row(year, "Cash", 5_000.0),
+            _row(year, "Total_Assets", 80_000.0),
+            _row(year, "Total_Liabilities", 20_000.0),
+            _row(year, "Operating_Cash_Flow", rev * 0.22),
+            _row(year, "CF_Investing", -rev * 0.12),
+            _row(year, "Free_Cash_Flow", rev * 0.10),
+        ])
+    return rows
+
+
+def _snapshot_2025() -> FundamentalSnapshot:
+    return FundamentalSnapshot(
+        symbol="TST",
+        company_name="Test",
+        latest_statement_year=2025,
+        metrics={"Current_Price": 100.0, "Shares_Outstanding": 879.1},
+        source={"currency": "MAD"},
+        as_of_date=dt.date(2026, 6, 28),
+    )
+
+
+def test_forward_revenue_seeds_near_year_growth() -> None:
+    """When forward_revenue is present for start_year+1, year-1 growth must be
+    derived from it rather than from the mechanical trailing CAGR."""
+    history = _history_iam_like()
+    snap = _snapshot_2025()
+    # 2026 forward revenue implies ~+2.9% growth (vs trailing 10% CAGR) — well within floor
+    fwd_rev = 43_923.0 * 1.029
+    assumptions = {
+        **default_assumptions_for_scenario("base"),
+        "forward_revenue": fwd_rev,
+        "forward_net_income": fwd_rev * 0.14,
+        "forward_fiscal_year": 2026,
+    }
+
+    proj_with = build_projection(snap, history, assumptions, scenario="base")
+    proj_without = build_projection(snap, history, default_assumptions_for_scenario("base"), scenario="base")
+
+    growth_driver = proj_with.drivers["revenue_growth"]
+    years = sorted(growth_driver.projected_by_year)
+    seeded_year1_growth = growth_driver.projected_by_year[years[0]]
+    mechanical_year1_growth = proj_without.drivers["revenue_growth"].projected_by_year[years[0]]
+
+    # Seeded growth must differ from mechanical CAGR (~10%)
+    assert seeded_year1_growth != pytest.approx(mechanical_year1_growth, rel=0.01)
+    # Seeded growth should be near +2.9%
+    assert seeded_year1_growth == pytest.approx(0.029, abs=0.002)
+    # Method string must mention "forward revenue"
+    assert "forward revenue" in growth_driver.method
+
+
+def test_forward_ni_seeds_near_year_ebit_margin() -> None:
+    """When forward_revenue and forward_net_income are both present, year-1 EBIT
+    margin must be seeded from NI/Rev gross-up, not from trailing margin."""
+    history = _history_iam_like()
+    snap = _snapshot_2025()
+    # Imply a lower forward EBIT margin: NI margin = 14%, tax=35% → EBIT≈21.5%
+    fwd_rev = 43_923.0 * 1.05
+    fwd_ni = fwd_rev * 0.14
+    assumptions = {
+        **default_assumptions_for_scenario("base"),
+        "forward_revenue": fwd_rev,
+        "forward_net_income": fwd_ni,
+        "forward_fiscal_year": 2026,
+        "tax_rate": 0.35,
+    }
+
+    proj = build_projection(snap, history, assumptions, scenario="base")
+
+    margin_driver = proj.drivers["ebit_margin"]
+    years = sorted(margin_driver.projected_by_year)
+    year1_margin = margin_driver.projected_by_year[years[0]]
+
+    expected_ebit_margin = (fwd_ni / fwd_rev) / (1.0 - 0.35)  # ≈ 0.2154
+    assert year1_margin == pytest.approx(expected_ebit_margin, abs=0.005)
+    assert "forward NI/Rev" in margin_driver.method
+    assert margin_driver.inputs["forward_seeded_ebit_margin"] is not None
+
+
+def test_forward_seeding_does_not_apply_for_non_adjacent_year() -> None:
+    """If forward_fiscal_year is start_year+2 (not the immediate next year),
+    seeding must NOT fire — year-1 growth must remain mechanical."""
+    history = _history_iam_like()
+    snap = _snapshot_2025()
+    assumptions = {
+        **default_assumptions_for_scenario("base"),
+        "forward_revenue": 40_000.0,
+        "forward_fiscal_year": 2027,  # two years out, not adjacent
+    }
+
+    proj_seeded = build_projection(snap, history, assumptions, scenario="base")
+    proj_baseline = build_projection(snap, history, default_assumptions_for_scenario("base"), scenario="base")
+
+    years = sorted(proj_seeded.drivers["revenue_growth"].projected_by_year)
+    year1_seeded = proj_seeded.drivers["revenue_growth"].projected_by_year[years[0]]
+    year1_base = proj_baseline.drivers["revenue_growth"].projected_by_year[years[0]]
+
+    assert year1_seeded == pytest.approx(year1_base, rel=0.001)
+    assert "forward revenue" not in proj_seeded.drivers["revenue_growth"].method
+
+
+def test_forward_seeding_mechanical_fallback_when_absent() -> None:
+    """No forward_revenue in assumptions → projection is identical to baseline."""
+    history = _history_iam_like()
+    snap = _snapshot_2025()
+    assumptions = default_assumptions_for_scenario("base")
+
+    proj = build_projection(snap, history, assumptions, scenario="base")
+    years = sorted(proj.drivers["revenue_growth"].projected_by_year)
+
+    # Mechanical 10% CAGR should be used (not a seeded forward value)
+    assert proj.drivers["revenue_growth"].projected_by_year[years[0]] == pytest.approx(0.10, abs=0.01)
+    assert proj.drivers["ebit_margin"].inputs["forward_seeded_ebit_margin"] is None
+
+
+def test_forward_seeded_fcff_dcf_differs_from_mechanical() -> None:
+    """End-to-end: seeding lower forward revenue → lower fcff_dcf fair value than
+    mechanical baseline.  Confirms the wiring propagates through the DCF."""
+    history = _history_iam_like()
+    snap = _snapshot_2025()
+
+    base_assumptions = default_assumptions_for_scenario("base")
+    seeded_assumptions = {
+        **base_assumptions,
+        # Forward revenue implies ~3% growth vs trailing 10% CAGR — well above floor
+        "forward_revenue": 43_923.0 * 1.03,
+        "forward_net_income": 43_923.0 * 1.03 * 0.10,  # lower NI margin too
+        "forward_fiscal_year": 2026,
+    }
+
+    proj_base = build_projection(snap, history, base_assumptions, scenario="base")
+    proj_seeded = build_projection(snap, history, seeded_assumptions, scenario="base")
+
+    _, vals_base = compute_symbol_valuations(
+        snapshot=snap, history=history, peer_snapshots=[snap],
+        assumptions={**base_assumptions, "_projection": proj_base},
+    )
+    _, vals_seeded = compute_symbol_valuations(
+        snapshot=snap, history=history, peer_snapshots=[snap],
+        assumptions={**seeded_assumptions, "_projection": proj_seeded},
+    )
+
+    def _fcff(vals: list) -> float:
+        return next(r.fair_value for r in vals if r.model == "fcff_dcf" and r.fair_value is not None)
+
+    fv_base = _fcff(vals_base)
+    fv_seeded = _fcff(vals_seeded)
+
+    # Lower near-year revenue should produce a lower DCF fair value
+    assert fv_seeded < fv_base, f"Seeded FV {fv_seeded:.1f} should be < mechanical FV {fv_base:.1f}"

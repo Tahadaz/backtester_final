@@ -161,8 +161,11 @@ class TestMarketScreenerHelpers:
         html = _minimal_html(rev_2026="40,000", ni_2026="5,500")
         ests = parse_finances_html(html, as_of_date=dt.date(2026, 6, 28))
         by = {(e.metric, e.fiscal_year): e for e in ests}
-        assert by[(METRIC_REV_FORWARD, 2026)].value == pytest.approx(40000.0)
-        assert by[(METRIC_NI_FORWARD, 2026)].value == pytest.approx(5500.0)
+        # MAD_M → absolute MAD at ingest (×1_000_000)
+        assert by[(METRIC_REV_FORWARD, 2026)].value == pytest.approx(40_000 * 1_000_000)
+        assert by[(METRIC_NI_FORWARD, 2026)].value == pytest.approx(5_500 * 1_000_000)
+        assert by[(METRIC_REV_FORWARD, 2026)].currency == "MAD"
+        assert by[(METRIC_NI_FORWARD, 2026)].currency == "MAD"
 
     def test_parse_minimal_html_per(self):
         html = _minimal_html(pe_2026="14.0", pe_2027="13.5")
@@ -281,7 +284,8 @@ class TestMultiSourceReconciliation:
     def test_ms_revenue_does_not_collide_with_bkgr_eps(self):
         """Revenue_Forward and EPS_Forward are different metrics — no collision."""
         ests = [
-            _est("IAM", METRIC_REV_FORWARD, 37051.0, source="marketscreener"),
+            # Revenue already in absolute MAD (post-ingest conversion)
+            _est("IAM", METRIC_REV_FORWARD, 37_051_000_000.0, source="marketscreener"),
             _est("IAM", METRIC_EPS_FORWARD, 6.195, source="marketscreener"),
             _est("IAM", METRIC_EPS_FORWARD, 6.3, source="bkgr"),
         ]
@@ -291,6 +295,37 @@ class TestMultiSourceReconciliation:
         # Revenue only from MS, EPS reconciled across both
         assert by_metric[METRIC_REV_FORWARD].contributing_sources == ["marketscreener"]
         assert set(by_metric[METRIC_EPS_FORWARD].contributing_sources) == {"bkgr", "marketscreener"}
+
+    def test_ms_rev_ni_absolute_mad_at_ingest(self):
+        """Revenue_Forward and NetIncome_Forward must leave parse_finances_html
+        in absolute MAD (not MAD millions) — ingest-time conversion."""
+        html = _minimal_html(rev_2026="10,000", ni_2026="1,000")
+        ests = parse_finances_html(html, as_of_date=dt.date(2026, 6, 28))
+        by = {(e.metric, e.fiscal_year): e for e in ests}
+        rev = by[(METRIC_REV_FORWARD, 2026)]
+        ni  = by[(METRIC_NI_FORWARD, 2026)]
+        # 10,000 MAD M → 10,000,000,000 absolute MAD
+        assert rev.value == pytest.approx(10_000_000_000.0)
+        assert rev.currency == "MAD"
+        # 1,000 MAD M → 1,000,000,000 absolute MAD
+        assert ni.value == pytest.approx(1_000_000_000.0)
+        assert ni.currency == "MAD"
+
+    def test_bkgr_eps_not_scaled(self):
+        """BKGR EPS_Forward is already in MAD/share — reconciliation must not re-scale it."""
+        # Simulate BKGR emitting EPS in MAD/share (e.g. 6.30 MAD)
+        bkgr_eps = _est("IAM", METRIC_EPS_FORWARD, 6.30, source="bkgr")
+        reconciled = reconcile_consensus([bkgr_eps])
+        # Must pass through at face value, not multiplied by 1e6
+        assert reconciled[0].reconciled_value == pytest.approx(6.30)
+
+    def test_no_double_scale_in_reconciliation(self):
+        """When MS Revenue (already absolute MAD) enters reconcile_consensus, the
+        reconciled value must equal the original absolute MAD figure, not 1e6× it."""
+        abs_rev = 37_051_000_000.0  # 37,051 MAD M already converted to absolute
+        ests = [_est("IAM", METRIC_REV_FORWARD, abs_rev, source="marketscreener")]
+        reconciled = reconcile_consensus(ests)
+        assert reconciled[0].reconciled_value == pytest.approx(abs_rev)
 
 
 # ---------------------------------------------------------------------------
@@ -322,17 +357,19 @@ class TestMarketScreenerRealFixture:
         assert eps is not None
         assert eps.value == pytest.approx(6.275, abs=0.05)
 
-    def test_revenue_forward_2026_in_mad_millions(self, by_key):
+    def test_revenue_forward_2026_in_absolute_mad(self, by_key):
         rev = by_key.get((METRIC_REV_FORWARD, 2026))
         assert rev is not None
-        # IAM 2026 revenue estimate: ~37,051 MAD M
-        assert rev.value == pytest.approx(37051, rel=0.02)
-        assert rev.currency == "MAD_M"
+        # IAM 2026 revenue estimate: ~37,051 MAD M → 37,051,000,000 MAD absolute
+        assert rev.value == pytest.approx(37_051 * 1_000_000, rel=0.02)
+        assert rev.currency == "MAD"
 
     def test_ni_forward_2026(self, by_key):
         ni = by_key.get((METRIC_NI_FORWARD, 2026))
         assert ni is not None
-        assert ni.value == pytest.approx(5444, rel=0.02)
+        # ~5,444 MAD M → absolute MAD
+        assert ni.value == pytest.approx(5_444 * 1_000_000, rel=0.02)
+        assert ni.currency == "MAD"
 
     def test_per_2026_near_probe_value(self, by_key):
         per = by_key.get((METRIC_PER_FORWARD, 2026))
