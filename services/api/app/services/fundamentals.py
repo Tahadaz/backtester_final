@@ -66,6 +66,7 @@ from .. import models
 from ..json_sanitize import sanitize_json_compatible
 from ..market_data_loader import load_close_series_from_store
 from .bourse_live_quotes import effective_price_from_quote, get_cached_live_quotes, get_or_refresh_live_quotes
+from .consensus import load_forward_view
 from .fundamental_macro import resolve_macro_config
 
 
@@ -4233,6 +4234,46 @@ def _upsert_auto_verification(
     return row
 
 
+def reverify_symbol(
+    db: Session,
+    symbol: str,
+    *,
+    import_id: uuid.UUID | None = None,
+) -> models.FundamentalDataVerification | None:
+    """Re-run the tieout for a symbol's canonical snapshot and overwrite the cached verdict.
+
+    Safe to call at any time: curated rows (those with corrections_json or provenance_json)
+    are never overwritten by _upsert_auto_verification.  Returns None if the symbol has no
+    canonical snapshot or the tieout infrastructure table is absent.
+    """
+    symbol = symbol.upper()
+    snap = canonical_snapshot_for_symbol(db, symbol)
+    if snap is None:
+        return None
+    effective_import_id = import_id or snap.import_id
+    sy = snap.latest_statement_year
+    if sy is None or not _table_exists(db, models.FundamentalDataVerification):
+        return None
+    history = _load_history(db, effective_import_id, symbol)
+    rows_bm, metric_years_bm = _rows_by_metric_from_history(history, sy)
+    prev_rows_bm = _prev_rows_by_metric_from_history(history, sy)
+    report = build_data_tieout_report(
+        symbol, sy, rows_bm,
+        previous_rows_by_metric=prev_rows_bm,
+        snapshot_year=sy,
+        metric_years=metric_years_bm,
+        period_type="annual",
+    )
+    return _upsert_auto_verification(
+        db,
+        snapshot_row=snap,
+        import_id=effective_import_id,
+        symbol=symbol,
+        statement_year=sy,
+        report=report,
+    )
+
+
 def _nr_valuation_results_for_data_unverified(
     *,
     symbol: str,
@@ -4439,7 +4480,13 @@ def recompute_symbol_valuations(
         symbol=symbol,
         statement_year=target_snapshot.latest_statement_year,
     )
-    if verification is None and target_snapshot.latest_statement_year is not None and _table_exists(db, models.FundamentalDataVerification):
+    # Re-run the tieout whenever the cached row carries no curated corrections or forced
+    # provenance.  This keeps auto-verdicts fresh as tie-out logic evolves; rows that
+    # carry analyst corrections/provenance are intentionally preserved as-is.
+    _should_recompute_tieout = verification is None or (
+        not bool(verification.corrections_json) and not bool(verification.provenance_json)
+    )
+    if _should_recompute_tieout and target_snapshot.latest_statement_year is not None and _table_exists(db, models.FundamentalDataVerification):
         rows_bm, metric_years_bm = _rows_by_metric_from_history(history, target_snapshot.latest_statement_year)
         prev_rows_bm = _prev_rows_by_metric_from_history(history, target_snapshot.latest_statement_year)
         tieout_report = build_data_tieout_report(
@@ -4530,6 +4577,22 @@ def recompute_symbol_valuations(
     )
     driver_medians = peer_driver_medians(peer_snapshots, sectors, symbol, int(assumptions.get("peer_min_count", DEFAULT_ASSUMPTIONS["peer_min_count"])))
     assumptions = {**assumptions, "_peer_driver_medians": driver_medians, "_financial_archetype": financial_archetype or ""}
+
+    # Phase 3 (brief 54 §3): forward-estimate injection via consensus store.
+    # fiscal_year = latest_statement_year + 1 is the natural forward anchor and
+    # rolls automatically when new actuals land (e.g. 2025 actuals → FY2026e).
+    # load_forward_view returns {} when no consensus rows exist; core falls back
+    # to the trailing/midcycle path unchanged — no coverage regression.
+    _fwd_year = (target_snapshot.latest_statement_year or run_ts.year) + 1
+    _fwd_view = load_forward_view(
+        db,
+        symbol,
+        fiscal_year=_fwd_year,
+        valuation_date=run_ts.date(),
+    )
+    if _fwd_view:
+        assumptions = {**assumptions, **_fwd_view}
+
     cyclical_commodity = is_cyclical_or_commodity(symbol, sector)
     projection = _sector_adjusted_projection(
         build_projection(target_snapshot, history, assumptions, scenario=scenario, cyclical=cyclical_commodity),
