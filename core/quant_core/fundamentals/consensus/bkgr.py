@@ -1,7 +1,10 @@
 """BKGR stock-guide PDF adapter (brief 54 §3 Phase 1).
 
 Parses bkgr-stock-guide-juin-2026.pdf (and future editions) into ConsensusEstimate
-rows for EPS_Forward, PER_Forward, Target_Price, and Rating.
+rows for EPS_Forward, PER_Forward, Target_Price, and Rating. NetIncome_Forward
+is NOT parsed from the PDF (BKGR only tabulates per-share figures) — call
+`derive_net_income_forward()` with a shares-outstanding lookup to get it
+(brief 54 §3.3).
 
 PDF structure (June 2026 edition):
   Page 1: Cover ("Juin 2026")
@@ -38,6 +41,7 @@ from pathlib import Path
 
 from .domain import (
     METRIC_EPS_FORWARD,
+    METRIC_NI_FORWARD,
     METRIC_PER_FORWARD,
     METRIC_RATING,
     METRIC_TARGET_PRICE,
@@ -404,6 +408,43 @@ def _emit_estimates(
         ))
 
     return estimates
+
+
+def derive_net_income_forward(
+    estimates: list[ConsensusEstimate],
+    shares_by_symbol: dict[str, float],
+) -> list[ConsensusEstimate]:
+    """Derive NetIncome_Forward = EPS_Forward x Shares_Outstanding rows.
+
+    The BKGR PDF only tabulates per-share BPA/PER — never a net income line
+    (unlike MarketScreener, which reports NI directly). Brief 54 §3 Phase 1
+    called for deriving NetIncome_Forward from BPA x shares so BKGR's forward
+    view can seed NI-consuming models (ddm, residual_income) for the full
+    37-name BKGR set, not just the MarketScreener-covered liquid subset. This
+    was never wired up: `fetch()` alone never emitted this metric. Kept as a
+    separate pure step (DB-free — shares come in as a plain dict) so the
+    caller decides where `shares_by_symbol` comes from (a live snapshot table
+    for the backfill script; a fixture for tests).
+    """
+    derived: list[ConsensusEstimate] = []
+    for estimate in estimates:
+        if estimate.metric != METRIC_EPS_FORWARD or estimate.value is None:
+            continue
+        shares = shares_by_symbol.get(estimate.symbol)
+        if shares is None or shares <= 0:
+            continue
+        derived.append(ConsensusEstimate(
+            symbol=estimate.symbol,
+            fiscal_year=estimate.fiscal_year,
+            period_type=estimate.period_type,
+            metric=METRIC_NI_FORWARD,
+            value=estimate.value * shares,
+            source=estimate.source,
+            as_of_date=estimate.as_of_date,
+            currency=estimate.currency,
+            raw_label=f"derived: EPS_Forward {estimate.value:g} x Shares_Outstanding {shares:,.0f}",
+        ))
+    return derived
 
 
 # ---------------------------------------------------------------------------

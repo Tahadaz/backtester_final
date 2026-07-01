@@ -162,6 +162,64 @@ class TestEstimateIsolation:
 
 
 # ---------------------------------------------------------------------------
+# NetIncome_Forward derivation (brief 54 §3.3) — BKGR never tabulates NI
+# directly, only per-share BPA/PER, so it must be derived from shares.
+# ---------------------------------------------------------------------------
+
+class TestDeriveNetIncomeForward:
+    def test_derives_ni_from_eps_and_shares(self):
+        from quant_core.fundamentals.consensus.bkgr import derive_net_income_forward
+        from quant_core.fundamentals.consensus.domain import METRIC_NI_FORWARD
+
+        estimates = [_est("IAM", METRIC_EPS_FORWARD, 6.3, fiscal_year=2026)]
+        derived = derive_net_income_forward(estimates, {"IAM": 879_095_340.0})
+
+        assert len(derived) == 1
+        row = derived[0]
+        assert row.symbol == "IAM"
+        assert row.fiscal_year == 2026
+        assert row.metric == METRIC_NI_FORWARD
+        assert row.value == pytest.approx(6.3 * 879_095_340.0)
+        assert row.source == "bkgr"
+        assert row.as_of_date == dt.date(2026, 5, 25)
+
+    def test_skips_symbols_without_shares(self):
+        from quant_core.fundamentals.consensus.bkgr import derive_net_income_forward
+
+        estimates = [_est("CMGP", METRIC_EPS_FORWARD, 10.0)]
+        derived = derive_net_income_forward(estimates, {})
+
+        assert derived == []
+
+    def test_ignores_non_eps_metrics(self):
+        from quant_core.fundamentals.consensus.bkgr import derive_net_income_forward
+
+        estimates = [
+            _est("IAM", METRIC_PER_FORWARD, 14.7),
+            _est("IAM", METRIC_TARGET_PRICE, 130.0),
+        ]
+        derived = derive_net_income_forward(estimates, {"IAM": 879_095_340.0})
+
+        assert derived == []
+
+    def test_multiple_fiscal_years_derive_independently(self):
+        from quant_core.fundamentals.consensus.bkgr import derive_net_income_forward
+        from quant_core.fundamentals.consensus.domain import METRIC_NI_FORWARD
+
+        estimates = [
+            _est("ATW", METRIC_EPS_FORWARD, 54.0, fiscal_year=2026),
+            _est("ATW", METRIC_EPS_FORWARD, 58.0, fiscal_year=2027),
+        ]
+        derived = derive_net_income_forward(estimates, {"ATW": 215_140_839.0})
+
+        by_year = {row.fiscal_year: row.value for row in derived}
+        assert set(by_year) == {2026, 2027}
+        assert by_year[2026] == pytest.approx(54.0 * 215_140_839.0)
+        assert by_year[2027] == pytest.approx(58.0 * 215_140_839.0)
+        assert all(row.metric == METRIC_NI_FORWARD for row in derived)
+
+
+# ---------------------------------------------------------------------------
 # Valuation forward EPS injection (Phase 3 wiring)
 # ---------------------------------------------------------------------------
 
