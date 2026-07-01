@@ -589,3 +589,202 @@ def test_forward_seeded_fcff_dcf_differs_from_mechanical() -> None:
 
     # Lower near-year revenue should produce a lower DCF fair value
     assert fv_seeded < fv_base, f"Seeded FV {fv_seeded:.1f} should be < mechanical FV {fv_base:.1f}"
+
+
+def _history_iam_like_with_dividends() -> list[AnnualMetricRow]:
+    """Same as _history_iam_like but with a dividend line so payout_ratio is
+    derivable from history (needed to exercise the ddm projected-dividends path)."""
+    history = _history_iam_like()
+    revenue_by_year = {row.statement_year: row.metric_value for row in history if row.metric_name == "Revenue"}
+    dividend_rows = [_row(year, "Dividendes", rev * 0.17 * 0.40) for year, rev in revenue_by_year.items()]
+    return history + dividend_rows
+
+
+def test_forward_ni_seeds_near_year_net_income_directly() -> None:
+    """forward_net_income alone (no forward_revenue) must override year-1 net
+    income directly — this is the BKGR-only seam (BKGR has no revenue line)."""
+    history = _history_iam_like_with_dividends()
+    snap = _snapshot_2025()
+    fwd_ni = 43_923.0 * 0.17 * 1.5  # well above trailing NI (~7,467)
+    assumptions = {
+        **default_assumptions_for_scenario("base"),
+        "forward_net_income": fwd_ni,
+        "forward_fiscal_year": 2026,
+    }
+
+    proj = build_projection(snap, history, assumptions, scenario="base")
+    proj_base = build_projection(snap, history, default_assumptions_for_scenario("base"), scenario="base")
+
+    assert proj.statements[0]["net_income"] == pytest.approx(fwd_ni)
+    # Revenue/margin path must be untouched — no forward_revenue was supplied.
+    assert proj.statements[0]["revenue"] == pytest.approx(proj_base.statements[0]["revenue"])
+    assert "net_income_forward_seeded" in proj.warnings
+
+
+def test_forward_ni_seeding_does_not_apply_for_non_adjacent_year() -> None:
+    """forward_fiscal_year two years out must not seed year-1 net income."""
+    history = _history_iam_like_with_dividends()
+    snap = _snapshot_2025()
+    assumptions = {
+        **default_assumptions_for_scenario("base"),
+        "forward_net_income": 999_999.0,
+        "forward_fiscal_year": 2027,
+    }
+
+    proj = build_projection(snap, history, assumptions, scenario="base")
+
+    assert proj.statements[0]["net_income"] != pytest.approx(999_999.0)
+    assert "net_income_forward_seeded" not in proj.warnings
+
+
+def test_forward_ni_seeds_ddm_and_residual_income_without_forward_revenue() -> None:
+    """End-to-end: BKGR-only names (forward_net_income, no forward_revenue) must
+    see ddm/residual_income move off the forward seed, while fcff_dcf — which
+    needs forward revenue/margin — stays mechanical (brief 54 §3 model-mapping
+    table: BKGR upgrades earnings/equity models, not fcff_dcf)."""
+    history = _history_iam_like_with_dividends()
+    # residual_income requires Price_to_Book for eligibility (has_book_roe);
+    # _snapshot_2025 doesn't carry it, so build a local snapshot that does.
+    snap = FundamentalSnapshot(
+        symbol="TST",
+        company_name="Test",
+        latest_statement_year=2025,
+        metrics={"Current_Price": 100.0, "Shares_Outstanding": 879.1, "Price_to_Book": 1.47},
+        source={"currency": "MAD"},
+        as_of_date=dt.date(2026, 6, 28),
+    )
+
+    base_assumptions = default_assumptions_for_scenario("base")
+    fwd_ni = 43_923.0 * 0.17 * 1.5
+    seeded_assumptions = {
+        **base_assumptions,
+        "forward_net_income": fwd_ni,
+        "forward_fiscal_year": 2026,
+    }
+
+    proj_base = build_projection(snap, history, base_assumptions, scenario="base")
+    proj_seeded = build_projection(snap, history, seeded_assumptions, scenario="base")
+
+    _, vals_base = compute_symbol_valuations(
+        snapshot=snap, history=history, peer_snapshots=[snap],
+        assumptions={**base_assumptions, "_projection": proj_base},
+    )
+    _, vals_seeded = compute_symbol_valuations(
+        snapshot=snap, history=history, peer_snapshots=[snap],
+        assumptions={**seeded_assumptions, "_projection": proj_seeded},
+    )
+
+    def _fair(vals: list, model: str) -> float | None:
+        return next((r.fair_value for r in vals if r.model == model and r.fair_value is not None), None)
+
+    ddm_base, ddm_seeded = _fair(vals_base, "ddm"), _fair(vals_seeded, "ddm")
+    ri_base, ri_seeded = _fair(vals_base, "residual_income"), _fair(vals_seeded, "residual_income")
+    fcff_base, fcff_seeded = _fair(vals_base, "fcff_dcf"), _fair(vals_seeded, "fcff_dcf")
+
+    assert ddm_base is not None and ddm_seeded is not None
+    assert ddm_seeded > ddm_base
+    assert ri_base is not None and ri_seeded is not None
+    assert ri_seeded > ri_base
+    # No forward_revenue supplied → fcff_dcf must be bit-for-bit unaffected.
+    assert fcff_base == pytest.approx(fcff_seeded)
+
+
+def test_period_projection_seeds_forward_revenue_and_net_income() -> None:
+    """Quarterly/semiannual projections had zero forward seeding until now —
+    they're display-only (valuation reads the annual projection), but a UI
+    showing a mechanical quarterly path next to a consensus-seeded annual
+    figure is a real inconsistency. forward_revenue/forward_net_income must
+    seed the block of periods making up the immediate next fiscal year,
+    with the block's summed revenue/net_income landing exactly on the
+    consensus figures (brief 54 §3.3)."""
+    snap = _snapshot()
+    history = _history()
+    period_history = _period_history_from_annual("quarterly", ["Q1", "Q2", "Q3", "Q4"])
+    base_assumptions = default_assumptions_for_scenario("base")
+
+    proj_base = build_projection(
+        snap, history, base_assumptions, scenario="base",
+        period_history=period_history, period_type="quarterly", periods_per_year=4,
+    )
+    fwd_year = proj_base.statements[0]["fiscal_year"]
+    fwd_rev = sum(s["revenue"] for s in proj_base.statements[:4]) * 1.2
+    fwd_ni = sum(s["net_income"] for s in proj_base.statements[:4]) * 1.5
+    seeded_assumptions = {
+        **base_assumptions,
+        "forward_revenue": fwd_rev,
+        "forward_net_income": fwd_ni,
+        "forward_fiscal_year": fwd_year,
+    }
+
+    proj_seeded = build_projection(
+        snap, history, seeded_assumptions, scenario="base",
+        period_history=period_history, period_type="quarterly", periods_per_year=4,
+    )
+
+    block = proj_seeded.statements[:4]
+    assert all(s["fiscal_year"] == fwd_year for s in block)
+    assert sum(s["revenue"] for s in block) == pytest.approx(fwd_rev)
+    assert sum(s["net_income"] for s in block) == pytest.approx(fwd_ni)
+    assert "net_income_forward_seeded" in proj_seeded.warnings
+    # The year after the seeded block must roll forward off the new (higher)
+    # revenue base, not silently revert to the unseeded mechanical trajectory.
+    assert proj_seeded.statements[4]["revenue"] > proj_base.statements[4]["revenue"]
+
+
+def test_period_projection_ni_only_seed_without_forward_revenue() -> None:
+    """BKGR-only case at period granularity: forward_net_income alone (no
+    forward_revenue) must still seed the block's net_income via equal split,
+    while revenue/margin stay mechanical."""
+    snap = _snapshot()
+    history = _history()
+    period_history = _period_history_from_annual("quarterly", ["Q1", "Q2", "Q3", "Q4"])
+    base_assumptions = default_assumptions_for_scenario("base")
+
+    proj_base = build_projection(
+        snap, history, base_assumptions, scenario="base",
+        period_history=period_history, period_type="quarterly", periods_per_year=4,
+    )
+    fwd_year = proj_base.statements[0]["fiscal_year"]
+    fwd_ni = sum(s["net_income"] for s in proj_base.statements[:4]) * 1.5
+    seeded_assumptions = {**base_assumptions, "forward_net_income": fwd_ni, "forward_fiscal_year": fwd_year}
+
+    proj_seeded = build_projection(
+        snap, history, seeded_assumptions, scenario="base",
+        period_history=period_history, period_type="quarterly", periods_per_year=4,
+    )
+
+    block = proj_seeded.statements[:4]
+    assert sum(s["net_income"] for s in block) == pytest.approx(fwd_ni)
+    assert all(ni == pytest.approx(fwd_ni / 4) for ni in (s["net_income"] for s in block))
+    assert sum(s["revenue"] for s in block) == pytest.approx(sum(s["revenue"] for s in proj_base.statements[:4]))
+    assert "net_income_forward_seeded" in proj_seeded.warnings
+
+
+def test_period_projection_forward_seeding_requires_immediate_next_year() -> None:
+    """forward_fiscal_year two years out must not seed any period block —
+    mirrors the annual gate exactly."""
+    snap = _snapshot()
+    history = _history()
+    period_history = _period_history_from_annual("quarterly", ["Q1", "Q2", "Q3", "Q4"])
+    base_assumptions = default_assumptions_for_scenario("base")
+
+    proj_base = build_projection(
+        snap, history, base_assumptions, scenario="base",
+        period_history=period_history, period_type="quarterly", periods_per_year=4,
+    )
+    non_adjacent_year = proj_base.statements[0]["fiscal_year"] + 1
+    seeded_assumptions = {
+        **base_assumptions,
+        "forward_net_income": 999_999.0,
+        "forward_revenue": 999_999.0,
+        "forward_fiscal_year": non_adjacent_year,
+    }
+
+    proj_seeded = build_projection(
+        snap, history, seeded_assumptions, scenario="base",
+        period_history=period_history, period_type="quarterly", periods_per_year=4,
+    )
+
+    assert "net_income_forward_seeded" not in proj_seeded.warnings
+    for statement in proj_seeded.statements:
+        assert statement["net_income"] != pytest.approx(999_999.0 / 4)

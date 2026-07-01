@@ -271,6 +271,13 @@ def build_projection(
         growth_warning = None
         _fwd_rev_seeded = True
 
+    # brief 54 §3 Phase 3.3: seed near-year net income directly from consensus
+    # forward NI, independent of forward-revenue seeding above. BKGR (37 names)
+    # supplies forward NI (EPS x shares) without a revenue line, so this is the
+    # seam that upgrades ddm/residual_income for the broad BKGR set rather than
+    # only the MarketScreener liquid subset that also has forward_revenue.
+    _fwd_ni_seeded = _fwd_near_year == start_year + 1 and _fwd_ni is not None and _fwd_ni > 0
+
     growth_path = _fade_path(year1_growth, terminal_growth, years)
     growth_path = _apply_override_series("revenue_growth", growth_path, start_year, overrides)
     growth_anchor = cagr_3y if cagr_3y is not None else last_year_growth
@@ -427,6 +434,8 @@ def build_projection(
         warnings.append("cash_flow_statement_missing_driver_fallback")
     if unavailable_driver_warnings:
         warnings.append("projection_driver_unavailable")
+    if _fwd_ni_seeded:
+        warnings.append("net_income_forward_seeded")
 
     latest_equity = _latest_or_snapshot(history, snapshot, EQUITY_ALIASES)
     if latest_equity is None:
@@ -476,6 +485,11 @@ def build_projection(
         after_tax_interest = interest * (1.0 - tax)
         fcfe_value = fcff_value - after_tax_interest
         net_income = (ebit - interest) * (1.0 - tax)
+        if index == 0 and _fwd_ni_seeded:
+            # Overrides the mechanical ebit-interest derivation with the consensus
+            # forward NI directly (ddm/residual_income read net_income/dividends
+            # off this statement, not off the ebit_margin path used for fcff).
+            net_income = _fwd_ni
         dividend = max(0.0, net_income) * _clamp(payout_path[index], 0.0, 0.95)
         beginning_equity = previous_equity
         ending_equity = previous_equity + net_income - dividend
@@ -960,6 +974,14 @@ def _build_bank_projection(
     if latest_equity is None:
         return _empty_projection(snapshot, scenario=scenario, start_year=start_year, years=years, warnings=[equity_warning or "missing_financial_book_equity"])
     latest_pnb = _latest_value(pnb_series)
+
+    # brief 54 §3 Phase 3.3: seed near-year net income directly from consensus
+    # forward NI (BKGR covers bank tickers too — see build_projection's identical
+    # seam for non-financial companies).
+    _fwd_ni = _finite(assumptions.get("forward_net_income"))
+    _fwd_year_raw = assumptions.get("forward_fiscal_year")
+    _fwd_near_year = int(_fwd_year_raw) if _fwd_year_raw is not None else start_year + 1
+    _fwd_ni_seeded = _fwd_near_year == start_year + 1 and _fwd_ni is not None and _fwd_ni > 0
     latest_loans = _latest_or_snapshot(history, snapshot, LOANS_ALIASES)
     tax_rate = _effective_tax_rate(history)
     tax_warning = None
@@ -985,6 +1007,8 @@ def _build_bank_projection(
     ]
     if latest_loans is None or latest_loans <= 0:
         warnings.append("bank_cost_of_risk_uses_pnb_denominator")
+    if _fwd_ni_seeded:
+        warnings.append("net_income_forward_seeded")
 
     statements: list[dict[str, Any]] = []
     dividends: list[float] = []
@@ -1002,6 +1026,8 @@ def _build_bank_projection(
         pre_tax_income = rbe - cost_of_risk
         tax = _clamp(tax_path[index], 0.0, 0.60)
         net_income = pre_tax_income * (1.0 - tax)
+        if index == 0 and _fwd_ni_seeded:
+            net_income = _fwd_ni
         dividend = max(0.0, net_income) * _clamp(payout_path[index], 0.0, 0.95)
         beginning_equity = previous_equity
         ending_equity = beginning_equity + net_income - dividend
@@ -1169,6 +1195,14 @@ def _build_roe_financial_projection(
 
     roe_path = _apply_override_series("roe", [roe] * years, start_year, overrides)
     payout_path = _apply_override_series("payout_ratio", [payout_ratio] * years, start_year, overrides)
+
+    # brief 54 §3 Phase 3.3: seed near-year net income directly from consensus
+    # forward NI — same seam as build_projection() for non-financial companies.
+    _fwd_ni = _finite(assumptions.get("forward_net_income"))
+    _fwd_year_raw = assumptions.get("forward_fiscal_year")
+    _fwd_near_year = int(_fwd_year_raw) if _fwd_year_raw is not None else start_year + 1
+    _fwd_ni_seeded = _fwd_near_year == start_year + 1 and _fwd_ni is not None and _fwd_ni > 0
+
     warnings = [
         "insurer_simplified_roe_projection" if archetype == "insurance" else "financial_simplified_roe_projection",
         *[
@@ -1177,6 +1211,7 @@ def _build_roe_financial_projection(
                 "roe_from_peer_median" if not roe_series and roe_peer is not None else None,
                 payout_warning,
                 equity_warning,
+                "net_income_forward_seeded" if _fwd_ni_seeded else None,
             )
             if warning
         ],
@@ -1189,6 +1224,8 @@ def _build_roe_financial_projection(
         fiscal_year = start_year + index + 1
         beginning_equity = previous_equity
         net_income = beginning_equity * roe_path[index]
+        if index == 0 and _fwd_ni_seeded:
+            net_income = _fwd_ni
         dividend = max(0.0, net_income) * _clamp(payout_path[index], 0.0, 0.95)
         ending_equity = beginning_equity + net_income - dividend
         statement = {
@@ -1330,6 +1367,25 @@ def _build_period_projection(
 
     start_key = revenue_series[-1][0]
     start_year = int(start_key[0])
+
+    # brief 54 §3 Phase 3.3: identify which projected steps fall in the forward
+    # consensus fiscal year, so revenue/margin/net-income seeding (below) can
+    # target them. Only fires for a *complete* future fiscal year immediately
+    # after start_year — mirrors build_projection()'s "adjacent year only" gate,
+    # generalized so it's safe regardless of where start_key sits within its year.
+    _fwd_rev = _finite(assumptions.get("forward_revenue"))
+    _fwd_ni = _finite(assumptions.get("forward_net_income"))
+    _fwd_year_raw = assumptions.get("forward_fiscal_year")
+    _fwd_target_year = int(_fwd_year_raw) if _fwd_year_raw is not None else start_year + 1
+    _fwd_block_indices = [
+        index
+        for index in range(steps)
+        if _future_period_key(start_key, index + 1, periods_per_year)[0] == _fwd_target_year
+    ]
+    _fwd_block_is_full_year = _fwd_target_year == start_year + 1 and len(_fwd_block_indices) == periods_per_year
+    _fwd_block_index_set = set(_fwd_block_indices) if _fwd_block_is_full_year else set()
+    _fwd_ni_seeded = bool(_fwd_block_index_set) and _fwd_ni is not None and _fwd_ni > 0
+
     revenue_growth_history = _period_yoy_growth_series(revenue_series)
     historical_growth_bound = _winsorized_peak_values([value for _key, value in revenue_growth_history])
     cagr_3y = _trailing_average(revenue_growth_history[-(3 * periods_per_year) :], default=terminal_growth) if revenue_growth_history else None
@@ -1363,6 +1419,23 @@ def _build_period_projection(
     year1_growth = max(-0.10, year1_growth)
     growth_path = _fade_path(year1_growth, terminal_growth, steps)
     growth_path = _apply_override_period_series("revenue_growth", growth_path, start_key, periods_per_year, overrides)
+
+    # brief 54 §3 Phase 3.3: seed the forward fiscal year's block of periods
+    # with a single YoY growth rate implied by consensus forward revenue vs.
+    # the trailing-twelve-month total. Because each block period reads its
+    # same-period-last-year actual independently (see the main loop below),
+    # a uniform per-step growth rate reproduces the historical seasonal split
+    # while making the block's summed revenue land exactly on forward_revenue.
+    _fwd_rev_seeded = False
+    if _fwd_block_index_set and _fwd_rev is not None and _fwd_rev > 0:
+        _ttm_revenue = sum(value for key, value in revenue_series if key[0] == start_year)
+        if _ttm_revenue > 0:
+            _fwd_growth = max(-0.10, (_fwd_rev / _ttm_revenue) - 1.0)
+            for _index in _fwd_block_index_set:
+                growth_path[_index] = _fwd_growth
+            growth_method += f" | FY{_fwd_target_year} block reseeded from forward revenue {_fwd_rev:,.0f} MAD (consensus)"
+            _fwd_rev_seeded = True
+
     growth_anchor = cagr_3y if cagr_3y is not None else last_year_growth
     growth_divergence, divergence_warning = _divergence(growth_path[0], growth_anchor, name="revenue_growth")
     growth_warning = growth_warning or divergence_warning
@@ -1387,6 +1460,17 @@ def _build_period_projection(
         ebit_anchor = midcycle_margin
     margin_path = _fade_path(latest_margin, ebit_anchor, steps)
     margin_path = _apply_override_period_series("ebit_margin", margin_path, start_key, periods_per_year, overrides)
+
+    # brief 54 §3 Phase 3.3: gross-up NI margin -> EBIT margin for the forward
+    # block, mirroring build_projection()'s annual seam.
+    _fwd_ebit_margin: float | None = None
+    if _fwd_rev_seeded and _fwd_ni is not None and _fwd_ni > 0:
+        _implied_ni_margin = _fwd_ni / _fwd_rev  # type: ignore[operator]
+        _tax_denom = max(0.01, 1.0 - tax_rate_assumption)
+        _fwd_ebit_margin = max(0.0, min(0.60, _implied_ni_margin / _tax_denom))
+        for _index in _fwd_block_index_set:
+            margin_path[_index] = _fwd_ebit_margin
+
     margin_divergence, margin_warning = _divergence(margin_path[0], ebit_anchor, name="ebit_margin", absolute_band=0.05)
     if not margin_series and not annual_margin_series and ebit_peer is not None:
         margin_warning = "ebit_margin_from_peer_median"
@@ -1509,6 +1593,8 @@ def _build_period_projection(
         warnings.append("cash_flow_statement_missing_driver_fallback")
     if unavailable_driver_warnings:
         warnings.append("projection_driver_unavailable")
+    if _fwd_ni_seeded:
+        warnings.append("net_income_forward_seeded")
 
     latest_equity = _latest_period_or_annual_or_snapshot(period_history, annual_history, snapshot, period_type, EQUITY_ALIASES)
     if latest_equity is None:
@@ -1568,6 +1654,12 @@ def _build_period_projection(
         after_tax_interest = interest * (1.0 - tax)
         fcfe_value = fcff_value - after_tax_interest
         net_income = (ebit - interest) * (1.0 - tax)
+        if _fwd_ni_seeded and index in _fwd_block_index_set:
+            # Equal split across the forward year's periods: BKGR/consensus only
+            # gives an annual NI figure, no sub-annual breakdown, so this is the
+            # most honest allocation absent a seasonality source for NI itself
+            # (unlike revenue, which is split via same-period-YoY growth above).
+            net_income = _fwd_ni / len(_fwd_block_index_set)  # type: ignore[operator]
         dividend = max(0.0, net_income) * _clamp(payout_path[index], 0.0, 0.95)
         beginning_equity = previous_equity
         ending_equity = previous_equity + net_income - dividend

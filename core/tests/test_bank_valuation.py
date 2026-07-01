@@ -273,3 +273,106 @@ def test_thin_data_financial_confidence_is_not_auto_high() -> None:
     assert residual_income.fair_value is not None
     assert residual_income.confidence != "high"
     assert "bank_projection_unavailable_using_pb_roe_fallback" in residual_income.warnings
+
+
+def test_forward_ni_seeds_bank_projection_net_income() -> None:
+    """Banks route through _build_bank_projection — a separate code path from
+    build_projection's default (non-financial) branch. BKGR covers bank forward
+    NI (ATW/BCP/CIH), so this seam must fire there too (brief 54 §3.3)."""
+    history = _bank_history()
+    snapshot = _bank_snapshot()
+    base_assumptions = {**default_assumptions_for_scenario("base"), "_financial_archetype": "bank"}
+    proj_base = build_projection(snapshot, history, base_assumptions, scenario="base")
+
+    fwd_ni = proj_base.statements[0]["net_income"] * 1.5
+    fwd_year = proj_base.statements[0]["fiscal_year"]
+    seeded_assumptions = {**base_assumptions, "forward_net_income": fwd_ni, "forward_fiscal_year": fwd_year}
+    proj_seeded = build_projection(snapshot, history, seeded_assumptions, scenario="base")
+
+    assert proj_seeded.statements[0]["net_income"] == pytest.approx(fwd_ni)
+    assert "net_income_forward_seeded" in proj_seeded.warnings
+    # pnb/rbe path (drives relative_multiples/fcff-style outputs) must be untouched.
+    assert proj_seeded.statements[0]["pnb"] == pytest.approx(proj_base.statements[0]["pnb"])
+
+    sectors = {"ATW": "Banques", "BCP": "Banques", "BOA": "Banques", "CIH": "Banques"}
+    _, vals_base = compute_symbol_valuations(
+        snapshot=snapshot, history=history, peer_snapshots=_bank_peers(), sectors=sectors,
+        assumptions=default_assumptions_for_scenario("base"), scenario="base",
+    )
+    _, vals_seeded = compute_symbol_valuations(
+        snapshot=snapshot, history=history, peer_snapshots=_bank_peers(), sectors=sectors,
+        assumptions={**default_assumptions_for_scenario("base"), "forward_net_income": fwd_ni, "forward_fiscal_year": fwd_year},
+        scenario="base",
+    )
+
+    def _fair(vals: list, model: str) -> float | None:
+        return next((r.fair_value for r in vals if r.model == model and r.fair_value is not None), None)
+
+    assert _fair(vals_seeded, "ddm") > _fair(vals_base, "ddm")
+    assert _fair(vals_seeded, "residual_income") > _fair(vals_base, "residual_income")
+    # relative_multiples reads snapshot ratios, not the projection — must be unaffected.
+    assert _fair(vals_seeded, "relative_multiples") == pytest.approx(_fair(vals_base, "relative_multiples"))
+
+
+def test_forward_ni_seeds_insurer_roe_projection_net_income() -> None:
+    """Insurers route through _build_roe_financial_projection — also separate
+    from build_projection's default branch. Same seam must fire there."""
+    history = [
+        _row("WAA", 2022, "NetIncome", 90.0),
+        _row("WAA", 2022, "Dividends_Paid", 35.0),
+        _row("WAA", 2022, "Total_Equity", 600.0),
+        _row("WAA", 2022, "ROE", 0.15),
+        _row("WAA", 2023, "NetIncome", 96.0),
+        _row("WAA", 2023, "Dividends_Paid", 38.0),
+        _row("WAA", 2023, "Total_Equity", 640.0),
+        _row("WAA", 2023, "ROE", 0.15),
+        _row("WAA", 2024, "NetIncome", 105.0),
+        _row("WAA", 2024, "Dividends_Paid", 42.0),
+        _row("WAA", 2024, "Total_Equity", 700.0),
+        _row("WAA", 2024, "ROE", 0.15),
+    ]
+    snapshot = FundamentalSnapshot(
+        symbol="WAA",
+        company_name="Wafa Assurance",
+        latest_statement_year=2024,
+        metrics={
+            "Current_Price": 100.0,
+            "Shares_Outstanding": 10.0,
+            "MarketCap_Calc": 1000.0,
+            "Price_to_Book": 1.4,
+            "PER": 9.0,
+            "ROE": 0.15,
+            "Dividend_Yield": 0.04,
+            "Dividend_Payout": 0.40,
+        },
+        source={"currency": "MAD"},
+        as_of_date=dt.date(2025, 4, 30),
+    )
+
+    base_assumptions = {**default_assumptions_for_scenario("base"), "_financial_archetype": "insurance"}
+    proj_base = build_projection(snapshot, history, base_assumptions, scenario="base")
+
+    fwd_ni = proj_base.statements[0]["net_income"] * 1.5
+    fwd_year = proj_base.statements[0]["fiscal_year"]
+    seeded_assumptions = {**base_assumptions, "forward_net_income": fwd_ni, "forward_fiscal_year": fwd_year}
+    proj_seeded = build_projection(snapshot, history, seeded_assumptions, scenario="base")
+
+    assert proj_seeded.statements[0]["net_income"] == pytest.approx(fwd_ni)
+    assert "net_income_forward_seeded" in proj_seeded.warnings
+
+    sectors = {"WAA": "Assurances"}
+    _, vals_base = compute_symbol_valuations(
+        snapshot=snapshot, history=history, peer_snapshots=[], sectors=sectors,
+        assumptions=default_assumptions_for_scenario("base"), scenario="base",
+    )
+    _, vals_seeded = compute_symbol_valuations(
+        snapshot=snapshot, history=history, peer_snapshots=[], sectors=sectors,
+        assumptions={**default_assumptions_for_scenario("base"), "forward_net_income": fwd_ni, "forward_fiscal_year": fwd_year},
+        scenario="base",
+    )
+
+    def _fair(vals: list, model: str) -> float | None:
+        return next((r.fair_value for r in vals if r.model == model and r.fair_value is not None), None)
+
+    assert _fair(vals_seeded, "ddm") > _fair(vals_base, "ddm")
+    assert _fair(vals_seeded, "residual_income") > _fair(vals_base, "residual_income")
