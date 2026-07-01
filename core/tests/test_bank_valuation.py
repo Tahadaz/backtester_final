@@ -376,3 +376,85 @@ def test_forward_ni_seeds_insurer_roe_projection_net_income() -> None:
 
     assert _fair(vals_seeded, "ddm") > _fair(vals_base, "ddm")
     assert _fair(vals_seeded, "residual_income") > _fair(vals_base, "residual_income")
+
+
+def _stockanalysis_row(symbol: str, year: int, metric: str, value: float) -> AnnualMetricRow:
+    return AnnualMetricRow(
+        symbol=symbol,
+        company_name=symbol,
+        statement_year=year,
+        metric_name=metric,
+        metric_value=value,
+        raw_metric_name=metric,
+        source_sheet="stockanalysis",
+        source_field=metric,
+        as_of_date=dt.date(year + 1, 4, 30),
+    )
+
+
+def _stockanalysis_bank_history(symbol: str = "ATW") -> list[AnnualMetricRow]:
+    # Mirrors the real StockAnalysis-sourced ATW/BCP feed: no "PNB"/"RBE" line
+    # items at all -- only "Revenues_Before_Loan_Losses" (= Net_Interest_Income
+    # + Total_NonInterest_Income, i.e. PNB under a different label) and
+    # "Provision_for_Loan_Losses" (already a COST_OF_RISK_ALIASES entry).
+    rows: list[AnnualMetricRow] = []
+    rbl_by_year = {2021: 420.0, 2022: 462.0, 2023: 508.2, 2024: 559.02}
+    equity_by_year = {2021: 260.0, 2022: 280.0, 2023: 305.0, 2024: 333.0}
+    loans_by_year = {2021: 850.0, 2022: 900.0, 2023: 955.0, 2024: 1012.0}
+    for year, rbl in rbl_by_year.items():
+        loans = loans_by_year[year]
+        rbe = rbl * 0.48
+        cost = loans * 0.012
+        pretax = rbe - cost
+        tax = pretax * 0.30
+        net_income = pretax - tax
+        dividends = net_income * 0.35
+        rows.extend(
+            [
+                _stockanalysis_row(symbol, year, "Revenues_Before_Loan_Losses", rbl),
+                _stockanalysis_row(symbol, year, "Loans_Net", loans),
+                _stockanalysis_row(symbol, year, "Provision_for_Loan_Losses", cost),
+                _stockanalysis_row(symbol, year, "NetIncome", net_income),
+                _stockanalysis_row(symbol, year, "Dividendes", dividends),
+                _stockanalysis_row(symbol, year, "Total_Equity", equity_by_year[year]),
+                _stockanalysis_row(symbol, year, "Marge_RBE", 0.48),
+            ]
+        )
+    return rows
+
+
+def test_bank_projection_resolves_pnb_from_stockanalysis_revenues_before_loan_losses() -> None:
+    # Regression for the ATW/BCP "unavailable" bank projection: StockAnalysis
+    # (data_source="stockanalysis") labels the PNB-equivalent top line
+    # "Revenues Before Loan Losses" instead of "PNB"/"Produit_Net_Bancaire".
+    # Verified against real BVC-sourced PNB for the same fiscal year (ATW/BCP
+    # 2025, <0.2% delta) and as an exact identity (Net_Interest_Income +
+    # Total_NonInterest_Income) in the StockAnalysis feed itself -- this is
+    # PNB, not a proxy, so it belongs in PNB_ALIASES.
+    history = _stockanalysis_bank_history("ATW")
+    snapshot = _bank_snapshot("ATW")
+    assumptions = {**default_assumptions_for_scenario("base"), "_financial_archetype": "bank"}
+
+    projection = build_projection(snapshot, history, assumptions, scenario="base")
+
+    assert projection.statements, "bank projection must not be empty/unavailable"
+    assert "bank_pnb_unavailable_no_history_no_peer" not in projection.warnings
+    assert projection.confidence_cap != "unavailable"
+
+    _, results = compute_symbol_valuations(
+        snapshot=snapshot,
+        history=history,
+        peer_snapshots=_bank_peers(),
+        sectors={"ATW": "Banques", "BCP": "Banques", "BOA": "Banques", "CIH": "Banques"},
+        assumptions=default_assumptions_for_scenario("base"),
+        scenario="base",
+    )
+    by_model = {row.model: row for row in results}
+
+    assert by_model["residual_income"].fair_value is not None
+    assert by_model["residual_income"].fair_value > 0
+    assert by_model["ddm"].fair_value is not None
+    assert by_model["ddm"].fair_value > 0
+    assert all(
+        "bank_projection_unavailable_using_pb_roe_fallback" not in row.warnings for row in results
+    )

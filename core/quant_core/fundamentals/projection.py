@@ -45,7 +45,21 @@ FREE_CASH_FLOW_ALIASES = ("Free_Cash_Flow",)
 OPERATING_CF_ALIASES = ("Operating_Cash_Flow", "CF_Operating", "Flux_de_tresorerie_lies_a_lactivite")
 INVESTING_CF_ALIASES = ("CF_Investing", "Flux_de_tresorerie_lies_aux_investissements")
 INTEREST_ALIASES = ("Interest_Expense", "Charges_Interets", "Net_Interest_Expense", "Resultat_financier")
-PNB_ALIASES = ("PNB", "Produit_Net_Bancaire", "Net_Banking_Income")
+PNB_ALIASES = (
+    "PNB",
+    "Produit_Net_Bancaire",
+    "Net_Banking_Income",
+    # StockAnalysis-sourced bank income statements label this line "Revenues
+    # Before Loan Losses" (= Net_Interest_Income + Total_NonInterest_Income,
+    # i.e. total banking revenue before loan-loss provisions -- this IS PNB,
+    # not a proxy for it). Verified against BVC-sourced PNB for the same
+    # fiscal year: ATW 2025 PNB=34.90-34.92bn vs Revenues_Before_Loan_Losses
+    # =34.968bn; BCP 2025 PNB=26.985158bn vs Revenues_Before_Loan_Losses=
+    # 26.985bn (match to <0.01%). Also verified as an exact identity in the
+    # StockAnalysis feed itself: Net_Interest_Income + Total_NonInterest_Income
+    # == Revenues_Before_Loan_Losses for ATW/BCP/CIH.
+    "Revenues_Before_Loan_Losses",
+)
 RBE_ALIASES = ("RBE", "Resultat_Brut_Exploitation", "Gross_Operating_Income")
 COST_OF_RISK_ALIASES = ("Cout_du_risque", "Cost_of_Risk", "Provision_for_Loan_Losses", "Provision_Loan_Losses")
 COST_OF_RISK_RATIO_ALIASES = ("Cost_of_Risk_Pct", "Cout_du_risque_to_Loans", "Cout_du_risque_to_PNB")
