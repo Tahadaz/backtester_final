@@ -68,6 +68,7 @@ from ..market_data_loader import load_close_series_from_store
 from .bourse_live_quotes import effective_price_from_quote, get_cached_live_quotes, get_or_refresh_live_quotes
 from .consensus import load_forward_view
 from .fundamental_macro import resolve_macro_config
+from .model_forecast import load_model_forecast_view
 
 
 METHODOLOGY_VERSION = "v3"
@@ -4594,6 +4595,24 @@ def recompute_symbol_valuations(
         fiscal_year=_fwd_year,
         valuation_date=run_ts.date(),
     )
+    # Phase 4 (brief 54 §3): model-forecaster fallback fills forward_revenue /
+    # forward_net_income ONLY where consensus (above) didn't already supply
+    # them -- consensus always wins. Backstops the ~50 thin MASI names and all
+    # pre-2026 PIT history that BKGR/MarketScreener never cover. Validated to
+    # beat the naive-CAGR mechanical baseline out-of-sample (see
+    # core/quant_core/fundamentals/forecast_model.py); returns {} on thin data
+    # or a missing scikit-learn (dev-only dependency) so there is no coverage
+    # regression versus the pre-Phase-4 path.
+    _model_view = load_model_forecast_view(
+        db,
+        symbol,
+        import_id=import_id,
+        fiscal_year=_fwd_year,
+        as_of_year=_fwd_year - 1,
+        existing_forward_view=_fwd_view,
+    )
+    if _model_view:
+        _fwd_view = {**_model_view, **_fwd_view}
     if _fwd_view:
         assumptions = {**assumptions, **_fwd_view}
 
