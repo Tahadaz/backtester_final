@@ -66,6 +66,33 @@ export const SEVERE_VALUATION_WARNINGS = new Set([
 export const SEVERE_FCF_WARNING_PREFIXES = ["fcf_model_unreliable_negative_"]
 
 
+// FR labels for SEVERE_VALUATION_WARNINGS, used wherever these warnings surface
+// in trader-facing copy (Synthese risks list, and future Valorisation/Qualite chips).
+export const SEVERE_VALUATION_WARNING_LABELS_FR: Record<string, string> = {
+  missing_positive_fcf: "FCF projeté non positif",
+  missing_positive_equity_cash_flow_proxy: "Proxy de cash-flow actionnaire non positif",
+  wacc_not_above_terminal_growth: "WACC ne dépasse pas la croissance terminale",
+  cost_of_equity_not_above_terminal_growth: "Coût des fonds propres ne dépasse pas la croissance terminale",
+  fcf_dcf_unavailable_nonpositive_equity_value: "Valeur des fonds propres DCF non positive",
+  dividend_yield_above_plausible_range: "Rendement du dividende hors plage plausible",
+  price_to_book_below_plausible_range: "P/B impliqué sous la plage plausible",
+}
+
+
+// Per-model glossary entry ids for GlossaryTerm wiring (football field legend,
+// valuation model rail...). Falls back to the general "dcf" entry when a model
+// has no dedicated glossary entry.
+export const MODEL_GLOSSARY_IDS: Record<string, string> = {
+  fcff_dcf: "fcff",
+  fcfe_dcf: "fcfe",
+  ddm: "ddm",
+  residual_income: "residual-income",
+  justified_multiples: "justified-multiples",
+  relative_multiples: "relative-multiples",
+  reverse_dcf: "reverse-dcf",
+}
+
+
 export const JUSTIFIED_MULTIPLE_RATIOS: MultipleRatioDefinition[] = [
   { key: "justified_pb", label: "P/B", bit: 1 },
   { key: "justified_pe", label: "P/E", bit: 2 },

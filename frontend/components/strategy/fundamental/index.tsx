@@ -25,7 +25,7 @@ import { ResearchTicket } from "./research-ticket"
 import { ComparableModelSummary, DetailTab, FundamentalHorizon, Scenario, SignalFundamentalViewProps, ValuationSelectionSummary, WeightMode } from "./lib/types"
 import { AssumptionsTab, EstimatesTab } from "./tabs/estimates-tab"
 import { ComparablesTab, QualityTab } from "./tabs/quality-tab"
-import { ThesisTab } from "./tabs/synthese-tab"
+import { SyntheseTab } from "./tabs/synthese-tab"
 import { ValuationTab } from "./tabs/valuation-tab"
 import { UniverseScreen } from "./universe-screen"
 import { applyRatioDraftToValuationRows, buildValuationSelectionSummary, comparableModelSummary, editableAssumptionDraft, emptyComparableModelSummary, enabledRelativeValuationMetricsForDraft, horizonFromQuery, isLiquidFundamentalRow, isMasiFundamentalRow, parseExcludedModelIds, readValuationExclusionsBySymbol, scenarioFromQuery, sortValuationRows, tabFromQuery, valuationSymbolKey, weightModeFromQuery, writeValuationExclusionsBySymbol } from "./lib/view-models"
@@ -198,6 +198,14 @@ export function SignalFundamentalView({
     updateSearchParams({ fund_tab: next === "synthese" ? null : next })
   }
 
+  function handleSyntheseNavigate(next: DetailTab, anchor?: string) {
+    setActiveTab(next)
+    if (!anchor) return
+    window.setTimeout(() => {
+      document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" })
+    }, 60)
+  }
+
   function setWeightMode(next: WeightMode) {
     updateSearchParams({ fund_weight_mode: next === "ic" ? null : next })
   }
@@ -347,31 +355,35 @@ export function SignalFundamentalView({
                   ) : (
                     <>
                       {saveError ? <div className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">{saveError}</div> : null}
-                      {activeTab === "synthese" ? <ThesisTab detail={detail} row={selectedRow} /> : null}
+                      {activeTab === "synthese" ? (
+                        <SyntheseTab detail={detail} row={selectedRow} rows={rows} onNavigate={handleSyntheseNavigate} />
+                      ) : null}
                       {activeTab === "valuation" ? (
-                        <ValuationTab
-                          detail={detail}
-                          row={selectedRow}
-                          rows={rows}
-                          scenario={resolvedScenario}
-                          sensitivity={sensitivity}
-                          isSensitivityLoading={isSensitivityLoading}
-                          onScenarioChange={setScenario}
-                          assumptionDraft={assumptionDraft}
-                          onAssumptionDraftChange={setAssumptionDraft}
-                          onSaveAssumptions={() => void saveAssumptions()}
-                          isSaving={isSaving}
-                          selectedComparatorId={selectedComparableBenchmarkId}
-                          onSelectedComparatorIdChange={setSelectedComparableBenchmarkId}
-                          onExcludedModelParamChange={setExcludedValuationModelsParam}
-                          visibleValuations={visibleValuations}
-                          excludedModelIds={excludedValuationModelIds}
-                          comparableSummary={valuationComparableSummary}
-                          isComparableSummaryLoading={isValuationComparableLoading}
-                          selectionSummary={valuationSelectionSummary}
-                          weightMode={weightMode}
-                          onWeightModeChange={setWeightMode}
-                        />
+                        <div id="valorisation-section">
+                          <ValuationTab
+                            detail={detail}
+                            row={selectedRow}
+                            rows={rows}
+                            scenario={resolvedScenario}
+                            sensitivity={sensitivity}
+                            isSensitivityLoading={isSensitivityLoading}
+                            onScenarioChange={setScenario}
+                            assumptionDraft={assumptionDraft}
+                            onAssumptionDraftChange={setAssumptionDraft}
+                            onSaveAssumptions={() => void saveAssumptions()}
+                            isSaving={isSaving}
+                            selectedComparatorId={selectedComparableBenchmarkId}
+                            onSelectedComparatorIdChange={setSelectedComparableBenchmarkId}
+                            onExcludedModelParamChange={setExcludedValuationModelsParam}
+                            visibleValuations={visibleValuations}
+                            excludedModelIds={excludedValuationModelIds}
+                            comparableSummary={valuationComparableSummary}
+                            isComparableSummaryLoading={isValuationComparableLoading}
+                            selectionSummary={valuationSelectionSummary}
+                            weightMode={weightMode}
+                            onWeightModeChange={setWeightMode}
+                          />
+                        </div>
                       ) : null}
                       {activeTab === "estimates" ? (
                         <div className="fund-gap flex flex-col">
@@ -399,15 +411,19 @@ export function SignalFundamentalView({
                       ) : null}
                       {activeTab === "quality" ? (
                         <div className="fund-gap flex flex-col">
-                          <ComparablesTab
-                            detail={detail}
-                            row={selectedRow}
-                            rows={rows}
-                            selectedComparatorId={selectedComparableBenchmarkId}
-                            onSelectedComparatorIdChange={setSelectedComparableBenchmarkId}
-                          />
+                          <div id="comparables-section">
+                            <ComparablesTab
+                              detail={detail}
+                              row={selectedRow}
+                              rows={rows}
+                              selectedComparatorId={selectedComparableBenchmarkId}
+                              onSelectedComparatorIdChange={setSelectedComparableBenchmarkId}
+                            />
+                          </div>
                           <div className="fund-section-label">Qualité</div>
-                          <QualityTab detail={detail} row={selectedRow} />
+                          <div id="qualite-section">
+                            <QualityTab detail={detail} row={selectedRow} />
+                          </div>
                         </div>
                       ) : null}
                     </>
