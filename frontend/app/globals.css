@@ -1205,64 +1205,6 @@
     font-size: 12px;
   }
 
-  .signal-fund-strip {
-    display: flex;
-    flex-shrink: 0;
-    align-items: center;
-    gap: 1rem;
-    border-bottom: 1px solid var(--line);
-    background: var(--card);
-    padding: 0.5625rem 0.875rem;
-  }
-
-  .signal-fund-symbol {
-    font-size: 1rem;
-    font-weight: 700;
-    line-height: 1.2;
-  }
-
-  .signal-fund-strip-kpis {
-    margin-left: auto;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 1.25rem;
-  }
-
-  .strip-kpi {
-    display: flex;
-    min-width: 4.5rem;
-    flex-direction: column;
-    gap: 0.0625rem;
-  }
-
-  .strip-kpi-lbl {
-    color: var(--muted-foreground);
-    font-size: 0.5625rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    line-height: 1.2;
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-
-  .strip-kpi-val {
-    font-family: var(--font-mono);
-    font-size: 0.8125rem;
-    font-weight: 600;
-    line-height: 1.2;
-    white-space: nowrap;
-  }
-
-  .signal-fund-control-row {
-    display: flex;
-    flex-shrink: 0;
-    align-items: center;
-    gap: 0.5rem;
-    border-bottom: 1px solid var(--line);
-    background: var(--bg2);
-    padding: 0.4375rem 0.875rem;
-  }
-
   .signal-fund-tabs {
     display: flex;
     flex-shrink: 0;
@@ -1309,64 +1251,6 @@
     overflow-y: auto;
     overscroll-behavior: contain;
     padding: 0.875rem;
-  }
-
-  .signal-fund-body-grid {
-    display: grid;
-    gap: 0.75rem;
-  }
-
-  .signal-fund-stat,
-  .signal-fund-metric {
-    display: flex;
-    min-width: 0;
-    flex-direction: column;
-    gap: 0.25rem;
-    border: 1px solid var(--line);
-    border-radius: calc(var(--radius) - 0.125rem);
-    background: var(--bg2);
-    padding: 0.625rem 0.75rem;
-  }
-
-  .signal-fund-stat-label,
-  .signal-fund-metric > span:first-child {
-    color: var(--fg3);
-    font-size: 0.625rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    line-height: 1.2;
-    text-transform: uppercase;
-  }
-
-  .signal-fund-stat-value {
-    min-width: 0;
-    color: var(--fg1);
-    font-family: var(--font-mono);
-    font-size: 1.125rem;
-    font-weight: 600;
-    line-height: 1.2;
-    overflow-wrap: anywhere;
-  }
-
-  .signal-fund-stat-sub {
-    color: var(--fg2);
-    font-size: 0.6875rem;
-    line-height: 1.25;
-  }
-
-  .signal-fund-card {
-    overflow: hidden;
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    background: var(--card);
-  }
-
-  .signal-fund-card-title {
-    border-bottom: 1px solid var(--line);
-    background: var(--bg2);
-    padding: 0.625rem 0.875rem;
-    font-size: 0.8125rem;
-    font-weight: 600;
   }
 
   .fund-univ-footer {
@@ -1713,49 +1597,6 @@
       flex-direction: row;
       justify-content: space-between;
     }
-  }
-
-  .valuation-subtabs {
-    display: flex;
-    min-width: 0;
-    overflow-x: auto;
-    gap: 0.125rem;
-    margin-top: -0.625rem;
-    margin-bottom: -0.375rem;
-    border: 1px solid var(--line);
-    border-radius: calc(var(--radius) - 0.125rem);
-    background: var(--bg2);
-    padding: 0.125rem;
-    scrollbar-gutter: auto;
-  }
-
-  .valuation-subtab {
-    display: inline-flex;
-    height: 1.75rem;
-    min-width: max-content;
-    flex-shrink: 0;
-    align-items: center;
-    justify-content: center;
-    border: 0;
-    border-radius: calc(var(--radius) - 0.25rem);
-    background: transparent;
-    color: var(--fg2);
-    padding: 0 0.625rem;
-    font-size: 0.6875rem;
-    font-weight: 650;
-    line-height: 1;
-    white-space: nowrap;
-  }
-
-  .valuation-subtab:hover {
-    background: var(--bg3);
-    color: var(--fg1);
-  }
-
-  .valuation-subtab.active {
-    background: var(--card);
-    color: var(--fg1);
-    box-shadow: var(--shadow-xs);
   }
 
   .fund-gap {
@@ -2122,53 +1963,6 @@
     line-height: 1.5;
   }
 
-  .cat-item,
-  .risk-row {
-    display: grid;
-    gap: 0.75rem;
-    border-bottom: 1px solid var(--line);
-    padding: 0.625rem 0;
-    align-items: start;
-  }
-
-  .cat-item {
-    grid-template-columns: 5rem minmax(0, 1fr) auto;
-  }
-
-  .risk-row {
-    grid-template-columns: 7rem minmax(0, 1fr) 4rem 4.5rem;
-    align-items: center;
-    font-size: 0.6875rem;
-  }
-
-  .cat-item:last-child,
-  .risk-row:last-child {
-    border-bottom: 0;
-  }
-
-  .cat-date {
-    color: var(--fg2);
-    font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    font-weight: 600;
-  }
-
-  .cat-title {
-    display: block;
-    color: var(--fg1);
-    font-size: 0.75rem;
-    font-weight: 600;
-  }
-
-  .cat-desc,
-  .risk-text {
-    display: block;
-    color: var(--muted-foreground);
-    font-size: 0.6875rem;
-    line-height: 1.45;
-  }
-
-  .cat-imp,
   .fund-warning-chip {
     border-radius: 3px;
     background: oklch(0.55 0.01 250 / 0.10);
@@ -2177,40 +1971,6 @@
     font-size: 0.625rem;
     font-weight: 700;
     text-transform: uppercase;
-  }
-
-  .cat-imp.high {
-    background: oklch(0.96 0.07 165 / 0.35);
-    color: oklch(0.34 0.15 165);
-  }
-
-  .risk-cat {
-    color: var(--fg2);
-    font-weight: 600;
-  }
-
-  .risk-meter {
-    display: flex;
-    gap: 2px;
-  }
-
-  .risk-bar {
-    width: 6px;
-    height: 14px;
-    border-radius: 1px;
-    background: var(--bg3);
-  }
-
-  .risk-bar.on.l {
-    background: oklch(0.65 0.12 80);
-  }
-
-  .risk-bar.on.m {
-    background: oklch(0.62 0.14 50);
-  }
-
-  .risk-bar.on.h {
-    background: oklch(0.55 0.18 25);
   }
 
   .ff-svg {
@@ -2523,39 +2283,6 @@
     padding: 0.25rem 0.625rem;
     font-size: 0.6875rem;
     font-weight: 700;
-  }
-
-  .valuation-method-table-wrap {
-    overflow-x: auto;
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    background: var(--card);
-  }
-
-  .valuation-method-table {
-    border: 0;
-  }
-
-  .valuation-method-summary-row {
-    cursor: pointer;
-  }
-
-  .valuation-method-summary-row.excluded td {
-    color: var(--fg3);
-    background: color-mix(in oklab, var(--bg2) 72%, transparent);
-  }
-
-  .valuation-method-summary-row[aria-expanded="true"] td {
-    background: oklch(0.94 0.04 260 / 0.22);
-  }
-
-  .valuation-method-expanded-row:hover td,
-  .valuation-method-expanded-row td {
-    background: var(--bg2);
-  }
-
-  .valuation-expanded-cell {
-    padding: 0.75rem !important;
   }
 
   .valuation-method-card {
@@ -3851,19 +3578,6 @@
       scrollbar-gutter: auto;
     }
 
-    .signal-fund-strip {
-      align-items: flex-start;
-      flex-direction: column;
-    }
-
-    .signal-fund-strip-kpis {
-      width: 100%;
-      margin-left: 0;
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 0.625rem;
-    }
-
     .scn-grid,
     .dp-row {
       display: grid;
@@ -3875,9 +3589,7 @@
     }
 
     .peer-row,
-    .quality-accounting-stat,
-    .risk-row,
-    .cat-item {
+    .quality-accounting-stat {
       grid-template-columns: 1fr;
     }
 
