@@ -14,13 +14,18 @@ export const FUNDAMENTAL_HORIZONS: Array<{ value: FundamentalHorizon; label: str
 
 
 export const FUND_TABS: Array<{ value: DetailTab; label: string }> = [
-  { value: "thesis", label: "These" },
+  { value: "synthese", label: "Synthèse" },
   { value: "valuation", label: "Valorisation" },
-  { value: "estimates", label: "Estimations" },
-  { value: "comparables", label: "Comparables" },
-  { value: "assumptions", label: "Hypotheses" },
-  { value: "quality", label: "Value / Qualite" },
+  { value: "estimates", label: "Estimations & Hypothèses" },
+  { value: "quality", label: "Comparables & Qualité" },
 ]
+
+export const FUND_TAB_PURPOSE: Record<DetailTab, string> = {
+  synthese: "L'essentiel : la recommandation, ce qui la soutient, et ce qui pourrait la changer.",
+  valuation: "Ce que valent les modèles par rapport au prix de marché, et comment la cible est construite.",
+  estimates: "D'où viennent les prévisions, et les hypothèses que vous pouvez ajuster.",
+  quality: "Le titre face à ses pairs, et la solidité de ses fondamentaux.",
+}
 
 
 export const MODEL_ORDER = ["fcff_dcf", "fcfe_dcf", "ddm", "residual_income", "justified_multiples", "relative_multiples", "reverse_dcf"]

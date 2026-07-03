@@ -208,11 +208,11 @@ export function horizonFromQuery(value: string | null): FundamentalHorizon {
 export function tabFromQuery(value: string | null): DetailTab {
   const token = String(value ?? "").trim().toLowerCase()
   if (FUND_TABS.some((item) => item.value === token)) return token as DetailTab
-  if (token === "summary" || token === "resume") return "thesis"
-  if (token === "financials") return "estimates"
-  if (token === "quality" || token === "qualite") return "quality"
-  if (token === "valuation") return "valuation"
-  return "thesis"
+  // Legacy fund_tab values from the six-tab layout (brief 57 §3.2).
+  if (token === "thesis" || token === "summary" || token === "resume") return "synthese"
+  if (token === "assumptions" || token === "financials") return "estimates"
+  if (token === "comparables" || token === "qualite") return "quality"
+  return "synthese"
 }
 
 

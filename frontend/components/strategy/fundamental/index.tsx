@@ -18,7 +18,7 @@ import {
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
-import { FUND_TABS } from "./lib/constants"
+import { FUND_TABS, FUND_TAB_PURPOSE } from "./lib/constants"
 import { asNumber } from "./lib/formatters"
 import { useOptionalSelectedComparableView } from "./panels/comparables"
 import { ResearchTicket } from "./research-ticket"
@@ -195,7 +195,7 @@ export function SignalFundamentalView({
   }
 
   function setActiveTab(next: DetailTab) {
-    updateSearchParams({ fund_tab: next === "thesis" ? null : next })
+    updateSearchParams({ fund_tab: next === "synthese" ? null : next })
   }
 
   function setWeightMode(next: WeightMode) {
@@ -232,7 +232,8 @@ export function SignalFundamentalView({
     const nextSymbolKey = valuationSymbolKey(symbol)
     const nextExcludedModels = nextSymbolKey ? valuationExclusionsBySymbol[nextSymbolKey] ?? null : null
     onSelectSymbol(symbol)
-    updateSearchParams({ scenario: null, fund_tab: null, fund_excluded_models: nextExcludedModels })
+    // fund_tab is intentionally left alone here so the active tab survives symbol switches (brief 57 §3.2).
+    updateSearchParams({ scenario: null, fund_excluded_models: nextExcludedModels })
   }
 
   async function saveAssumptions() {
@@ -312,76 +313,68 @@ export function SignalFundamentalView({
               Selectionnez un titre pour afficher la recherche fondamentale.
             </div>
           ) : (
-            <ResizablePanelGroup
-              direction="vertical"
-              autoSaveId="signals-fundamental-detail-layout-v6"
-              className="signal-fund-detail-split"
-            >
-              <ResizablePanel defaultSize={18} minSize={14} maxSize={28} className="min-h-0">
-                <div className="signal-fund-ticket-pane">
-                  <ResearchTicket
-                    row={selectedRow}
-                    detail={detail}
-                    isRefreshing={isDetailValidating || isUniverseValidating}
-                    selectedHorizon={selectedHorizon}
-                    onHorizonChange={setFundamentalHorizon}
-                  />
+            <div className="signal-fund-detail-shell">
+              <ResearchTicket
+                row={selectedRow}
+                detail={detail}
+                isRefreshing={isDetailValidating || isUniverseValidating}
+                selectedHorizon={selectedHorizon}
+                onHorizonChange={setFundamentalHorizon}
+              />
+
+              <div className="signal-fund-tab-pane">
+                <div className="signal-fund-tabs">
+                  {FUND_TABS.map((item) => (
+                    <button key={item.value} type="button" className={cn("signal-fund-tab", activeTab === item.value && "active")} onClick={() => setActiveTab(item.value)}>
+                      {item.label}
+                    </button>
+                  ))}
                 </div>
-              </ResizablePanel>
 
-              <ResizableHandle withHandle />
+                <p className="signal-fund-purpose">{FUND_TAB_PURPOSE[activeTab]}</p>
 
-              <ResizablePanel defaultSize={82} minSize={45} className="min-h-0">
-                <div className="signal-fund-tab-pane">
-                  <div className="signal-fund-tabs">
-                    {FUND_TABS.map((item) => (
-                      <button key={item.value} type="button" className={cn("signal-fund-tab", activeTab === item.value && "active")} onClick={() => setActiveTab(item.value)}>
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="signal-fund-body">
-                    {isDetailLoading && !detail ? (
-                      <div className="space-y-3">
-                        <Skeleton className="h-28 w-full" />
-                        <Skeleton className="h-52 w-full" />
-                      </div>
-                    ) : !detail ? (
-                      <div className="signal-fund-empty">
-                        <Landmark className="h-10 w-10 opacity-[0.15]" />
-                        No detail available for {selectedSymbol}.
-                      </div>
-                    ) : (
-                      <>
-                        {saveError ? <div className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">{saveError}</div> : null}
-                        {activeTab === "thesis" ? <ThesisTab detail={detail} row={selectedRow} /> : null}
-                        {activeTab === "valuation" ? (
-                          <ValuationTab
-                            detail={detail}
-                            row={selectedRow}
-                            rows={rows}
-                            scenario={resolvedScenario}
-                            sensitivity={sensitivity}
-                            isSensitivityLoading={isSensitivityLoading}
-                            onScenarioChange={setScenario}
-                            assumptionDraft={assumptionDraft}
-                            onAssumptionDraftChange={setAssumptionDraft}
-                            onSaveAssumptions={() => void saveAssumptions()}
-                            isSaving={isSaving}
-                            selectedComparatorId={selectedComparableBenchmarkId}
-                            onSelectedComparatorIdChange={setSelectedComparableBenchmarkId}
-                            onExcludedModelParamChange={setExcludedValuationModelsParam}
-                            visibleValuations={visibleValuations}
-                            excludedModelIds={excludedValuationModelIds}
-                            comparableSummary={valuationComparableSummary}
-                            isComparableSummaryLoading={isValuationComparableLoading}
-                            selectionSummary={valuationSelectionSummary}
-                            weightMode={weightMode}
-                            onWeightModeChange={setWeightMode}
-                          />
-                        ) : null}
-                        {activeTab === "estimates" ? (
+                <div className="signal-fund-body">
+                  {isDetailLoading && !detail ? (
+                    <div className="space-y-3">
+                      <Skeleton className="h-28 w-full" />
+                      <Skeleton className="h-52 w-full" />
+                    </div>
+                  ) : !detail ? (
+                    <div className="signal-fund-empty">
+                      <Landmark className="h-10 w-10 opacity-[0.15]" />
+                      No detail available for {selectedSymbol}.
+                    </div>
+                  ) : (
+                    <>
+                      {saveError ? <div className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">{saveError}</div> : null}
+                      {activeTab === "synthese" ? <ThesisTab detail={detail} row={selectedRow} /> : null}
+                      {activeTab === "valuation" ? (
+                        <ValuationTab
+                          detail={detail}
+                          row={selectedRow}
+                          rows={rows}
+                          scenario={resolvedScenario}
+                          sensitivity={sensitivity}
+                          isSensitivityLoading={isSensitivityLoading}
+                          onScenarioChange={setScenario}
+                          assumptionDraft={assumptionDraft}
+                          onAssumptionDraftChange={setAssumptionDraft}
+                          onSaveAssumptions={() => void saveAssumptions()}
+                          isSaving={isSaving}
+                          selectedComparatorId={selectedComparableBenchmarkId}
+                          onSelectedComparatorIdChange={setSelectedComparableBenchmarkId}
+                          onExcludedModelParamChange={setExcludedValuationModelsParam}
+                          visibleValuations={visibleValuations}
+                          excludedModelIds={excludedValuationModelIds}
+                          comparableSummary={valuationComparableSummary}
+                          isComparableSummaryLoading={isValuationComparableLoading}
+                          selectionSummary={valuationSelectionSummary}
+                          weightMode={weightMode}
+                          onWeightModeChange={setWeightMode}
+                        />
+                      ) : null}
+                      {activeTab === "estimates" ? (
+                        <div className="fund-gap flex flex-col">
                           <EstimatesTab
                             detail={detail}
                             methodology={methodology}
@@ -390,17 +383,7 @@ export function SignalFundamentalView({
                             onSave={() => void saveAssumptions()}
                             isSaving={isSaving}
                           />
-                        ) : null}
-                        {activeTab === "comparables" ? (
-                          <ComparablesTab
-                            detail={detail}
-                            row={selectedRow}
-                            rows={rows}
-                            selectedComparatorId={selectedComparableBenchmarkId}
-                            onSelectedComparatorIdChange={setSelectedComparableBenchmarkId}
-                          />
-                        ) : null}
-                        {activeTab === "assumptions" ? (
+                          <div className="fund-section-label">Hypothèses</div>
                           <AssumptionsTab
                             detail={detail}
                             scenario={resolvedScenario}
@@ -412,14 +395,26 @@ export function SignalFundamentalView({
                             isSaving={isSaving}
                             isDeskSaving={isDeskSaving}
                           />
-                        ) : null}
-                        {activeTab === "quality" ? <QualityTab detail={detail} row={selectedRow} /> : null}
-                      </>
-                    )}
-                  </div>
+                        </div>
+                      ) : null}
+                      {activeTab === "quality" ? (
+                        <div className="fund-gap flex flex-col">
+                          <ComparablesTab
+                            detail={detail}
+                            row={selectedRow}
+                            rows={rows}
+                            selectedComparatorId={selectedComparableBenchmarkId}
+                            onSelectedComparatorIdChange={setSelectedComparableBenchmarkId}
+                          />
+                          <div className="fund-section-label">Qualité</div>
+                          <QualityTab detail={detail} row={selectedRow} />
+                        </div>
+                      ) : null}
+                    </>
+                  )}
                 </div>
-              </ResizablePanel>
-            </ResizablePanelGroup>
+              </div>
+            </div>
           )}
         </section>
       </ResizablePanel>

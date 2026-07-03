@@ -5,7 +5,7 @@ import {
 export type Scenario = "bear" | "base" | "bull"
 
 
-export type DetailTab = "thesis" | "valuation" | "estimates" | "comparables" | "assumptions" | "quality"
+export type DetailTab = "synthese" | "valuation" | "estimates" | "quality"
 
 
 export type FundamentalHorizon = "quarter" | "semester" | "year"

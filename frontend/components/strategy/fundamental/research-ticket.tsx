@@ -1,7 +1,5 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
-import type { CSSProperties } from "react"
 import { CalendarDays, Loader2 } from "lucide-react"
 import {
   type FundamentalStockDetail,
@@ -10,7 +8,7 @@ import {
 import { financialPeriodLabel } from "@/lib/fundamental-statement-utils.js"
 import { cn } from "@/lib/utils"
 import { FUNDAMENTAL_HORIZONS } from "./lib/constants"
-import { asNumber, clampValue, fmtCap, fmtCompactMad, fmtMoney, fmtPct, formatDate, recommendationClass, recommendationLabel } from "./lib/formatters"
+import { asNumber, fmtCap, fmtCompactMad, fmtMoney, fmtPct, formatDate, recommendationClass, recommendationLabel } from "./lib/formatters"
 import { revisionArrow } from "./shared/cards"
 import { FundamentalHorizon } from "./lib/types"
 import { effectiveHorizonPrediction, horizonPredictionsFor, predictionForHorizon, rowAdv20, rowUpside } from "./lib/view-models"
@@ -56,83 +54,45 @@ export function ResearchTicket({
   )
   if (!horizonPredictionsFor(detail, row).length && targetPrice != null) availableHorizonValues.add("year")
   const activeHorizonMeta = FUNDAMENTAL_HORIZONS.find((item) => item.value === activeHorizon) ?? FUNDAMENTAL_HORIZONS[2]
-  const ticketRef = useRef<HTMLDivElement | null>(null)
-  const [ticketLayout, setTicketLayout] = useState<{ scale: number; density: "compact" | "comfortable" | "expanded" }>({
-    scale: 1,
-    density: "comfortable",
-  })
-
-  useEffect(() => {
-    const element = ticketRef.current
-    if (!element || typeof ResizeObserver === "undefined") return
-
-    let frame = 0
-    const updateLayout = (width: number, height: number) => {
-      if (width <= 0 || height <= 0) return
-      window.cancelAnimationFrame(frame)
-      frame = window.requestAnimationFrame(() => {
-        const widthScale = clampValue(width / 900, 0.78, 1.12)
-        const heightScale = clampValue(height / 155, 0.72, 1.16)
-        const scale = Number(clampValue(Math.min(widthScale, heightScale), 0.72, 1.12).toFixed(3))
-        const density = height < 118 || width < 720 ? "compact" : height > 205 && width > 880 ? "expanded" : "comfortable"
-        setTicketLayout((current) =>
-          Math.abs(current.scale - scale) > 0.01 || current.density !== density
-            ? { scale, density }
-            : current,
-        )
-      })
-    }
-
-    const observer = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect
-      if (rect) updateLayout(rect.width, rect.height)
-    })
-    const rect = element.getBoundingClientRect()
-    updateLayout(rect.width, rect.height)
-    observer.observe(element)
-
-    return () => {
-      window.cancelAnimationFrame(frame)
-      observer.disconnect()
-    }
-  }, [])
+  const revisionLabel = revision === "up" ? "révision haussière" : revision === "down" ? "révision baissière" : "révision inchangée"
 
   return (
-    <div
-      ref={ticketRef}
-      className="research-ticket"
-      data-capture="tearsheet"
-      data-density={ticketLayout.density}
-      style={{ "--rt-scale": ticketLayout.scale } as CSSProperties}
-    >
-      <div className="rt-left">
-        <div className="rt-header-row">
-          <div className="rt-identity">
-            <div className="rt-name-row">
-              <span className="rt-sym">{symbol}</span>
-              {isRefreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" /> : null}
-              <span className="rt-coname">{companyName}</span>
-              <span className="rt-meta">
-                <strong>{sector}</strong> - {row?.market_region ?? "Maroc"} - {currency}
-              </span>
-            </div>
-            <div className="rt-date-caption">
-              <CalendarDays className="rt-date-icon" aria-hidden="true" />
-              <span>Donnees au <strong>{formatDate(asOf)}</strong></span>
-              <span>Valorise le <strong>{formatDate(valuationDate)}</strong></span>
-              <span>Cible <strong>{formatDate(targetDate)}</strong></span>
-            </div>
-          </div>
-          <div className="rt-horizon-control" role="group" aria-label="Horizon cible">
-            <span className="rt-horizon-label">Horizon cible</span>
-            <div className="rt-horizon-buttons">
+    <div className="research-ticket-v2" data-capture="tearsheet">
+      <div className="rtv2-identity-row">
+        <div className="rtv2-identity">
+          <span className="rtv2-sym">{symbol}</span>
+          {isRefreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" /> : null}
+          <span className="rtv2-coname">{companyName}</span>
+          <span className="rtv2-chip">{sector}</span>
+          <span className="rtv2-chip">{row?.market_region ?? "Maroc"}</span>
+          <span className="rtv2-chip">{currency}</span>
+        </div>
+        <div className="rtv2-date-caption">
+          <CalendarDays className="rtv2-date-icon" aria-hidden="true" />
+          <span>Données au <strong>{formatDate(asOf)}</strong></span>
+          <span>Valorisé le <strong>{formatDate(valuationDate)}</strong></span>
+          <span>Cible <strong>{formatDate(targetDate)}</strong></span>
+        </div>
+      </div>
+
+      <div className="rtv2-kpi-strip">
+        <div className="rtv2-tile">
+          <span className="lbl">Cours actuel</span>
+          <span className="val">{fmtMoney(currentPrice, 2)}</span>
+          <span className="sub">au {formatDate(asOf)}</span>
+        </div>
+
+        <div className="rtv2-tile">
+          <div className="rtv2-tile-head">
+            <span className="lbl">Objectif {activeHorizon === "year" ? "12M" : financialPeriodLabel(activeHorizonMeta.periodType)}</span>
+            <div className="rtv2-horizon-buttons" role="group" aria-label="Horizon cible">
               {FUNDAMENTAL_HORIZONS.map((item) => {
                 const available = availableHorizonValues.has(item.value)
                 return (
                   <button
                     key={item.value}
                     type="button"
-                    className={cn("rt-horizon-btn", activeHorizon === item.value && "active")}
+                    className={cn("rtv2-horizon-btn", activeHorizon === item.value && "active")}
                     disabled={!available}
                     title={available ? item.label : "Historique sub-annuel insuffisant"}
                     onClick={() => onHorizonChange(item.value)}
@@ -143,38 +103,29 @@ export function ResearchTicket({
               })}
             </div>
           </div>
+          <span className="val text-[oklch(0.30_0.14_260)]">{fmtMoney(targetPrice, 2)}</span>
+          <span className="sub">{revisionArrow(revision)} {revisionLabel}</span>
         </div>
-        <div className="rt-prices">
-          <div className="rt-price-block">
-            <span className="lbl">Cours actuel</span>
-            <span className="val">{fmtMoney(currentPrice, 2)}</span>
-            <span className="sub">au {formatDate(asOf)}</span>
-          </div>
-          <div className="rt-price-block">
-            <span className="lbl">Objectif {activeHorizon === "year" ? "12M" : financialPeriodLabel(activeHorizonMeta.periodType)}</span>
-            <span className="val text-[oklch(0.30_0.14_260)]">{fmtMoney(targetPrice, 2)}</span>
-            <span className="sub">{revisionArrow(revision)} revision {revision === "up" ? "haussiere" : revision === "down" ? "baissiere" : "inchangee"}</span>
-          </div>
-          <div className="rt-price-block">
-            <span className="lbl">Upside / Downside</span>
-            <span className={cn("val", (upside ?? 0) >= 0 ? "t-pos" : "t-neg")}>{fmtPct(upside)}</span>
-            <span className="sub">vs cours actuel</span>
-          </div>
-          <div className="rt-price-block">
-            <span className="lbl">Capitalisation</span>
-            <span className="val">{fmtCap(marketCap)}</span>
-            <span className="sub">Free float {freeFloat == null ? "-" : fmtPct(freeFloat, 0, false)} - ADV20 {fmtCompactMad(adv20)} MAD</span>
-          </div>
+
+        <div className="rtv2-tile">
+          <span className="lbl">Upside / Downside</span>
+          <span className={cn("val", (upside ?? 0) >= 0 ? "t-pos" : "t-neg")}>{fmtPct(upside)}</span>
+          <span className="sub">vs cours actuel</span>
         </div>
-      </div>
-      <div className="rt-right">
-        <div className={cn("rt-rec-card", recommendationClass(recommendation))}>
-          <div className="rt-rec-lbl">Recommandation {headlineScenario}</div>
-          <div className={cn("rt-rec-val", recommendationClass(recommendation))}>{recommendationLabel(recommendation)}</div>
-          <div className="rt-conviction">
+
+        <div className="rtv2-tile">
+          <span className="lbl">Capitalisation</span>
+          <span className="val">{fmtCap(marketCap)}</span>
+          <span className="sub">Free float {freeFloat == null ? "-" : fmtPct(freeFloat, 0, false)} · ADV20 {fmtCompactMad(adv20)} MAD</span>
+        </div>
+
+        <div className={cn("rtv2-rec-card", recommendationClass(recommendation))}>
+          <div className="rtv2-rec-lbl">Recommandation {headlineScenario}</div>
+          <div className={cn("rtv2-rec-val", recommendationClass(recommendation))}>{recommendationLabel(recommendation)}</div>
+          <div className="rtv2-conviction">
             <span>Conviction</span>
             {[1, 2, 3, 4, 5].map((item) => (
-              <span key={item} className={cn("conv-dot", item <= conviction && "on")} />
+              <span key={item} className={cn("rtv2-conv-dot", item <= conviction && "on")} />
             ))}
           </div>
         </div>
@@ -182,4 +133,3 @@ export function ResearchTicket({
     </div>
   )
 }
-
