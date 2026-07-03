@@ -61,7 +61,7 @@ export function FundCard({ title, aside, children, className, id }: { title: str
 }
 
 
-export function StatTile({ label, value, sub, tone }: { label: string; value: string; sub?: ReactNode; tone?: string }) {
+export function StatTile({ label, value, sub, tone }: { label: ReactNode; value: string; sub?: ReactNode; tone?: string }) {
   return (
     <div className="fund-stat">
       <span className="lbl">{label}</span>

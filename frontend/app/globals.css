@@ -1805,6 +1805,37 @@
     padding: 0.875rem;
   }
 
+  /* estimates & hypotheses tab — sticky unsaved-draft bar (brief 57 §4.3 / §5.1) */
+  .fund-draft-bar {
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.625rem;
+    margin-top: 0.25rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--card);
+    box-shadow: 0 -6px 14px oklch(0 0 0 / 0.08);
+    padding: 0.5rem 0.75rem;
+    font-size: 11px;
+  }
+
+  .fund-draft-bar-label {
+    color: var(--fg2);
+    font-weight: 700;
+  }
+
+  .fund-draft-bar-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: auto;
+  }
+
   .fund-compare-toolbar {
     display: flex;
     align-items: center;

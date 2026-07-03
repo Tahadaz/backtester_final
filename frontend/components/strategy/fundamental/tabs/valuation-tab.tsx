@@ -15,18 +15,17 @@ import { GlossaryTerm } from "@/components/ui/glossary-term"
 import { TriangulationBand } from "@/components/strategy/triangulation-band"
 import { DetailTab } from "../lib/types"
 import { ASSUMPTION_FIELDS, JUSTIFIED_MULTIPLE_RATIOS, JUSTIFIED_MULTIPLE_RATIO_DEFAULT_MASK, JUSTIFIED_MULTIPLE_RATIO_MASK_KEY, MODEL_GLOSSARY_IDS, MODEL_LABELS, MODEL_ORDER, RELATIVE_MULTIPLE_RATIOS, RELATIVE_MULTIPLE_RATIO_DEFAULT_MASK, RELATIVE_MULTIPLE_RATIO_MASK_KEY, SCENARIOS, SEVERE_VALUATION_WARNINGS } from "../lib/constants"
-import { asNumber, asRecord, boundedMask, comparableMetricLabel, confidenceClass, fmtMoney, fmtNumber, fmtPct, fmtRatio, formatProjectionValue } from "../lib/formatters"
+import { asNumber, asRecord, boundedMask, comparableMetricLabel, confidenceClass, fmtMoney, fmtNumber, fmtPct, fmtRatio } from "../lib/formatters"
 import { ComparableBenchmarkPanel } from "../panels/comparables"
 import { CostOfCapitalBuildUp } from "../panels/cost-of-capital"
 import { DcfMethodView } from "../panels/dcf-method-view"
 import { ModelStoryPanel } from "../panels/model-story"
-import { CoverageRatingPanel } from "../panels/coverage-rating"
 import { ModelSensitivityPanel, SensitivityHeatmap } from "../panels/sensitivity"
 import { FundCard, ModelValueGrid, StatTile, StatementEvidenceCard } from "../shared/cards"
-import { DriverEvidenceChart, FootballField, GrowthDecompositionChart } from "../shared/charts"
+import { FootballField } from "../shared/charts"
 import { ComparableModelSummary, ModelStory, MultipleRatioDefinition, Scenario, ValuationSelectionSummary, WeightMode } from "../lib/types"
-import { DecisionStrip, EstimatesTab } from "../tabs/estimates-tab"
-import { currentPriceForValuationRow, dcfModeForModel, detailRatioMask, driverProjectedValue, enabledRatioKeys, fairValueForValuationRow, instantiatedFormula, outputItems, projectedValue, projectedYears, projectionDriverRows, projectionFromDetail, projectionStatementRows, serializeExcludedModelIds, sortValuationRows, statementEvidence, technicalInputItems, upsideForFairValue, valuationAssumptionItems, valuationFormulaMeta, valuationMethods } from "../lib/view-models"
+import { DecisionStrip } from "../tabs/estimates-tab"
+import { currentPriceForValuationRow, dcfModeForModel, detailRatioMask, enabledRatioKeys, fairValueForValuationRow, instantiatedFormula, outputItems, serializeExcludedModelIds, sortValuationRows, statementEvidence, technicalInputItems, upsideForFairValue, valuationAssumptionItems, valuationFormulaMeta, valuationMethods } from "../lib/view-models"
 
 function ComparableValuationTiles({
   detail,
@@ -470,100 +469,6 @@ function ValuationModelControls({
 }
 
 
-function SharedProjectionPanel({ detail }: { detail: FundamentalStockDetail }) {
-  const projection = projectionFromDetail(detail)
-  if (!projection) return null
-  const years = projectedYears(projection)
-  const driverRows = projectionDriverRows(projection)
-  const statementRows = projectionStatementRows()
-  const integrityChecks = detail.integrity?.projection_checks ?? []
-  const failingChecks = integrityChecks.filter((check) => check.status === "fail" || check.status === "warn")
-  return (
-    <FundCard
-      title="Projection operationnelle partagee"
-      aside={`${years.length} ans explicites - convention mi-annee`}
-    >
-      <GrowthDecompositionChart projection={projection} />
-      <div className="driver-evidence-grid">
-        {projectionDriverRows(projection).slice(0, 4).map((row) => (
-          <DriverEvidenceChart key={row.key} driver={row.driver} label={row.label} format={row.format} />
-        ))}
-      </div>
-
-      <div className="projection-panel-grid">
-        <div className="projection-table-wrap">
-          <div className="valuation-mini-title">Drivers derives</div>
-          <table className="claude-table projection-table min-w-[720px]">
-            <thead>
-              <tr>
-                <th>Driver</th>
-                {years.map((year) => <th key={year} className="r">{year}</th>)}
-                <th>Preuve</th>
-              </tr>
-            </thead>
-            <tbody>
-              {driverRows.map((row) => {
-                const method = typeof row.driver.method === "string" ? row.driver.method : ""
-                const warning = typeof row.driver.warning === "string" ? row.driver.warning : null
-                return (
-                  <tr key={row.key}>
-                    <td className="font-medium">{row.label}</td>
-                    {years.map((year) => (
-                      <td key={year} className="r font-mono" title={method}>
-                        {formatProjectionValue(driverProjectedValue(row.driver, year), row.format)}
-                      </td>
-                    ))}
-                    <td>
-                      <span className={cn("signal-conf-badge", warning ? "low" : "high")}>
-                        {warning ? "Divergence" : "Historique"}
-                      </span>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="projection-table-wrap">
-          <div className="valuation-mini-title">3 etats projetes</div>
-          <table className="claude-table projection-table min-w-[760px]">
-            <thead>
-              <tr>
-                <th>Ligne</th>
-                {years.map((year) => <th key={year} className="r">{year}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {statementRows.map((row) => (
-                <tr key={row.key}>
-                  <td className="font-medium">{row.label}</td>
-                  {projection.statements.map((statement, index) => (
-                    <td key={`${row.key}-${index}`} className="r font-mono">
-                      {formatProjectionValue(projectedValue(statement, row.key), row.format)}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="valuation-warning-row">
-        <span className="valuation-warning-label">Controles projection</span>
-        <div className="flex flex-wrap gap-1.5">
-          <span className={cn("signal-conf-badge", failingChecks.length ? "medium" : "high")}>
-            {failingChecks.length ? `${failingChecks.length} alertes` : "Tous les liens OK"}
-          </span>
-          {projection.warnings.map((warning) => <span key={warning} className="fund-warning-chip">{warning}</span>)}
-        </div>
-      </div>
-    </FundCard>
-  )
-}
-
-
 export function ValuationTab({
   detail,
   row,
@@ -711,13 +616,6 @@ export function ValuationTab({
 
       <SensitivityHeatmap sensitivity={sensitivity} assumptions={detail.assumptions} isLoading={isSensitivityLoading} />
 
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.25fr)_minmax(20rem,0.75fr)]">
-        <CostOfCapitalBuildUp detail={detail} />
-        <CoverageRatingPanel detail={detail} row={row} />
-      </div>
-
-      <SharedProjectionPanel detail={detail} />
-      <EstimatesTab detail={detail} editable={false} />
       <AssumptionStrip detail={detail} onNavigate={onNavigate} />
 
       <div className="valuation-method-section">

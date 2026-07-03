@@ -23,7 +23,7 @@ import { asNumber } from "./lib/formatters"
 import { useOptionalSelectedComparableView } from "./panels/comparables"
 import { ResearchTicket } from "./research-ticket"
 import { ComparableModelSummary, DetailTab, FundamentalHorizon, Scenario, SignalFundamentalViewProps, ValuationSelectionSummary, WeightMode } from "./lib/types"
-import { AssumptionsTab, EstimatesTab } from "./tabs/estimates-tab"
+import { EstimatesAssumptionsTab } from "./tabs/estimates-tab"
 import { ComparablesTab, QualityTab } from "./tabs/quality-tab"
 import { SyntheseTab } from "./tabs/synthese-tab"
 import { ValuationTab } from "./tabs/valuation-tab"
@@ -387,28 +387,18 @@ export function SignalFundamentalView({
                         </div>
                       ) : null}
                       {activeTab === "estimates" ? (
-                        <div className="fund-gap flex flex-col">
-                          <EstimatesTab
-                            detail={detail}
-                            methodology={methodology}
-                            draft={assumptionDraft}
-                            onDraftChange={setAssumptionDraft}
-                            onSave={() => void saveAssumptions()}
-                            isSaving={isSaving}
-                          />
-                          <div className="fund-section-label">Hypothèses</div>
-                          <AssumptionsTab
-                            detail={detail}
-                            scenario={resolvedScenario}
-                            methodology={methodology}
-                            draft={assumptionDraft}
-                            onDraftChange={setAssumptionDraft}
-                            onSaveSymbol={() => void saveAssumptions()}
-                            onSaveDesk={() => void saveDeskAssumptions()}
-                            isSaving={isSaving}
-                            isDeskSaving={isDeskSaving}
-                          />
-                        </div>
+                        <EstimatesAssumptionsTab
+                          detail={detail}
+                          row={selectedRow}
+                          methodology={methodology}
+                          scenario={resolvedScenario}
+                          draft={assumptionDraft}
+                          onDraftChange={setAssumptionDraft}
+                          onSaveSymbol={() => void saveAssumptions()}
+                          onSaveDesk={() => void saveDeskAssumptions()}
+                          isSaving={isSaving}
+                          isDeskSaving={isDeskSaving}
+                        />
                       ) : null}
                       {activeTab === "quality" ? (
                         <div className="fund-gap flex flex-col">
