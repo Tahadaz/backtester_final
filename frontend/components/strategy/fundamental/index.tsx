@@ -382,6 +382,7 @@ export function SignalFundamentalView({
                             selectionSummary={valuationSelectionSummary}
                             weightMode={weightMode}
                             onWeightModeChange={setWeightMode}
+                            onNavigate={handleSyntheseNavigate}
                           />
                         </div>
                       ) : null}

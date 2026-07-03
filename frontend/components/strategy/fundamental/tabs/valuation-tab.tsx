@@ -1,7 +1,7 @@
 "use client"
 
-import { Fragment, useCallback, useMemo, useState } from "react"
-import { ChevronDown, ChevronRight, Loader2, Save } from "lucide-react"
+import { useCallback, useMemo, useState } from "react"
+import { AlertTriangle, ArrowRight, Loader2, Save } from "lucide-react"
 import {
   type FundamentalSensitivity,
   type FundamentalStockDetail,
@@ -9,11 +9,12 @@ import {
   type FundamentalValuationResult,
 } from "@/lib/api"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { buildValuationModelStory } from "@/lib/fundamental-valuation-story-utils.js"
 import { cn } from "@/lib/utils"
+import { GlossaryTerm } from "@/components/ui/glossary-term"
 import { TriangulationBand } from "@/components/strategy/triangulation-band"
-import { ASSUMPTION_FIELDS, JUSTIFIED_MULTIPLE_RATIOS, JUSTIFIED_MULTIPLE_RATIO_DEFAULT_MASK, JUSTIFIED_MULTIPLE_RATIO_MASK_KEY, MODEL_LABELS, MODEL_ORDER, RELATIVE_MULTIPLE_RATIOS, RELATIVE_MULTIPLE_RATIO_DEFAULT_MASK, RELATIVE_MULTIPLE_RATIO_MASK_KEY, SCENARIOS } from "../lib/constants"
+import { DetailTab } from "../lib/types"
+import { ASSUMPTION_FIELDS, JUSTIFIED_MULTIPLE_RATIOS, JUSTIFIED_MULTIPLE_RATIO_DEFAULT_MASK, JUSTIFIED_MULTIPLE_RATIO_MASK_KEY, MODEL_GLOSSARY_IDS, MODEL_LABELS, MODEL_ORDER, RELATIVE_MULTIPLE_RATIOS, RELATIVE_MULTIPLE_RATIO_DEFAULT_MASK, RELATIVE_MULTIPLE_RATIO_MASK_KEY, SCENARIOS, SEVERE_VALUATION_WARNINGS } from "../lib/constants"
 import { asNumber, asRecord, boundedMask, comparableMetricLabel, confidenceClass, fmtMoney, fmtNumber, fmtPct, fmtRatio, formatProjectionValue } from "../lib/formatters"
 import { ComparableBenchmarkPanel } from "../panels/comparables"
 import { CostOfCapitalBuildUp } from "../panels/cost-of-capital"
@@ -24,53 +25,8 @@ import { ModelSensitivityPanel, SensitivityHeatmap } from "../panels/sensitivity
 import { FundCard, ModelValueGrid, StatTile, StatementEvidenceCard } from "../shared/cards"
 import { DriverEvidenceChart, FootballField, GrowthDecompositionChart } from "../shared/charts"
 import { ComparableModelSummary, ModelStory, MultipleRatioDefinition, Scenario, ValuationSelectionSummary, WeightMode } from "../lib/types"
-import { EstimatesTab } from "../tabs/estimates-tab"
+import { DecisionStrip, EstimatesTab } from "../tabs/estimates-tab"
 import { currentPriceForValuationRow, dcfModeForModel, detailRatioMask, driverProjectedValue, enabledRatioKeys, fairValueForValuationRow, instantiatedFormula, outputItems, projectedValue, projectedYears, projectionDriverRows, projectionFromDetail, projectionStatementRows, serializeExcludedModelIds, sortValuationRows, statementEvidence, technicalInputItems, upsideForFairValue, valuationAssumptionItems, valuationFormulaMeta, valuationMethods } from "../lib/view-models"
-
-function ComparableValuationCells({
-  currentPrice,
-  summary,
-  isLoading,
-}: {
-  currentPrice: number | null | undefined
-  summary: ComparableModelSummary
-  isLoading: boolean
-}) {
-  const current = asNumber(currentPrice)
-  const upside = summary.fairValue != null && current != null && current > 0 ? summary.fairValue / current - 1 : summary.upside
-  return (
-    <>
-      <td className="r font-mono">{isLoading && summary.fairValue == null ? "..." : fmtMoney(summary.fairValue, 1)}</td>
-      <td className="r font-mono">{fmtMoney(currentPrice, 1)}</td>
-      <td className={cn("r font-mono font-semibold", (upside ?? 0) >= 0 ? "t-pos" : "t-neg")}>
-        {isLoading && upside == null ? "..." : fmtPct(upside)}
-      </td>
-    </>
-  )
-}
-
-
-function ReverseDcfSummaryCells({ row, detail }: { row: FundamentalValuationResult; detail: FundamentalStockDetail }) {
-  const inputs = asRecord(row.inputs)
-  const outputs = asRecord(row.outputs)
-  const impliedGrowth = asNumber(outputs.implied_perpetual_growth)
-  const terminalGrowth = asNumber(detail.assumptions.terminal_growth_firm ?? detail.assumptions.terminal_growth)
-  const spread = impliedGrowth != null && terminalGrowth != null ? impliedGrowth - terminalGrowth : null
-  return (
-    <>
-      <td className="r font-mono font-semibold" title="Reverse DCF output: implied perpetual-growth assumption, not fair value">
-        g {fmtPct(impliedGrowth, 2, false)}
-      </td>
-      <td className="r font-mono" title="Input used by the diagnostic">
-        WACC {fmtPct(asNumber(inputs.wacc), 2, false)}
-      </td>
-      <td className={cn("r font-mono font-semibold", (spread ?? 0) > 0 ? "t-neg" : "t-pos")} title="Gap versus model terminal growth assumption">
-        vs g {fmtPct(spread, 2, false)}
-      </td>
-    </>
-  )
-}
-
 
 function ComparableValuationTiles({
   detail,
@@ -380,201 +336,30 @@ function ValuationMethodCard({
 }
 
 
-function ValuationMethodRows({
-  rows,
-  detail,
-  selectedRow,
-  universeRows,
-  selectedComparatorId,
-  onSelectedComparatorIdChange,
-  excludedModelIds,
-  onModelIncludedChange,
-  effectiveWeights,
-  comparableSummary,
-  isComparableSummaryLoading,
-  sensitivity,
-  assumptionDraft,
-  onAssumptionDraftChange,
-  onSaveAssumptions,
-  isSaving,
-}: {
-  rows: FundamentalValuationResult[]
-  detail: FundamentalStockDetail
-  selectedRow: FundamentalUniverseRow | null
-  universeRows: FundamentalUniverseRow[]
-  selectedComparatorId: string
-  onSelectedComparatorIdChange: (id: string) => void
-  excludedModelIds: Set<string>
-  onModelIncludedChange: (model: string, included: boolean) => void
-  effectiveWeights: Map<string, number>
-  comparableSummary: ComparableModelSummary
-  isComparableSummaryLoading: boolean
-  sensitivity?: FundamentalSensitivity
-  assumptionDraft: Record<string, number>
-  onAssumptionDraftChange: (draft: Record<string, number>) => void
-  onSaveAssumptions: () => void
-  isSaving: boolean
-}) {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
-
-  const toggle = (key: string) => {
-    setExpanded((current) => {
-      const next = new Set(current)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
-  }
-
-  if (rows.length === 0) {
-    return <div className="fund-empty-small">No valuation rows.</div>
-  }
-
-  return (
-    <div className="valuation-method-table-wrap">
-      <table className="claude-table valuation-method-table min-w-[920px]">
-        <thead>
-          <tr>
-            <th className="c">Incl.</th>
-            <th>Methode</th>
-            <th className="r">FV/result</th>
-            <th className="r">Current/input</th>
-            <th className="r">Upside/gap</th>
-            <th>Conf.</th>
-            <th className="r">Poids</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => {
-            const key = `${row.model}-${row.scenario}`
-            const isExpanded = expanded.has(key)
-            const isControllable = row.family !== "diagnostic"
-            const isIncluded = isControllable && !excludedModelIds.has(row.model)
-            const effectiveWeight = isIncluded ? effectiveWeights.get(row.model) ?? null : null
-            const effectiveFairValue = fairValueForValuationRow(row, row.model === "relative_multiples" ? comparableSummary : null)
-            const effectiveCurrent = currentPriceForValuationRow(row, detail)
-            const effectiveUpside = upsideForFairValue(effectiveFairValue, effectiveCurrent) ?? row.upside_pct
-            return (
-              <Fragment key={key}>
-              <tr
-                className={cn("valuation-method-summary-row", !isIncluded && isControllable && "excluded")}
-                onClick={() => toggle(key)}
-                aria-expanded={isExpanded}
-              >
-                  <td className="c">
-                    {isControllable ? (
-                      <input
-                        aria-label={`Include ${MODEL_LABELS[row.model] ?? row.model}`}
-                        className="valuation-include-checkbox"
-                        type="checkbox"
-                        checked={isIncluded}
-                        onClick={(event) => event.stopPropagation()}
-                        onChange={(event) => onModelIncludedChange(row.model, event.target.checked)}
-                      />
-                    ) : (
-                      <span className="valuation-model-static">Info</span>
-                    )}
-                  </td>
-                  <td className="font-medium">
-                    <span className="inline-flex items-center gap-1.5">
-                      {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                      {MODEL_LABELS[row.model] ?? row.model}
-                    </span>
-                  </td>
-                  {row.model === "relative_multiples" ? (
-                    <ComparableValuationCells
-                      currentPrice={row.current_price}
-                      summary={comparableSummary}
-                      isLoading={isComparableSummaryLoading}
-                    />
-                  ) : row.model === "reverse_dcf" ? (
-                    <ReverseDcfSummaryCells row={row} detail={detail} />
-                  ) : (
-                    <>
-                      <td className="r font-mono">{fmtMoney(effectiveFairValue, 1)}</td>
-                      <td className="r font-mono">{fmtMoney(row.current_price, 1)}</td>
-                      <td className={cn("r font-mono font-semibold", (effectiveUpside ?? 0) >= 0 ? "t-pos" : "t-neg")}>{fmtPct(effectiveUpside)}</td>
-                    </>
-                  )}
-                  <td>
-                    <span className={cn("signal-conf-badge", confidenceClass(row.confidence))}>
-                    {row.confidence}
-                    {row.is_proxy ? " proxy" : ""}
-                  </span>
-                </td>
-                <td className="r font-mono">{!isControllable ? "-" : !isIncluded ? "Exclu" : effectiveWeight == null ? "No FV" : `${(effectiveWeight * 100).toFixed(0)}%`}</td>
-              </tr>
-              {isExpanded ? (
-                <tr className="valuation-method-expanded-row">
-                  <td colSpan={7} className="valuation-expanded-cell">
-                    <ValuationMethodCard
-                      row={row}
-                      detail={detail}
-                      selectedRow={selectedRow}
-                      universeRows={universeRows}
-                      selectedComparatorId={selectedComparatorId}
-                      onSelectedComparatorIdChange={onSelectedComparatorIdChange}
-                      comparableSummary={comparableSummary}
-                      isComparableSummaryLoading={isComparableSummaryLoading}
-                      isIncluded={isIncluded}
-                      effectiveWeight={effectiveWeight}
-                      sensitivity={sensitivity}
-                      assumptionDraft={assumptionDraft}
-                      onAssumptionDraftChange={onAssumptionDraftChange}
-                      onSaveAssumptions={onSaveAssumptions}
-                      isSaving={isSaving}
-                    />
-                  </td>
-                </tr>
-              ) : null}
-              </Fragment>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-
 function AssumptionStrip({
   detail,
-  draft,
-  onDraftChange,
-  onSave,
-  isSaving,
+  onNavigate,
 }: {
   detail: FundamentalStockDetail
-  draft: Record<string, number>
-  onDraftChange: (draft: Record<string, number>) => void
-  onSave: () => void
-  isSaving: boolean
+  onNavigate: (tab: DetailTab, anchor?: string) => void
 }) {
   return (
-    <FundCard title="Hypotheses cles - DCF" aside="Scenario actif">
+    <FundCard title="Hypothèses clés — DCF" aside="Scénario actif">
       <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
         {ASSUMPTION_FIELDS.map(([key, label]) => {
           const value = asNumber(detail.assumptions[key])
           return <StatTile key={key} label={label} value={key.includes("year") ? fmtNumber(value, 0) : fmtPct(value, 1, false)} sub={key} />
         })}
       </div>
-      <details className="mt-3">
-        <summary className="cursor-pointer text-[11px] font-semibold text-muted-foreground">Modifier les hypotheses</summary>
-        <div className="mt-3 grid gap-3 md:grid-cols-3">
-          {ASSUMPTION_FIELDS.map(([key, label]) => (
-            <label key={key} className="space-y-1">
-              <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted-foreground">{label}</span>
-              <Input type="number" step="0.005" value={draft[key] ?? ""} onChange={(event) => onDraftChange({ ...draft, [key]: Number(event.target.value) })} />
-            </label>
-          ))}
-          <div className="flex items-end">
-            <Button type="button" size="sm" onClick={onSave} disabled={isSaving}>
-              {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              {isSaving ? "Enregistrement" : "Enregistrer"}
-            </Button>
-          </div>
-        </div>
-      </details>
+      <div className="mt-3 flex justify-end">
+        <button
+          type="button"
+          className="valuation-assumptions-link"
+          onClick={() => onNavigate("estimates", "assumptions-editor")}
+        >
+          Ajuster les hypothèses <ArrowRight className="h-3.5 w-3.5" />
+        </button>
+      </div>
     </FundCard>
   )
 }
@@ -592,8 +377,6 @@ function ValuationModelControls({
   isComparableSummaryLoading,
   originalTarget,
   currency,
-  weightMode,
-  onWeightModeChange,
 }: {
   rows: FundamentalValuationResult[]
   excludedModelIds: Set<string>
@@ -606,8 +389,6 @@ function ValuationModelControls({
   isComparableSummaryLoading: boolean
   originalTarget: number | null
   currency: string
-  weightMode: WeightMode
-  onWeightModeChange: (mode: WeightMode) => void
 }) {
   const controllableRows = rows.filter((row) => row.family !== "diagnostic")
   if (!controllableRows.length) return null
@@ -616,26 +397,27 @@ function ValuationModelControls({
     <div className="valuation-model-controls">
       <div className="valuation-model-controls-head">
         <div>
-          <span className="valuation-mini-title">Selection de modeles - cible de travail</span>
+          <span className="valuation-mini-title">Sélection de modèles — cible de travail</span>
           <p className="mt-1 text-[11px] text-muted-foreground">
-            La recommandation officielle reste basee sur l'ensemble valide par le backend; cette section sert a analyser une cible alternative.
+            La recommandation officielle reste basée sur l'ensemble validé par le backend ; cette section sert à analyser une cible alternative.
           </p>
         </div>
         <div className="valuation-model-actions">
           <button type="button" onClick={onIncludeAll}>Tout inclure</button>
           <button type="button" onClick={onExcludeAll}>Tout exclure</button>
-          <div className="seg compact">
-            <button type="button" className={weightMode === "ic" ? "active" : ""} onClick={() => onWeightModeChange("ic")}>IC</button>
-            <button type="button" className={weightMode === "equal" ? "active" : ""} onClick={() => onWeightModeChange("equal")}>Egale</button>
-          </div>
         </div>
       </div>
 
       <div className="valuation-model-summary">
         <StatTile
-          label="Cible de travail"
+          label="Juste valeur"
           value={selectionSummary.fairValue != null ? `${fmtMoney(selectionSummary.fairValue, 1)} ${currency}` : "-"}
           sub={originalTarget != null ? `Officielle ${fmtMoney(originalTarget, 1)} ${currency}` : undefined}
+        />
+        <StatTile
+          label="Fourchette"
+          value={selectionSummary.low != null && selectionSummary.high != null ? `${fmtMoney(selectionSummary.low, 1)} – ${fmtMoney(selectionSummary.high, 1)}` : "-"}
+          sub={currency}
         />
         <StatTile
           label="Upside"
@@ -643,16 +425,17 @@ function ValuationModelControls({
           tone={(selectionSummary.upside ?? 0) >= 0 ? "t-pos" : "t-neg"}
         />
         <StatTile
-          label="Modeles"
-          value={`${selectionSummary.usableCount}/${controllableRows.length}`}
-          sub={`${selectionSummary.includedCount} coches`}
+          label="Modèles inclus / utilisables"
+          value={`${selectionSummary.includedCount} / ${selectionSummary.usableCount}`}
+          sub={`sur ${controllableRows.length} modèles`}
         />
         <StatTile
-          label="Ponderation"
+          label="Pondération"
           value={
             selectionSummary.weightSource === "model weights" ? "IC"
-            : selectionSummary.weightSource === "ic fallback" ? "IC (repli egale)"
-            : "Egale"
+            : selectionSummary.weightSource === "ic fallback" ? "IC (repli égale)"
+            : selectionSummary.weightSource === "user weights" ? "Manuelle"
+            : "Égale"
           }
         />
       </div>
@@ -803,6 +586,7 @@ export function ValuationTab({
   isSaving,
   weightMode,
   onWeightModeChange,
+  onNavigate,
 }: {
   detail: FundamentalStockDetail
   row: FundamentalUniverseRow | null
@@ -825,8 +609,9 @@ export function ValuationTab({
   isSaving: boolean
   weightMode: WeightMode
   onWeightModeChange: (mode: WeightMode) => void
+  onNavigate: (tab: DetailTab, anchor?: string) => void
 }) {
-  const [valuationSubTab, setValuationSubTab] = useState<string>("summary")
+  const [activeModel, setActiveModel] = useState<string | null>(null)
   const current = detail.ensemble?.current_price ?? asNumber(detail.metrics.Current_Price)
   const currency = detail.ensemble?.currency ?? "MAD"
   const originalTarget = detail.target_price ?? detail.ensemble?.fair_value_base ?? null
@@ -858,15 +643,14 @@ export function ValuationTab({
     () => sortValuationRows(visibleValuations).filter((valuation) => MODEL_ORDER.includes(valuation.model)),
     [visibleValuations],
   )
-  const activeModelRow = valuationSubTab === "summary" ? null : subTabRows.find((valuation) => valuation.model === valuationSubTab) ?? null
-  const activeSubTab = valuationSubTab === "summary" || activeModelRow ? valuationSubTab : "summary"
+  const activeModelRow = subTabRows.find((valuation) => valuation.model === activeModel) ?? subTabRows[0] ?? null
   const activeModelIncluded = activeModelRow ? activeModelRow.family !== "diagnostic" && !excludedModelIds.has(activeModelRow.model) : false
   const activeModelWeight = activeModelRow && activeModelIncluded ? selectionSummary.effectiveWeights.get(activeModelRow.model) ?? null : null
 
   return (
     <div className="fund-gap">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="fund-section-label mb-0">Scenario detail</span>
+        <span className="fund-section-label mb-0">Scénario</span>
         <div className="seg">
           {SCENARIOS.map((item) => (
             <button key={item} type="button" className={scenario === item ? "active" : ""} onClick={() => onScenarioChange(item)}>
@@ -874,99 +658,153 @@ export function ValuationTab({
             </button>
           ))}
         </div>
+        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted-foreground">
+          Pondération <GlossaryTerm id="ic-weighting" iconOnly />
+        </span>
+        <div className="seg compact">
+          <button type="button" className={weightMode === "ic" ? "active" : ""} onClick={() => onWeightModeChange("ic")}>IC</button>
+          <button type="button" className={weightMode === "equal" ? "active" : ""} onClick={() => onWeightModeChange("equal")}>Égale</button>
+        </div>
         <span className="ml-auto text-[11px] text-muted-foreground">
-          WACC <span className="font-mono text-foreground">{fmtPct(asNumber(detail.assumptions.wacc), 1, false)}</span> - g firm/equity{" "}
+          <GlossaryTerm id="wacc">WACC</GlossaryTerm>{" "}
+          <span className="font-mono text-foreground">{fmtPct(asNumber(detail.assumptions.wacc), 1, false)}</span>
+          {" — "}
+          <GlossaryTerm id="terminal-growth">g firme / actions</GlossaryTerm>{" "}
           <span className="font-mono text-foreground">
             {fmtPct(asNumber(detail.assumptions.terminal_growth_firm ?? detail.assumptions.terminal_growth), 1, false)} / {fmtPct(asNumber(detail.assumptions.terminal_growth_equity ?? detail.assumptions.terminal_growth), 1, false)}
-          </span> - Devise <span className="font-mono text-foreground">{currency}</span>
+          </span>
+          {" — Devise "}<span className="font-mono text-foreground">{currency}</span>
         </span>
       </div>
 
       {scenario !== "base" ? (
         <div className="scenario-governance-banner">
-          Vous consultez le scenario {scenario} (vue maison) - la recommandation reste ancree au scenario de base.
+          Vous consultez le scénario {scenario} (vue maison) — la recommandation reste ancrée au scénario de base.
         </div>
       ) : null}
+
+      <DecisionStrip detail={detail} />
+
+      <div data-capture="valuation-models">
+        <FundCard
+          title="Football field — fourchette de valorisation par méthode"
+          aside={`Cours ${fmtMoney(current, 1)} — Cible officielle ${fmtMoney(target, 1)}${workingTarget != null ? ` — Travail ${fmtMoney(workingTarget, 1)}` : ""}`}
+        >
+          <ValuationModelControls
+            rows={visibleValuations}
+            excludedModelIds={excludedModelIds}
+            onModelIncludedChange={setModelIncluded}
+            onIncludeAll={includeAllModels}
+            onExcludeAll={excludeAllModels}
+            effectiveWeights={selectionSummary.effectiveWeights}
+            selectionSummary={selectionSummary}
+            comparableSummary={comparableSummary}
+            isComparableSummaryLoading={isComparableSummaryLoading}
+            originalTarget={originalTarget}
+            currency={currency}
+          />
+          <FootballField methods={methods} currentPrice={current} targetPrice={target} />
+        </FundCard>
+      </div>
 
       <TriangulationBand triangulation={detail.triangulation} />
 
-      <div className="valuation-subtabs">
-        <button type="button" className={cn("valuation-subtab", activeSubTab === "summary" && "active")} onClick={() => setValuationSubTab("summary")}>
-          Synthese
-        </button>
-        {subTabRows.map((valuation) => (
-          <button key={valuation.model} type="button" className={cn("valuation-subtab", activeSubTab === valuation.model && "active")} onClick={() => setValuationSubTab(valuation.model)}>
-            {valuation.model === "relative_multiples" ? "M. relatif" : MODEL_LABELS[valuation.model] ?? valuation.model}
-          </button>
-        ))}
+      <SensitivityHeatmap sensitivity={sensitivity} assumptions={detail.assumptions} isLoading={isSensitivityLoading} />
+
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.25fr)_minmax(20rem,0.75fr)]">
+        <CostOfCapitalBuildUp detail={detail} />
+        <CoverageRatingPanel detail={detail} row={row} />
       </div>
 
-      {activeSubTab === "summary" ? (
-        <>
-          <div data-capture="valuation-models">
-            <FundCard
-              title="Football Field - fourchette de valorisation par methode"
-              aside={`Cours ${fmtMoney(current, 1)} - Cible officielle ${fmtMoney(target, 1)}${workingTarget != null ? ` - Travail ${fmtMoney(workingTarget, 1)}` : ""}`}
-            >
-              <ValuationModelControls
-                rows={visibleValuations}
-                excludedModelIds={excludedModelIds}
-                onModelIncludedChange={setModelIncluded}
-                onIncludeAll={includeAllModels}
-                onExcludeAll={excludeAllModels}
-                effectiveWeights={selectionSummary.effectiveWeights}
-                selectionSummary={selectionSummary}
+      <SharedProjectionPanel detail={detail} />
+      <EstimatesTab detail={detail} editable={false} />
+      <AssumptionStrip detail={detail} onNavigate={onNavigate} />
+
+      <div className="valuation-method-section">
+        <div className="valuation-method-section-header">
+          <div>
+            <span className="fund-section-label mb-1 block">Modèles de valorisation</span>
+            <p>Choisissez un modèle pour voir sa formule, ses hypothèses et ses données de référence.</p>
+          </div>
+          {activeModelRow ? <span>{activeModelRow.confidence}</span> : null}
+        </div>
+        <div className="valuation-model-layout">
+          <div className="valuation-model-rail" role="tablist" aria-label="Modèles de valorisation">
+            {subTabRows.map((modelRow) => {
+              const isControllable = modelRow.family !== "diagnostic"
+              const isIncluded = isControllable && !excludedModelIds.has(modelRow.model)
+              const effectiveWeight = isIncluded ? selectionSummary.effectiveWeights.get(modelRow.model) ?? null : null
+              const fairValue = fairValueForValuationRow(modelRow, modelRow.model === "relative_multiples" ? comparableSummary : null)
+              const hasSevereWarning = modelRow.warnings.some((warning) => SEVERE_VALUATION_WARNINGS.has(warning))
+              const isActive = activeModelRow?.model === modelRow.model
+              return (
+                <div
+                  key={modelRow.model}
+                  role="tab"
+                  aria-selected={isActive}
+                  tabIndex={0}
+                  className={cn("valuation-model-rail-row", isActive && "active")}
+                  onClick={() => setActiveModel(modelRow.model)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault()
+                      setActiveModel(modelRow.model)
+                    }
+                  }}
+                >
+                  {isControllable ? (
+                    <input
+                      aria-label={`Inclure ${MODEL_LABELS[modelRow.model] ?? modelRow.model}`}
+                      className="valuation-include-checkbox"
+                      type="checkbox"
+                      checked={isIncluded}
+                      onClick={(event) => event.stopPropagation()}
+                      onChange={(event) => setModelIncluded(modelRow.model, event.target.checked)}
+                    />
+                  ) : (
+                    <span className="valuation-model-static">Info</span>
+                  )}
+                  <span className="valuation-model-rail-main">
+                    <span className="valuation-model-rail-label">
+                      <GlossaryTerm id={MODEL_GLOSSARY_IDS[modelRow.model] ?? "dcf"}>{MODEL_LABELS[modelRow.model] ?? modelRow.model}</GlossaryTerm>
+                    </span>
+                    <span className="valuation-model-rail-value">{fairValue != null ? `${fmtMoney(fairValue, 1)} ${currency}` : "—"}</span>
+                  </span>
+                  <span className="valuation-model-rail-end">
+                    {hasSevereWarning ? <AlertTriangle className="valuation-model-rail-warning h-3.5 w-3.5" aria-label="Avertissement sévère" /> : null}
+                    <span className="valuation-model-rail-weight">
+                      {!isControllable ? "Diag." : !isIncluded ? "Exclu" : effectiveWeight != null ? `${(effectiveWeight * 100).toFixed(0)}%` : "—"}
+                    </span>
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+          <div className="valuation-model-panel">
+            {activeModelRow ? (
+              <ValuationMethodCard
+                row={activeModelRow}
+                detail={detail}
+                selectedRow={row}
+                universeRows={rows}
+                selectedComparatorId={selectedComparatorId}
+                onSelectedComparatorIdChange={onSelectedComparatorIdChange}
                 comparableSummary={comparableSummary}
                 isComparableSummaryLoading={isComparableSummaryLoading}
-                originalTarget={originalTarget}
-                currency={currency}
-                weightMode={weightMode}
-                onWeightModeChange={onWeightModeChange}
+                isIncluded={activeModelIncluded}
+                effectiveWeight={activeModelWeight}
+                sensitivity={sensitivity}
+                assumptionDraft={assumptionDraft}
+                onAssumptionDraftChange={onAssumptionDraftChange}
+                onSaveAssumptions={onSaveAssumptions}
+                isSaving={isSaving}
               />
-              <FootballField methods={methods} currentPrice={current} targetPrice={target} />
-            </FundCard>
+            ) : (
+              <div className="fund-empty-small">Aucun modèle disponible.</div>
+            )}
           </div>
-
-          <div className="grid gap-3 xl:grid-cols-[minmax(0,1.25fr)_minmax(20rem,0.75fr)]">
-            <CostOfCapitalBuildUp detail={detail} />
-            <CoverageRatingPanel detail={detail} row={row} />
-          </div>
-
-          <SharedProjectionPanel detail={detail} />
-          <EstimatesTab detail={detail} editable={false} />
-          <AssumptionStrip detail={detail} draft={assumptionDraft} onDraftChange={onAssumptionDraftChange} onSave={onSaveAssumptions} isSaving={isSaving} />
-          <SensitivityHeatmap sensitivity={sensitivity} assumptions={detail.assumptions} isLoading={isSensitivityLoading} />
-        </>
-      ) : activeModelRow ? (
-        <div className="valuation-method-section">
-          <div className="valuation-method-section-header">
-            <div>
-              <span className="fund-section-label mb-1 block">
-                {activeModelRow.model === "relative_multiples" ? "M. relatif" : MODEL_LABELS[activeModelRow.model] ?? activeModelRow.model}
-              </span>
-              <p>Formule, hypotheses et donnees de reference du modele selectionne.</p>
-            </div>
-            <span>{activeModelRow.confidence}</span>
-          </div>
-          <ValuationMethodCard
-            row={activeModelRow}
-            detail={detail}
-            selectedRow={row}
-            universeRows={rows}
-            selectedComparatorId={selectedComparatorId}
-            onSelectedComparatorIdChange={onSelectedComparatorIdChange}
-            comparableSummary={comparableSummary}
-            isComparableSummaryLoading={isComparableSummaryLoading}
-            isIncluded={activeModelIncluded}
-            effectiveWeight={activeModelWeight}
-            sensitivity={sensitivity}
-            assumptionDraft={assumptionDraft}
-            onAssumptionDraftChange={onAssumptionDraftChange}
-            onSaveAssumptions={onSaveAssumptions}
-            isSaving={isSaving}
-          />
         </div>
-      ) : null}
+      </div>
     </div>
   )
 }

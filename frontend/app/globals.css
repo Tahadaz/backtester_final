@@ -2228,7 +2228,7 @@
 
   .valuation-model-summary {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
     gap: 0.5rem;
   }
 
@@ -2315,6 +2315,126 @@
     font-size: 0.625rem;
     font-weight: 750;
     white-space: nowrap;
+  }
+
+  /* valuation model master-detail rail (brief 57 phase 3) */
+  .valuation-assumptions-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3125rem;
+    border: 0;
+    background: transparent;
+    color: var(--primary);
+    padding: 0;
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+
+  .valuation-assumptions-link:hover {
+    text-decoration: underline;
+  }
+
+  .valuation-model-layout {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .valuation-model-rail {
+    display: flex;
+    flex: 0 0 230px;
+    flex-direction: column;
+    gap: 0.375rem;
+    width: 230px;
+  }
+
+  .valuation-model-rail-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.5rem;
+    border: 1px solid var(--line);
+    border-radius: calc(var(--radius) - 0.1875rem);
+    background: var(--card);
+    padding: 0.5rem 0.625rem;
+    cursor: pointer;
+    transition: border-color 120ms ease, background 120ms ease;
+  }
+
+  .valuation-model-rail-row:hover {
+    border-color: color-mix(in oklab, var(--primary) 40%, var(--line));
+  }
+
+  .valuation-model-rail-row.active {
+    border-color: color-mix(in oklab, var(--primary) 58%, var(--line));
+    background: color-mix(in oklab, var(--primary) 7%, var(--card));
+  }
+
+  .valuation-model-rail-main {
+    min-width: 0;
+    display: grid;
+    gap: 0.125rem;
+  }
+
+  .valuation-model-rail-label {
+    font-size: 0.75rem;
+    font-weight: 750;
+    color: var(--fg1);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .valuation-model-rail-value {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--fg3);
+  }
+
+  .valuation-model-rail-end {
+    display: flex;
+    align-items: center;
+    gap: 0.3125rem;
+  }
+
+  .valuation-model-rail-weight {
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--bg2);
+    color: var(--fg2);
+    padding: 0.125rem 0.375rem;
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-weight: 750;
+    white-space: nowrap;
+  }
+
+  .valuation-model-rail-warning {
+    color: var(--neg);
+    flex-shrink: 0;
+  }
+
+  .valuation-model-panel {
+    min-width: 0;
+    flex: 1;
+  }
+
+  @media (max-width: 1024px) {
+    .valuation-model-layout {
+      flex-direction: column;
+    }
+
+    .valuation-model-rail {
+      flex: 1 1 auto;
+      flex-direction: row;
+      width: 100%;
+      overflow-x: auto;
+    }
+
+    .valuation-model-rail-row {
+      flex-shrink: 0;
+      min-width: 15rem;
+    }
   }
 
   .valuation-method-section-header {

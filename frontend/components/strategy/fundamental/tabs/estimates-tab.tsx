@@ -55,7 +55,7 @@ function ModellingMapPanel({ detail }: { detail: FundamentalStockDetail }) {
 }
 
 
-function DecisionStrip({ detail }: { detail: FundamentalStockDetail }) {
+export function DecisionStrip({ detail }: { detail: FundamentalStockDetail }) {
   const build = costOfCapitalBuildUp(detail)
   const riskFree = asNumber(detail.assumptions.risk_free_rate)
   const baseErp = asNumber(build.base_equity_risk_premium) ?? asNumber(detail.assumptions.equity_risk_premium) ?? 0
@@ -284,7 +284,7 @@ export function AssumptionsTab({
 
       <CostOfCapitalBuildUp detail={detail} />
 
-      <FundCard title="Registre des hypotheses" aside={`Scenario ${scenario}`}>
+      <FundCard id="assumptions-editor" title="Registre des hypotheses" aside={`Scenario ${scenario}`}>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div className="inline-flex rounded-md border border-line bg-bg p-0.5">
             <button

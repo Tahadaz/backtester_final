@@ -181,7 +181,7 @@ export function ModelSensitivityPanel({
   const grid = modelSensitivityGrid(sensitivity, row)
   if (!grid) return null
   return (
-    <div className="model-sensitivity-panel valuation-mini-block">
+    <div className="model-sensitivity-panel valuation-mini-block" data-capture="sensitivity">
       <div className="driver-evidence-head">
         <span className="valuation-mini-title">Sensibilite modele - {MODEL_LABELS[row.model] ?? row.model}</span>
         <span>{axisDisplayLabel(grid.axis_y)} x {axisDisplayLabel(grid.axis_x)}</span>
