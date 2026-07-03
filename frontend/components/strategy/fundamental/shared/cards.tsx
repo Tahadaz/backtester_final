@@ -48,7 +48,7 @@ export function LoadingRows() {
 }
 
 
-export function FundCard({ title, aside, children, className, id }: { title: string; aside?: ReactNode; children: ReactNode; className?: string; id?: string }) {
+export function FundCard({ title, aside, children, className, id }: { title: ReactNode; aside?: ReactNode; children: ReactNode; className?: string; id?: string }) {
   return (
     <div id={id} className={cn("fund-card", className)}>
       <div className="fund-card-hdr">

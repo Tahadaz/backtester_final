@@ -24,7 +24,7 @@ import { useOptionalSelectedComparableView } from "./panels/comparables"
 import { ResearchTicket } from "./research-ticket"
 import { ComparableModelSummary, DetailTab, FundamentalHorizon, Scenario, SignalFundamentalViewProps, ValuationSelectionSummary, WeightMode } from "./lib/types"
 import { EstimatesAssumptionsTab } from "./tabs/estimates-tab"
-import { ComparablesTab, QualityTab } from "./tabs/quality-tab"
+import { ComparablesQualityTab } from "./tabs/quality-tab"
 import { SyntheseTab } from "./tabs/synthese-tab"
 import { ValuationTab } from "./tabs/valuation-tab"
 import { UniverseScreen } from "./universe-screen"
@@ -401,21 +401,13 @@ export function SignalFundamentalView({
                         />
                       ) : null}
                       {activeTab === "quality" ? (
-                        <div className="fund-gap flex flex-col">
-                          <div id="comparables-section">
-                            <ComparablesTab
-                              detail={detail}
-                              row={selectedRow}
-                              rows={rows}
-                              selectedComparatorId={selectedComparableBenchmarkId}
-                              onSelectedComparatorIdChange={setSelectedComparableBenchmarkId}
-                            />
-                          </div>
-                          <div className="fund-section-label">Qualité</div>
-                          <div id="qualite-section">
-                            <QualityTab detail={detail} row={selectedRow} />
-                          </div>
-                        </div>
+                        <ComparablesQualityTab
+                          detail={detail}
+                          row={selectedRow}
+                          rows={rows}
+                          selectedComparatorId={selectedComparableBenchmarkId}
+                          onSelectedComparatorIdChange={setSelectedComparableBenchmarkId}
+                        />
                       ) : null}
                     </>
                   )}

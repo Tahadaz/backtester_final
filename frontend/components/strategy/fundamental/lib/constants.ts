@@ -426,6 +426,18 @@ export const COMPARABLE_PERCENT_METRICS = new Set(["ROE", "Dividend_Yield", "Rev
 export const LOWER_BETTER_COMPARABLE_METRICS = new Set(["PER", "EV_to_EBITDA", "Price_to_Book", "Price_to_Sales"])
 
 
+// Glossary ids for comparable/peer metric headers (brief 57 §4.4 / §6.2). Metrics with no
+// glossary entry (e.g. Revenue_Growth, FCF_Yield) are intentionally absent - left plain.
+export const COMPARABLE_METRIC_GLOSSARY_IDS: Record<string, string> = {
+  PER: "per",
+  EV_to_EBITDA: "ev-ebitda",
+  Price_to_Book: "price-to-book",
+  Price_to_Sales: "price-to-sales",
+  ROE: "roe",
+  Dividend_Yield: "dividend-yield",
+}
+
+
 export const DEFAULT_FORWARD_GROWTH = 0.03
 
 

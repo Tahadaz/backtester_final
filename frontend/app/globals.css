@@ -2012,6 +2012,37 @@
     text-transform: uppercase;
   }
 
+  /* Comparables & Qualite merged tab: scroll-to section pill nav (brief 57 §4.4/§5). */
+  .fund-section-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    padding-bottom: 0.5rem;
+    background: var(--bg2);
+  }
+
+  .fund-section-nav-pill {
+    display: inline-flex;
+    align-items: center;
+    height: 1.75rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--card);
+    color: var(--fg2);
+    padding: 0 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .fund-section-nav-pill:hover {
+    background: var(--bg3);
+    color: var(--fg1);
+  }
+
   .scn-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));

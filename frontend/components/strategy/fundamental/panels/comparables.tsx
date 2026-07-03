@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import useSWR from "swr"
 import {
   fetchDashboardIndices,
@@ -12,11 +12,25 @@ import {
 } from "@/lib/api"
 import { BUILTIN_CUSTOM_DASHBOARD_INDICES, BUILTIN_WEIGHTED_MASI_INDEX } from "@/lib/builtin-dashboard-indices"
 import { cn } from "@/lib/utils"
-import { COMPARABLE_METRICS, DEFAULT_FORWARD_GROWTH, DEFAULT_STABLE_PAYOUT, LOWER_BETTER_COMPARABLE_METRICS, VALUATION_COMPARABLE_METRICS } from "../lib/constants"
+import { GlossaryTerm } from "@/components/ui/glossary-term"
+import { COMPARABLE_METRIC_GLOSSARY_IDS, COMPARABLE_METRICS, DEFAULT_FORWARD_GROWTH, DEFAULT_STABLE_PAYOUT, LOWER_BETTER_COMPARABLE_METRICS, VALUATION_COMPARABLE_METRICS } from "../lib/constants"
 import { asNumber, asPositiveNumber, asRatio, comparableMetricLabel, fmtCap, fmtMoney, fmtPct, formatComparableContribution, formatComparableValue, safeRatioValue } from "../lib/formatters"
 import { FundCard, StatTile } from "../shared/cards"
+import { VerdictChip, type VerdictTone } from "../shared/verdict-chip"
 import { ComparableBenchmarkView, ComparableChoice, ComparableIndexDefinition, ComparableModelSummary, ComparablePeerFairValue, ComparablePeerView, ComparableView } from "../lib/types"
 import { comparableModelSummary, enabledRelativeValuationMetrics } from "../lib/view-models"
+
+function comparableMetricHeader(metric: string): ReactNode {
+  const glossaryId = COMPARABLE_METRIC_GLOSSARY_IDS[metric]
+  const label = comparableMetricLabel(metric)
+  return glossaryId ? <GlossaryTerm id={glossaryId}>{label}</GlossaryTerm> : label
+}
+
+function comparableGapVerdictTone(metric: string, gap: number | null): VerdictTone {
+  if (gap == null) return "neutral"
+  const favorable = LOWER_BETTER_COMPARABLE_METRICS.has(metric) ? gap <= 0 : gap >= 0
+  return favorable ? "good" : "serious"
+}
 
 function boundedForwardGrowth(value: number | null, fallback = DEFAULT_FORWARD_GROWTH): number {
   const growth = value ?? fallback
@@ -79,13 +93,6 @@ function estimatedComparableMetricValue(
     return firstRatioMetric(metrics, ["Revenue_Growth"]) ?? direct
   }
   return direct
-}
-
-
-function comparableGapTone(metric: string, gap: number | null): string {
-  if (gap == null) return "text-muted-foreground"
-  if (LOWER_BETTER_COMPARABLE_METRICS.has(metric)) return gap <= 0 ? "t-pos" : "t-neg"
-  return gap >= 0 ? "t-pos" : "t-neg"
 }
 
 
@@ -675,10 +682,10 @@ function ComparableFairValueTable({
               <th>Ticker</th>
               <th className="r">Poids</th>
               {VALUATION_COMPARABLE_METRICS.map((metric) => (
-                <th key={metric} className="r">FV {comparableMetricLabel(metric)} est.</th>
+                <th key={metric} className="r">FV {comparableMetricHeader(metric)} est.</th>
               ))}
               <th className="r">FV comparable</th>
-              <th className="r">FV ponderee</th>
+              <th className="r">FV pondérée</th>
               <th className="r">Upside</th>
             </tr>
           </thead>
@@ -805,7 +812,7 @@ export function ComparableBenchmarkPanel({
       </div>
 
       <div className="mb-3 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <StatTile label={detail.symbol} value={formatComparableValue(activeMetric, selectedValue)} sub={`${comparableMetricLabel(activeMetric)} estime`} />
+        <StatTile label={detail.symbol} value={formatComparableValue(activeMetric, selectedValue)} sub={<>{comparableMetricHeader(activeMetric)} estimé</>} />
         <StatTile
           label="Benchmark"
           value={formatComparableValue(activeMetric, benchmark?.weighted_including_target)}
@@ -814,20 +821,24 @@ export function ComparableBenchmarkPanel({
         <StatTile
           label="Peer-only"
           value={formatComparableValue(activeMetric, benchmark?.weighted_excluding_target)}
-          sub={`${benchmark?.weighted_count ?? 0} valeurs ponderees`}
+          sub={`${benchmark?.weighted_count ?? 0} valeurs pondérées`}
         />
-        <StatTile label="Mediane" value={formatComparableValue(activeMetric, benchmark?.median)} sub={`${benchmark?.eligible_count ?? 0} valeurs eligibles`} />
+        <StatTile label="Médiane" value={formatComparableValue(activeMetric, benchmark?.median)} sub={`${benchmark?.eligible_count ?? 0} valeurs éligibles`} />
         <StatTile
-          label="FV modele"
+          label="FV modèle"
           value={`${fmtMoney(comparableFairValue.fairValue, 1)} ${detail.ensemble?.currency ?? "MAD"}`}
           sub={comparableFairValue.peerCount ? `${comparableFairValue.peerCount} comparables` : `${comparableFairValue.count} multiples`}
         />
-        <StatTile
-          label="Ecart peer-only"
-          value={fmtPct(gapVsBenchmark, 1)}
-          tone={comparableGapTone(activeMetric, gapVsBenchmark)}
-          sub={LOWER_BETTER_COMPARABLE_METRICS.has(activeMetric) ? "plus bas = moins cher" : "plus haut = mieux"}
-        />
+        <div className="fund-stat">
+          <span className="lbl">Écart peer-only</span>
+          <span className="val">
+            <VerdictChip
+              tone={comparableGapVerdictTone(activeMetric, gapVsBenchmark)}
+              label={gapVsBenchmark == null ? "Non renseigné" : `${fmtPct(gapVsBenchmark, 1)} vs pairs`}
+            />
+          </span>
+          <span className="sub">{LOWER_BETTER_COMPARABLE_METRICS.has(activeMetric) ? "plus bas = moins cher" : "plus haut = mieux"}</span>
+        </div>
       </div>
 
       {activeMetricHistory.length ? (
@@ -859,13 +870,13 @@ export function ComparableBenchmarkPanel({
               <th>Ticker</th>
               <th>Nom</th>
               <th>Secteur</th>
-              {showPerColumn ? <th className="r">PER est.</th> : null}
-              <th className="r">{comparableMetricLabel(activeMetric)} est.</th>
+              {showPerColumn ? <th className="r">{comparableMetricHeader("PER")} est.</th> : null}
+              <th className="r">{comparableMetricHeader(activeMetric)} est.</th>
               <th className="r">Poids</th>
               <th className="r">Contribution</th>
               <th className="r">Cours</th>
               <th className="r">Base poids</th>
-              <th>Qualite</th>
+              <th>Qualité</th>
             </tr>
           </thead>
           <tbody>
