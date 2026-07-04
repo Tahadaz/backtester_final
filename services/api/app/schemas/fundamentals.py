@@ -341,6 +341,7 @@ class FundamentalStockDetailOut(BaseModel):
     valuations: list[ValuationResultOut] = Field(default_factory=list)
     ensemble: EnsembleOut | None = None
     ensembles: dict[str, EnsembleOut] = Field(default_factory=dict)
+    triangulation: dict[str, Any] | None = None
     assumptions: dict[str, Any] = Field(default_factory=dict)
     assumption_provenance: dict[str, dict[str, str]] = Field(default_factory=dict)
     integrity: IntegrityReportOut | None = None

@@ -1,0 +1,3142 @@
+{
+  "checks": [
+    {
+      "check": "coverage_audit",
+      "context": {
+        "allow_unverified": [
+          "AFM"
+        ],
+        "audits": [
+          {
+            "confidence_score": 0.8129915831377619,
+            "current_price": 35.48,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "justified_multiples_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 45.72318900808828,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "fcfe_dcf": "fcf_model_unreliable_negative_trailing_fcf",
+              "fcff_dcf": "fcf_model_unreliable_negative_trailing_fcf",
+              "reverse_dcf": "missing_fcf_yield_for_reverse_dcf"
+            },
+            "name": "Douja Promotion Groupe Addoha",
+            "reason": null,
+            "sector": "Immobilier",
+            "state": "OK",
+            "symbol": "ADH",
+            "unverified_years": [],
+            "upside_pct": 0.288703185120865,
+            "usable_model_count": 3,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.8454381689762565,
+            "current_price": 398.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "fcff_dcf_severe_fcf_quality_warning",
+              "fcfe_dcf_severe_fcf_quality_warning",
+              "ddm_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 502.2889773434,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "missing_fcf_yield_for_reverse_dcf"
+            },
+            "name": "Alliances",
+            "reason": null,
+            "sector": "Immobilier",
+            "state": "OK",
+            "symbol": "ADI",
+            "unverified_years": [],
+            "upside_pct": 0.26203260639045234,
+            "usable_model_count": 3,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.9588333907948132,
+            "current_price": 361.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "justified_multiples_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 453.69587724623756,
+            "import_id": "9aef3b72-35d1-4298-ac1a-ab292924298f",
+            "model_weights": {
+              "ddm": 0.0,
+              "fcfe_dcf": 0.0,
+              "fcff_dcf": 0.5419,
+              "justified_multiples": 0.0,
+              "relative_multiples": 0.4581,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "unavailable"
+            },
+            "name": "Afric Industries",
+            "reason": null,
+            "sector": "BTP",
+            "state": "OK",
+            "symbol": "AFI",
+            "unverified_years": [],
+            "upside_pct": 0.25677528323057497,
+            "usable_model_count": 5,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_partial"
+          },
+          {
+            "confidence_score": null,
+            "current_price": 1240.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "no_usable_valuation_models",
+              "data_unverified_nr:t4_group_basis_roe;t7_plausibility"
+            ],
+            "fair_value_base": null,
+            "import_id": "83c59253-0975-4fc1-bced-cad806232d08",
+            "model_weights": {},
+            "models_available": [],
+            "models_blocked": {
+              "ddm": "data_unverified_nr:t4_group_basis_roe;t7_plausibility",
+              "fcfe_dcf": "data_unverified_nr:t4_group_basis_roe;t7_plausibility",
+              "fcff_dcf": "data_unverified_nr:t4_group_basis_roe;t7_plausibility",
+              "justified_multiples": "data_unverified_nr:t4_group_basis_roe;t7_plausibility",
+              "relative_multiples": "data_unverified_nr:t4_group_basis_roe;t7_plausibility",
+              "residual_income": "data_unverified_nr:t4_group_basis_roe;t7_plausibility",
+              "reverse_dcf": "data_unverified_nr:t4_group_basis_roe;t7_plausibility"
+            },
+            "name": "AFMA",
+            "reason": "data_unverified_nr:t4_group_basis_roe;t7_plausibility",
+            "sector": "Assurances",
+            "state": "NR_UNVERIFIED",
+            "symbol": "AFM",
+            "unverified_years": [
+              2025
+            ],
+            "upside_pct": null,
+            "usable_model_count": 0,
+            "verification_status": "data_unverified",
+            "verified_years": [],
+            "weight_mode": "no_weights"
+          },
+          {
+            "confidence_score": 0.9167357412393218,
+            "current_price": 6850.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 3848.321881786676,
+            "import_id": "a3baa2a9-3ddb-4fc9-9d51-04dd8144afbd",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "fcfe_dcf": "model_not_eligible",
+              "fcff_dcf": "model_not_eligible",
+              "reverse_dcf": "model_not_eligible"
+            },
+            "name": "AGMA",
+            "reason": null,
+            "sector": "Assurances",
+            "state": "OK",
+            "symbol": "AGM",
+            "unverified_years": [],
+            "upside_pct": -0.4382011851406312,
+            "usable_model_count": 4,
+            "verification_status": "verified",
+            "verified_years": [
+              2024
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.775307759888161,
+            "current_price": 1174.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "fcff_dcf_terminal_value_dominates_dcf",
+              "fcfe_dcf_terminal_value_dominates_dcf",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 661.9634275276682,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "missing_fcf_yield_for_reverse_dcf"
+            },
+            "name": "Akdital",
+            "reason": null,
+            "sector": "Sant\u00e9",
+            "state": "OK",
+            "symbol": "AKT",
+            "unverified_years": [],
+            "upside_pct": -0.4361469952915944,
+            "usable_model_count": 4,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.8901037791787054,
+            "current_price": 1900.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "fcff_dcf_terminal_value_dominates_dcf",
+              "fcfe_dcf_terminal_value_dominates_dcf",
+              "ic_weight_fallback_for_uncovered_models",
+              "headline_review_shared_input_bias"
+            ],
+            "fair_value_base": 2093.211529713417,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "unavailable"
+            },
+            "name": "Aluminium du Maroc",
+            "reason": null,
+            "sector": "BTP",
+            "state": "OK",
+            "symbol": "ALM",
+            "unverified_years": [],
+            "upside_pct": 0.10169027879653525,
+            "usable_model_count": 4,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.7937602426649437,
+            "current_price": 425.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 511.7687279545139,
+            "import_id": "1216c1e2-af5a-47df-92f0-c82c1d868484",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0
+            },
+            "models_available": [
+              "ddm",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "fcfe_dcf": "fcfe_proxy_from_free_cash_flow",
+              "fcff_dcf": "missing_positive_fcf",
+              "residual_income": "residual_income_projection_driver_unavailable",
+              "reverse_dcf": "missing_fcf_yield_for_reverse_dcf"
+            },
+            "name": "Aradei Capital",
+            "reason": null,
+            "sector": "Immobilier",
+            "state": "OK",
+            "symbol": "ARD",
+            "unverified_years": [],
+            "upside_pct": 0.2041617128341504,
+            "usable_model_count": 3,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.8468971370700473,
+            "current_price": 70.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "fcff_dcf_terminal_value_dominates_dcf",
+              "fcfe_dcf_terminal_value_dominates_dcf",
+              "justified_multiples_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 103.32390993918884,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "unavailable"
+            },
+            "name": "Auto Hall",
+            "reason": null,
+            "sector": "Distribution",
+            "state": "OK",
+            "symbol": "ATH",
+            "unverified_years": [],
+            "upside_pct": 0.47605585627412617,
+            "usable_model_count": 3,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.8576499846428451,
+            "current_price": 126.3,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ddm_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 192.19991807202496,
+            "import_id": "1216c1e2-af5a-47df-92f0-c82c1d868484",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "fcfe_dcf": "model_not_eligible",
+              "fcff_dcf": "model_not_eligible",
+              "reverse_dcf": "model_not_eligible"
+            },
+            "name": "AtlantaSanad",
+            "reason": null,
+            "sector": "Assurances",
+            "state": "OK",
+            "symbol": "ATL",
+            "unverified_years": [],
+            "upside_pct": 0.5217729063501579,
+            "usable_model_count": 3,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.837659926481594,
+            "current_price": 689.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 530.7281872061822,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "fcfe_dcf": "model_not_eligible",
+              "fcff_dcf": "model_not_eligible",
+              "reverse_dcf": "model_not_eligible"
+            },
+            "name": "Attijariwafa Bank",
+            "reason": null,
+            "sector": "Banques",
+            "state": "OK",
+            "symbol": "ATW",
+            "unverified_years": [],
+            "upside_pct": -0.22971235528856004,
+            "usable_model_count": 4,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.8457683438920518,
+            "current_price": 229.9,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "fcff_dcf_severe_terminal_value_warning",
+              "fcfe_dcf_severe_terminal_value_warning",
+              "justified_multiples_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 197.87286601365378,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "unavailable"
+            },
+            "name": "Balima",
+            "reason": null,
+            "sector": "Immobilier",
+            "state": "OK",
+            "symbol": "BAL",
+            "unverified_years": [],
+            "upside_pct": -0.13930897775705187,
+            "usable_model_count": 3,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.8688350102377322,
+            "current_price": 622.7,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 570.1137829226763,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "fcfe_dcf": "model_not_eligible",
+              "fcff_dcf": "model_not_eligible",
+              "reverse_dcf": "model_not_eligible"
+            },
+            "name": "BMCI",
+            "reason": null,
+            "sector": "Banques",
+            "state": "OK",
+            "symbol": "BCI",
+            "unverified_years": [],
+            "upside_pct": -0.08444871860819625,
+            "usable_model_count": 4,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.8611121603721907,
+            "current_price": 246.9,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 342.6347669138926,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "fcfe_dcf": "model_not_eligible",
+              "fcff_dcf": "model_not_eligible",
+              "reverse_dcf": "model_not_eligible"
+            },
+            "name": "Banque Centrale Populaire",
+            "reason": null,
+            "sector": "Banques",
+            "state": "OK",
+            "symbol": "BCP",
+            "unverified_years": [],
+            "upside_pct": 0.38774713209352996,
+            "usable_model_count": 4,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.8134393030932785,
+            "current_price": 195.75,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "residual_income_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 211.98907441031866,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "fcfe_dcf": "model_not_eligible",
+              "fcff_dcf": "model_not_eligible",
+              "reverse_dcf": "model_not_eligible"
+            },
+            "name": "Bank of Africa",
+            "reason": null,
+            "sector": "Banques",
+            "state": "OK",
+            "symbol": "BOA",
+            "unverified_years": [],
+            "upside_pct": 0.08295823453547202,
+            "usable_model_count": 3,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.842847833246855,
+            "current_price": 270.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "justified_multiples_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 69.61119799756783,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "fcfe_dcf": "model_not_eligible",
+              "fcff_dcf": "model_not_eligible",
+              "reverse_dcf": "model_not_eligible"
+            },
+            "name": "Cash Plus",
+            "reason": null,
+            "sector": "Soci\u00e9t\u00e9s de financement",
+            "state": "OK",
+            "symbol": "CAP",
+            "unverified_years": [],
+            "upside_pct": -0.7421807481571562,
+            "usable_model_count": 3,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.8616408902681643,
+            "current_price": 990.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 967.6143439549032,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "fcfe_dcf": "model_not_eligible",
+              "fcff_dcf": "model_not_eligible",
+              "reverse_dcf": "model_not_eligible"
+            },
+            "name": "Cr\u00e9dit du Maroc",
+            "reason": null,
+            "sector": "Banques",
+            "state": "OK",
+            "symbol": "CDM",
+            "unverified_years": [],
+            "upside_pct": -0.022611773782926003,
+            "usable_model_count": 4,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.7796315128070817,
+            "current_price": 204.9,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "justified_multiples_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 79.78163545558905,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "fcfe_dcf": "model_not_eligible",
+              "fcff_dcf": "model_not_eligible",
+              "reverse_dcf": "model_not_eligible"
+            },
+            "name": "CFG Bank",
+            "reason": null,
+            "sector": "Banques",
+            "state": "OK",
+            "symbol": "CFG",
+            "unverified_years": [],
+            "upside_pct": -0.6106313545359245,
+            "usable_model_count": 3,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.51,
+            "current_price": 347.1,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 407.48322162075874,
+            "import_id": "9aef3b72-35d1-4298-ac1a-ab292924298f",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0
+            },
+            "models_available": [
+              "ddm",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "fcfe_dcf": "model_not_eligible",
+              "fcff_dcf": "model_not_eligible",
+              "residual_income": "net_income_forward_seeded",
+              "reverse_dcf": "model_not_eligible"
+            },
+            "name": "CIH Bank",
+            "reason": null,
+            "sector": "Banques",
+            "state": "OK",
+            "symbol": "CIH",
+            "unverified_years": [],
+            "upside_pct": 0.17396491391748414,
+            "usable_model_count": 3,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.812979944834539,
+            "current_price": 1640.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "fcff_dcf_terminal_value_dominates_dcf",
+              "fcfe_dcf_terminal_value_dominates_dcf",
+              "justified_multiples_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models",
+              "headline_review_shared_input_bias"
+            ],
+            "fair_value_base": 1300.1668857232066,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "missing_fcf_yield_for_reverse_dcf"
+            },
+            "name": "Ciments du Maroc",
+            "reason": null,
+            "sector": "BTP",
+            "state": "OK",
+            "symbol": "CMA",
+            "unverified_years": [],
+            "upside_pct": -0.2072153135834106,
+            "usable_model_count": 3,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.6881599984661847,
+            "current_price": 340.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "fcff_dcf_terminal_value_dominates_dcf",
+              "fcfe_dcf_terminal_value_dominates_dcf",
+              "residual_income_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models",
+              "integrity_fail_diagnostic"
+            ],
+            "fair_value_base": 328.29979685836526,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "integrity_fail: cash_tie_out,ni_link"
+            },
+            "name": "CMGP Group",
+            "reason": null,
+            "sector": "Industrie",
+            "state": "OK",
+            "symbol": "CMG",
+            "unverified_years": [],
+            "upside_pct": -0.03441236218127863,
+            "usable_model_count": 3,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.928866997598528,
+            "current_price": 4372.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ic_weight_fallback_for_uncovered_models",
+              "headline_review_shared_input_bias"
+            ],
+            "fair_value_base": 2679.655068460382,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "fcfe_dcf": 0.0,
+              "fcff_dcf": 0.5014,
+              "justified_multiples": 0.0,
+              "relative_multiples": 0.4986,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "unavailable"
+            },
+            "name": "Compagnie Mini\u00e8re de Touissit",
+            "reason": null,
+            "sector": "Mines",
+            "state": "OK",
+            "symbol": "CMT",
+            "unverified_years": [],
+            "upside_pct": -0.3870871298123554,
+            "usable_model_count": 6,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_partial"
+          },
+          {
+            "confidence_score": 0.7793333999218826,
+            "current_price": 79.39,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 85.70826916624257,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0
+            },
+            "models_available": [
+              "ddm",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "fcfe_dcf": "fcfe_proxy_from_free_cash_flow",
+              "fcff_dcf": "missing_positive_fcf",
+              "residual_income": "residual_income_projection_driver_unavailable",
+              "reverse_dcf": "missing_fcf_yield_for_reverse_dcf"
+            },
+            "name": "Colorado",
+            "reason": null,
+            "sector": "BTP",
+            "state": "OK",
+            "symbol": "COL",
+            "unverified_years": [],
+            "upside_pct": 0.07958520174130967,
+            "usable_model_count": 3,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.6187703522603228,
+            "current_price": 29.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 46.52228087991035,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "fcfe_dcf": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcfe_dcf",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "ddm": "model_not_eligible",
+              "fcff_dcf": "revenue_series_cagr_proxy_blended_earnings_growth_proxy",
+              "reverse_dcf": "unavailable"
+            },
+            "name": "Cartier Saada",
+            "reason": null,
+            "sector": "Agroalimentaire",
+            "state": "OK",
+            "symbol": "CRS",
+            "unverified_years": [],
+            "upside_pct": 0.604216582065874,
+            "usable_model_count": 4,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.9422441749172596,
+            "current_price": 186.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "fcff_dcf_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 152.56175079478712,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "fcfe_dcf": 0.0,
+              "fcff_dcf": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "unavailable"
+            },
+            "name": "Cosumar",
+            "reason": null,
+            "sector": "Agroalimentaire",
+            "state": "OK",
+            "symbol": "CSR",
+            "unverified_years": [],
+            "upside_pct": -0.17977553336135954,
+            "usable_model_count": 5,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.6138069346494546,
+            "current_price": 869.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "fcff_dcf_severe_fcf_quality_warning",
+              "fcfe_dcf_terminal_value_dominates_dcf",
+              "ic_weight_fallback_for_uncovered_models",
+              "integrity_fail_diagnostic"
+            ],
+            "fair_value_base": 1577.1155928280286,
+            "import_id": "9aef3b72-35d1-4298-ac1a-ab292924298f",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "missing_fcf_yield_for_reverse_dcf"
+            },
+            "name": "CTM",
+            "reason": null,
+            "sector": "Transport",
+            "state": "OK",
+            "symbol": "CTM",
+            "unverified_years": [],
+            "upside_pct": 0.8148625924373172,
+            "usable_model_count": 4,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.8999327647685795,
+            "current_price": 59.55,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 53.60491153775937,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "fcfe_dcf": 0.0,
+              "fcff_dcf": 0.5419,
+              "justified_multiples": 0.0,
+              "relative_multiples": 0.4581,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "unavailable"
+            },
+            "name": "Delta Holding",
+            "reason": null,
+            "sector": "BTP",
+            "state": "OK",
+            "symbol": "DHO",
+            "unverified_years": [],
+            "upside_pct": -0.09983355939950678,
+            "usable_model_count": 6,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_partial"
+          },
+          {
+            "confidence_score": 0.8823268512471849,
+            "current_price": 789.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "fcfe_dcf_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 1245.4154659095766,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "fcfe_dcf": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "fcff_dcf": "fcf_series_cagr_blended_earnings_growth_proxy",
+              "reverse_dcf": "unavailable"
+            },
+            "name": "Disway",
+            "reason": null,
+            "sector": "Informatique",
+            "state": "OK",
+            "symbol": "DWY",
+            "unverified_years": [],
+            "upside_pct": 0.5784733408232909,
+            "usable_model_count": 4,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.8662467558444471,
+            "current_price": 370.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "fcfe_dcf_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 613.2321151349174,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "fcfe_dcf": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "fcff_dcf": "fcf_series_cagr_blended_earnings_growth_proxy",
+              "reverse_dcf": "unavailable"
+            },
+            "name": "Disty Technologies",
+            "reason": null,
+            "sector": "Informatique",
+            "state": "OK",
+            "symbol": "DYT",
+            "unverified_years": [],
+            "upside_pct": 0.6573840949592362,
+            "usable_model_count": 4,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.8475913471821537,
+            "current_price": 1334.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "justified_multiples_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 813.9154823938534,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "fcfe_dcf": "model_not_eligible",
+              "fcff_dcf": "model_not_eligible",
+              "reverse_dcf": "model_not_eligible"
+            },
+            "name": "Eqdom",
+            "reason": null,
+            "sector": "Soci\u00e9t\u00e9s de financement",
+            "state": "OK",
+            "symbol": "EQD",
+            "unverified_years": [],
+            "upside_pct": -0.38986845397762115,
+            "usable_model_count": 3,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.7110806000509525,
+            "current_price": 295.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 304.950712008848,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "ddm": "model_not_eligible",
+              "fcfe_dcf": "fcf_series_cagr_blended_earnings_growth_proxy",
+              "fcff_dcf": "fcf_series_cagr_blended_earnings_growth_proxy",
+              "reverse_dcf": "unavailable"
+            },
+            "name": "Fenie Brossette",
+            "reason": null,
+            "sector": "Distribution",
+            "state": "OK",
+            "symbol": "FBR",
+            "unverified_years": [],
+            "upside_pct": 0.03373122714863719,
+            "usable_model_count": 3,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.8345250297780114,
+            "current_price": 3675.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "fcff_dcf_terminal_value_dominates_dcf",
+              "fcfe_dcf_terminal_value_dominates_dcf",
+              "justified_multiples_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 4846.11020566546,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "unavailable"
+            },
+            "name": "Afriquia Gaz",
+            "reason": null,
+            "sector": "\u00c9nergie",
+            "state": "OK",
+            "symbol": "GAZ",
+            "unverified_years": [],
+            "upside_pct": 0.3186694437184925,
+            "usable_model_count": 3,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.8343502363535771,
+            "current_price": 725.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "justified_multiples_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 320.48196037665076,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "fcfe_dcf": 0.0,
+              "fcff_dcf": 0.5014,
+              "justified_multiples": 0.0,
+              "relative_multiples": 0.4986,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "beta_liquidity_flag_confidence_haircut"
+            },
+            "name": "SGTM",
+            "reason": null,
+            "sector": "BTP",
+            "state": "OK",
+            "symbol": "GTM",
+            "unverified_years": [],
+            "upside_pct": -0.5579559167218611,
+            "usable_model_count": 5,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_partial"
+          },
+          {
+            "confidence_score": 0.9017330845293838,
+            "current_price": 640.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "fcfe_dcf_severe_fcf_quality_warning",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 334.8578141185751,
+            "import_id": "9aef3b72-35d1-4298-ac1a-ab292924298f",
+            "model_weights": {
+              "ddm": 0.0,
+              "fcff_dcf": 0.5014,
+              "justified_multiples": 0.0,
+              "relative_multiples": 0.4986,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "unavailable"
+            },
+            "name": "HPS",
+            "reason": null,
+            "sector": "Informatique",
+            "state": "OK",
+            "symbol": "HPS",
+            "unverified_years": [],
+            "upside_pct": -0.4767846654397264,
+            "usable_model_count": 5,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_partial"
+          },
+          {
+            "confidence_score": 0.7656752310623782,
+            "current_price": 91.68,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "fcff_dcf_terminal_value_dominates_dcf",
+              "fcfe_dcf_terminal_value_dominates_dcf",
+              "justified_multiples_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 104.58225548347303,
+            "import_id": "9aef3b72-35d1-4298-ac1a-ab292924298f",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "unavailable"
+            },
+            "name": "Maroc Telecom",
+            "reason": null,
+            "sector": "T\u00e9l\u00e9communications",
+            "state": "OK",
+            "symbol": "IAM",
+            "unverified_years": [],
+            "upside_pct": 0.14073140797854533,
+            "usable_model_count": 3,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.675,
+            "current_price": 61.0,
+            "data_source": "investing.com",
+            "ensemble_warnings": [
+              "headline_review_shared_input_bias"
+            ],
+            "fair_value_base": 49.83484675922308,
+            "import_id": "1a3cdfd2-30c1-4ac2-9d3d-a947ea94e34d",
+            "model_weights": {
+              "relative_multiples": 1.0
+            },
+            "models_available": [
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "ddm": "model_not_eligible",
+              "fcfe_dcf": "fcf_model_unreliable_negative_trailing_fcf",
+              "fcff_dcf": "fcf_model_unreliable_negative_trailing_fcf",
+              "justified_multiples": "model_not_eligible",
+              "residual_income": "model_not_eligible",
+              "reverse_dcf": "missing_fcf_yield_for_reverse_dcf"
+            },
+            "name": "IB Maroc.com",
+            "reason": "usable_model_count=1 < 3",
+            "sector": "Informatique",
+            "state": "BELOW_QUORUM",
+            "symbol": "IBC",
+            "unverified_years": [],
+            "upside_pct": -0.18303529902912974,
+            "usable_model_count": 1,
+            "verification_status": "verified",
+            "verified_years": [
+              2021
+            ],
+            "weight_mode": "single_model_relative_multiples"
+          },
+          {
+            "confidence_score": 0.5592579688836616,
+            "current_price": 92.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 118.5845492551721,
+            "import_id": "1216c1e2-af5a-47df-92f0-c82c1d868484",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0
+            },
+            "models_available": [
+              "ddm",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "fcfe_dcf": "fcfe_proxy_from_free_cash_flow",
+              "fcff_dcf": "missing_positive_fcf",
+              "residual_income": "residual_income_projection_driver_unavailable",
+              "reverse_dcf": "missing_fcf_yield_for_reverse_dcf"
+            },
+            "name": "Immorente Invest",
+            "reason": null,
+            "sector": "Immobilier",
+            "state": "OK",
+            "symbol": "IMO",
+            "unverified_years": [],
+            "upside_pct": 0.28896249190404455,
+            "usable_model_count": 3,
+            "verification_status": "verified",
+            "verified_years": [
+              2024
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.8308954583637789,
+            "current_price": 140.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 139.17002181049983,
+            "import_id": "83c59253-0975-4fc1-bced-cad806232d08",
+            "model_weights": {
+              "ddm": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "ddm",
+              "residual_income",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "fcfe_dcf": "fcf_model_unreliable_negative_trailing_fcf",
+              "fcff_dcf": "fcf_model_unreliable_negative_trailing_fcf",
+              "justified_multiples": "using_stable_payout_assumption",
+              "reverse_dcf": "missing_fcf_yield_for_reverse_dcf"
+            },
+            "name": "Involys",
+            "reason": null,
+            "sector": "Informatique",
+            "state": "OK",
+            "symbol": "INV",
+            "unverified_years": [],
+            "upside_pct": -0.005928415639286921,
+            "usable_model_count": 3,
+            "verification_status": "verified",
+            "verified_years": [
+              2024
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.7717952860215151,
+            "current_price": 2200.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 1962.1861508590346,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "fcfe_dcf": "fcf_model_unreliable_negative_trailing_fcf",
+              "fcff_dcf": "fcf_model_unreliable_negative_trailing_fcf",
+              "reverse_dcf": "missing_fcf_yield_for_reverse_dcf"
+            },
+            "name": "Jet Contractors",
+            "reason": null,
+            "sector": "BTP",
+            "state": "OK",
+            "symbol": "JET",
+            "unverified_years": [],
+            "upside_pct": -0.10809720415498425,
+            "usable_model_count": 4,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.8467553161845074,
+            "current_price": 3800.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "fcff_dcf_terminal_value_dominates_dcf",
+              "fcfe_dcf_terminal_value_dominates_dcf",
+              "ic_weight_fallback_for_uncovered_models",
+              "headline_review_lone_thin_comp"
+            ],
+            "fair_value_base": null,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "missing_fcf_yield_for_reverse_dcf"
+            },
+            "name": "Label Vie",
+            "reason": "headline_review_lone_thin_comp",
+            "sector": "Distribution",
+            "state": "HEADLINE_REVIEW",
+            "symbol": "LBV",
+            "unverified_years": [],
+            "upside_pct": null,
+            "usable_model_count": 4,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.51,
+            "current_price": 364.5,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ddm_terminal_value_dominates_dcf",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 121.0201814054196,
+            "import_id": "9aef3b72-35d1-4298-ac1a-ab292924298f",
+            "model_weights": {
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "fcfe_dcf": "revenue_growth_diverges_from_history",
+              "fcff_dcf": "revenue_growth_diverges_from_history",
+              "reverse_dcf": "unavailable"
+            },
+            "name": "Lesieur Cristal",
+            "reason": null,
+            "sector": "Agroalimentaire",
+            "state": "OK",
+            "symbol": "LES",
+            "unverified_years": [],
+            "upside_pct": -0.6679830414117431,
+            "usable_model_count": 3,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.9387034736069222,
+            "current_price": 1753.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ic_weight_fallback_for_uncovered_models",
+              "headline_review_shared_input_bias"
+            ],
+            "fair_value_base": 1674.73903464353,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "fcfe_dcf": 0.0,
+              "fcff_dcf": 0.5014,
+              "justified_multiples": 0.0,
+              "relative_multiples": 0.4986,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "unavailable"
+            },
+            "name": "LafargeHolcim Maroc",
+            "reason": null,
+            "sector": "BTP",
+            "state": "OK",
+            "symbol": "LHM",
+            "unverified_years": [],
+            "upside_pct": -0.04464401902822024,
+            "usable_model_count": 6,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_partial"
+          },
+          {
+            "confidence_score": 0.5522256222764239,
+            "current_price": 381.1,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 200.2599104945868,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0
+            },
+            "models_available": [
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "ddm": "model_not_eligible",
+              "fcfe_dcf": "revenue_series_cagr_proxy_blended_earnings_growth_proxy",
+              "fcff_dcf": "revenue_series_cagr_proxy_blended_earnings_growth_proxy",
+              "residual_income": "using_stable_payout_assumption",
+              "reverse_dcf": "unavailable"
+            },
+            "name": "M2M Group",
+            "reason": "usable_model_count=2 < 3",
+            "sector": "Informatique",
+            "state": "BELOW_QUORUM",
+            "symbol": "M2M",
+            "unverified_years": [],
+            "upside_pct": -0.47452135792551353,
+            "usable_model_count": 2,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.82008883170345,
+            "current_price": 895.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 1629.338640161509,
+            "import_id": "9aef3b72-35d1-4298-ac1a-ab292924298f",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "fcfe_dcf": "model_not_eligible",
+              "fcff_dcf": "model_not_eligible",
+              "reverse_dcf": "model_not_eligible"
+            },
+            "name": "Maghrebail",
+            "reason": null,
+            "sector": "Soci\u00e9t\u00e9s de financement",
+            "state": "OK",
+            "symbol": "MAB",
+            "unverified_years": [],
+            "upside_pct": 0.8204901007391161,
+            "usable_model_count": 4,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.7211185998153291,
+            "current_price": 25.48,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 28.3710092393683,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0
+            },
+            "models_available": [
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "ddm": "model_not_eligible",
+              "fcfe_dcf": "fcf_series_cagr_blended_earnings_growth_proxy",
+              "fcff_dcf": "fcf_series_cagr_blended_earnings_growth_proxy",
+              "residual_income": "using_stable_payout_assumption",
+              "reverse_dcf": "unavailable"
+            },
+            "name": "Med Paper",
+            "reason": "usable_model_count=2 < 3",
+            "sector": "Autre",
+            "state": "BELOW_QUORUM",
+            "symbol": "MDP",
+            "unverified_years": [],
+            "upside_pct": 0.11346190107410892,
+            "usable_model_count": 2,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.9086352565639781,
+            "current_price": 752.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "fcfe_dcf_excluded_cross_model_outlier",
+              "justified_multiples_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 992.6979243792017,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "fcfe_dcf": 0.0,
+              "fcff_dcf": 0.5419,
+              "justified_multiples": 0.0,
+              "relative_multiples": 0.4581,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "unavailable"
+            },
+            "name": "Microdata",
+            "reason": null,
+            "sector": "Informatique",
+            "state": "OK",
+            "symbol": "MIC",
+            "unverified_years": [],
+            "upside_pct": 0.3200770271000022,
+            "usable_model_count": 4,
+            "verification_status": "verified",
+            "verified_years": [
+              2024
+            ],
+            "weight_mode": "ic_fallback_partial"
+          },
+          {
+            "confidence_score": 0.8402137299448211,
+            "current_price": 370.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ddm_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 705.2717943335929,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "fcfe_dcf": "model_not_eligible",
+              "fcff_dcf": "model_not_eligible",
+              "reverse_dcf": "model_not_eligible"
+            },
+            "name": "Maroc Leasing",
+            "reason": null,
+            "sector": "Soci\u00e9t\u00e9s de financement",
+            "state": "OK",
+            "symbol": "MLE",
+            "unverified_years": [],
+            "upside_pct": 0.9061399846853861,
+            "usable_model_count": 3,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.7290929429541988,
+            "current_price": 12800.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "justified_multiples_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models",
+              "headline_review_shared_input_bias"
+            ],
+            "fair_value_base": 5726.030301573675,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "fcfe_dcf": "fcf_model_unreliable_negative_trailing_fcf",
+              "fcff_dcf": "fcf_model_unreliable_negative_trailing_fcf",
+              "reverse_dcf": "missing_fcf_yield_for_reverse_dcf"
+            },
+            "name": "Managem",
+            "reason": null,
+            "sector": "Mines",
+            "state": "OK",
+            "symbol": "MNG",
+            "unverified_years": [],
+            "upside_pct": -0.5526538826895566,
+            "usable_model_count": 3,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.7911428200194732,
+            "current_price": 388.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 586.9631484655342,
+            "import_id": "9aef3b72-35d1-4298-ac1a-ab292924298f",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0
+            },
+            "models_available": [
+              "ddm",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "fcfe_dcf": "fcf_model_unreliable_negative_trailing_fcf",
+              "fcff_dcf": "fcf_model_unreliable_negative_trailing_fcf",
+              "residual_income": "residual_income_nonpositive_value_unavailable",
+              "reverse_dcf": "missing_fcf_yield_for_reverse_dcf"
+            },
+            "name": "Maghreb Oxyg\u00e8ne",
+            "reason": null,
+            "sector": "Chimie",
+            "state": "OK",
+            "symbol": "MOX",
+            "unverified_years": [],
+            "upside_pct": 0.5127916197565314,
+            "usable_model_count": 3,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.9269356025741782,
+            "current_price": 861.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "justified_multiples_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 332.456353757089,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "fcfe_dcf": 0.0,
+              "fcff_dcf": 0.5419,
+              "justified_multiples": 0.0,
+              "relative_multiples": 0.4581,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "unavailable"
+            },
+            "name": "Marsa Maroc",
+            "reason": null,
+            "sector": "Transport",
+            "state": "OK",
+            "symbol": "MSA",
+            "unverified_years": [],
+            "upside_pct": -0.6138718307118595,
+            "usable_model_count": 5,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_partial"
+          },
+          {
+            "confidence_score": 0.9525477811103109,
+            "current_price": 234.05,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "fcff_dcf_terminal_value_dominates_dcf",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 310.3667283948936,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "fcfe_dcf": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "unavailable"
+            },
+            "name": "Mutandis",
+            "reason": null,
+            "sector": "Agroalimentaire",
+            "state": "OK",
+            "symbol": "MUT",
+            "unverified_years": [],
+            "upside_pct": 0.32607019181753283,
+            "usable_model_count": 5,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.8724088184539763,
+            "current_price": 53.73,
+            "data_source": "workbook",
+            "ensemble_warnings": [
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 24.05915770713894,
+            "import_id": "7b152ba5-1402-4d99-9ccb-d02c3893eef7",
+            "model_weights": {
+              "ddm": 0.0,
+              "fcfe_dcf": 0.0,
+              "fcff_dcf": 0.5419,
+              "justified_multiples": 0.0,
+              "relative_multiples": 0.4581
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "residual_income": "model_not_eligible",
+              "reverse_dcf": "integrity_unavailable"
+            },
+            "name": "Ennakl",
+            "reason": null,
+            "sector": "Distribution",
+            "state": "OK",
+            "symbol": "NKL",
+            "unverified_years": [],
+            "upside_pct": -0.552221148201397,
+            "usable_model_count": 5,
+            "verification_status": "verified",
+            "verified_years": [
+              2024
+            ],
+            "weight_mode": "ic_fallback_partial"
+          },
+          {
+            "confidence_score": 0.9109526472152853,
+            "current_price": 1230.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "fcff_dcf_severe_fcf_quality_warning",
+              "fcfe_dcf_severe_fcf_quality_warning",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 1532.2990364751497,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "missing_fcf_yield_for_reverse_dcf"
+            },
+            "name": "Oulm\u00e8s",
+            "reason": null,
+            "sector": "Agroalimentaire",
+            "state": "OK",
+            "symbol": "OUL",
+            "unverified_years": [],
+            "upside_pct": 0.24577157437004038,
+            "usable_model_count": 4,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.395,
+            "current_price": 176.5,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 103.48119360942098,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0
+            },
+            "models_available": [
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "ddm": "model_not_eligible",
+              "fcfe_dcf": "fcf_series_cagr_blended_earnings_growth_proxy",
+              "fcff_dcf": "fcf_series_cagr_blended_earnings_growth_proxy",
+              "residual_income": "using_stable_payout_assumption",
+              "reverse_dcf": "unavailable"
+            },
+            "name": "R\u00e9sidences Dar Saada",
+            "reason": "usable_model_count=2 < 3",
+            "sector": "Immobilier",
+            "state": "BELOW_QUORUM",
+            "symbol": "RDS",
+            "unverified_years": [],
+            "upside_pct": -0.41370428549903127,
+            "usable_model_count": 2,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.5635647431773239,
+            "current_price": 98.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 133.08879009358583,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0
+            },
+            "models_available": [
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "ddm": "model_not_eligible",
+              "fcfe_dcf": "fcfe_proxy_from_free_cash_flow",
+              "fcff_dcf": "missing_positive_fcf",
+              "residual_income": "midcycle_normalization_unavailable_insufficient_history",
+              "reverse_dcf": "missing_fcf_yield_for_reverse_dcf"
+            },
+            "name": "Rebab Company",
+            "reason": "usable_model_count=2 < 3",
+            "sector": "Mines",
+            "state": "BELOW_QUORUM",
+            "symbol": "REB",
+            "unverified_years": [],
+            "upside_pct": 0.3580488785059779,
+            "usable_model_count": 2,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.890706510408197,
+            "current_price": 340.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 354.1356115719876,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "fcfe_dcf": 0.0,
+              "fcff_dcf": 0.5419,
+              "justified_multiples": 0.0,
+              "relative_multiples": 0.4581,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "unavailable"
+            },
+            "name": "Risma",
+            "reason": null,
+            "sector": "Loisirs & H\u00f4tels",
+            "state": "OK",
+            "symbol": "RIS",
+            "unverified_years": [],
+            "upside_pct": 0.04157532815290477,
+            "usable_model_count": 6,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_partial"
+          },
+          {
+            "confidence_score": 0.8111027199476628,
+            "current_price": 500.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "justified_multiples_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 962.491081375872,
+            "import_id": "b7fb2dfe-d417-4da2-aa7c-129ea1b1b1bc",
+            "model_weights": {
+              "fcfe_dcf": 0.0,
+              "fcff_dcf": 0.5419,
+              "justified_multiples": 0.0,
+              "relative_multiples": 0.4581,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "ddm": "model_not_eligible",
+              "reverse_dcf": "unavailable"
+            },
+            "name": "S2M",
+            "reason": null,
+            "sector": "Autre",
+            "state": "OK",
+            "symbol": "S2M",
+            "unverified_years": [],
+            "upside_pct": 0.924982162751744,
+            "usable_model_count": 4,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_partial"
+          },
+          {
+            "confidence_score": 0.8757558028796848,
+            "current_price": 3080.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 5858.46279005261,
+            "import_id": "1216c1e2-af5a-47df-92f0-c82c1d868484",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "fcfe_dcf": "model_not_eligible",
+              "fcff_dcf": "model_not_eligible",
+              "reverse_dcf": "model_not_eligible"
+            },
+            "name": "Sanlam Maroc",
+            "reason": null,
+            "sector": "Assurances",
+            "state": "OK",
+            "symbol": "SAH",
+            "unverified_years": [],
+            "upside_pct": 0.9020983084586396,
+            "usable_model_count": 4,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.9466998275149716,
+            "current_price": 2175.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "fcfe_dcf_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 2653.008187539437,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "fcfe_dcf": 0.0,
+              "fcff_dcf": 0.5419,
+              "justified_multiples": 0.0,
+              "relative_multiples": 0.4581,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "unavailable"
+            },
+            "name": "Soci\u00e9t\u00e9 des Boissons du Maroc",
+            "reason": null,
+            "sector": "Boissons",
+            "state": "OK",
+            "symbol": "SBM",
+            "unverified_years": [],
+            "upside_pct": 0.21977387932847692,
+            "usable_model_count": 5,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_partial"
+          },
+          {
+            "confidence_score": 0.852065663546689,
+            "current_price": 1979.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "fcff_dcf_severe_fcf_quality_warning",
+              "fcfe_dcf_severe_fcf_quality_warning",
+              "justified_multiples_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models",
+              "headline_review_shared_input_bias"
+            ],
+            "fair_value_base": 1724.8981336518327,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "missing_fcf_yield_for_reverse_dcf"
+            },
+            "name": "Sonasid",
+            "reason": null,
+            "sector": "BTP",
+            "state": "OK",
+            "symbol": "SID",
+            "unverified_years": [],
+            "upside_pct": -0.12839912397582987,
+            "usable_model_count": 3,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.8556228212591395,
+            "current_price": 460.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "justified_multiples_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 415.0181227442479,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "fcfe_dcf": "model_not_eligible",
+              "fcff_dcf": "model_not_eligible",
+              "reverse_dcf": "model_not_eligible"
+            },
+            "name": "Salafin",
+            "reason": null,
+            "sector": "Soci\u00e9t\u00e9s de financement",
+            "state": "OK",
+            "symbol": "SLF",
+            "unverified_years": [],
+            "upside_pct": -0.09778668968641768,
+            "usable_model_count": 3,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.781115926899495,
+            "current_price": 5772.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "fcff_dcf_terminal_value_dominates_dcf",
+              "fcfe_dcf_terminal_value_dominates_dcf",
+              "justified_multiples_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models",
+              "headline_review_shared_input_bias"
+            ],
+            "fair_value_base": 8160.858289691714,
+            "import_id": "b7fb2dfe-d417-4da2-aa7c-129ea1b1b1bc",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "missing_fcf_yield_for_reverse_dcf"
+            },
+            "name": "SMI",
+            "reason": null,
+            "sector": "Mines",
+            "state": "OK",
+            "symbol": "SMI",
+            "unverified_years": [],
+            "upside_pct": 0.41387011255920214,
+            "usable_model_count": 3,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.45068953363779846,
+            "current_price": 78.01,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 24.484502784411976,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0
+            },
+            "models_available": [
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "ddm": "model_not_eligible",
+              "fcfe_dcf": "fcf_series_cagr_blended_earnings_growth_proxy",
+              "fcff_dcf": "fcf_series_cagr_blended_earnings_growth_proxy",
+              "residual_income": "model_not_eligible",
+              "reverse_dcf": "unavailable"
+            },
+            "name": "Stokvis Nord Afrique",
+            "reason": "usable_model_count=2 < 3",
+            "sector": "Distribution",
+            "state": "BELOW_QUORUM",
+            "symbol": "SNA",
+            "unverified_years": [],
+            "upside_pct": -0.6861363570771443,
+            "usable_model_count": 2,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.585,
+            "current_price": 369.0,
+            "data_source": "workbook",
+            "ensemble_warnings": [
+              "ic_weight_fallback_no_coverage"
+            ],
+            "fair_value_base": 545.9166666666666,
+            "import_id": "7b152ba5-1402-4d99-9ccb-d02c3893eef7",
+            "model_weights": {
+              "ddm": 1.0
+            },
+            "models_available": [
+              "ddm"
+            ],
+            "models_blocked": {
+              "fcfe_dcf": "fcf_model_unreliable_negative_trailing_fcf",
+              "fcff_dcf": "fcf_model_unreliable_negative_trailing_fcf",
+              "justified_multiples": "using_stable_payout_assumption",
+              "relative_multiples": "relative_own_multiple_spot_fallback",
+              "residual_income": "using_stable_payout_assumption",
+              "reverse_dcf": "missing_fcf_yield_for_reverse_dcf"
+            },
+            "name": "SNEP",
+            "reason": "usable_model_count=1 < 3",
+            "sector": "Chimie",
+            "state": "BELOW_QUORUM",
+            "symbol": "SNP",
+            "unverified_years": [],
+            "upside_pct": 0.4794489611562782,
+            "usable_model_count": 1,
+            "verification_status": "verified",
+            "verified_years": [
+              2024
+            ],
+            "weight_mode": "single_model_ddm"
+          },
+          {
+            "confidence_score": 0.9153630170959712,
+            "current_price": 376.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ddm_excluded_cross_model_outlier",
+              "justified_multiples_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 200.49152576176232,
+            "import_id": "9aef3b72-35d1-4298-ac1a-ab292924298f",
+            "model_weights": {
+              "ddm": 0.0,
+              "fcfe_dcf": 0.0,
+              "fcff_dcf": 0.5107,
+              "justified_multiples": 0.0,
+              "relative_multiples": 0.4893,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "unavailable"
+            },
+            "name": "Sothema",
+            "reason": null,
+            "sector": "Sant\u00e9",
+            "state": "OK",
+            "symbol": "SOT",
+            "unverified_years": [],
+            "upside_pct": -0.4667778570165896,
+            "usable_model_count": 4,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_partial"
+          },
+          {
+            "confidence_score": 0.484624265692715,
+            "current_price": 469.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 1155.486475363254,
+            "import_id": "b7fb2dfe-d417-4da2-aa7c-129ea1b1b1bc",
+            "model_weights": {
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0
+            },
+            "models_available": [
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "ddm": "model_not_eligible",
+              "fcfe_dcf": "missing_positive_equity_cash_flow_proxy",
+              "fcff_dcf": "revenue_series_cagr_proxy_blended_earnings_growth_proxy",
+              "residual_income": "using_stable_payout_assumption",
+              "reverse_dcf": "unavailable"
+            },
+            "name": "SRM",
+            "reason": "usable_model_count=2 < 3",
+            "sector": "Autre",
+            "state": "BELOW_QUORUM",
+            "symbol": "SRM",
+            "unverified_years": [],
+            "upside_pct": 1.4637238280666396,
+            "usable_model_count": 2,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.37249999999999994,
+            "current_price": 200.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 118.74823203434447,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0
+            },
+            "models_available": [
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "ddm": "model_not_eligible",
+              "fcfe_dcf": "revenue_series_cagr_proxy_blended_earnings_growth_proxy",
+              "fcff_dcf": "revenue_series_cagr_proxy_blended_earnings_growth_proxy",
+              "residual_income": "model_not_eligible",
+              "reverse_dcf": "unavailable"
+            },
+            "name": "Stroc Industrie",
+            "reason": "usable_model_count=2 < 3",
+            "sector": "Industrie",
+            "state": "BELOW_QUORUM",
+            "symbol": "STR",
+            "unverified_years": [],
+            "upside_pct": -0.4062588398282777,
+            "usable_model_count": 2,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.8646484496926372,
+            "current_price": 770.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 452.73690047787034,
+            "import_id": "9aef3b72-35d1-4298-ac1a-ab292924298f",
+            "model_weights": {
+              "ddm": 0.0,
+              "fcfe_dcf": 0.0,
+              "fcff_dcf": 0.4299,
+              "justified_multiples": 0.0,
+              "relative_multiples": 0.5701,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "unavailable"
+            },
+            "name": "TGCC",
+            "reason": null,
+            "sector": "BTP",
+            "state": "OK",
+            "symbol": "TGC",
+            "unverified_years": [],
+            "upside_pct": -0.4120299993793892,
+            "usable_model_count": 6,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_partial"
+          },
+          {
+            "confidence_score": 0.8969864738936855,
+            "current_price": 1504.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "justified_multiples_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 1303.1041359859787,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "fcfe_dcf": 0.0,
+              "fcff_dcf": 0.5419,
+              "justified_multiples": 0.0,
+              "relative_multiples": 0.4581,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "unavailable"
+            },
+            "name": "TotalEnergies Marketing Maroc",
+            "reason": null,
+            "sector": "\u00c9nergie",
+            "state": "OK",
+            "symbol": "TMA",
+            "unverified_years": [],
+            "upside_pct": -0.13357437766889713,
+            "usable_model_count": 5,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_partial"
+          },
+          {
+            "confidence_score": 0.9099786823931131,
+            "current_price": 1765.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "fcff_dcf_excluded_cross_model_outlier",
+              "fcfe_dcf_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 972.246576934158,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "ddm": 0.0,
+              "fcfe_dcf": 0.0,
+              "fcff_dcf": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "unavailable"
+            },
+            "name": "TAQA Morocco",
+            "reason": null,
+            "sector": "\u00c9lectricit\u00e9",
+            "state": "OK",
+            "symbol": "TQM",
+            "unverified_years": [],
+            "upside_pct": -0.4491520810571342,
+            "usable_model_count": 4,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.7939244458904049,
+            "current_price": 369.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "fcff_dcf_terminal_value_dominates_dcf",
+              "fcfe_dcf_terminal_value_dominates_dcf",
+              "ic_weight_fallback_for_uncovered_models"
+            ],
+            "fair_value_base": 338.64467992641426,
+            "import_id": "83c59253-0975-4fc1-bced-cad806232d08",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "reverse_dcf": "beta_liquidity_flag_confidence_haircut"
+            },
+            "name": "Vicenne",
+            "reason": null,
+            "sector": "Sant\u00e9",
+            "state": "OK",
+            "symbol": "VCN",
+            "unverified_years": [],
+            "upside_pct": -0.08226374003681769,
+            "usable_model_count": 4,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.8514797330360344,
+            "current_price": 6000.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "justified_multiples_excluded_cross_model_outlier",
+              "ic_weight_fallback_for_uncovered_models",
+              "headline_review_required_extreme_upside",
+              "headline_review_weak_model_coverage",
+              "headline_review_weak_method_class_agreement",
+              "headline_review_lone_thin_comp"
+            ],
+            "fair_value_base": null,
+            "import_id": "1216c1e2-af5a-47df-92f0-c82c1d868484",
+            "model_weights": {
+              "ddm": 0.0,
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "ddm",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "fcfe_dcf": "model_not_eligible",
+              "fcff_dcf": "model_not_eligible",
+              "reverse_dcf": "model_not_eligible"
+            },
+            "name": "Wafa Assurance",
+            "reason": "headline_review_required_extreme_upside;headline_review_weak_model_coverage;headline_review_weak_method_class_agreement;headline_review_lone_thin_comp",
+            "sector": "Assurances",
+            "state": "HEADLINE_REVIEW",
+            "symbol": "WAA",
+            "unverified_years": [],
+            "upside_pct": null,
+            "usable_model_count": 3,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          },
+          {
+            "confidence_score": 0.46499999999999997,
+            "current_price": 215.0,
+            "data_source": "stockanalysis",
+            "ensemble_warnings": [
+              "fcff_dcf_terminal_value_dominates_dcf",
+              "fcfe_dcf_terminal_value_dominates_dcf",
+              "ic_weight_fallback_for_uncovered_models",
+              "headline_review_shared_input_bias",
+              "headline_review_required_extreme_upside",
+              "headline_review_weak_model_coverage",
+              "headline_review_weak_method_class_agreement",
+              "headline_review_lone_thin_comp"
+            ],
+            "fair_value_base": null,
+            "import_id": "17fa82d2-7490-438e-9fa3-72244540c40a",
+            "model_weights": {
+              "justified_multiples": 0.0,
+              "relative_multiples": 1.0,
+              "residual_income": 0.0
+            },
+            "models_available": [
+              "fcff_dcf",
+              "fcfe_dcf",
+              "residual_income",
+              "justified_multiples",
+              "relative_multiples"
+            ],
+            "models_blocked": {
+              "ddm": "model_not_eligible",
+              "reverse_dcf": "missing_fcf_yield_for_reverse_dcf"
+            },
+            "name": "Zellidja",
+            "reason": "headline_review_shared_input_bias;headline_review_required_extreme_upside;headline_review_weak_model_coverage;headline_review_weak_method_class_agreement;headline_review_lone_thin_comp",
+            "sector": "Mines",
+            "state": "HEADLINE_REVIEW",
+            "symbol": "ZDJ",
+            "unverified_years": [],
+            "upside_pct": null,
+            "usable_model_count": 3,
+            "verification_status": "verified",
+            "verified_years": [
+              2025
+            ],
+            "weight_mode": "ic_fallback_100pct_relative_multiples"
+          }
+        ],
+        "nr_unverified_symbols": [
+          "AFM"
+        ],
+        "states": {
+          "BELOW_QUORUM": 9,
+          "HEADLINE_REVIEW": 3,
+          "NR_UNVERIFIED": 1,
+          "OK": 60
+        },
+        "universe": 73,
+        "weight_modes": {
+          "ic_fallback_100pct_relative_multiples": 55,
+          "ic_fallback_partial": 15,
+          "no_weights": 1,
+          "single_model_ddm": 1,
+          "single_model_relative_multiples": 1
+        }
+      },
+      "gates": [
+        {
+          "detail": "none",
+          "name": "no_ensemble_or_no_fundamentals_or_nr_no_models",
+          "status": "PASS"
+        },
+        {
+          "detail": "NR_UNVERIFIED=['AFM'] all in allow-list ['AFM']",
+          "name": "nr_unverified_whitelist",
+          "status": "PASS"
+        }
+      ],
+      "status": "PASS"
+    },
+    {
+      "check": "bkgr_validation",
+      "context": {
+        "directional_agreement": 0.46875,
+        "fixture_count": 35,
+        "floor_count": 0,
+        "mean_diff_vs_bkgr_pct": -30.077349202874476,
+        "overlap_count": 33,
+        "quorum_count": 32,
+        "spearman": 0.17330993626148247,
+        "tail_count": 0
+      },
+      "gates": [
+        {
+          "detail": "floor_count=0 tickers=[]",
+          "name": "floor_count_zero",
+          "status": "PASS"
+        },
+        {
+          "detail": "tail_count=0 tickers=[]",
+          "name": "tail_count_zero",
+          "status": "PASS"
+        },
+        {
+          "detail": "overlap_count=33 (min=30)",
+          "name": "overlap_count_ge_30",
+          "status": "PASS"
+        }
+      ],
+      "status": "PASS"
+    },
+    {
+      "check": "ic_weight_provenance",
+      "context": {
+        "doc55_verdict": "ddm structural zero; residual_income watch-list (re-estimate after >=2 FY of real consensus history); fcff_dcf seeding validated.",
+        "estimated_date": "2026-06-20",
+        "raw_ic": {
+          "ddm": -0.188,
+          "fcfe_dcf": 0.0,
+          "fcff_dcf": 0.332,
+          "justified_multiples": 0.0,
+          "relative_multiples": 0.217,
+          "residual_income": 0.0,
+          "reverse_dcf": 0.0
+        },
+        "source": "pit_ic_backtest_fy2021_fy2024",
+        "stale_sources": [
+          {
+            "file": "core/quant_core/fundamentals/valuation.py",
+            "mtime": "2026-06-28T16:06:38.558293+00:00"
+          },
+          {
+            "file": "core/quant_core/fundamentals/projection.py",
+            "mtime": "2026-07-01T20:30:56.663688+00:00"
+          },
+          {
+            "file": "core/quant_core/fundamentals/pit_ic_backtest.py",
+            "mtime": "2026-06-20T10:48:09.453032+00:00"
+          }
+        ],
+        "weights": {
+          "ddm": 0.0,
+          "fcfe_dcf": 0.0,
+          "fcff_dcf": 0.5419,
+          "justified_multiples": 0.0,
+          "relative_multiples": 0.4581,
+          "residual_income": 0.0,
+          "reverse_dcf": 0.0
+        },
+        "weights_path": "C:\\Users\\taha\\Downloads\\backtester_signal_engine_autoaccept\\core\\quant_core\\fundamentals\\ic_ensemble_weights.json"
+      },
+      "gates": [
+        {
+          "detail": "C:\\Users\\taha\\Downloads\\backtester_signal_engine_autoaccept\\core\\quant_core\\fundamentals\\ic_ensemble_weights.json",
+          "name": "weights_file_present_and_parsable",
+          "status": "PASS"
+        },
+        {
+          "detail": "weights file dated 2026-06-20 (mtime 2026-06-20T10:45:42.305286+00:00) is older than: core/quant_core/fundamentals/valuation.py, core/quant_core/fundamentals/projection.py, core/quant_core/fundamentals/pit_ic_backtest.py -- re-examine weights per doc 55.",
+          "name": "weights_not_stale_vs_model_sources",
+          "status": "WARN"
+        }
+      ],
+      "status": "WARN"
+    }
+  ],
+  "database_url": "postgresql+psycopg2://app:app@127.0.0.1:5555/quant",
+  "generated_at": "2026-07-02T18:51:32.399166+00:00",
+  "overall_gate": "PASS",
+  "overall_status": "WARN",
+  "scenario": "base"
+}

@@ -1370,6 +1370,8 @@ export const SignalEvidenceStitchedMetricsSchema = z.object({
   expected_return_gross: z.number().nullable().optional(),
   expected_return_net: z.number().nullable().optional(),
   stock_expected_return: z.number().nullable().optional(),
+  var95: z.number().nullable().optional(),
+  cvar95: z.number().nullable().optional(),
 })
 
 export const SrOverlayMetricsSchema = z.object({
@@ -6257,6 +6259,45 @@ export const FundamentalMissingFinancialDataSummarySchema = z.object({
 })
 export type FundamentalMissingFinancialDataSummary = z.infer<typeof FundamentalMissingFinancialDataSummarySchema>
 
+export const FundamentalTriangulationAnchorSchema = z.object({
+  name: z.string(),
+  kind: z.enum(["intrinsic", "market", "broker"]),
+  value: z.number().nullable().optional(),
+  n_models: z.number().default(0),
+  models: z.array(z.string()).default([]),
+})
+export type FundamentalTriangulationAnchor = z.infer<typeof FundamentalTriangulationAnchorSchema>
+
+export const FundamentalTriangulationBrokerSchema = z.object({
+  value: z.number().nullable().optional(),
+  source: z.string().nullable().optional(),
+  as_of_date: z.string().nullable().optional(),
+  fiscal_year: z.number().nullable().optional(),
+  currency: z.string().nullable().optional(),
+})
+export type FundamentalTriangulationBroker = z.infer<typeof FundamentalTriangulationBrokerSchema>
+
+export const FundamentalTriangulationSchema = z.object({
+  current_price: z.number().nullable().optional(),
+  anchors: z.array(FundamentalTriangulationAnchorSchema).default([]),
+  band_low: z.number().nullable().optional(),
+  band_mid: z.number().nullable().optional(),
+  band_high: z.number().nullable().optional(),
+  price_position: z.number().nullable().optional(),
+  verdict: z.enum([
+    "below_band",
+    "in_band_lower",
+    "in_band_upper",
+    "above_band",
+    "insufficient_anchors",
+    "no_price",
+  ]),
+  agreement: z.number().nullable().optional(),
+  warnings: z.array(z.string()).default([]),
+  broker: FundamentalTriangulationBrokerSchema.nullable().optional(),
+})
+export type FundamentalTriangulation = z.infer<typeof FundamentalTriangulationSchema>
+
 export const FundamentalStockDetailSchema = z.object({
   symbol: z.string(),
   company_name: z.string(),
@@ -6299,6 +6340,7 @@ export const FundamentalStockDetailSchema = z.object({
   free_float_pct: z.number().nullable().optional(),
   data_source: z.string().nullable().optional(),
   imported_at: z.string().nullable().optional(),
+  triangulation: FundamentalTriangulationSchema.nullable().optional(),
 })
 export type FundamentalStockDetail = z.infer<typeof FundamentalStockDetailSchema>
 
@@ -6779,14 +6821,15 @@ export async function getFundamentalSensitivity(
 
 export interface PortfolioBacktestSymbolStats {
   symbol: string
-  kelly_fraction: number
   kelly_pct: number
   n_trades: number
+  n_skipped: number
   n_long?: number
   n_short?: number
   win_rate: number
   avg_win_pct: number
   avg_loss_pct: number
+  total_pnl_mad: number
 }
 
 export interface PortfolioBacktestTrade {
@@ -6799,9 +6842,41 @@ export interface PortfolioBacktestTrade {
   pnl_return: number
   effective_return: number
   tp_applied: boolean
+  sl_applied: boolean
   position_size: number
   pnl_mad: number
   executed: boolean
+  skip_reason?: string | null
+}
+
+export interface PortfolioBacktestLedgerRow {
+  date: string
+  symbol: string
+  side: string
+  quantity: number | null
+  prix_execution: number
+  cmp: number
+  montant: number
+  pnl_realise: number | null
+  pnl_realise_cumule: number
+  capital: number
+  exposition_pct: number
+}
+
+export interface PortfolioBacktestBenchmark {
+  curve: Array<{ date: string; equity: number }>
+  metrics: {
+    total_return: number
+    cagr: number | null
+    max_drawdown: number
+  }
+  /** Common comparison window: alpha_total_return = strategy return measured
+   * over [start, end] minus the benchmark total_return over the same window. */
+  window?: {
+    start: string
+    end: string
+    strategy_total_return: number
+  }
 }
 
 export interface PortfolioBacktestResult {
@@ -6815,6 +6890,10 @@ export interface PortfolioBacktestResult {
     n_symbols?: number
     n_trades?: number
     tp_applied_pct?: number
+    sl_applied_pct?: number
+    avg_exposure_pct?: number
+    max_exposure_pct?: number
+    alpha_total_return?: number | null
   }
   per_symbol: PortfolioBacktestSymbolStats[]
   n_symbols_qualified: number
@@ -6827,14 +6906,17 @@ export interface PortfolioBacktestResult {
     requested_start: string | null
     requested_end: string | null
   }
+  benchmark?: PortfolioBacktestBenchmark | null
+  ledger?: PortfolioBacktestLedgerRow[]
+  ledger_truncated?: boolean
 }
 
 export async function runPortfolioBacktest(body: {
   symbols?: string[]
   horizon?: string
-  variant?: string
   initial_capital?: number
-  take_profit_pct?: number
+  take_profit_pct?: number | null
+  stop_loss_pct?: number | null
   kelly_multiplier?: number
   long_only?: boolean
   start_date?: string
@@ -6861,12 +6943,10 @@ export interface PortfolioBacktestUniverseResult {
 
 export async function getPortfolioBacktestUniverse(params: {
   horizon?: string
-  variant?: string
   long_only?: boolean
 }): Promise<PortfolioBacktestUniverseResult> {
   const qs = new URLSearchParams()
   if (params.horizon) qs.set("horizon", params.horizon)
-  if (params.variant) qs.set("variant", params.variant)
   if (params.long_only != null) qs.set("long_only", String(params.long_only))
   const q = qs.toString()
   const data = await request<PortfolioBacktestUniverseResult>(

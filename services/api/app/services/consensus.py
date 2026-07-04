@@ -23,6 +23,7 @@ from core.quant_core.fundamentals.consensus.domain import (
     METRIC_EPS_FORWARD,
     METRIC_NI_FORWARD,
     METRIC_REV_FORWARD,
+    METRIC_TARGET_PRICE,
     ConsensusEstimate,
 )
 from core.quant_core.fundamentals.consensus.reconcile import reconcile_consensus
@@ -111,6 +112,41 @@ def load_forward_view(
             result[key] = rec.reconciled_value
 
     return result
+
+
+def load_broker_target(
+    db: Session,
+    symbol: str,
+    *,
+    valuation_date: dt.date | None = None,
+) -> dict[str, Any] | None:
+    """Return the latest broker target price for *symbol*, or None.
+
+    PIT discipline mirrors load_forward_view: only rows with
+    as_of_date <= valuation_date are considered. Target prices are 12-month
+    anchors, so the latest as_of wins regardless of fiscal_year.
+    """
+    val_date = valuation_date or dt.date.today()
+    row = (
+        db.query(FundamentalConsensusEstimate)
+        .filter(
+            FundamentalConsensusEstimate.symbol == symbol.upper(),
+            FundamentalConsensusEstimate.metric == METRIC_TARGET_PRICE,
+            FundamentalConsensusEstimate.as_of_date <= val_date,
+            FundamentalConsensusEstimate.value.isnot(None),
+        )
+        .order_by(FundamentalConsensusEstimate.as_of_date.desc())
+        .first()
+    )
+    if row is None or row.value is None or float(row.value) <= 0:
+        return None
+    return {
+        "value": float(row.value),
+        "source": row.source,
+        "as_of_date": row.as_of_date.isoformat() if row.as_of_date else None,
+        "fiscal_year": row.fiscal_year,
+        "currency": row.currency,
+    }
 
 
 def upsert_consensus_estimates(

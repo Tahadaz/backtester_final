@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from core.quant_core.fundamentals import DEFAULT_ASSUMPTIONS, eva, scenario_probabilities_from_assumptions
 from core.quant_core.fundamentals.domain import AnnualMetricRow, FundamentalSnapshot
+from core.quant_core.fundamentals.triangulation import compute_triangulation
 
 from .. import models
 from ..auth import AppUser, optional_app_user, require_admin, require_app_user
@@ -77,6 +78,7 @@ from ..schemas.fundamentals import (
     YfinanceFundamentalImportIn,
     YfinanceFundamentalImportQueuedOut,
 )
+from ..services.consensus import load_broker_target
 from ..services.fundamental_beta import recompute_universe_betas
 from ..services.fundamentals import (
     CORE_STATEMENT_METRIC_GROUPS,
@@ -99,6 +101,7 @@ from ..services.fundamentals import (
     market_price_context_by_symbol,
     methodology_payload,
     normalize_period_label,
+    period_metric_rows_for_symbol,
     pillar_history_for_symbol,
     persist_pillar_history_for_import,
     current_metric_overrides,
@@ -1934,17 +1937,11 @@ def get_fundamental_coverage(db: Session = Depends(get_db)) -> list[FundamentalC
             )
             annual_metric_count = len(annual_rows)
             annual_years = sorted({int(row[0]) for row in annual_rows if row[0] is not None})
-            period_rows = (
-                db.query(models.FundamentalPeriodMetric.period_type)
-                .filter(
-                    models.FundamentalPeriodMetric.import_id == snapshot.import_id,
-                    models.FundamentalPeriodMetric.symbol == symbol,
-                    models.FundamentalPeriodMetric.metric_value.isnot(None),
-                )
-                .all()
+            period_rows = period_metric_rows_for_symbol(
+                db, import_id=snapshot.import_id, symbol=symbol, require_value=True
             )
             period_metric_count = len(period_rows)
-            period_types = sorted({str(row[0]) for row in period_rows if row[0]})
+            period_types = sorted({str(row.period_type) for row in period_rows if row.period_type})
             quality_issue_count = (
                 db.query(models.FundamentalQualityIssue)
                 .filter(
@@ -2558,21 +2555,7 @@ def get_fundamental_stock_detail(symbol: str, db: Session = Depends(get_db), sce
         )
 
     annual_rows = annual_metric_rows_for_symbol(db, import_id=import_row.id, symbol=symbol)
-    period_rows = (
-        db.query(models.FundamentalPeriodMetric)
-        .filter(
-            models.FundamentalPeriodMetric.import_id == import_row.id,
-            models.FundamentalPeriodMetric.symbol == symbol,
-            models.FundamentalPeriodMetric.metric_value.isnot(None),
-        )
-        .order_by(
-            models.FundamentalPeriodMetric.period_type.asc(),
-            models.FundamentalPeriodMetric.fiscal_year.asc(),
-            models.FundamentalPeriodMetric.period_label.asc(),
-            models.FundamentalPeriodMetric.metric_name.asc(),
-        )
-        .all()
-    )
+    period_rows = period_metric_rows_for_symbol(db, import_id=import_row.id, symbol=symbol, require_value=True)
     enriched_snapshot = enriched_snapshots_by_symbol(db, {symbol: snapshot}).get(symbol)
     metrics_for_selection = dict(enriched_snapshot.metrics or {}) if enriched_snapshot is not None else dict(snapshot.metrics_json or {})
     current_price = metrics_for_selection.get("Current_Price")
@@ -2601,6 +2584,17 @@ def get_fundamental_stock_detail(symbol: str, db: Session = Depends(get_db), sce
         .order_by(models.FundamentalValuationResult.family.asc(), models.FundamentalValuationResult.model.asc())
         .all()
     )
+    broker_anchor = load_broker_target(db, symbol)
+    triangulation = compute_triangulation(
+        [
+            {"model": row.model, "family": row.family, "fair_value": row.fair_value}
+            for row in valuations
+        ],
+        current_price,
+        broker_target=broker_anchor["value"] if broker_anchor else None,
+    ).to_dict()
+    if broker_anchor is not None:
+        triangulation["broker"] = broker_anchor
     ensemble = (
         db.query(models.FundamentalEnsembleResult)
         .filter(models.FundamentalEnsembleResult.import_id == import_row.id, models.FundamentalEnsembleResult.symbol == symbol, models.FundamentalEnsembleResult.scenario == selected_scenario)
@@ -2686,6 +2680,7 @@ def get_fundamental_stock_detail(symbol: str, db: Session = Depends(get_db), sce
         valuations=[_valuation_out(row, current_price_override=current_price) for row in valuations],
         ensemble=_ensemble_out(ensemble, current_price_override=current_price),
         ensembles=scenario_ensembles,
+        triangulation=triangulation,
         assumptions=assumptions,
         assumption_provenance=provenance_by_scenario,
         scenario_trio_stale=scenario_trio_stale,

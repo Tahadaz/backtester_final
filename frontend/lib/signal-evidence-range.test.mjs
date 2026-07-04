@@ -53,12 +53,56 @@ test("buildSignalEvidenceRangeView recalculates metrics from opened-in-range tra
   assert.deepEqual(view.close, [103, 104])
   assert.equal(view.metrics.n_trades, 1)
   assert.equal(view.metrics.expected_return_net, -0.05)
+  assert.equal(view.metrics.var95, null)
+  assert.equal(view.metrics.cvar95, null)
   assert.equal(view.metrics.hit_rate, 0)
   assert.equal(view.metrics.total_return, -0.050000000000000044)
   assert.deepEqual(view.equity, [1, 0.95])
   assert.deepEqual(view.position, [1, 0])
   assert.deepEqual(view.ledger.map((row) => row.position), [1, 0])
   assert.deepEqual(view.ledger.map((row) => row.marker_label), ["Buy 2", "Sell 2"])
+})
+
+test("buildSignalEvidenceRangeView computes historical VaR and CVaR from range-filtered net trades", () => {
+  const stitched = {
+    dates: [
+      "2026-01-01",
+      "2026-01-02",
+      "2026-01-03",
+      "2026-01-04",
+      "2026-01-05",
+      "2026-01-06",
+    ],
+    close_series: [100, 101, 102, 103, 104, 105],
+    trades: [
+      { trade_id: "old", direction: "long", entry_date: "2026-01-01", exit_date: "2026-01-02", entry_price: 100, action_return_net: -0.5, action_return_gross: -0.5 },
+      { trade_id: "t1", direction: "long", entry_date: "2026-01-02", exit_date: "2026-01-03", entry_price: 100, action_return_net: -0.1, action_return_gross: -0.1 },
+      { trade_id: "t2", direction: "long", entry_date: "2026-01-03", exit_date: "2026-01-04", entry_price: 100, action_return_net: -0.05, action_return_gross: -0.05 },
+      { trade_id: "t3", direction: "long", entry_date: "2026-01-04", exit_date: "2026-01-05", entry_price: 100, action_return_net: 0, action_return_gross: 0 },
+      { trade_id: "t4", direction: "long", entry_date: "2026-01-05", exit_date: "2026-01-06", entry_price: 100, action_return_net: 0.02, action_return_gross: 0.02 },
+      { trade_id: "t5", direction: "long", entry_date: "2026-01-06", exit_date: "2026-01-06", entry_price: 100, action_return_net: 0.05, action_return_gross: 0.05 },
+    ],
+    trade_ledger: [
+      { trade_id: "old", date: "2026-01-01", marker_label: "Buy old", transaction_index: 1, price_kind: "open", pnl_realise: 0 },
+      { trade_id: "old", date: "2026-01-02", marker_label: "Sell old", transaction_index: 2, price_kind: "close", pnl_realise: -50 },
+      { trade_id: "t1", date: "2026-01-02", marker_label: "Buy 1", transaction_index: 3, price_kind: "open", pnl_realise: 0 },
+      { trade_id: "t1", date: "2026-01-03", marker_label: "Sell 1", transaction_index: 4, price_kind: "close", pnl_realise: -10 },
+      { trade_id: "t2", date: "2026-01-03", marker_label: "Buy 2", transaction_index: 5, price_kind: "open", pnl_realise: 0 },
+      { trade_id: "t2", date: "2026-01-04", marker_label: "Sell 2", transaction_index: 6, price_kind: "close", pnl_realise: -5 },
+      { trade_id: "t3", date: "2026-01-04", marker_label: "Buy 3", transaction_index: 7, price_kind: "open", pnl_realise: 0 },
+      { trade_id: "t3", date: "2026-01-05", marker_label: "Sell 3", transaction_index: 8, price_kind: "close", pnl_realise: 0 },
+      { trade_id: "t4", date: "2026-01-05", marker_label: "Buy 4", transaction_index: 9, price_kind: "open", pnl_realise: 0 },
+      { trade_id: "t4", date: "2026-01-06", marker_label: "Sell 4", transaction_index: 10, price_kind: "close", pnl_realise: 2 },
+      { trade_id: "t5", date: "2026-01-06", marker_label: "Buy 5", transaction_index: 11, price_kind: "open", pnl_realise: 0 },
+      { trade_id: "t5", date: "2026-01-06", marker_label: "Sell 5", transaction_index: 12, price_kind: "close", pnl_realise: 5 },
+    ],
+  }
+
+  const view = buildSignalEvidenceRangeView(stitched, "2026-01-02")
+
+  assert.equal(view.metrics.n_trades, 5)
+  assert.equal(Math.abs(view.metrics.var95 - -0.09) < 1e-12, true)
+  assert.equal(view.metrics.cvar95, -0.1)
 })
 
 test("buildSignalEvidenceRangeView excludes transactions for trades opened before the selected range", () => {
@@ -147,6 +191,8 @@ test("buildSignalEvidenceRangeView treats neutral samples as no action trades", 
   assert.equal(view.metrics.expected_return_net, null)
   assert.equal(view.metrics.hit_rate, null)
   assert.equal(view.metrics.sharpe, null)
+  assert.equal(view.metrics.var95, null)
+  assert.equal(view.metrics.cvar95, null)
   assert.equal(Math.abs(view.metrics.stock_expected_return - 0.03) < 1e-12, true)
   assert.deepEqual(view.trades, [])
   assert.equal(view.sampleTrades.length, 2)

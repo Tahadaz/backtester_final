@@ -33,6 +33,30 @@ function sharpe(values) {
   return sigma > 0 ? (avg / sigma) * Math.sqrt(252) : 0
 }
 
+function quantile(values, q) {
+  const finite = values.filter((value) => Number.isFinite(value)).sort((a, b) => a - b)
+  if (finite.length === 0) return null
+  const clamped = Math.max(0, Math.min(1, q))
+  const position = (finite.length - 1) * clamped
+  const lower = Math.floor(position)
+  const upper = Math.ceil(position)
+  if (lower === upper) return finite[lower]
+  const weight = position - lower
+  return finite[lower] * (1 - weight) + finite[upper] * weight
+}
+
+function tailRisk(values) {
+  const finite = values.filter((value) => Number.isFinite(value))
+  if (finite.length < 5) return { var95: null, cvar95: null }
+  const var95 = quantile(finite, 0.05)
+  if (var95 == null) return { var95: null, cvar95: null }
+  const tail = finite.filter((value) => value <= var95)
+  return {
+    var95,
+    cvar95: tail.length ? mean(tail) : var95,
+  }
+}
+
 function maxDrawdown(equity) {
   let peak = null
   let max = 0
@@ -246,6 +270,8 @@ export function buildSignalEvidenceRangeView(stitched, startDate) {
       expected_return_gross: null,
       expected_return_net: null,
       stock_expected_return: null,
+      var95: null,
+      cvar95: null,
     },
   }
   if (!stitched || !Array.isArray(stitched.dates)) return empty
@@ -285,6 +311,7 @@ export function buildSignalEvidenceRangeView(stitched, startDate) {
   const hitRate = grossReturns.length
     ? grossReturns.filter((value) => value > 0).length / grossReturns.length
     : null
+  const historicalRisk = tailRisk(netReturns)
 
   return {
     startIndex,
@@ -312,6 +339,8 @@ export function buildSignalEvidenceRangeView(stitched, startDate) {
       expected_return_gross: mean(grossReturns),
       expected_return_net: mean(netReturns),
       stock_expected_return: mean(stockReturns),
+      var95: historicalRisk.var95,
+      cvar95: historicalRisk.cvar95,
     },
   }
 }

@@ -4,11 +4,14 @@ import { useMemo, useState } from "react"
 import useSWR from "swr"
 import { Activity, BarChart3, CheckCircle2, Layers3, ListChecks } from "lucide-react"
 import {
+  fetchBestSignalBacktestChart,
   fetchBestSignalEvidence,
+  fetchSignalBacktestResults,
   fetchSignalEvidence,
   type SignalEvidence,
   type SignalEvidenceContributor,
   type SignalEvidenceOosPeriod,
+  type SignalBacktestResponse,
   type SignalEvidenceTrade,
   type SrOverlay,
 } from "@/lib/api"
@@ -27,6 +30,10 @@ const EDGE_COST_BPS = 33
 type EvidenceSource = "auto" | "signal_engine" | "wfo"
 type EvidenceRangeKey = "all" | "5y" | "3y" | "1y" | "6m" | "3m"
 type ProofLimitKey = "100" | "250" | "500" | "all"
+type McVarStats = {
+  var95?: number | null
+  cvar95?: number | null
+}
 
 const EVIDENCE_RANGE_OPTIONS: Array<{ key: EvidenceRangeKey; label: string; days: number | null }> = [
   { key: "all", label: "All", days: null },
@@ -134,6 +141,12 @@ function formatPvalue(value: number | null | undefined) {
   return value.toFixed(3)
 }
 
+function signalBacktestMcStats(response: SignalBacktestResponse | null | undefined): McVarStats | null {
+  if (!response?.results?.length) return null
+  const result = response.results.find((row) => row.mc?.stats?.var95 != null || row.mc?.stats?.cvar95 != null)
+  return result?.mc?.stats ?? null
+}
+
 function SrOverlaySummary({ overlay }: { overlay?: SrOverlay | null }) {
   if (!overlay) return null
   const ready = overlay.status === "ready" && overlay.overlay_metrics
@@ -182,7 +195,7 @@ function SrOverlaySummary({ overlay }: { overlay?: SrOverlay | null }) {
   )
 }
 
-function StitchedWfoEvidenceBacktest({ data }: { data: SignalEvidence }) {
+function StitchedWfoEvidenceBacktest({ data, mcStats }: { data: SignalEvidence; mcStats?: McVarStats | null }) {
   const [range, setRange] = useState<EvidenceRangeKey>("all")
   const stitched = data.stitched_oos_backtest
   const visible = useMemo(() => {
@@ -286,6 +299,35 @@ function StitchedWfoEvidenceBacktest({ data }: { data: SignalEvidence }) {
             detail={hasAction ? directionLabel(stitched.direction) : "No action return stream"}
           />
         </div>
+
+        {hasAction ? (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <StatCard
+              label="Hist VaR 95%"
+              value={formatPercent(metrics.var95)}
+              detail={metrics.var95 == null ? "minimum n=5 trades" : "5th pct net trade return"}
+              tone={metricTone(metrics.var95)}
+            />
+            <StatCard
+              label="Hist CVaR 95%"
+              value={formatPercent(metrics.cvar95)}
+              detail={metrics.cvar95 == null ? "minimum n=5 trades" : "mean below VaR"}
+              tone={metricTone(metrics.cvar95)}
+            />
+            <StatCard
+              label="MC VaR 95%"
+              value={formatPercent(mcStats?.var95)}
+              detail={mcStats?.var95 == null ? "MC unavailable" : "terminal return p05"}
+              tone={metricTone(mcStats?.var95)}
+            />
+            <StatCard
+              label="MC CVaR 95%"
+              value={formatPercent(mcStats?.cvar95)}
+              detail={mcStats?.cvar95 == null ? "MC unavailable" : "terminal tail mean"}
+              tone={metricTone(mcStats?.cvar95)}
+            />
+          </div>
+        ) : null}
 
         <div>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -768,11 +810,13 @@ function EvidenceOosPeriods({ data, selectedVariantId }: { data: SignalEvidence;
 
 function SignalEvidenceContent({
   data,
+  mcStats,
   selectedVariantId,
   proofLimit,
   onProofLimitChange,
 }: {
   data: SignalEvidence
+  mcStats?: McVarStats | null
   selectedVariantId?: string | null
   proofLimit: ProofLimitKey
   onProofLimitChange: (value: ProofLimitKey) => void
@@ -781,7 +825,7 @@ function SignalEvidenceContent({
 
   return (
     <div className="space-y-4">
-      <StitchedWfoEvidenceBacktest data={data} />
+      <StitchedWfoEvidenceBacktest data={data} mcStats={mcStats} />
 
       <Card className="rounded-md py-0">
         <CardHeader className="border-b border-line px-4 py-3">
@@ -966,6 +1010,37 @@ export function SignalEvidenceTab({
           }),
     { revalidateOnFocus: false },
   )
+  const selectedDirection = data?.stitched_oos_backtest?.direction ?? data?.current_signal.direction ?? data?.edge.direction ?? null
+  const { data: mcStats } = useSWR(
+    data?.stitched_oos_backtest && isActionableDirection(selectedDirection)
+      ? [
+          "signal-evidence-mc-var",
+          useStoredBest ? "best" : "live",
+          symbol,
+          horizon,
+          data.source,
+          data.variant,
+          selectedDirection,
+          normalizedCooldownBars,
+        ]
+      : null,
+    async () => {
+      try {
+        const response = useStoredBest
+          ? await fetchBestSignalBacktestChart(symbol, horizon, { cooldownBars: normalizedCooldownBars })
+          : await fetchSignalBacktestResults(symbol, horizon, {
+              source: data?.source,
+              variant: data?.variant,
+              selectedDirection,
+              cooldownBars: normalizedCooldownBars,
+            })
+        return signalBacktestMcStats(response)
+      } catch {
+        return null
+      }
+    },
+    { revalidateOnFocus: false },
+  )
 
   if (isLoading) {
     return (
@@ -989,6 +1064,7 @@ export function SignalEvidenceTab({
   return (
     <SignalEvidenceContent
       data={data}
+      mcStats={mcStats}
       selectedVariantId={selectedVariantId}
       proofLimit={proofLimit}
       onProofLimitChange={setProofLimit}

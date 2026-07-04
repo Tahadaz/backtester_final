@@ -657,6 +657,16 @@ def _evidence_trade_proof_summary(
 EVIDENCE_MIN_SAMPLE_N = 30
 
 
+def _evidence_tail_risk(values: list[float], *, min_n: int = 5) -> tuple[float | None, float | None]:
+    finite = np.asarray([float(value) for value in values if np.isfinite(value)], dtype=np.float64)
+    if finite.size < min_n:
+        return None, None
+    var95 = float(np.quantile(finite, 0.05))
+    tail = finite[finite <= var95]
+    cvar95 = float(np.mean(tail)) if tail.size else var95
+    return var95, cvar95
+
+
 def _evidence_chart_frame(
     price_index: pd.DatetimeIndex,
     price_frame: pd.DataFrame,
@@ -1075,6 +1085,7 @@ def _evidence_stitched_backtest(
     years = max(len(dates), 1) / 252.0
     cagr = float((1.0 + total_return) ** (1.0 / years) - 1.0) if total_return > -1.0 else -1.0
     hit_rate = float(np.mean([value > 0.0 for value in gross_returns])) if gross_returns else None
+    var95, cvar95 = _evidence_tail_risk(net_returns)
 
     warning_sample_n = len(action_trades) if direction in {"long", "short"} else len(stock_returns)
     warnings: list[str] = []
@@ -1129,6 +1140,8 @@ def _evidence_stitched_backtest(
             "expected_return_gross": _evidence_mean(gross_returns),
             "expected_return_net": _evidence_mean(net_returns),
             "stock_expected_return": _evidence_mean(stock_returns),
+            "var95": var95,
+            "cvar95": cvar95,
         },
     }
 

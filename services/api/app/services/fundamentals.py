@@ -3054,18 +3054,85 @@ def _load_history(db: Session, import_id: uuid.UUID, symbol: str | None = None) 
     return sorted(out, key=lambda row: (row.symbol, row.statement_year, row.metric_name, row.as_of_date or dt.date.min, row.source_document_id or 0))
 
 
+def _period_metric_best_rows(
+    db: Session, import_id: uuid.UUID, symbol: str
+) -> list[models.FundamentalPeriodMetric]:
+    """Cross-import period rows for one symbol, deduped to the best row per
+    (fiscal_year, period_type, normalized period_label, metric_name).
+
+    Sub-annual (quarterly/semiannual) rows are frequently ingested by targeted BVC
+    scrapes under their own import_id, separate from the canonical workbook import
+    used for annual snapshots, so this loads across all imports rather than scoping
+    to `import_id`. Preference order: requested import > non-proxy > newest import
+    (by fundamental_import.created_at) > highest row id.
+    """
+    rows = (
+        db.query(models.FundamentalPeriodMetric, models.FundamentalImport.created_at)
+        .join(models.FundamentalImport, models.FundamentalPeriodMetric.import_id == models.FundamentalImport.id)
+        .filter(models.FundamentalPeriodMetric.symbol == symbol.upper())
+        .all()
+    )
+    period_best: dict[tuple[str, int, str, str, str], tuple[tuple[int, int, dt.datetime, int], models.FundamentalPeriodMetric]] = {}
+    for row, import_created_at in rows:
+        normalized_label = normalize_period_label(row.period_type, row.period_label)
+        key = (row.symbol.upper(), row.fiscal_year, row.period_type, normalized_label, row.metric_name)
+        rank = (
+            1 if row.import_id == import_id else 0,
+            0 if row.is_proxy else 1,
+            import_created_at or dt.datetime.min.replace(tzinfo=dt.timezone.utc),
+            int(row.id or 0),
+        )
+        if key not in period_best or rank > period_best[key][0]:
+            period_best[key] = (rank, row)
+    return [row for _rank, row in period_best.values()]
+
+
 def _load_period_history(db: Session, import_id: uuid.UUID, symbol: str | None = None) -> list[PeriodMetricRow]:
-    query = db.query(models.FundamentalPeriodMetric).filter(models.FundamentalPeriodMetric.import_id == import_id)
-    if symbol:
-        query = query.filter(models.FundamentalPeriodMetric.symbol == symbol.upper())
-    rows = query.order_by(
-        models.FundamentalPeriodMetric.symbol.asc(),
-        models.FundamentalPeriodMetric.period_type.asc(),
-        models.FundamentalPeriodMetric.fiscal_year.asc(),
-        models.FundamentalPeriodMetric.period_label.asc(),
-        models.FundamentalPeriodMetric.metric_name.asc(),
-    ).all()
-    return [_period_from_model(row) for row in rows]
+    if symbol is None:
+        # Bulk/import-time path: keep scoped to the given import so we don't load the
+        # whole table when processing an import rather than a single symbol's context.
+        rows = (
+            db.query(models.FundamentalPeriodMetric)
+            .filter(models.FundamentalPeriodMetric.import_id == import_id)
+            .order_by(
+                models.FundamentalPeriodMetric.symbol.asc(),
+                models.FundamentalPeriodMetric.period_type.asc(),
+                models.FundamentalPeriodMetric.fiscal_year.asc(),
+                models.FundamentalPeriodMetric.period_label.asc(),
+                models.FundamentalPeriodMetric.metric_name.asc(),
+            )
+            .all()
+        )
+        return [_period_from_model(row) for row in rows]
+
+    out = [_period_from_model(row) for row in _period_metric_best_rows(db, import_id, symbol)]
+    return sorted(
+        out,
+        key=lambda item: (item.symbol, item.period_type, item.fiscal_year, item.period_label, item.metric_name),
+    )
+
+
+def period_metric_rows_for_symbol(
+    db: Session,
+    *,
+    import_id: uuid.UUID,
+    symbol: str,
+    require_value: bool = True,
+) -> list[models.FundamentalPeriodMetric]:
+    """Cross-import period metric rows for user-facing readers (coverage, statement
+    history) that need the raw ORM rows rather than `PeriodMetricRow` dataclasses."""
+    rows = _period_metric_best_rows(db, import_id, symbol)
+    if require_value:
+        rows = [row for row in rows if row.metric_value is not None]
+    return sorted(
+        rows,
+        key=lambda row: (
+            row.period_type,
+            row.fiscal_year,
+            normalize_period_label(row.period_type, row.period_label),
+            row.metric_name,
+        ),
+    )
 
 
 def annual_metric_rows_for_symbol(

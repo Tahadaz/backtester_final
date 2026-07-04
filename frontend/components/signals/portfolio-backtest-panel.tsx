@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { ArrowLeft, ChevronDown, Maximize2, Minimize2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,13 +12,14 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { PlotlyChart } from "@/components/run/plotly-chart"
-import { PriceSignalsChart } from "@/components/signals/price-signals-chart"
 import { useMarketCatalog, useStockOhlcvHistory } from "@/hooks/use-api"
 import { formatNumber } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import {
   getPortfolioBacktestUniverse,
   runPortfolioBacktest,
+  type PortfolioBacktestBenchmark,
+  type PortfolioBacktestLedgerRow,
   type PortfolioBacktestResult,
   type PortfolioBacktestTrade,
   type PortfolioBacktestUniverseSymbol,
@@ -28,20 +29,21 @@ type Props = {
   horizon: string
 }
 
-const BACKTEST_VARIANT = "expanded"
 const LEDGER_PAGE_SIZE = 200
 
 function StatCard({
   label,
   value,
   tone,
+  title,
 }: {
   label: string
   value: string
   tone?: "pos" | "neg" | "neutral"
+  title?: string
 }) {
   return (
-    <div className="claude-stat">
+    <div className="claude-stat" title={title}>
       <p className="lbl">{label}</p>
       <p
         className={`val ${
@@ -60,29 +62,151 @@ function StatCard({
 
 function buildEquityPlot(
   curve: Array<{ date: string; equity: number }>,
+  benchmark: PortfolioBacktestBenchmark | null | undefined,
   initialCapital: number,
 ) {
   if (curve.length < 2) return null
-  const dates = curve.map((p) => p.date)
-  const returns = curve.map((p) => ((p.equity - initialCapital) / initialCapital) * 100)
+  const toPct = (equity: number) => ((equity - initialCapital) / initialCapital) * 100
+  const data: Array<Record<string, unknown>> = [
+    {
+      x: curve.map((p) => p.date),
+      y: curve.map((p) => toPct(p.equity)),
+      type: "scatter",
+      mode: "lines",
+      name: "Portefeuille (modèle)",
+      line: { color: "rgb(99,102,241)", width: 2 },
+      fill: "tozeroy",
+      fillcolor: "rgba(99,102,241,0.08)",
+      hovertemplate: "%{x|%d/%m/%Y} — %{y:.2f}%<extra>Portefeuille</extra>",
+    },
+  ]
+  if (benchmark && benchmark.curve.length >= 2) {
+    data.push({
+      x: benchmark.curve.map((p) => p.date),
+      y: benchmark.curve.map((p) => toPct(p.equity)),
+      type: "scatter",
+      mode: "lines",
+      name: "MASI (achat-conservation)",
+      line: { color: "rgb(148,163,184)", width: 1.5 },
+      hovertemplate: "%{x|%d/%m/%Y} — %{y:.2f}%<extra>MASI</extra>",
+    })
+  }
   return {
-    data: [
-      {
-        x: dates,
-        y: returns,
-        type: "scatter",
-        mode: "lines",
-        name: "Portfolio WFO",
-        line: { color: "rgb(99,102,241)", width: 2 },
-        fill: "tozeroy",
-        fillcolor: "rgba(99,102,241,0.08)",
-      },
-    ],
+    data,
     layout: {
       margin: { t: 16, b: 40, l: 52, r: 16 },
       yaxis: { ticksuffix: "%", gridcolor: "rgba(0,0,0,0.06)" },
       xaxis: { type: "date", gridcolor: "rgba(0,0,0,0.06)" },
+      showlegend: true,
+      legend: { orientation: "h", x: 0, y: 1.08, font: { size: 11 } },
+      plot_bgcolor: "transparent",
+      paper_bgcolor: "transparent",
+    },
+  }
+}
+
+function shiftDate(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+function buildStockPricePlot(
+  bars: Array<{ date: string; close?: number | null }>,
+  trades: PortfolioBacktestTrade[],
+  symbol: string,
+  period: { start: string | null; end: string | null } | undefined,
+) {
+  const executed = trades.filter((t) => t.symbol === symbol && t.executed)
+  const tradeDates = executed.flatMap((t) => [t.open_date, t.close_date]).filter(Boolean)
+  const rawStart = period?.start ?? (tradeDates.length ? tradeDates.reduce((a, b) => (a < b ? a : b)) : null)
+  const rawEnd = period?.end ?? (tradeDates.length ? tradeDates.reduce((a, b) => (a > b ? a : b)) : null)
+  const clipStart = rawStart ? shiftDate(rawStart, -45) : null
+  const clipEnd = rawEnd ? shiftDate(rawEnd, 45) : null
+
+  const clipped = bars.filter(
+    (b) =>
+      b.close != null &&
+      (!clipStart || b.date >= clipStart) &&
+      (!clipEnd || b.date <= clipEnd),
+  )
+  if (clipped.length < 2) return null
+
+  const data: Array<Record<string, unknown>> = [
+    {
+      x: clipped.map((b) => b.date),
+      y: clipped.map((b) => b.close),
+      type: "scatter",
+      mode: "lines",
+      name: "Clôture",
+      line: { color: "rgb(100,116,139)", width: 1.5 },
+      hovertemplate: "%{x|%d/%m/%Y} — %{y:.2f}<extra>Clôture</extra>",
+    },
+  ]
+
+  // One semi-transparent segment per trade, colored by realized PnL.
+  for (const t of executed) {
+    const win = t.pnl_mad >= 0
+    const hover =
+      `${t.open_date} → ${t.close_date}<br>` +
+      `${t.open_price.toFixed(2)} → ${t.close_price.toFixed(2)}<br>` +
+      `Rendement : ${t.pnl_return >= 0 ? "+" : ""}${(t.pnl_return * 100).toFixed(2)}%<br>` +
+      `PnL : ${t.pnl_mad >= 0 ? "+" : ""}${t.pnl_mad.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} MAD`
+    data.push({
+      x: [t.open_date, t.close_date],
+      y: [t.open_price, t.close_price],
+      type: "scatter",
+      mode: "lines",
+      line: { color: win ? "rgba(16,185,129,0.45)" : "rgba(239,68,68,0.45)", width: 2 },
+      hoverinfo: "text",
+      text: [hover, hover],
       showlegend: false,
+    })
+  }
+
+  const openHover = executed.map(
+    (t) =>
+      `${t.direction > 0 ? "Achat" : "Vente à découvert"} — ${t.open_date}<br>Prix : ${t.open_price.toFixed(2)}`,
+  )
+  const closeHover = executed.map(
+    (t) =>
+      `${t.direction > 0 ? "Vente" : "Rachat"} — ${t.close_date}<br>Prix : ${t.close_price.toFixed(2)}<br>` +
+      `Rendement : ${t.pnl_return >= 0 ? "+" : ""}${(t.pnl_return * 100).toFixed(2)}%<br>` +
+      `PnL : ${t.pnl_mad >= 0 ? "+" : ""}${t.pnl_mad.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} MAD`,
+  )
+  if (executed.length > 0) {
+    data.push(
+      {
+        x: executed.map((t) => t.open_date),
+        y: executed.map((t) => t.open_price),
+        type: "scatter",
+        mode: "markers",
+        name: "Entrée",
+        marker: { symbol: "triangle-up", size: 10, color: "rgb(16,185,129)" },
+        hoverinfo: "text",
+        text: openHover,
+      },
+      {
+        x: executed.map((t) => t.close_date),
+        y: executed.map((t) => t.close_price),
+        type: "scatter",
+        mode: "markers",
+        name: "Sortie",
+        marker: { symbol: "triangle-down", size: 10, color: "rgb(239,68,68)" },
+        hoverinfo: "text",
+        text: closeHover,
+      },
+    )
+  }
+
+  return {
+    data,
+    layout: {
+      margin: { t: 16, b: 40, l: 52, r: 16 },
+      yaxis: { gridcolor: "rgba(0,0,0,0.06)" },
+      xaxis: { type: "date", gridcolor: "rgba(0,0,0,0.06)" },
+      showlegend: true,
+      legend: { orientation: "h", x: 0, y: 1.08, font: { size: 11 } },
       plot_bgcolor: "transparent",
       paper_bgcolor: "transparent",
     },
@@ -125,17 +249,123 @@ function buildStockEquityPlot(trades: PortfolioBacktestTrade[], symbol: string) 
   }
 }
 
-type SortKey = "open_date" | "pnl_return" | "pnl_mad"
+function fmtMad(v: number | null | undefined, decimals = 2): string {
+  if (v == null || !Number.isFinite(v)) return "--"
+  return v.toLocaleString("fr-FR", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  })
+}
+
+function ledgerPnlClass(v: number | null | undefined): string {
+  if (v == null || v === 0) return "text-muted-foreground"
+  return v > 0 ? "text-green-600 dark:text-green-400" : "text-destructive"
+}
+
+/** Relevé de compte — same visual model as AccountingTradeLedgerTable
+ * (trade-ledger-table.tsx): sticky header, mono figures, green/red sides. */
+function PortfolioAccountingLedger({
+  rows,
+  showSymbol = true,
+  onDateHeaderClick,
+  dateDir,
+}: {
+  rows: PortfolioBacktestLedgerRow[]
+  showSymbol?: boolean
+  onDateHeaderClick?: () => void
+  dateDir?: 1 | -1
+}) {
+  if (rows.length === 0) {
+    return (
+      <p className="rounded border bg-muted/20 p-2 text-xs text-muted-foreground">
+        Aucun mouvement exécuté pour cette période.
+      </p>
+    )
+  }
+  return (
+    <div className="max-h-[420px] overflow-auto rounded border">
+      <table className="w-full min-w-[1000px] text-xs">
+        <thead className="sticky top-0 bg-muted/50">
+          <tr>
+            <th
+              className={`px-2 py-1.5 text-left font-medium ${onDateHeaderClick ? "cursor-pointer select-none" : ""}`}
+              onClick={onDateHeaderClick}
+            >
+              Date{onDateHeaderClick ? (dateDir === 1 ? " ↑" : " ↓") : ""}
+            </th>
+            {showSymbol ? <th className="px-2 py-1.5 text-left font-medium">Titre</th> : null}
+            <th className="px-2 py-1.5 text-left font-medium">Sens</th>
+            <th className="px-2 py-1.5 text-right font-medium">Quantité</th>
+            <th className="px-2 py-1.5 text-right font-medium">Prix exécution</th>
+            <th className="px-2 py-1.5 text-right font-medium">CMP</th>
+            <th className="px-2 py-1.5 text-right font-medium">Montant (MAD)</th>
+            <th className="px-2 py-1.5 text-right font-medium">PnL réalisé</th>
+            <th className="px-2 py-1.5 text-right font-medium">PnL réalisé cumulé</th>
+            <th className="px-2 py-1.5 text-right font-medium">Capital</th>
+            <th className="px-2 py-1.5 text-right font-medium">Expo %</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border/50">
+          {rows.map((row, index) => {
+            const sideLower = row.side.toLowerCase()
+            const isBuy = sideLower.startsWith("achat") || sideLower.startsWith("rachat")
+            return (
+              <tr key={`${row.date}-${row.symbol}-${index}`} className="hover:bg-muted/20">
+                <td className="px-2 py-1 font-mono">{row.date}</td>
+                {showSymbol ? (
+                  <td className="px-2 py-1 font-mono font-medium">{row.symbol}</td>
+                ) : null}
+                <td className="px-2 py-1">
+                  <span
+                    className={
+                      isBuy
+                        ? "font-semibold text-green-600 dark:text-green-400"
+                        : "font-semibold text-red-500"
+                    }
+                  >
+                    {row.side}
+                  </span>
+                </td>
+                <td className="px-2 py-1 text-right font-mono">
+                  {row.quantity != null ? fmtMad(row.quantity, 2) : "--"}
+                </td>
+                <td className="px-2 py-1 text-right font-mono">{fmtMad(row.prix_execution)}</td>
+                <td className="px-2 py-1 text-right font-mono">{fmtMad(row.cmp)}</td>
+                <td className="px-2 py-1 text-right font-mono">{fmtMad(row.montant, 0)}</td>
+                <td className={`px-2 py-1 text-right font-mono font-semibold ${ledgerPnlClass(row.pnl_realise)}`}>
+                  {row.pnl_realise != null ? fmtMad(row.pnl_realise, 0) : "--"}
+                </td>
+                <td className={`px-2 py-1 text-right font-mono font-semibold ${ledgerPnlClass(row.pnl_realise_cumule)}`}>
+                  {fmtMad(row.pnl_realise_cumule, 0)}
+                </td>
+                <td className="px-2 py-1 text-right font-mono">{fmtMad(row.capital, 0)}</td>
+                <td className="px-2 py-1 text-right font-mono">{row.exposition_pct.toFixed(1)}%</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
 
 export function PortfolioBacktestPanel({ horizon }: Props) {
   const [initialCapital, setInitialCapital] = useState(100_000)
   const [longOnly, setLongOnly] = useState(true)
+  // Off by default: exit-policy research found no TP/SL variant beats the plain
+  // signal-flip exit out-of-sample (docs/plans/exit_policy_wfo_treatment_plan.md).
+  // Kept as opt-in overrides for manual experimentation.
+  const [tpEnabled, setTpEnabled] = useState(false)
+  const [tpPct, setTpPct] = useState(5)
+  const [slEnabled, setSlEnabled] = useState(false)
+  const [slPct, setSlPct] = useState(5)
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
   const [result, setResult] = useState<PortfolioBacktestResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [fullscreen, setFullscreen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
   const [selectedStock, setSelectedStock] = useState<string | null>(null)
 
   // Universe of symbols that have qualifying WFO trades for this horizon/direction.
@@ -148,12 +378,11 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
   const [universeError, setUniverseError] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [universeQuery, setUniverseQuery] = useState("")
-  const [selectedKinds, setSelectedKinds] = useState<Set<string>>(new Set())
+  const [activeKinds, setActiveKinds] = useState<Set<string>>(new Set())
 
-  // Trades ledger state
+  // Accounting ledger state
   const [ledgerSymbolFilter, setLedgerSymbolFilter] = useState<string>("__all__")
-  const [ledgerSortKey, setLedgerSortKey] = useState<SortKey>("open_date")
-  const [ledgerSortDir, setLedgerSortDir] = useState<1 | -1>(1)
+  const [ledgerDateDir, setLedgerDateDir] = useState<1 | -1>(1)
   const [ledgerPage, setLedgerPage] = useState(1)
 
   const { data: catalog } = useMarketCatalog()
@@ -205,7 +434,7 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
     setSelectedStock(null)
     setLedgerSymbolFilter("__all__")
     setUniverseLoading(true)
-    getPortfolioBacktestUniverse({ horizon, variant: BACKTEST_VARIANT, long_only: longOnly })
+    getPortfolioBacktestUniverse({ horizon, long_only: longOnly })
       .then((res) => {
         if (cancelled) return
         // Defensive frontend dedupe: keep first occurrence of each symbol
@@ -217,6 +446,7 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
         })
         setUniverse(deduped)
         setSelected(new Set(deduped.map((r) => r.symbol)))
+        setActiveKinds(new Set(deduped.map((r) => kindOf.get(r.symbol) ?? "Other")))
         setDateRange(res.date_range)
         // Pre-fill date inputs with available range if not set
         if (!startDate && res.date_range.min) setStartDate(res.date_range.min)
@@ -237,31 +467,55 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [horizon, longOnly])
 
-  // Fullscreen: Escape key exits; lock body scroll while active
+  // Fullscreen via the browser Fullscreen API — state stays in sync with the
+  // native fullscreenchange event so Esc (or any other exit path) flips the
+  // icon back correctly. Plotly charts only listen to window "resize", so we
+  // nudge one after the transition to make them fill/shrink to the new size.
   useEffect(() => {
-    if (!fullscreen) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setFullscreen(false)
+    const onFullscreenChange = () => {
+      const active = document.fullscreenElement === containerRef.current
+      setFullscreen(active)
+      window.setTimeout(() => window.dispatchEvent(new Event("resize")), 50)
     }
-    document.body.style.overflow = "hidden"
-    window.addEventListener("keydown", onKey)
-    return () => {
-      document.body.style.overflow = ""
-      window.removeEventListener("keydown", onKey)
+    document.addEventListener("fullscreenchange", onFullscreenChange)
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange)
+  }, [])
+
+  async function toggleFullscreen() {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen()
+    } else {
+      await containerRef.current?.requestFullscreen()
     }
-  }, [fullscreen])
+  }
+
+  // Kinds present in the current universe, with counts — drives the chip row.
+  const kindsPresent = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const row of universe) {
+      const kind = kindOf.get(row.symbol) ?? "Other"
+      counts.set(kind, (counts.get(kind) ?? 0) + 1)
+    }
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1])
+  }, [universe, kindOf])
+
+  const kindFilteredUniverse = useMemo(
+    () => universe.filter((r) => activeKinds.has(kindOf.get(r.symbol) ?? "Other")),
+    [universe, activeKinds, kindOf],
+  )
 
   const filteredUniverse = useMemo(() => {
     const q = universeQuery.trim().toLowerCase()
-    if (!q) return universe
-    return universe.filter(
+    if (!q) return kindFilteredUniverse
+    return kindFilteredUniverse.filter(
       (r) =>
         r.symbol.toLowerCase().includes(q) ||
         (displayNameOf.get(r.symbol) ?? "").toLowerCase().includes(q),
     )
-  }, [universe, universeQuery, displayNameOf])
+  }, [kindFilteredUniverse, universeQuery, displayNameOf])
 
-  const allSelected = universe.length > 0 && selected.size === universe.length
+  const allSelected =
+    kindFilteredUniverse.length > 0 && selected.size === kindFilteredUniverse.length
 
   function toggleSymbol(symbol: string) {
     setSelected((prev) => {
@@ -272,8 +526,40 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
     })
   }
 
+  function toggleKind(kind: string) {
+    setActiveKinds((prev) => {
+      const next = new Set(prev)
+      if (next.has(kind)) {
+        next.delete(kind)
+        // Hide this kind's symbols from selection too — re-enabling only re-shows them.
+        setSelected((prevSel) => {
+          const nextSel = new Set(prevSel)
+          for (const row of universe) {
+            if ((kindOf.get(row.symbol) ?? "Other") === kind) nextSel.delete(row.symbol)
+          }
+          return nextSel
+        })
+      } else {
+        next.add(kind)
+      }
+      return next
+    })
+  }
+
+  function selectMasiOnly() {
+    const masiKind = "MASI stocks"
+    setActiveKinds(new Set([masiKind]))
+    setSelected((prev) => {
+      const next = new Set<string>()
+      for (const symbol of prev) {
+        if ((kindOf.get(symbol) ?? "Other") === masiKind) next.add(symbol)
+      }
+      return next
+    })
+  }
+
   function selectAll() {
-    setSelected(new Set(universe.map((r) => r.symbol)))
+    setSelected(new Set(kindFilteredUniverse.map((r) => r.symbol)))
   }
 
   function clearAll() {
@@ -299,14 +585,16 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
     setLedgerSymbolFilter("__all__")
     setSelectedStock(null)
     try {
-      // An explicit full selection is equivalent to "all" on the backend.
-      const symbols = allSelected ? [] : Array.from(selected)
+      // Always send the explicit selection — an empty array means "no filter"
+      // on the backend (i.e. every symbol, including non-MASI instruments),
+      // which silently defeated universe filters like "MASI uniquement".
+      const symbols = Array.from(selected)
       const res = await runPortfolioBacktest({
         symbols,
         horizon,
-        variant: BACKTEST_VARIANT,
         initial_capital: initialCapital,
-        take_profit_pct: 0.05,
+        take_profit_pct: tpEnabled ? tpPct / 100 : null,
+        stop_loss_pct: slEnabled ? slPct / 100 : null,
         kelly_multiplier: 0.5,
         long_only: longOnly,
         start_date: startDate || undefined,
@@ -321,7 +609,9 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
   }
 
   const m = result?.metrics ?? {}
-  const equityPlot = result ? buildEquityPlot(result.equity_curve, initialCapital) : null
+  const equityPlot = result
+    ? buildEquityPlot(result.equity_curve, result.benchmark, initialCapital)
+    : null
   const totalReturnTone =
     m.total_return != null ? (m.total_return >= 0 ? "pos" : "neg") : "neutral"
 
@@ -330,66 +620,32 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
     : universe.length === 0
       ? "Aucun titre éligible"
       : allSelected
-        ? `Tous les titres (${universe.length})`
-        : `${selected.size} / ${universe.length} titres`
+        ? `Tous les titres (${kindFilteredUniverse.length})`
+        : `${selected.size} / ${kindFilteredUniverse.length} titres`
 
-  // Trades ledger computation
+  // Accounting ledger computation — sourced from the backend `ledger`
+  // (executed movements only, chronological).
   const ledgerSymbols = useMemo(() => {
-    if (!result?.trades) return []
-    return Array.from(new Set(result.trades.map((t) => t.symbol))).sort()
+    if (!result?.ledger) return []
+    return Array.from(new Set(result.ledger.map((r) => r.symbol))).sort()
   }, [result])
 
-  const filteredTrades = useMemo((): PortfolioBacktestTrade[] => {
-    if (!result?.trades) return []
-    let trades = result.trades
+  const filteredLedger = useMemo((): PortfolioBacktestLedgerRow[] => {
+    if (!result?.ledger) return []
+    let rows = result.ledger
     if (ledgerSymbolFilter !== "__all__") {
-      trades = trades.filter((t) => t.symbol === ledgerSymbolFilter)
+      rows = rows.filter((r) => r.symbol === ledgerSymbolFilter)
     }
-    return [...trades].sort((a, b) => {
-      let cmp = 0
-      if (ledgerSortKey === "open_date") {
-        cmp = a.open_date < b.open_date ? -1 : a.open_date > b.open_date ? 1 : 0
-      } else if (ledgerSortKey === "pnl_return") {
-        cmp = a.pnl_return - b.pnl_return
-      } else if (ledgerSortKey === "pnl_mad") {
-        cmp = a.pnl_mad - b.pnl_mad
-      }
-      return cmp * ledgerSortDir
-    })
-  }, [result, ledgerSymbolFilter, ledgerSortKey, ledgerSortDir])
+    // Backend rows are chronological; descending is a simple reverse.
+    return ledgerDateDir === 1 ? rows : [...rows].reverse()
+  }, [result, ledgerSymbolFilter, ledgerDateDir])
 
-  const ledgerVisible = filteredTrades.slice(0, ledgerPage * LEDGER_PAGE_SIZE)
-  const hasMoreLedger = filteredTrades.length > ledgerVisible.length
+  const ledgerVisible = filteredLedger.slice(0, ledgerPage * LEDGER_PAGE_SIZE)
+  const hasMoreLedger = filteredLedger.length > ledgerVisible.length
 
-  function toggleLedgerSort(key: SortKey) {
-    if (ledgerSortKey === key) {
-      setLedgerSortDir((d) => (d === 1 ? -1 : 1))
-    } else {
-      setLedgerSortKey(key)
-      setLedgerSortDir(-1) // default: highest first
-    }
+  function toggleLedgerDateDir() {
+    setLedgerDateDir((d) => (d === 1 ? -1 : 1))
     setLedgerPage(1)
-  }
-
-  function SortHeader({
-    col,
-    label,
-    className,
-  }: {
-    col: SortKey
-    label: string
-    className?: string
-  }) {
-    const active = ledgerSortKey === col
-    return (
-      <th
-        className={`cursor-pointer select-none ${className ?? ""}`}
-        onClick={() => toggleLedgerSort(col)}
-      >
-        {label}
-        {active ? (ledgerSortDir === 1 ? " ↑" : " ↓") : ""}
-      </th>
-    )
   }
 
   // Per-stock detail data
@@ -414,23 +670,22 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
     [selectedStock, result],
   )
 
-  const stockTradeMarkers = useMemo((): Array<Record<string, unknown>> => {
-    if (!selectedStock || !result) return []
-    const rows: Array<Record<string, unknown>> = []
-    for (const t of (result.trades ?? []).filter((t) => t.symbol === selectedStock)) {
-      rows.push({ date: t.open_date, marker_label: t.direction > 0 ? "Achat" : "Short" })
-      rows.push({ date: t.close_date, marker_label: t.direction > 0 ? "Vente" : "Cover" })
-    }
-    return rows
-  }, [selectedStock, result])
-
   const ohlcvBars = ohlcvData?.bars ?? []
+
+  const stockPricePlot = useMemo(
+    () =>
+      selectedStock && result && ohlcvBars.length > 0
+        ? buildStockPricePlot(ohlcvBars, result.trades ?? [], selectedStock, result.period)
+        : null,
+    [selectedStock, result, ohlcvBars],
+  )
 
   return (
     <div
+      ref={containerRef}
       className={cn(
         "space-y-4",
-        fullscreen && "fixed inset-0 z-50 overflow-y-auto bg-background p-4",
+        fullscreen && "h-screen overflow-y-auto bg-background p-4",
       )}
     >
       {/* Config card */}
@@ -443,7 +698,8 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
               variant="ghost"
               size="sm"
               className="h-7 gap-1.5 px-2 text-xs"
-              onClick={() => setFullscreen((v) => !v)}
+              onClick={toggleFullscreen}
+              title={fullscreen ? "Quitter le plein écran" : "Plein écran"}
             >
               {fullscreen ? (
                 <Minimize2 className="h-3.5 w-3.5" />
@@ -555,6 +811,34 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
                         </button>
                       </div>
                     </div>
+                    {kindsPresent.length > 1 ? (
+                      <div className="mt-2 flex flex-wrap items-center gap-1">
+                        {kindsPresent.map(([kind, count]) => {
+                          const active = activeKinds.has(kind)
+                          return (
+                            <button
+                              key={kind}
+                              type="button"
+                              onClick={() => toggleKind(kind)}
+                              className={`rounded border px-1.5 py-0.5 text-[10px] ${
+                                active
+                                  ? "border-primary/40 bg-primary/10 text-primary"
+                                  : "border-line bg-bg2 text-muted-foreground"
+                              }`}
+                            >
+                              {kind} ({count})
+                            </button>
+                          )
+                        })}
+                        <button
+                          type="button"
+                          onClick={selectMasiOnly}
+                          className="ml-auto rounded border border-line bg-bg2 px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground"
+                        >
+                          MASI uniquement
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                   <ScrollArea className="h-64">
                     <div className="p-1">
@@ -590,9 +874,48 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
               </Popover>
             </div>
 
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Take Profit</Label>
+              <div className="flex h-8 items-center gap-1.5">
+                <Checkbox
+                  checked={tpEnabled}
+                  onCheckedChange={(v) => setTpEnabled(v === true)}
+                />
+                <Input
+                  type="number"
+                  min={0}
+                  step={0.5}
+                  value={tpPct}
+                  disabled={!tpEnabled}
+                  onChange={(e) => setTpPct(Number(e.target.value))}
+                  className="h-8 w-16 font-mono text-xs"
+                />
+                <span className="text-xs text-muted-foreground">%</span>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Stop Loss</Label>
+              <div className="flex h-8 items-center gap-1.5">
+                <Checkbox
+                  checked={slEnabled}
+                  onCheckedChange={(v) => setSlEnabled(v === true)}
+                />
+                <Input
+                  type="number"
+                  min={0}
+                  step={0.5}
+                  value={slPct}
+                  disabled={!slEnabled}
+                  onChange={(e) => setSlPct(Number(e.target.value))}
+                  className="h-8 w-16 font-mono text-xs"
+                />
+                <span className="text-xs text-muted-foreground">%</span>
+              </div>
+            </div>
+
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className="rounded border border-line bg-bg2 px-1.5 py-0.5">½-Kelly</span>
-              <span className="rounded border border-line bg-bg2 px-1.5 py-0.5">TP 5%</span>
               <span className="rounded border border-line bg-bg2 px-1.5 py-0.5">OOS</span>
             </div>
             <Button
@@ -608,6 +931,13 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
           {selected.size === 0 && !universeLoading && universe.length > 0 ? (
             <p className="mt-2 text-xs text-muted-foreground">
               Sélectionnez au moins un titre dans l'univers.
+            </p>
+          ) : null}
+          {!tpEnabled && !slEnabled ? (
+            <p className="mt-2 text-xs text-muted-foreground">
+              TP/SL désactivés par défaut : l'étude exit-policy (WFO, OOS, corrigée du
+              look-ahead) n'a trouvé aucune variante TP/SL qui batte la sortie signal-flip.
+              Activez-les ci-dessus pour tester manuellement.
             </p>
           ) : null}
           {error ? (
@@ -690,7 +1020,27 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
                     </div>
                   ) : null}
 
-                  {/* Per-stock equity curve */}
+                  {/* Price chart with trades overlaid */}
+                  <Card className="claude-card">
+                    <CardHeader className="pb-1">
+                      <CardTitle className="text-sm">
+                        Prix &amp; trades exécutés — {selectedStock}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="bt-chart">
+                      {ohlcvLoading ? (
+                        <Skeleton className="h-[360px] rounded" />
+                      ) : stockPricePlot ? (
+                        <PlotlyChart figure={stockPricePlot as never} />
+                      ) : (
+                        <p className="p-4 text-sm text-muted-foreground">
+                          Données de prix indisponibles pour {selectedStock}.
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Secondary: cumulative realized PnL */}
                   {stockEquityPlot ? (
                     <Card className="claude-card">
                       <CardHeader className="pb-1">
@@ -704,165 +1054,52 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
                     </Card>
                   ) : null}
 
-                  {/* Price chart with trade markers */}
+                  {/* Per-stock accounting ledger (executed movements only) */}
                   <Card className="claude-card">
                     <CardHeader className="pb-1">
-                      <CardTitle className="text-sm">
-                        Graphique de prix — {selectedStock}
-                      </CardTitle>
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-sm">
+                          Relevé de compte — {selectedStock}
+                        </CardTitle>
+                        {result.ledger_truncated ? (
+                          <span className="text-[11px] text-amber-600">
+                            Limité à 4000 mouvements
+                          </span>
+                        ) : null}
+                      </div>
                     </CardHeader>
                     <CardContent>
-                      {ohlcvLoading ? (
-                        <Skeleton className="h-[360px] rounded" />
-                      ) : ohlcvBars.length === 0 ? (
-                        <p className="p-4 text-sm text-muted-foreground">
-                          Données de prix indisponibles pour {selectedStock}.
-                        </p>
-                      ) : (
-                        <PriceSignalsChart
-                          dates={ohlcvBars.map((b) => b.date)}
-                          open={ohlcvBars.map((b) => b.open ?? null)}
-                          high={ohlcvBars.map((b) => b.high ?? null)}
-                          low={ohlcvBars.map((b) => b.low ?? null)}
-                          close={ohlcvBars.map((b) => b.close ?? null)}
-                          position={null}
-                          tradeMarkers={stockTradeMarkers}
-                          height={360}
-                        />
-                      )}
+                      <PortfolioAccountingLedger
+                        rows={ledgerVisible}
+                        showSymbol={false}
+                        onDateHeaderClick={toggleLedgerDateDir}
+                        dateDir={ledgerDateDir}
+                      />
+                      <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
+                        <span>
+                          {filteredLedger.length} mouvement{filteredLedger.length > 1 ? "s" : ""}
+                          {stockStats && stockStats.n_skipped > 0
+                            ? ` — ${stockStats.n_skipped} trade${stockStats.n_skipped > 1 ? "s" : ""} non exécuté${stockStats.n_skipped > 1 ? "s" : ""} (hors relevé)`
+                            : ""}
+                        </span>
+                        {hasMoreLedger ? (
+                          <button
+                            type="button"
+                            className="text-primary hover:underline"
+                            onClick={() => setLedgerPage((p) => p + 1)}
+                          >
+                            Voir plus ({filteredLedger.length - ledgerVisible.length} restants)
+                          </button>
+                        ) : null}
+                      </div>
                     </CardContent>
                   </Card>
-
-                  {/* Per-stock filtered trades ledger */}
-                  {filteredTrades.length > 0 ? (
-                    <Card className="claude-card">
-                      <CardHeader className="pb-1">
-                        <div className="flex items-center justify-between">
-                          <CardTitle className="text-sm">
-                            Trades — {selectedStock}
-                          </CardTitle>
-                          {result.trades_truncated ? (
-                            <span className="text-[11px] text-amber-600">
-                              Limité à 2000 trades
-                            </span>
-                          ) : null}
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="overflow-x-auto rounded-md border border-line">
-                          <table className="claude-table">
-                            <thead>
-                              <tr>
-                                <th>Sens</th>
-                                <SortHeader col="open_date" label="Ouverture" className="r" />
-                                <th className="r">Clôture</th>
-                                <th className="r">Prix ouv.</th>
-                                <th className="r">Prix clôt.</th>
-                                <SortHeader col="pnl_return" label="Rendement" className="r" />
-                                <th className="r">TP</th>
-                                <th className="r">Capital engagé</th>
-                                <SortHeader col="pnl_mad" label="Gain/Perte" className="r" />
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {ledgerVisible.map((t, i) => {
-                                const isLong = t.direction > 0
-                                const notExecuted = !t.executed
-                                const pnlPos = t.pnl_mad >= 0
-                                return (
-                                  <tr
-                                    key={`${t.symbol}-${t.open_date}-${i}`}
-                                    className={notExecuted ? "opacity-50" : ""}
-                                  >
-                                    <td>
-                                      <span
-                                        className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                                          isLong
-                                            ? "bg-emerald-100 text-emerald-700"
-                                            : "bg-red-100 text-red-700"
-                                        }`}
-                                      >
-                                        {isLong ? "Long" : "Short"}
-                                      </span>
-                                    </td>
-                                    <td className="r font-mono text-[11px]">{t.open_date}</td>
-                                    <td className="r font-mono text-[11px]">{t.close_date}</td>
-                                    <td className="r font-mono text-[11px]">
-                                      {t.open_price.toFixed(2)}
-                                    </td>
-                                    <td className="r font-mono text-[11px]">
-                                      {t.close_price.toFixed(2)}
-                                    </td>
-                                    <td
-                                      className={`r font-mono text-[11px] ${
-                                        t.pnl_return >= 0 ? "text-emerald-600" : "text-red-600"
-                                      }`}
-                                    >
-                                      {t.pnl_return >= 0 ? "+" : ""}
-                                      {(t.pnl_return * 100).toFixed(2)}%
-                                    </td>
-                                    <td className="r">
-                                      {t.tp_applied ? (
-                                        <span className="rounded bg-amber-100 px-1 py-0.5 text-[10px] text-amber-700">
-                                          TP
-                                        </span>
-                                      ) : null}
-                                    </td>
-                                    <td className="r font-mono text-[11px]">
-                                      {notExecuted ? (
-                                        <span className="rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
-                                          Capital épuisé
-                                        </span>
-                                      ) : (
-                                        `${t.position_size.toLocaleString("fr-FR", {
-                                          maximumFractionDigits: 0,
-                                        })} MAD`
-                                      )}
-                                    </td>
-                                    <td
-                                      className={`r font-mono text-[11px] font-medium ${
-                                        notExecuted
-                                          ? "text-muted-foreground"
-                                          : pnlPos
-                                            ? "text-emerald-600"
-                                            : "text-red-600"
-                                      }`}
-                                    >
-                                      {notExecuted
-                                        ? "—"
-                                        : `${pnlPos ? "+" : ""}${t.pnl_mad.toLocaleString("fr-FR", {
-                                            maximumFractionDigits: 0,
-                                          })} MAD`}
-                                    </td>
-                                  </tr>
-                                )
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                        <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
-                          <span>
-                            {filteredTrades.length} trade{filteredTrades.length > 1 ? "s" : ""}
-                          </span>
-                          {hasMoreLedger ? (
-                            <button
-                              type="button"
-                              className="text-primary hover:underline"
-                              onClick={() => setLedgerPage((p) => p + 1)}
-                            >
-                              Voir plus ({filteredTrades.length - ledgerVisible.length} restants)
-                            </button>
-                          ) : null}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ) : null}
                 </>
               ) : (
                 /* ── List mode ── */
                 <>
-                  {/* Global KPI rows — Issue 1: Tailwind grid replaces .kpi4 */}
-                  <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                  {/* Global KPI rows */}
+                  <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5">
                     <StatCard
                       label="Rendement total"
                       value={
@@ -873,6 +1110,26 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
                       tone={totalReturnTone}
                     />
                     <StatCard
+                      label="vs MASI"
+                      title={
+                        result.benchmark?.window
+                          ? `Surperformance vs MASI achat-conservation, sur période commune ${result.benchmark.window.start} → ${result.benchmark.window.end} (stratégie ${result.benchmark.window.strategy_total_return >= 0 ? "+" : ""}${result.benchmark.window.strategy_total_return.toFixed(2)}% vs MASI ${result.benchmark.metrics.total_return >= 0 ? "+" : ""}${result.benchmark.metrics.total_return.toFixed(2)}%)`
+                          : "Surperformance vs MASI achat-conservation (rendement total)"
+                      }
+                      value={
+                        m.alpha_total_return != null
+                          ? `${m.alpha_total_return >= 0 ? "+" : ""}${m.alpha_total_return.toFixed(2)}%`
+                          : "--"
+                      }
+                      tone={
+                        m.alpha_total_return != null
+                          ? m.alpha_total_return >= 0
+                            ? "pos"
+                            : "neg"
+                          : "neutral"
+                      }
+                    />
+                    <StatCard
                       label="CAGR"
                       value={
                         m.cagr != null
@@ -881,7 +1138,8 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
                       }
                     />
                     <StatCard
-                      label="Sharpe"
+                      label="Sharpe ann."
+                      title="Sharpe (hebdomadaire annualisé, x√52)"
                       value={m.sharpe != null ? formatNumber(m.sharpe, 2) : "--"}
                     />
                     <StatCard
@@ -891,7 +1149,7 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                  <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5">
                     <StatCard
                       label="Capital final"
                       value={
@@ -909,13 +1167,25 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
                       label="TP déclenché"
                       value={m.tp_applied_pct != null ? `${m.tp_applied_pct}%` : "--"}
                     />
+                    <StatCard
+                      label="SL déclenché"
+                      value={m.sl_applied_pct != null ? `${m.sl_applied_pct}%` : "--"}
+                    />
+                    <StatCard
+                      label="Exposition moy. / max"
+                      value={
+                        m.avg_exposure_pct != null && m.max_exposure_pct != null
+                          ? `${m.avg_exposure_pct.toFixed(0)}% / ${m.max_exposure_pct.toFixed(0)}%`
+                          : "—"
+                      }
+                    />
                   </div>
 
                   {/* Global equity curve */}
                   <Card className="claude-card">
                     <CardHeader className="pb-1">
                       <CardTitle className="text-sm">
-                        Courbe d'équité (rendement cumulé)
+                        Courbe d'équité vs MASI (rendement cumulé)
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="bt-chart">
@@ -947,6 +1217,8 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
                                 <th className="r">Win Rate</th>
                                 <th className="r">Moy. gain</th>
                                 <th className="r">Moy. perte</th>
+                                <th className="r">PnL (MAD)</th>
+                                <th className="r">Ignorés</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -971,6 +1243,19 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
                                   <td className="r font-mono text-red-600">
                                     {s.avg_loss_pct.toFixed(2)}%
                                   </td>
+                                  <td
+                                    className={`r font-mono ${
+                                      s.total_pnl_mad >= 0 ? "text-emerald-600" : "text-red-600"
+                                    }`}
+                                  >
+                                    {s.total_pnl_mad >= 0 ? "+" : ""}
+                                    {s.total_pnl_mad.toLocaleString("fr-FR", {
+                                      maximumFractionDigits: 0,
+                                    })}
+                                  </td>
+                                  <td className="r font-mono text-muted-foreground">
+                                    {s.n_skipped}
+                                  </td>
                                 </tr>
                               ))}
                             </tbody>
@@ -983,16 +1268,18 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
                     </Card>
                   ) : null}
 
-                  {/* Global trades ledger with symbol filter dropdown */}
-                  {result.trades && result.trades.length > 0 ? (
+                  {/* Global accounting ledger with symbol filter dropdown */}
+                  {result.ledger && result.ledger.length > 0 ? (
                     <Card className="claude-card">
                       <CardHeader className="pb-1">
                         <div className="flex items-center justify-between">
-                          <CardTitle className="text-sm">Liste des trades</CardTitle>
+                          <CardTitle className="text-sm">
+                            Relevé de compte (mouvements exécutés)
+                          </CardTitle>
                           <div className="flex items-center gap-2">
-                            {result.trades_truncated ? (
+                            {result.ledger_truncated ? (
                               <span className="text-[11px] text-amber-600">
-                                Limité à 2000 trades
+                                Limité à 4000 mouvements
                               </span>
                             ) : null}
                             <select
@@ -1026,103 +1313,17 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
                         </div>
                       </CardHeader>
                       <CardContent>
-                        <div className="overflow-x-auto rounded-md border border-line">
-                          <table className="claude-table">
-                            <thead>
-                              <tr>
-                                <th>Ticker</th>
-                                <th>Sens</th>
-                                <SortHeader col="open_date" label="Ouverture" className="r" />
-                                <th className="r">Clôture</th>
-                                <th className="r">Prix ouv.</th>
-                                <th className="r">Prix clôt.</th>
-                                <SortHeader col="pnl_return" label="Rendement" className="r" />
-                                <th className="r">TP</th>
-                                <th className="r">Capital engagé</th>
-                                <SortHeader col="pnl_mad" label="Gain/Perte" className="r" />
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {ledgerVisible.map((t, i) => {
-                                const isLong = t.direction > 0
-                                const notExecuted = !t.executed
-                                const pnlPos = t.pnl_mad >= 0
-                                return (
-                                  <tr
-                                    key={`${t.symbol}-${t.open_date}-${i}`}
-                                    className={notExecuted ? "opacity-50" : ""}
-                                  >
-                                    <td className="font-mono font-medium">{t.symbol}</td>
-                                    <td>
-                                      <span
-                                        className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                                          isLong
-                                            ? "bg-emerald-100 text-emerald-700"
-                                            : "bg-red-100 text-red-700"
-                                        }`}
-                                      >
-                                        {isLong ? "Long" : "Short"}
-                                      </span>
-                                    </td>
-                                    <td className="r font-mono text-[11px]">{t.open_date}</td>
-                                    <td className="r font-mono text-[11px]">{t.close_date}</td>
-                                    <td className="r font-mono text-[11px]">
-                                      {t.open_price.toFixed(2)}
-                                    </td>
-                                    <td className="r font-mono text-[11px]">
-                                      {t.close_price.toFixed(2)}
-                                    </td>
-                                    <td
-                                      className={`r font-mono text-[11px] ${
-                                        t.pnl_return >= 0 ? "text-emerald-600" : "text-red-600"
-                                      }`}
-                                    >
-                                      {t.pnl_return >= 0 ? "+" : ""}
-                                      {(t.pnl_return * 100).toFixed(2)}%
-                                    </td>
-                                    <td className="r">
-                                      {t.tp_applied ? (
-                                        <span className="rounded bg-amber-100 px-1 py-0.5 text-[10px] text-amber-700">
-                                          TP
-                                        </span>
-                                      ) : null}
-                                    </td>
-                                    <td className="r font-mono text-[11px]">
-                                      {notExecuted ? (
-                                        <span className="rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
-                                          Capital épuisé
-                                        </span>
-                                      ) : (
-                                        `${t.position_size.toLocaleString("fr-FR", {
-                                          maximumFractionDigits: 0,
-                                        })} MAD`
-                                      )}
-                                    </td>
-                                    <td
-                                      className={`r font-mono text-[11px] font-medium ${
-                                        notExecuted
-                                          ? "text-muted-foreground"
-                                          : pnlPos
-                                            ? "text-emerald-600"
-                                            : "text-red-600"
-                                      }`}
-                                    >
-                                      {notExecuted
-                                        ? "—"
-                                        : `${pnlPos ? "+" : ""}${t.pnl_mad.toLocaleString("fr-FR", {
-                                            maximumFractionDigits: 0,
-                                          })} MAD`}
-                                    </td>
-                                  </tr>
-                                )
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
+                        <PortfolioAccountingLedger
+                          rows={ledgerVisible}
+                          onDateHeaderClick={toggleLedgerDateDir}
+                          dateDir={ledgerDateDir}
+                        />
                         <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
                           <span>
-                            {filteredTrades.length} trade{filteredTrades.length > 1 ? "s" : ""}
+                            {filteredLedger.length} mouvement
+                            {filteredLedger.length > 1 ? "s" : ""}
                             {ledgerSymbolFilter !== "__all__" ? ` — ${ledgerSymbolFilter}` : ""}
+                            {" — les trades non exécutés n'apparaissent pas (voir « Ignorés » par titre)"}
                           </span>
                           {hasMoreLedger ? (
                             <button
@@ -1130,7 +1331,7 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
                               className="text-primary hover:underline"
                               onClick={() => setLedgerPage((p) => p + 1)}
                             >
-                              Voir plus ({filteredTrades.length - ledgerVisible.length} restants)
+                              Voir plus ({filteredLedger.length - ledgerVisible.length} restants)
                             </button>
                           ) : null}
                         </div>

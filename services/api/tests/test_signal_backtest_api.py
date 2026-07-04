@@ -820,6 +820,9 @@ def test_signal_evidence_proof_limit_uses_latest_bucket_trades_and_keeps_full_st
     assert payload["oos"]["proof_window_end"] == dates[119].date().isoformat()
     assert payload["evidence_trade_count"] == 120
     assert payload["stitched_oos_backtest"]["metrics"]["n_trades"] == 120
+    assert isinstance(payload["stitched_oos_backtest"]["metrics"]["var95"], float)
+    assert isinstance(payload["stitched_oos_backtest"]["metrics"]["cvar95"], float)
+    assert payload["stitched_oos_backtest"]["metrics"]["cvar95"] <= payload["stitched_oos_backtest"]["metrics"]["var95"]
     assert payload["stitched_oos_backtest"]["proof"]["n_trades"] == 100
     assert payload["oos"]["stitched_window_start"] == dates[0].date().isoformat()
     assert payload["oos"]["stitched_window_end"] == dates[119].date().isoformat()
@@ -833,6 +836,8 @@ def test_signal_evidence_proof_limit_uses_latest_bucket_trades_and_keeps_full_st
     assert all_payload["oos"]["proof_window_start"] == dates[0].date().isoformat()
     assert all_payload["oos"]["proof_window_end"] == dates[119].date().isoformat()
     assert all_payload["stitched_oos_backtest"]["metrics"]["n_trades"] == 120
+    assert isinstance(all_payload["stitched_oos_backtest"]["metrics"]["var95"], float)
+    assert isinstance(all_payload["stitched_oos_backtest"]["metrics"]["cvar95"], float)
 
 
 def test_signal_best_evidence_reads_stored_payload_without_live_build(monkeypatch):
