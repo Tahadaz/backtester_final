@@ -38,6 +38,10 @@ from core.quant_core.signal_engine.sr_levels import (
     normalize_line_id,
     split_support_resistance_lines,
 )
+from core.quant_core.signal_engine.sr_validation import (
+    baseline_returns_from_position,
+    validate_sr_overlay_candidate,
+)
 from core.quant_core.signal_engine.domain import (
     ALL_FAMILIES,
     CATEGORY_FAMILIES,
@@ -3518,6 +3522,7 @@ def _indicator_current_score(
 def _sr_overlay_empty(status: str, reason: str, baseline_metrics: dict[str, Any] | None = None) -> dict[str, Any]:
     return {
         "status": status,
+        "decision": status,
         "reason": reason,
         "best_variant_id": None,
         "best_support_method": None,
@@ -3528,6 +3533,13 @@ def _sr_overlay_empty(status: str, reason: str, baseline_metrics: dict[str, Any]
         "overlay_metrics": None,
         "uplift": {},
         "top_variants": [],
+        "validation": {
+            "status": status,
+            "decision": status,
+            "reason": reason,
+            "reason_codes": [reason],
+            "gates": {},
+        },
         "tested_count": 0,
         "viable_count": 0,
         "invalid_pair_count": 0,
@@ -3840,6 +3852,12 @@ def _sr_overlay_for_position_series(
     close = context["close"]
     context_dates = [pd.Timestamp(ts).date().isoformat() for ts in context["ohlcv"].index]
     allow_short = str(side_policy or "long_only").strip().lower() == "long_short"
+    baseline_returns = baseline_returns_from_position(
+        close,
+        aligned_position,
+        cost_bps=cost_bps,
+        slippage_bps=slippage_bps,
+    )
     top_rows: list[dict[str, Any]] = []
     invalid_pair_count = 0
     unavailable_count = 0
@@ -3879,12 +3897,24 @@ def _sr_overlay_for_position_series(
             metrics = sim["metrics"]
             if int(metrics.get("n_trades") or 0) <= 0:
                 continue
+            validation = validate_sr_overlay_candidate(
+                baseline_returns=baseline_returns,
+                overlay_returns=sim["returns"],
+                overlay_trades=sim["trades"],
+                seed=int(uuid.uuid5(uuid.NAMESPACE_URL, variant_id).int % 1_000_000),
+            )
             uplift = _sr_overlay_uplift(baseline_metrics, metrics)
             total_uplift = uplift.get("total_return")
             sharpe_uplift = uplift.get("sharpe")
             dd_uplift = uplift.get("max_drawdown")
+            proof_uplift = (
+                ((validation.get("proof") or {}).get("uplift") or {})
+                if isinstance(validation.get("proof"), dict)
+                else {}
+            )
             rank_score = (
-                float(total_uplift or 0.0)
+                (10.0 if validation.get("decision") == "actionable" else 0.0)
+                + float(proof_uplift.get("total_return") or total_uplift or 0.0)
                 + 0.05 * float(sharpe_uplift or 0.0)
                 + 0.25 * float(dd_uplift or 0.0)
             )
@@ -3899,6 +3929,9 @@ def _sr_overlay_for_position_series(
                     "resistance_level": round_number(resistance_current, 6),
                     "metrics": metrics,
                     "uplift": uplift,
+                    "validation": validation,
+                    "decision": str(validation.get("decision") or "research_only"),
+                    "status": str(validation.get("status") or "research_only"),
                     "rank_score": rank_score,
                     "trade_count": int(metrics.get("n_trades") or 0),
                     "trades": sim["trades"][-25:],
@@ -3916,6 +3949,7 @@ def _sr_overlay_for_position_series(
 
     top_rows.sort(
         key=lambda row: (
+            0 if str(row.get("decision") or "") == "actionable" else 1,
             -float(row.get("rank_score") or 0.0),
             -float((row.get("metrics") or {}).get("total_return") or 0.0),
             str(row.get("variant_id") or ""),
@@ -3923,9 +3957,12 @@ def _sr_overlay_for_position_series(
     )
     best = top_rows[0]
     overlay_metrics = dict(best.get("metrics") or {})
+    validation = dict(best.get("validation") or {})
+    decision = str(validation.get("decision") or best.get("decision") or "research_only")
     return {
-        "status": "ready",
-        "reason": "computed",
+        "status": decision,
+        "decision": decision,
+        "reason": "validated" if decision == "actionable" else "failed_validation_gates",
         "best_variant_id": best["variant_id"],
         "best_support_method": best["support_method"],
         "best_support_line": best["support_line"],
@@ -3934,6 +3971,7 @@ def _sr_overlay_for_position_series(
         "baseline_metrics": baseline_metrics,
         "overlay_metrics": overlay_metrics,
         "uplift": best.get("uplift") or {},
+        "validation": validation,
         "top_variants": top_rows[: max(1, int(top_n))],
         "tested_count": tested_count,
         "viable_count": len(top_rows),

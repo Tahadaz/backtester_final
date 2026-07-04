@@ -8,6 +8,12 @@ from quant_core.signal_engine.support_resistance import (
     compute_representative_ma_anchor,
     finalize_support_resistance_methods,
 )
+from core.quant_core.signal_engine.sr_validation import (
+    baseline_returns_from_position,
+    validate_sr_overlay_candidate,
+)
+from core.quant_core.signal_engine.wfo_global import compute_global_wfo_signal
+from core.quant_core.signal_engine.wfo_signal import WfoCategoryResult
 
 
 def test_compute_representative_ma_anchor_uses_weighted_average() -> None:
@@ -163,3 +169,95 @@ def test_score_inversion_budget_flag_is_exposed() -> None:
 
     inputs = result.get("inputs") or {}
     assert inputs.get("budget_exceeded") is True
+
+
+def test_sr_validation_rejects_selection_only_uplift() -> None:
+    baseline = np.zeros(40, dtype=float)
+    overlay = np.array([0.01] * 20 + [-0.01] * 20, dtype=float)
+    trades = [
+        {"close_idx": idx + 1, "pnl_return": float(overlay[idx])}
+        for idx in range(40)
+    ]
+
+    result = validate_sr_overlay_candidate(
+        baseline_returns=baseline,
+        overlay_returns=overlay,
+        overlay_trades=trades,
+        min_trades=5,
+        freshness_min_trades=3,
+        bootstrap_iter=100,
+        seed=1,
+    )
+
+    assert result["decision"] == "research_only"
+    assert "proof_net_uplift" in result["reason_codes"]
+
+
+def test_sr_validation_marks_durable_net_uplift_actionable() -> None:
+    baseline = np.zeros(60, dtype=float)
+    overlay = np.array([0.002] * 30 + [0.01] * 30, dtype=float)
+    trades = [
+        {"close_idx": idx + 1, "pnl_return": float(overlay[idx])}
+        for idx in range(60)
+    ]
+
+    result = validate_sr_overlay_candidate(
+        baseline_returns=baseline,
+        overlay_returns=overlay,
+        overlay_trades=trades,
+        min_trades=10,
+        freshness_min_trades=5,
+        bootstrap_iter=100,
+        seed=2,
+    )
+
+    assert result["decision"] == "actionable"
+    assert result["reason_codes"] == []
+    assert result["proof"]["uplift"]["total_return"] > 0.0
+
+
+def test_baseline_returns_from_position_charges_transitions() -> None:
+    returns = baseline_returns_from_position(
+        np.array([100.0, 101.0, 102.0], dtype=float),
+        np.array([0.0, 1.0, 0.0], dtype=float),
+        cost_bps=10.0,
+        slippage_bps=0.0,
+    )
+
+    assert len(returns) == 2
+    assert returns[0] == 0.0
+    assert returns[1] < (102.0 / 101.0 - 1.0)
+
+
+def test_global_wfo_signal_keeps_sr_modifier_diagnostic_only() -> None:
+    result = compute_global_wfo_signal(
+        {
+            "tendance": WfoCategoryResult(
+                category="tendance",
+                symbol="AAA",
+                horizon="weekly",
+                status="succeeded",
+                score_pct=20.0,
+                signal_label="Haussier",
+                representatives=[],
+                wfe_pct=60.0,
+                robustness_ratio=0.7,
+                total_folds=4,
+                profitable_folds=3,
+                mean_oos_sharpe=1.0,
+                total_oos_pnl=1000.0,
+                worst_fold_drawdown=-0.05,
+                composite_score=80.0,
+                robustness_grade="B",
+            )
+        },
+        np.array([100.0], dtype=float),
+        support=99.5,
+        resistance=110.0,
+        atr=1.0,
+    )
+
+    assert result.raw_score_pct == 20.0
+    assert result.global_score_pct == 20.0
+    assert result.sr_modifier == 1.0
+    assert result.sr_support == 99.5
