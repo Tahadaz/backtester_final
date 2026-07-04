@@ -1,7 +1,8 @@
-"""WFO global consensus signal with S/R modulation.
+"""WFO global consensus signal with S/R diagnostics.
 
-Aggregates per-category WFO results into a single global score,
-then applies S/R proximity modulation.
+Aggregates per-category WFO results into a single global score.
+Support/resistance levels are persisted as diagnostics; unvalidated proximity
+modulation is intentionally not applied to the trading score.
 """
 
 from __future__ import annotations
@@ -158,12 +159,9 @@ def compute_global_wfo_signal(
 
     raw_score = sum(weights[cat] * r.score_pct for cat, r in succeeded.items())
 
-    # S/R modulation
-    signal_direction = 1.0 if raw_score > 0 else (-1.0 if raw_score < 0 else 0.0)
-    sr_params = SRModulationParams()
-    modifier = compute_sr_modifier(
-        float(close[-1]), support, resistance, atr, signal_direction, sr_params
-    )
+    # S/R is an execution/evidence overlay. Keep levels for diagnostics, but do
+    # not let an unvalidated proximity heuristic alter the global WFO score.
+    modifier = 1.0
     global_score = max(-100.0, min(100.0, raw_score * modifier))
 
     label = signal_type_label("aggregate", global_score)
