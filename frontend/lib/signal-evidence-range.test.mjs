@@ -1,10 +1,61 @@
 import test from "node:test"
 import assert from "node:assert/strict"
+import fs from "node:fs"
+import path from "node:path"
+import { fileURLToPath } from "node:url"
 
 import {
   buildSignalEvidenceRangeView,
   sortEvidenceLedgerRows,
 } from "./signal-evidence-range.js"
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const goldenPath = path.resolve(__dirname, "../../services/api/tests/fixtures/evidence_metrics_golden.json")
+
+function assertMetric(actual, expected, key) {
+  if (typeof expected === "number") {
+    assert.ok(Math.abs(actual - expected) <= 1e-9, `${key}: expected ${expected}, got ${actual}`)
+  } else {
+    assert.equal(actual, expected, key)
+  }
+}
+
+test("golden fixture JS metrics parity", () => {
+  // Change a formula -> regenerate this fixture and update BOTH sides.
+  const fixture = JSON.parse(fs.readFileSync(goldenPath, "utf8"))
+  const { inputs, expected } = fixture
+  const trades = inputs.net_returns.map((value, index) => ({
+    trade_id: `t${index}`,
+    direction: "long",
+    entry_date: inputs.dates[Math.min(index, inputs.dates.length - 1)],
+    exit_date: inputs.dates[Math.min(index + 1, inputs.dates.length - 1)],
+    action_return_net: value,
+    action_return_gross: inputs.gross_returns[index],
+    stock_return: inputs.stock_returns[index],
+  }))
+  const trade_ledger = inputs.equity.map((value, index) => ({
+    trade_id: "t0",
+    date: inputs.dates[index],
+    marker_label: index === 0 ? "Buy 0" : `Mark ${index}`,
+    transaction_index: index + 1,
+    price_kind: index === 0 ? "open" : "close",
+    notional_ouvert: index === 0 ? 1 : null,
+    pnl_realise: index === 0 ? 0 : value - inputs.equity[index - 1],
+  }))
+  const view = buildSignalEvidenceRangeView({
+    dates: inputs.dates,
+    close_series: inputs.equity.map((value) => value * 100),
+    benchmark_returns: inputs.benchmark_returns,
+    benchmark_symbol: inputs.benchmark_symbol,
+    trades,
+    trade_ledger,
+  }, null)
+
+  for (const [key, value] of Object.entries(expected)) {
+    assertMetric(view.metrics[key], value, key)
+  }
+  assert.equal("expectancy_net" in view.metrics, false)
+})
 
 test("buildSignalEvidenceRangeView recalculates metrics from opened-in-range trades", () => {
   const stitched = {
