@@ -24,13 +24,69 @@ function mean(values) {
   return finite.reduce((sum, value) => sum + value, 0) / finite.length
 }
 
-function sharpe(values) {
+function std(values) {
   const finite = values.filter((value) => Number.isFinite(value))
-  if (finite.length < 2) return 0
+  if (finite.length < 2) return null
   const avg = mean(finite) ?? 0
   const variance = finite.reduce((sum, value) => sum + (value - avg) ** 2, 0) / (finite.length - 1)
-  const sigma = Math.sqrt(variance)
-  return sigma > 0 ? (avg / sigma) * Math.sqrt(252) : 0
+  return Math.sqrt(variance)
+}
+
+function sharpe(values, dates) {
+  const finite = values.filter((value) => Number.isFinite(value))
+  if (finite.length < 2) return null
+  const avg = mean(finite) ?? 0
+  const sigma = std(finite) ?? 0
+  if (sigma <= 0) return null
+  const years = Math.max(Array.isArray(dates) ? dates.length : 0, 1) / 252
+  return (avg / sigma) * Math.sqrt(finite.length / years)
+}
+
+function pathReturns(equity) {
+  const returns = []
+  for (let i = 1; i < equity.length; i += 1) {
+    const prev = asNumber(equity[i - 1])
+    const curr = asNumber(equity[i])
+    if (prev != null && curr != null && prev > 0) returns.push(curr / prev - 1)
+  }
+  return returns
+}
+
+function pathReturnsWithFirstFlat(equity) {
+  if (!Array.isArray(equity) || equity.length === 0) return []
+  const returns = [0]
+  for (let i = 1; i < equity.length; i += 1) {
+    const prev = asNumber(equity[i - 1])
+    const curr = asNumber(equity[i])
+    returns.push(prev != null && curr != null && prev > 0 ? curr / prev - 1 : null)
+  }
+  return returns
+}
+
+function pathSharpe(values) {
+  const finite = values.filter((value) => Number.isFinite(value))
+  if (finite.length < 2) return null
+  const sigma = std(finite) ?? 0
+  return sigma > 0 ? ((mean(finite) ?? 0) / sigma) * Math.sqrt(252) : null
+}
+
+function sortino(values) {
+  const finite = values.filter((value) => Number.isFinite(value))
+  const downside = finite.filter((value) => value < 0)
+  if (finite.length < 2 || downside.length < 2) return null
+  const semiStd = std(downside) ?? 0
+  return semiStd > 0 ? ((mean(finite) ?? 0) / semiStd) * Math.sqrt(252) : null
+}
+
+function annualizedVolatility(values) {
+  const sigma = std(values)
+  return sigma == null ? null : sigma * Math.sqrt(252)
+}
+
+function downsideVolatility(values) {
+  const downside = values.filter((value) => Number.isFinite(value) && value < 0)
+  const sigma = std(downside)
+  return sigma == null ? null : sigma * Math.sqrt(252)
 }
 
 function maxDrawdown(equity) {
@@ -42,6 +98,101 @@ function maxDrawdown(equity) {
     if (peak > 0) max = Math.max(max, 1 - value / peak)
   }
   return max
+}
+
+function percentile(values, pct) {
+  const finite = values.filter((value) => Number.isFinite(value)).sort((a, b) => a - b)
+  if (finite.length === 0) return null
+  const rank = (pct / 100) * (finite.length - 1)
+  const lo = Math.floor(rank)
+  const hi = Math.ceil(rank)
+  if (lo === hi) return finite[lo]
+  const weight = rank - lo
+  return finite[lo] * (1 - weight) + finite[hi] * weight
+}
+
+function marketModel(stratRet, benchRet, periodsPerYear = 252, minObs = 20) {
+  if (!Array.isArray(benchRet)) {
+    return { beta: null, alpha_annualized: null, alpha_r2: null, alpha_n_obs: 0, alpha_reason: "benchmark_unavailable" }
+  }
+  const pairs = []
+  for (let i = 0; i < Math.min(stratRet.length, benchRet.length); i += 1) {
+    const strat = asNumber(stratRet[i])
+    const bench = asNumber(benchRet[i])
+    if (strat != null && bench != null) pairs.push([strat, bench])
+  }
+  const nObs = pairs.length
+  const nonzero = pairs.filter(([strat]) => Math.abs(strat) > 1e-12).length
+  if (nObs < minObs || nonzero < 10) {
+    return { beta: null, alpha_annualized: null, alpha_r2: null, alpha_n_obs: nObs, alpha_reason: "insufficient_overlap" }
+  }
+  const y = pairs.map(([strat]) => strat)
+  const x = pairs.map(([, bench]) => bench)
+  const xMean = mean(x) ?? 0
+  const yMean = mean(y) ?? 0
+  let denom = 0
+  let cov = 0
+  for (let i = 0; i < pairs.length; i += 1) {
+    const dx = x[i] - xMean
+    denom += dx * dx
+    cov += dx * (y[i] - yMean)
+  }
+  if (denom <= 0) {
+    return { beta: null, alpha_annualized: null, alpha_r2: null, alpha_n_obs: nObs, alpha_reason: "insufficient_overlap" }
+  }
+  const beta = cov / denom
+  const intercept = yMean - beta * xMean
+  const fitted = x.map((value) => intercept + beta * value)
+  let total = 0
+  let resid = 0
+  for (let i = 0; i < y.length; i += 1) {
+    total += (y[i] - yMean) ** 2
+    resid += (y[i] - fitted[i]) ** 2
+  }
+  const r2 = total > 0 ? Math.max(0, Math.min(1, 1 - resid / total)) : null
+  return { beta, alpha_annualized: intercept * periodsPerYear, alpha_r2: r2, alpha_n_obs: nObs, alpha_reason: "ok" }
+}
+
+function distributionMetrics(netReturns, equity, dates, benchmarkReturns, benchmarkSymbol) {
+  const finite = netReturns.filter((value) => Number.isFinite(value))
+  const wins = finite.filter((value) => value > 0)
+  const losses = finite.filter((value) => value < 0)
+  const grossProfit = wins.reduce((sum, value) => sum + value, 0)
+  const grossLoss = Math.abs(losses.reduce((sum, value) => sum + value, 0))
+  const avgWin = mean(wins)
+  const avgLoss = mean(losses)
+  const drawdown = maxDrawdown(equity)
+  const totalReturn = equity.length ? equity[equity.length - 1] - 1 : 0
+  const years = Math.max(dates.length, 1) / 252
+  const cagr = totalReturn > -1 ? (1 + totalReturn) ** (1 / years) - 1 : -1
+  const path = pathReturns(equity)
+  const alpha = marketModel(pathReturnsWithFirstFlat(equity), benchmarkReturns)
+  return {
+    profit_factor_net:
+      grossLoss > 0 ? grossProfit / grossLoss : null,
+    avg_win_net: avgWin,
+    avg_loss_net: avgLoss,
+    payoff_ratio_net: avgWin != null && avgLoss != null && avgLoss !== 0 ? avgWin / Math.abs(avgLoss) : null,
+    median_return_net: percentile(finite, 50),
+    p05_return_net: percentile(finite, 5),
+    p95_return_net: percentile(finite, 95),
+    sortino: sortino(path),
+    sharpe_path: pathSharpe(path),
+    calmar: drawdown > 0 ? cagr / Math.abs(drawdown) : null,
+    annualized_volatility: annualizedVolatility(path),
+    downside_volatility: downsideVolatility(path),
+    beta: alpha.beta,
+    alpha_annualized: alpha.alpha_annualized,
+    alpha_r2: alpha.alpha_r2,
+    alpha_n_obs: alpha.alpha_n_obs,
+    alpha_reason: alpha.alpha_reason,
+    benchmark_symbol: benchmarkSymbol ?? null,
+    sample_start: dates.length ? dateKey(dates[0]) : null,
+    sample_end: dates.length ? dateKey(dates[dates.length - 1]) : null,
+    sample_days: dates.length,
+    min_sample_pass: finite.length >= 30,
+    metric_basis: "stitched_wfo_oos",
+  }
 }
 
 function priceKindRank(row) {
@@ -229,6 +380,8 @@ export function buildSignalEvidenceRangeView(stitched, startDate) {
     high: [],
     low: [],
     close: [],
+    benchmark_returns: [],
+    benchmark_symbol: null,
     equity: [],
     position: [],
     ledger: [],
@@ -246,6 +399,29 @@ export function buildSignalEvidenceRangeView(stitched, startDate) {
       expected_return_gross: null,
       expected_return_net: null,
       stock_expected_return: null,
+      profit_factor_net: null,
+      avg_win_net: null,
+      avg_loss_net: null,
+      payoff_ratio_net: null,
+      median_return_net: null,
+      p05_return_net: null,
+      p95_return_net: null,
+      sortino: null,
+      sharpe_path: null,
+      calmar: null,
+      annualized_volatility: null,
+      downside_volatility: null,
+      beta: null,
+      alpha_annualized: null,
+      alpha_r2: null,
+      alpha_n_obs: 0,
+      alpha_reason: "benchmark_unavailable",
+      benchmark_symbol: null,
+      sample_start: null,
+      sample_end: null,
+      sample_days: 0,
+      min_sample_pass: false,
+      metric_basis: "stitched_wfo_oos",
     },
   }
   if (!stitched || !Array.isArray(stitched.dates)) return empty
@@ -263,6 +439,10 @@ export function buildSignalEvidenceRangeView(stitched, startDate) {
   const high = Array.isArray(stitched.high_series) ? stitched.high_series.slice(startIndex) : []
   const low = Array.isArray(stitched.low_series) ? stitched.low_series.slice(startIndex) : []
   const close = Array.isArray(stitched.close_series) ? stitched.close_series.slice(startIndex) : []
+  const benchmarkReturns = Array.isArray(stitched.benchmark_returns)
+    ? stitched.benchmark_returns.slice(startIndex)
+    : null
+  const benchmarkSymbol = asText(stitched.benchmark_symbol) || null
   const allTrades = Array.isArray(stitched.trades) ? stitched.trades : []
   const sampleTrades = allTrades
     ? allTrades.filter((trade) => inRange(dateKey(trade?.entry_date), startDate, endDate))
@@ -285,6 +465,7 @@ export function buildSignalEvidenceRangeView(stitched, startDate) {
   const hitRate = grossReturns.length
     ? grossReturns.filter((value) => value > 0).length / grossReturns.length
     : null
+  const extraMetrics = distributionMetrics(netReturns, equity, dates, benchmarkReturns, benchmarkSymbol)
 
   return {
     startIndex,
@@ -295,6 +476,8 @@ export function buildSignalEvidenceRangeView(stitched, startDate) {
     high,
     low,
     close,
+    benchmark_returns: benchmarkReturns ?? [],
+    benchmark_symbol: benchmarkSymbol,
     equity,
     position,
     ledger,
@@ -304,7 +487,7 @@ export function buildSignalEvidenceRangeView(stitched, startDate) {
     metrics: {
       total_return: totalReturn,
       cagr,
-      sharpe: netReturns.length ? sharpe(netReturns) : null,
+      sharpe: netReturns.length ? sharpe(netReturns, dates) : null,
       max_drawdown: maxDrawdown(equity),
       win_rate: hitRate,
       hit_rate: hitRate,
@@ -312,6 +495,7 @@ export function buildSignalEvidenceRangeView(stitched, startDate) {
       expected_return_gross: mean(grossReturns),
       expected_return_net: mean(netReturns),
       stock_expected_return: mean(stockReturns),
+      ...extraMetrics,
     },
   }
 }

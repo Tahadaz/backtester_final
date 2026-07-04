@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import type { ReactNode } from "react"
 import useSWR from "swr"
 import { Activity, BarChart3, CheckCircle2, Layers3, ListChecks } from "lucide-react"
 import {
@@ -134,10 +135,28 @@ function formatPvalue(value: number | null | undefined) {
   return value.toFixed(3)
 }
 
+function formatFiniteNumber(value: number | null | undefined, decimals = 2) {
+  if (value === Number.POSITIVE_INFINITY) return "Inf"
+  return formatNumber(value, decimals)
+}
+
+function formatMetricBasis(value: string | null | undefined) {
+  const token = String(value ?? "").trim()
+  if (!token) return "same-sample WFO"
+  return token.replaceAll("_", " ")
+}
+
+function dateWindowLabel(start: string | null | undefined, end: string | null | undefined) {
+  if (!start && !end) return "--"
+  return `${fmtDate(start)} -> ${fmtDate(end)}`
+}
+
 function SrOverlaySummary({ overlay }: { overlay?: SrOverlay | null }) {
   if (!overlay) return null
-  const ready = overlay.status === "ready" && overlay.overlay_metrics
+  const decision = overlay.decision ?? overlay.status
+  const ready = (overlay.status === "ready" || decision === "actionable") && overlay.overlay_metrics
   const bestLabel = overlay.best_variant_id?.replace(/^sr:/, "").replaceAll("__", " / ").replaceAll(":", " ")
+  const rejected = !ready && overlay.decision && overlay.decision !== "actionable"
   return (
     <div className="rounded-md border border-line bg-muted/20 px-3 py-3">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -148,7 +167,11 @@ function SrOverlaySummary({ overlay }: { overlay?: SrOverlay | null }) {
           </p>
         </div>
         <Badge variant={ready ? "default" : "outline"} className="h-6 rounded-md text-[11px]">
-          {ready ? `${overlay.viable_count} viable / ${overlay.tested_count} tested` : overlay.reason ?? "unavailable"}
+          {ready
+            ? `${overlay.viable_count} viable / ${overlay.tested_count} tested`
+            : rejected
+              ? overlay.reason ?? decision
+              : overlay.reason ?? "unavailable"}
         </Badge>
       </div>
       {ready ? (
@@ -178,6 +201,41 @@ function SrOverlaySummary({ overlay }: { overlay?: SrOverlay | null }) {
           />
         </div>
       ) : null}
+    </div>
+  )
+}
+
+function DiagnosticMetric({
+  label,
+  value,
+  detail,
+  tone,
+}: {
+  label: string
+  value: string
+  detail?: string
+  tone?: string
+}) {
+  return (
+    <div className="min-w-0 rounded-md border border-line bg-background px-3 py-2">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{label}</div>
+      <div className={`mt-1 truncate font-mono text-sm font-semibold ${tone ?? ""}`}>{value}</div>
+      {detail ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{detail}</div> : null}
+    </div>
+  )
+}
+
+function DiagnosticSection({
+  title,
+  children,
+}: {
+  title: string
+  children: ReactNode
+}) {
+  return (
+    <div className="rounded-md border border-line bg-muted/10 px-3 py-3">
+      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h4>
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">{children}</div>
     </div>
   )
 }
@@ -281,11 +339,136 @@ function StitchedWfoEvidenceBacktest({ data }: { data: SignalEvidence }) {
             tone={metricTone(hasAction ? metrics.total_return : (metrics.stock_expected_return ?? data.edge.stock_expected_return))}
           />
           <StatCard
-            label="Sharpe"
+            label="Trade Sharpe"
             value={hasAction ? formatNumber(metrics.sharpe, 2) : "--"}
-            detail={hasAction ? directionLabel(stitched.direction) : "No action return stream"}
+            detail={hasAction ? "per-trade, freq-annualized" : "No action return stream"}
           />
         </div>
+
+        {hasAction ? (
+          <>
+            <DiagnosticSection title="Risk & Distribution">
+              <DiagnosticMetric
+                label="Max drawdown"
+                value={formatPercent(metrics.max_drawdown)}
+                detail="visible equity path"
+                tone="text-[oklch(0.52_0.20_25)]"
+              />
+              <DiagnosticMetric
+                label="Profit factor"
+                value={formatFiniteNumber(metrics.profit_factor_net, 2)}
+                detail="net wins / net losses"
+              />
+              <DiagnosticMetric
+                label="Avg win / loss"
+                value={`${formatPercent(metrics.avg_win_net)} / ${formatPercent(metrics.avg_loss_net)}`}
+                detail={`payoff ${formatFiniteNumber(metrics.payoff_ratio_net, 2)}`}
+              />
+              <DiagnosticMetric
+                label="Expectancy"
+                value={formatPercent(metrics.expected_return_net)}
+                detail={`median ${formatPercent(metrics.median_return_net)}`}
+                tone={metricTone(metrics.expected_return_net)}
+              />
+              {metrics.min_sample_pass ? (
+                <>
+                  <DiagnosticMetric
+                    label="Sortino"
+                    value={formatFiniteNumber(metrics.sortino, 2)}
+                    detail="daily path basis"
+                    tone={metricTone(metrics.sortino)}
+                  />
+                  <DiagnosticMetric
+                    label="Path Sharpe"
+                    value={formatFiniteNumber(metrics.sharpe_path, 2)}
+                    detail="daily path basis"
+                    tone={metricTone(metrics.sharpe_path)}
+                  />
+                  <DiagnosticMetric
+                    label="Tail returns"
+                    value={`${formatPercent(metrics.p05_return_net)} / ${formatPercent(metrics.p95_return_net)}`}
+                    detail="p05 / p95 net trade"
+                  />
+                  <DiagnosticMetric
+                    label="Ann. volatility"
+                    value={formatPercent(metrics.annualized_volatility)}
+                    detail={`downside ${formatPercent(metrics.downside_volatility)}`}
+                  />
+                  <DiagnosticMetric
+                    label="Calmar"
+                    value={formatFiniteNumber(metrics.calmar, 2)}
+                    detail="daily path basis"
+                    tone={metricTone(metrics.calmar)}
+                  />
+                </>
+              ) : (
+                <div className="min-w-0 rounded-md border border-dashed border-line bg-background px-3 py-2 text-xs text-muted-foreground sm:col-span-2 xl:col-span-4">
+                  Distribution & tail metrics hidden - n&lt;30 (audit only)
+                </div>
+              )}
+            </DiagnosticSection>
+
+            <DiagnosticSection title="Market Exposure">
+              {metrics.min_sample_pass && metrics.alpha_reason === "ok" ? (
+                <>
+                  <DiagnosticMetric
+                    label={`Beta (vs ${metrics.benchmark_symbol ?? stitched.benchmark_symbol ?? "benchmark"})`}
+                    value={formatFiniteNumber(metrics.beta, 2)}
+                    detail="traded-book exposure"
+                  />
+                  <DiagnosticMetric
+                    label="Alpha (ann.)"
+                    value={formatPercent(metrics.alpha_annualized)}
+                    detail="x252 intercept"
+                    tone={metricTone(metrics.alpha_annualized)}
+                  />
+                  <DiagnosticMetric
+                    label="Fit R2"
+                    value={formatFiniteNumber(metrics.alpha_r2, 2)}
+                    detail={`${formatNumber(metrics.alpha_n_obs, 0)} paired days`}
+                  />
+                </>
+              ) : (
+                <div
+                  className="min-w-0 rounded-md border border-dashed border-line bg-background px-3 py-2 text-xs text-muted-foreground sm:col-span-2 xl:col-span-4"
+                  title="Effective-book beta regresses the traded equity path, including flat days, not the underlying stock beta."
+                >
+                  Market exposure hidden - {metrics.min_sample_pass ? metrics.alpha_reason ?? "unavailable" : "n<30 (audit only)"}
+                </div>
+              )}
+            </DiagnosticSection>
+
+            <DiagnosticSection title="Sample Quality">
+              <DiagnosticMetric
+                label="OOS trades"
+                value={formatNumber(metrics.n_trades, 0)}
+                detail={metrics.min_sample_pass ? "minimum sample passed" : "below n=30 evidence floor"}
+                tone={metrics.min_sample_pass ? "text-[oklch(0.48_0.14_160)]" : "text-[oklch(0.52_0.20_25)]"}
+              />
+              <DiagnosticMetric
+                label="Date window"
+                value={dateWindowLabel(metrics.sample_start, metrics.sample_end)}
+                detail={`${formatNumber(metrics.sample_days, 0)} bars in visible range`}
+              />
+              <DiagnosticMetric
+                label="Cooldown filter"
+                value={formatNumber(cooldownFilteredTrades, 0)}
+                detail={`cooldown ${formatNumber(cooldownBars, 0)} bars`}
+              />
+              <div className="min-w-0 rounded-md border border-line bg-background px-3 py-2">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Metric basis</div>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <Badge variant="outline" className="h-5 rounded text-[10px]">
+                    {formatMetricBasis(metrics.metric_basis)}
+                  </Badge>
+                  <Badge variant={metrics.min_sample_pass ? "default" : "outline"} className="h-5 rounded text-[10px]">
+                    {metrics.min_sample_pass ? "n OK" : "audit only"}
+                  </Badge>
+                </div>
+              </div>
+            </DiagnosticSection>
+          </>
+        ) : null}
 
         <div>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">

@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 
 from core.quant_core.data import normalize_symbol
+from core.quant_core.research.stats.regression import RegressionResult as _RegressionResult
+from core.quant_core.research.stats.regression import ols_beta as _ols_beta
 
 
 BetaFrequency = Literal["weekly", "monthly"]
@@ -44,13 +46,6 @@ class BetaEstimate:
     frequency: BetaFrequency = "weekly"
     window_years: int = 2
     warnings: list[str] = field(default_factory=list)
-
-
-@dataclass(frozen=True)
-class _RegressionResult:
-    beta: float
-    r2: float | None
-    n_obs: int
 
 
 def unlever_beta(beta: float, debt_to_equity: float | None, tax_rate: float) -> float:
@@ -282,21 +277,6 @@ def _zero_return_fraction(stock_returns: pd.Series, tolerance: float) -> float:
     if stock_returns.empty:
         return 1.0
     return float((stock_returns.abs() <= tolerance).sum() / len(stock_returns))
-
-
-def _ols_beta(y: np.ndarray, x: np.ndarray) -> _RegressionResult:
-    if len(y) != len(x) or len(y) < 2:
-        raise ValueError("OLS beta requires at least two aligned observations")
-    x_centered = x - x.mean()
-    y_centered = y - y.mean()
-    denom = float(np.dot(x_centered, x_centered))
-    if denom <= 0.0:
-        raise ValueError("market return variance is zero")
-    beta = float(np.dot(x_centered, y_centered) / denom)
-    intercept = float(y.mean() - beta * x.mean())
-    fitted = intercept + beta * x
-    r2 = _r2(y, fitted)
-    return _RegressionResult(beta=beta, r2=r2, n_obs=len(y))
 
 
 def _dimson_beta(stock_returns: pd.Series, market_returns: pd.Series) -> _RegressionResult:

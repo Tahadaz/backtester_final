@@ -41,6 +41,7 @@ from core.quant_core.horizons import canonical_horizon, LEGACY_HORIZON_ALIASES
 from core.quant_core.significance import sharpe_ratio
 from core.quant_core.risk import monte_carlo_equity_paths
 from core.quant_core.data import drop_incomplete_ohlcv_rows
+from core.quant_core.research.stats.regression import market_model
 from ...market_data_loader import load_ohlcv_for_symbol, load_close_for_symbol
 from ._shared import (
     logger,
@@ -52,7 +53,6 @@ from ._shared import (
     _get_or_compute,
     _safe_float,
     _safe_float_list,
-    _evidence_sharpe,
     _evidence_max_drawdown,
     _evidence_float,
 )
@@ -60,6 +60,9 @@ from ._support_resistance import (
     _sr_overlay_empty,
     _sr_overlay_for_position_series,
 )
+
+EVIDENCE_BENCHMARK_SYMBOL = "MASI"
+EVIDENCE_BENCHMARK_SYMBOL_CANDIDATES = (EVIDENCE_BENCHMARK_SYMBOL, "MASI.CS", "MASI.MA")
 
 def _evidence_source(value: str | None) -> str:
     token = str(value or "auto").strip().lower()
@@ -575,9 +578,192 @@ def _period_contributors_for_evidence(
     return out
 
 
+EVIDENCE_MIN_SAMPLE_N = 30
+
+
 def _evidence_mean(values: list[float]) -> float | None:
     finite = [float(value) for value in values if np.isfinite(value)]
     return float(np.mean(finite)) if finite else None
+
+
+def _evidence_finite_array(values: list[float]) -> np.ndarray:
+    finite = [float(value) for value in values if np.isfinite(value)]
+    return np.asarray(finite, dtype="float64")
+
+
+def _evidence_path_returns(equity: list[float]) -> np.ndarray:
+    arr = _evidence_finite_array(equity)
+    if arr.size < 2:
+        return np.asarray([], dtype="float64")
+    prev = arr[:-1]
+    curr = arr[1:]
+    valid = prev > 0.0
+    if not bool(np.any(valid)):
+        return np.asarray([], dtype="float64")
+    return curr[valid] / prev[valid] - 1.0
+
+
+def _evidence_path_returns_with_first_flat(equity: list[float]) -> list[float | None]:
+    arr = [float(value) for value in equity if np.isfinite(value)]
+    if not arr:
+        return []
+    returns: list[float | None] = [0.0]
+    for idx in range(1, len(arr)):
+        prev = arr[idx - 1]
+        curr = arr[idx]
+        returns.append(float(curr / prev - 1.0) if prev > 0.0 else None)
+    return returns
+
+
+def _evidence_trade_sharpe(net_returns: list[float], dates: list[str]) -> float | None:
+    returns = _evidence_finite_array(net_returns)
+    if returns.size < 2:
+        return None
+    sigma = float(np.std(returns, ddof=1))
+    if sigma <= 0.0:
+        return None
+    years = max(len(dates), 1) / 252.0
+    trades_per_year = float(returns.size) / years
+    return float(np.mean(returns) / sigma * np.sqrt(trades_per_year))
+
+
+def _evidence_path_sharpe(returns: np.ndarray, periods_per_year: int = 252) -> float | None:
+    if returns.size < 2:
+        return None
+    sigma = float(np.std(returns, ddof=1))
+    if sigma <= 0.0:
+        return None
+    return float(np.mean(returns) / sigma * np.sqrt(float(periods_per_year)))
+
+
+def _evidence_sortino(returns: np.ndarray, periods_per_year: int = 252) -> float | None:
+    if returns.size < 2:
+        return None
+    downside = returns[returns < 0.0]
+    if downside.size < 2:
+        return None
+    semi_std = float(np.std(downside, ddof=1))
+    if semi_std <= 0.0:
+        return None
+    return float(np.mean(returns) / semi_std * np.sqrt(float(periods_per_year)))
+
+
+def _evidence_volatility(returns: np.ndarray, periods_per_year: int = 252) -> float | None:
+    if returns.size < 2:
+        return None
+    sigma = float(np.std(returns, ddof=1))
+    return float(sigma * np.sqrt(float(periods_per_year))) if sigma >= 0.0 else None
+
+
+def _evidence_downside_volatility(returns: np.ndarray, periods_per_year: int = 252) -> float | None:
+    downside = returns[returns < 0.0]
+    if downside.size < 2:
+        return None
+    sigma = float(np.std(downside, ddof=1))
+    return float(sigma * np.sqrt(float(periods_per_year))) if sigma >= 0.0 else None
+
+
+def _evidence_benchmark_returns(
+    db: Session,
+    dates: list[str],
+    *,
+    symbol: str = EVIDENCE_BENCHMARK_SYMBOL,
+) -> tuple[list[float | None] | None, str | None]:
+    if not dates:
+        return [], symbol
+    last_error: Exception | None = None
+    for candidate in (symbol, *[item for item in EVIDENCE_BENCHMARK_SYMBOL_CANDIDATES if item != symbol]):
+        try:
+            # Verify the exact key through the close loader; it raises when absent.
+            loaded = load_close_for_symbol(db, candidate)
+            if len(loaded) == 0:
+                raise ValueError(f"empty benchmark close series for {candidate}")
+            frame = load_ohlcv_for_symbol(db, candidate)
+            close = pd.to_numeric(frame["Close"] if "Close" in frame.columns else frame["close"], errors="coerce")
+            close.index = pd.to_datetime(close.index, errors="coerce")
+            if getattr(close.index, "tz", None) is not None:
+                close.index = close.index.tz_convert(None)
+            close.index = close.index.normalize()
+            close = close.dropna().sort_index()
+            close = close[~close.index.duplicated(keep="last")]
+            target = pd.DatetimeIndex(pd.to_datetime(dates, errors="coerce")).tz_localize(None).normalize()
+            aligned = close.reindex(target, method="ffill", limit=3)
+            returns: list[float | None] = [None]
+            for idx in range(1, len(aligned)):
+                prev = _evidence_float(aligned.iloc[idx - 1])
+                curr = _evidence_float(aligned.iloc[idx])
+                if prev is None or curr is None or prev <= 0.0 or curr <= 0.0:
+                    returns.append(None)
+                else:
+                    returns.append(float(curr / prev - 1.0))
+            return returns, candidate
+        except Exception as exc:
+            last_error = exc
+            continue
+    logger.info("signal evidence benchmark unavailable", extra={"symbol": symbol, "error": str(last_error)})
+    return None, symbol
+
+
+def _evidence_trade_distribution_metrics(
+    net_returns: list[float],
+    equity: list[float],
+    *,
+    dates: list[str],
+    benchmark_returns: list[float | None] | None = None,
+    benchmark_symbol: str | None = None,
+    min_sample_n: int = EVIDENCE_MIN_SAMPLE_N,
+) -> dict[str, Any]:
+    returns = _evidence_finite_array(net_returns)
+    wins = returns[returns > 0.0]
+    losses = returns[returns < 0.0]
+    gross_profit = float(np.sum(wins)) if wins.size else 0.0
+    gross_loss = float(abs(np.sum(losses))) if losses.size else 0.0
+    avg_win = float(np.mean(wins)) if wins.size else None
+    avg_loss = float(np.mean(losses)) if losses.size else None
+    payoff_ratio = (
+        float(avg_win / abs(avg_loss))
+        if avg_win is not None and avg_loss is not None and avg_loss != 0.0
+        else None
+    )
+    profit_factor = (
+        float(gross_profit / gross_loss)
+        if gross_loss > 0.0
+        else None
+    )
+    path_returns = _evidence_path_returns(equity)
+    max_dd = _evidence_max_drawdown(equity)
+    total_return = float(equity[-1] - 1.0) if equity else 0.0
+    years = max(len(dates), 1) / 252.0
+    cagr = float((1.0 + total_return) ** (1.0 / years) - 1.0) if total_return > -1.0 else -1.0
+    calmar = float(cagr / abs(max_dd)) if max_dd and max_dd != 0.0 else None
+    strategy_returns = _evidence_path_returns_with_first_flat(equity)
+    alpha = market_model(strategy_returns, benchmark_returns, min_obs=20)
+
+    return {
+        "profit_factor_net": profit_factor,
+        "avg_win_net": avg_win,
+        "avg_loss_net": avg_loss,
+        "payoff_ratio_net": payoff_ratio,
+        "median_return_net": float(np.median(returns)) if returns.size else None,
+        "p05_return_net": float(np.percentile(returns, 5)) if returns.size else None,
+        "p95_return_net": float(np.percentile(returns, 95)) if returns.size else None,
+        "sortino": _evidence_sortino(path_returns),
+        "sharpe_path": _evidence_path_sharpe(path_returns),
+        "calmar": calmar,
+        "annualized_volatility": _evidence_volatility(path_returns),
+        "downside_volatility": _evidence_downside_volatility(path_returns),
+        "beta": alpha["beta"],
+        "alpha_annualized": alpha["alpha_annualized"],
+        "alpha_r2": alpha["alpha_r2"],
+        "alpha_n_obs": alpha["alpha_n_obs"],
+        "alpha_reason": alpha["alpha_reason"],
+        "benchmark_symbol": benchmark_symbol,
+        "sample_start": dates[0] if dates else None,
+        "sample_end": dates[-1] if dates else None,
+        "sample_days": len(dates),
+        "min_sample_pass": bool(returns.size >= int(min_sample_n)),
+        "metric_basis": "stitched_wfo_oos",
+    }
 
 
 def _evidence_trade_proof_summary(
@@ -652,10 +838,6 @@ def _evidence_trade_proof_summary(
         "hit_ci_lower": float(hit_ci_lower) if hit_ci_lower is not None else None,
         "hit_ci_upper": float(hit_ci_upper) if hit_ci_upper is not None else None,
     }
-
-
-EVIDENCE_MIN_SAMPLE_N = 30
-
 
 def _evidence_chart_frame(
     price_index: pd.DatetimeIndex,
@@ -1003,6 +1185,8 @@ def _evidence_stitched_backtest(
     proof_summary: dict[str, Any] | None = None,
     stitched_window_start: str | None = None,
     stitched_window_end: str | None = None,
+    benchmark_returns: list[float | None] | None = None,
+    benchmark_symbol: str | None = None,
 ) -> dict[str, Any]:
     action_trades = [
         trade
@@ -1075,6 +1259,14 @@ def _evidence_stitched_backtest(
     years = max(len(dates), 1) / 252.0
     cagr = float((1.0 + total_return) ** (1.0 / years) - 1.0) if total_return > -1.0 else -1.0
     hit_rate = float(np.mean([value > 0.0 for value in gross_returns])) if gross_returns else None
+    distribution_metrics = _evidence_trade_distribution_metrics(
+        net_returns,
+        equity,
+        dates=dates,
+        benchmark_returns=benchmark_returns,
+        benchmark_symbol=benchmark_symbol,
+        min_sample_n=EVIDENCE_MIN_SAMPLE_N,
+    )
 
     warning_sample_n = len(action_trades) if direction in {"long", "short"} else len(stock_returns)
     warnings: list[str] = []
@@ -1112,6 +1304,9 @@ def _evidence_stitched_backtest(
         "low_series": low if has_candles else [],
         "close_series": close,
         "position_series": position_series,
+        "benchmark_returns": benchmark_returns if benchmark_returns is not None else [],
+        "benchmark_symbol": benchmark_symbol,
+        "benchmark_status": "available" if benchmark_returns is not None else "unavailable",
         "equity": equity,
         "trades": trades,
         "trade_ledger": ledger,
@@ -1119,7 +1314,7 @@ def _evidence_stitched_backtest(
         "metrics": {
             "total_return": total_return,
             "cagr": cagr,
-            "sharpe": _evidence_sharpe(net_returns) if net_returns else None,
+            "sharpe": _evidence_trade_sharpe(net_returns, dates) if net_returns else None,
             "max_drawdown": _evidence_max_drawdown(equity),
             "win_rate": hit_rate,
             "hit_rate": hit_rate,
@@ -1129,6 +1324,7 @@ def _evidence_stitched_backtest(
             "expected_return_gross": _evidence_mean(gross_returns),
             "expected_return_net": _evidence_mean(net_returns),
             "stock_expected_return": _evidence_mean(stock_returns),
+            **distribution_metrics,
         },
     }
 
@@ -1451,6 +1647,7 @@ def _signal_evidence_oos_periods(
             for window in windows
             if getattr(window, "end", None) is not None
         ]
+        benchmark_returns, benchmark_symbol = _evidence_benchmark_returns(db, chart_dates)
         stitched = _evidence_stitched_backtest(
             dates=chart_dates,
             open_prices=chart_open,
@@ -1467,6 +1664,8 @@ def _signal_evidence_oos_periods(
             proof_summary=proof_summary,
             stitched_window_start=min(stitched_window_starts) if stitched_window_starts else None,
             stitched_window_end=max(stitched_window_ends) if stitched_window_ends else None,
+            benchmark_returns=benchmark_returns,
+            benchmark_symbol=benchmark_symbol,
         )
 
         return periods, total_trades, stitched
