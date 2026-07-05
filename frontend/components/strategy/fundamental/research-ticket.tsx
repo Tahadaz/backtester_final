@@ -33,7 +33,7 @@ export function ResearchTicket({
   const currentPrice = detail?.ensemble?.current_price ?? asNumber(detail?.metrics?.Current_Price) ?? row?.current_price ?? null
   const { horizon: activeHorizon, prediction: activePrediction } = effectiveHorizonPrediction(detail, row, selectedHorizon)
   const ratable = (detail?.recommendation ?? row?.recommendation) !== "NR"
-  const officialTargetPrice = detail?.target_price ?? row?.target_price ?? (ratable ? (detail?.ensemble?.fair_value_base ?? row?.ensemble?.fair_value_base ?? null) : null)
+  const officialTargetPrice = ratable ? (detail?.ensemble?.fair_value_base ?? row?.ensemble?.fair_value_base ?? null) : null
   const officialUpside = detail?.ensemble?.upside_pct ?? rowUpside(row)
   const targetPrice = activeHorizon === "year" ? officialTargetPrice : activePrediction?.forward_target ?? officialTargetPrice
   const upside = activeHorizon === "year" ? officialUpside : activePrediction?.upside ?? officialUpside

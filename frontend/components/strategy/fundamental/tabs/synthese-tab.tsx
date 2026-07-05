@@ -22,14 +22,12 @@ import { FootballField } from "../shared/charts"
 import { VerdictChip, type VerdictTone } from "../shared/verdict-chip"
 import { DetailTab, Scenario } from "../lib/types"
 import {
-  buildValuationSelectionSummary,
   comparableModelSummary,
   enabledRelativeValuationMetrics,
   rowAdv20,
   rowUpside,
   screenRecord,
   screensFor,
-  sortValuationRows,
   valuationMethods,
 } from "../lib/view-models"
 import { useOptionalSelectedComparableView } from "../panels/comparables"
@@ -52,10 +50,10 @@ function buildScenarios(detail: FundamentalStockDetail, targetOverride?: number 
     ensembleFor("bull")?.current_price ??
     asNumber(detail.metrics.Current_Price)
   const hasOverride = targetOverride !== undefined
-  const selectedFairValue = detail.ensemble?.fair_value_base ?? detail.target_price ?? null
+  const selectedFairValue = detail.ensemble?.fair_value_base ?? null
   const base = hasOverride
     ? targetOverride
-    : ensembleFor("base")?.fair_value_base ?? (detail.ensemble?.scenario === "base" ? selectedFairValue : null) ?? detail.target_price ?? null
+    : ensembleFor("base")?.fair_value_base ?? (detail.ensemble?.scenario === "base" ? selectedFairValue : null) ?? null
   const bear = hasOverride
     ? (base != null ? base * 0.85 : null)
     : ensembleFor("bear")?.fair_value_base ??
@@ -159,7 +157,7 @@ export function SyntheseTab({
   const scenarios = buildScenarios(detail)
   const expected = scenarios.some((scenario) => scenario.price != null) ? scenarios.reduce((sum, scenario) => sum + (scenario.price ?? 0) * scenario.probability, 0) : null
   const recommendation = detail.recommendation ?? row?.recommendation ?? null
-  const fairValue = detail.target_price ?? (recommendation !== "NR" ? detail.ensemble?.fair_value_base : null)
+  const fairValue = recommendation !== "NR" ? detail.ensemble?.fair_value_base ?? null : null
   const upside = detail.ensemble?.upside_pct ?? rowUpside(row)
   const screens = screensFor(detail, row)
   const altman = screenRecord(screens, "altman_z")
@@ -172,15 +170,8 @@ export function SyntheseTab({
   const comparableSummary = comparables ? comparableModelSummary(comparables, currentPrice, relativeMetricKeys) : null
 
   // --- Football field: same building blocks as Valorisation's summary block. ---
-  const selectionSummary = buildValuationSelectionSummary({
-    rows: sortValuationRows(detail.valuations),
-    excludedModelIds: new Set(),
-    comparableSummary,
-    currentPrice,
-    weightMode: "ic",
-  })
-  const methods = valuationMethods(detail, detail.valuations, comparableSummary, selectionSummary)
-  const footballTarget = selectionSummary.fairValue ?? detail.target_price ?? detail.ensemble?.fair_value_base ?? null
+  const methods = valuationMethods(detail, detail.valuations, comparableSummary, null)
+  const footballTarget = detail.ensemble?.fair_value_base ?? null
   const footballModels = MODEL_ORDER.filter((model) => methods.some((method) => method.key === model))
 
   // --- Verdict strip ---

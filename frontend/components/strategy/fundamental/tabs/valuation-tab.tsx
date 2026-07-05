@@ -375,6 +375,7 @@ function ValuationModelControls({
   comparableSummary,
   isComparableSummaryLoading,
   originalTarget,
+  showWorkingTarget,
   currency,
 }: {
   rows: FundamentalValuationResult[]
@@ -387,6 +388,7 @@ function ValuationModelControls({
   comparableSummary: ComparableModelSummary
   isComparableSummaryLoading: boolean
   originalTarget: number | null
+  showWorkingTarget: boolean
   currency: string
 }) {
   const controllableRows = rows.filter((row) => row.family !== "diagnostic")
@@ -409,20 +411,29 @@ function ValuationModelControls({
 
       <div className="valuation-model-summary">
         <StatTile
-          label="Juste valeur"
-          value={selectionSummary.fairValue != null ? `${fmtMoney(selectionSummary.fairValue, 1)} ${currency}` : "-"}
-          sub={originalTarget != null ? `Officielle ${fmtMoney(originalTarget, 1)} ${currency}` : undefined}
+          label="Cible officielle"
+          value={originalTarget != null ? `${fmtMoney(originalTarget, 1)} ${currency}` : "-"}
+          sub="Ensemble validé par le backend"
         />
-        <StatTile
-          label="Fourchette"
-          value={selectionSummary.low != null && selectionSummary.high != null ? `${fmtMoney(selectionSummary.low, 1)} – ${fmtMoney(selectionSummary.high, 1)}` : "-"}
-          sub={currency}
-        />
-        <StatTile
-          label="Upside"
-          value={fmtPct(selectionSummary.upside)}
-          tone={(selectionSummary.upside ?? 0) >= 0 ? "t-pos" : "t-neg"}
-        />
+        {showWorkingTarget ? (
+          <>
+            <StatTile
+              label="Cible de travail (sélection locale)"
+              value={selectionSummary.fairValue != null ? `${fmtMoney(selectionSummary.fairValue, 1)} ${currency}` : "-"}
+              sub="Sélection locale"
+            />
+            <StatTile
+              label="Fourchette locale"
+              value={selectionSummary.low != null && selectionSummary.high != null ? `${fmtMoney(selectionSummary.low, 1)} – ${fmtMoney(selectionSummary.high, 1)}` : "-"}
+              sub={currency}
+            />
+            <StatTile
+              label="Upside local"
+              value={fmtPct(selectionSummary.upside)}
+              tone={(selectionSummary.upside ?? 0) >= 0 ? "t-pos" : "t-neg"}
+            />
+          </>
+        ) : null}
         <StatTile
           label="Modèles inclus / utilisables"
           value={`${selectionSummary.includedCount} / ${selectionSummary.usableCount}`}
@@ -519,18 +530,17 @@ export function ValuationTab({
   const [activeModel, setActiveModel] = useState<string | null>(null)
   const current = detail.ensemble?.current_price ?? asNumber(detail.metrics.Current_Price)
   const currency = detail.ensemble?.currency ?? "MAD"
-  const originalTarget = detail.target_price ?? detail.ensemble?.fair_value_base ?? null
+  const officialTarget = detail.ensemble?.fair_value_base ?? null
+  const showWorkingTarget = excludedModelIds.size > 0 || weightMode !== "ic"
   const methods = useMemo(
     () => valuationMethods(
       detail,
       visibleValuations.filter((valuation) => valuation.family !== "diagnostic" && !excludedModelIds.has(valuation.model)),
       comparableSummary,
-      selectionSummary,
+      showWorkingTarget ? selectionSummary : null,
     ),
-    [comparableSummary, detail, excludedModelIds, selectionSummary, visibleValuations],
+    [comparableSummary, detail, excludedModelIds, selectionSummary, showWorkingTarget, visibleValuations],
   )
-  const target = originalTarget ?? selectionSummary.fairValue
-  const workingTarget = selectionSummary.fairValue
   const setModelIncluded = useCallback(
     (model: string, included: boolean) => {
       const next = new Set(excludedModelIds)
@@ -594,7 +604,7 @@ export function ValuationTab({
       <div data-capture="valuation-models">
         <FundCard
           title="Football field — fourchette de valorisation par méthode"
-          aside={`Cours ${fmtMoney(current, 1)} — Cible officielle ${fmtMoney(target, 1)}${workingTarget != null ? ` — Travail ${fmtMoney(workingTarget, 1)}` : ""}`}
+          aside={`Cours ${fmtMoney(current, 1)} — Cible officielle ${fmtMoney(officialTarget, 1)}${showWorkingTarget && selectionSummary.fairValue != null ? ` — Cible de travail (sélection locale) ${fmtMoney(selectionSummary.fairValue, 1)}` : ""}`}
         >
           <ValuationModelControls
             rows={visibleValuations}
@@ -606,10 +616,11 @@ export function ValuationTab({
             selectionSummary={selectionSummary}
             comparableSummary={comparableSummary}
             isComparableSummaryLoading={isComparableSummaryLoading}
-            originalTarget={originalTarget}
+            originalTarget={officialTarget}
+            showWorkingTarget={showWorkingTarget}
             currency={currency}
           />
-          <FootballField methods={methods} currentPrice={current} targetPrice={target} />
+          <FootballField methods={methods} currentPrice={current} targetPrice={officialTarget} />
         </FundCard>
       </div>
 
