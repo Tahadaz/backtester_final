@@ -60,6 +60,48 @@ function asRecordArray(value: unknown): Record<string, unknown>[] {
 }
 
 
+function rawMetricLabel(item: Record<string, unknown>): string {
+  const metric = String(item.metric_name ?? "-")
+  const year = item.statement_year == null ? "" : ` FY${String(item.statement_year)}`
+  return `${metric}${year}: ${fmtMoney(recordNumber(item, "value"), 0)}`
+}
+
+
+function rawRatioTitle(raw: Record<string, unknown>): string {
+  const numerator = asRecord(raw.numerator)
+  const denominator = asRecord(raw.denominator)
+  const numeratorMetrics = asRecordArray(numerator.metrics)
+  const numeratorLabel = String(numerator.label ?? "Numérateur")
+  const denominatorLabel = String(denominator.label ?? "Dénominateur")
+  const numeratorText = numeratorMetrics.length
+    ? numeratorMetrics.map(rawMetricLabel).join(" ; ")
+    : `${numeratorLabel}: ${fmtMoney(recordNumber(numerator, "value"), 0)}`
+  const denominatorText = `${denominatorLabel} (${String(denominator.metric_name ?? "-")} FY${String(denominator.statement_year ?? "-")}): ${fmtMoney(recordNumber(denominator, "value"), 0)}`
+  return `${numeratorLabel}: ${fmtMoney(recordNumber(numerator, "value"), 0)} [${numeratorText}] / ${denominatorText}`
+}
+
+
+function comparisonTitle(comparison: Record<string, unknown>): string {
+  const current = asRecord(comparison.current)
+  const prior = asRecord(comparison.prior)
+  const operator = String(comparison.operator ?? "")
+  if (Object.keys(prior).length) return `${rawMetricLabel(current)} ${operator} ${rawMetricLabel(prior)}`
+  return `${rawMetricLabel(current)} ${operator}`
+}
+
+
+function RatioBreakdown({ raw, comparison, children }: { raw?: unknown; comparison?: unknown; children: ReactNode }) {
+  const rawRecord = asRecord(raw)
+  const comparisonRecord = asRecord(comparison)
+  const title = Object.keys(rawRecord).length
+    ? rawRatioTitle(rawRecord)
+    : Object.keys(comparisonRecord).length
+      ? comparisonTitle(comparisonRecord)
+      : undefined
+  return <span title={title}>{children}</span>
+}
+
+
 function peerScopeLabel(scope: string, cohortSize: number | null, sector: string | null | undefined): string {
   const n = cohortSize != null ? ` (n=${fmtNumber(cohortSize, 0)})` : ""
   if (scope === "sector") return `Secteur${sector ? ` ${sector}` : ""}${n}`
@@ -191,6 +233,7 @@ function altmanTermRows(altman: Record<string, unknown>) {
         ratio,
         coefficient,
         contribution: recordNumber(term, "contribution") ?? (ratio != null && coefficient != null ? ratio * coefficient : null),
+        raw: term.raw,
       }
     })
   }
@@ -205,6 +248,7 @@ function altmanTermRows(altman: Record<string, unknown>) {
       ratio,
       coefficient,
       contribution: ratio != null ? ratio * coefficient : null,
+      raw: {},
     }
   })
 }
@@ -266,6 +310,19 @@ function evaVerdict(applicable: boolean, spread: number | null): { tone: Verdict
 }
 
 
+const PIOTROSKI_LABELS: Record<string, string> = {
+  positive_roa: "ROA positif",
+  positive_free_cash_flow: "FCF positif",
+  roa_improving: "ROA en amélioration",
+  cash_flow_exceeds_earnings: "FCF > résultat net",
+  leverage_decreasing: "Levier en baisse",
+  liquidity_improving: "Liquidité en amélioration",
+  operating_margin_improving: "Marge opérationnelle en hausse",
+  asset_turnover_improving: "Rotation des actifs en hausse",
+  positive_revenue_growth: "Croissance du chiffre d'affaires positive",
+}
+
+
 // Magic Formula combined rank score (0-100) -> plain verdict.
 function magicFormulaVerdict(score: number | null): { tone: VerdictTone; label: string } {
   if (score == null) return { tone: "neutral", label: "Non renseigné" }
@@ -301,6 +358,8 @@ function QualiteScreensSection({ detail, row }: { detail: FundamentalStockDetail
   const evaScreen = screenRecord(screens, "eva")
   const altmanWarnings = screenWarnings(altman)
   const evaWarnings = screenWarnings(evaScreen)
+  const piotroski = asRecord(diagnostics.piotroski_lite)
+  const piotroskiChecks = asRecordArray(piotroski.checks)
   const altmanZ = recordNumber(altman, "z_value")
   const altmanApplicable = altman.applicable !== false
   const altmanZone = typeof altman.zone === "string" ? altman.zone : null
@@ -356,7 +415,7 @@ function QualiteScreensSection({ detail, row }: { detail: FundamentalStockDetail
         <PeerMetricRows rows={valuePeerRows} metricBreakdown={metricBreakdown} detail={detail} />
       </FundCard>
 
-      <FundCard title="Score Quality - rentabilité, cash et bilan" aside={<ScoreChip value={qualityScore} />}>
+      <FundCard id="piotroski-section" title="Score Quality - rentabilité, cash et bilan" aside={<ScoreChip value={qualityScore} />}>
         <div className="quality-card-note">
           Score headline = profitabilité relative, discipline comptable et qualité des cash-flows. Levier, liquidité et couverture restent des diagnostics de red flag, pas des piliers séparés.
         </div>
@@ -373,6 +432,41 @@ function QualiteScreensSection({ detail, row }: { detail: FundamentalStockDetail
           <StatTile label="Piotroski" value={fmtNumber(recordNumber(qualityComponents, "piotroski_lite"), 0)} tone={scoreClass(recordNumber(qualityComponents, "piotroski_lite"))} sub="checks fondamentaux" />
           <StatTile label="Accruals" value={fmtNumber(recordNumber(qualityComponents, "accrual_quality") ?? recordNumber(accrualQuality, "score"), 0)} tone={scoreClass(recordNumber(qualityComponents, "accrual_quality") ?? recordNumber(accrualQuality, "score"))} sub={`cash ${fmtRatio(recordNumber(accrualQuality, "cash_conversion"), 2)}`} />
         </div>
+        <details className="mt-3">
+          <summary className="cursor-pointer text-[12px] font-semibold text-foreground">Détail Piotroski</summary>
+          <div className="mt-2 overflow-x-auto">
+            <table className="claude-table min-w-[560px]">
+              <thead>
+                <tr>
+                  <th>Test</th>
+                  <th>Statut</th>
+                  <th>Valeur</th>
+                  <th>Comparaison</th>
+                </tr>
+              </thead>
+              <tbody>
+                {piotroskiChecks.map((check) => {
+                  const name = String(check.name ?? "")
+                  const comparison = asRecord(check.comparison)
+                  const available = check.available !== false
+                  const passed = check.passed === true
+                  return (
+                    <tr key={name}>
+                      <td>{PIOTROSKI_LABELS[name] ?? name}</td>
+                      <td><VerdictChip tone={!available ? "neutral" : passed ? "good" : "warning"} label={!available ? "N/A" : passed ? "Pass" : "Fail"} /></td>
+                      <td className="r font-mono">{fmtNumber(recordNumber(check, "value"), 3)}</td>
+                      <td>
+                        <RatioBreakdown comparison={comparison}>
+                          <span className="underline decoration-dotted underline-offset-2">{comparisonTitle(comparison)}</span>
+                        </RatioBreakdown>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </details>
       </FundCard>
 
       <div data-capture="diagnostics">
@@ -396,6 +490,7 @@ function QualiteScreensSection({ detail, row }: { detail: FundamentalStockDetail
       </div>
 
       <FundCard
+        id="altman-section"
         title={<><GlossaryTerm id="altman-z">Risque de défaut - Altman Z-score</GlossaryTerm></>}
         aside={<VerdictChip tone={altmanBadge.tone} label={altmanBadge.label} />}
       >
@@ -429,7 +524,10 @@ function QualiteScreensSection({ detail, row }: { detail: FundamentalStockDetail
                   {altmanTerms.map((term) => (
                     <tr key={term.key || term.term}>
                       <td>
-                        <span className="font-semibold text-foreground">{term.term}</span> {term.label}
+                        <RatioBreakdown raw={term.raw}>
+                          <span className="font-semibold text-foreground underline decoration-dotted underline-offset-2">{term.term}</span>
+                        </RatioBreakdown>{" "}
+                        {term.label}
                       </td>
                       <td className="r font-mono">{fmtNumber(term.ratio, 3)}</td>
                       <td className="r font-mono">{fmtNumber(term.coefficient, 2)}</td>
@@ -616,6 +714,8 @@ function ComparablesPeerBenchmarkSection({
 const SECTION_NAV_ITEMS = [
   { id: "comparables-section", label: "Comparables" },
   { id: "qualite-section", label: "Qualité & écrans" },
+  { id: "piotroski-section", label: "Piotroski" },
+  { id: "altman-section", label: "Altman" },
 ] as const
 
 

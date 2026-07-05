@@ -16,6 +16,7 @@ from quant_core.fundamentals import (
 )
 from quant_core.fundamentals.domain import AnnualMetricRow, FundamentalSnapshot, IntegrityCheck, IntegrityReport, ValuationResult
 from quant_core.fundamentals.projection import build_projection
+from quant_core.fundamentals.scoring import _piotroski_lite
 from quant_core.fundamentals.valuation import _discount_projected_cash_flows, _fcf_growth_input, _monte_carlo_band
 
 
@@ -214,6 +215,29 @@ def test_scoring_and_valuation_route_models_by_input_quality() -> None:
     assert ensemble.usable_model_count >= 3
     assert ensemble.fair_value_base is not None
     assert ensemble.monte_carlo_low is not None
+
+
+def test_piotroski_lite_exposes_check_comparisons_without_score_drift() -> None:
+    parsed = parse_fundamental_workbook(_sample_workbook())
+    aaa = next(row for row in parsed.latest_snapshots if row.symbol == "AAA")
+    history = [row for row in parsed.annual_metrics if row.symbol == "AAA"]
+
+    piotroski = _piotroski_lite(aaa, history)
+    checks = {check["name"]: check for check in piotroski["checks"]}
+
+    assert piotroski["score"] == pytest.approx(87.5)
+    assert piotroski["points"] == 7
+    assert piotroski["available_points"] == 8
+    assert checks["roa_improving"]["comparison"] == {
+        "operator": ">",
+        "current": {"metric_name": "ROA", "value": 0.07, "statement_year": 2024},
+        "prior": {"metric_name": "ROA", "value": 0.06, "statement_year": 2023},
+    }
+    assert checks["cash_flow_exceeds_earnings"]["comparison"] == {
+        "operator": ">",
+        "current": {"metric_name": "Free_Cash_Flow", "value": 900.0, "statement_year": 2024},
+        "prior": {"metric_name": "reported_resultat_net", "value": 1000.0, "statement_year": 2024},
+    }
 
 
 def test_ensemble_excludes_severe_quality_rows_from_headline_weights() -> None:

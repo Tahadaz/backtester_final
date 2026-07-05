@@ -141,6 +141,19 @@ def test_altman_z_non_financial_and_financial_variants() -> None:
     assert non_financial["z_value"] == pytest.approx(3.686, abs=0.001)
     assert [term["key"] for term in non_financial["terms"]] == ["wc_ta", "re_ta", "ebit_ta", "equity_tl"]
     assert sum(term["contribution"] for term in non_financial["terms"]) == pytest.approx(non_financial["z_value"], abs=0.001)
+    wc_term = next(term for term in non_financial["terms"] if term["key"] == "wc_ta")
+    assert wc_term["raw"]["numerator"]["label"] == "Fonds de roulement"
+    assert wc_term["raw"]["numerator"]["value"] == pytest.approx(200.0)
+    assert [metric["metric_name"] for metric in wc_term["raw"]["numerator"]["metrics"]] == [
+        "Current_Assets",
+        "Current_Liabilities",
+    ]
+    assert wc_term["raw"]["denominator"] == {
+        "label": "Actif total",
+        "metric_name": "Total_Assets",
+        "value": 1_000.0,
+        "statement_year": 2024,
+    }
     assert financial["score"] is None
     assert financial["applicable"] is False
     assert "altman_not_applicable_financials" in financial["warnings"]

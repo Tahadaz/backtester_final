@@ -109,6 +109,30 @@ def _metric_series(history: list[AnnualMetricRow], *metric_names: str) -> list[t
     return sorted(by_year.values())
 
 
+def _metric_detail(snapshot: FundamentalSnapshot, history: list[AnnualMetricRow], *metric_names: str) -> dict[str, Any]:
+    for metric_name in metric_names:
+        canonical = resolve_metric_name(metric_name)
+        value = _num(snapshot.metrics.get(canonical))
+        if value is not None:
+            return {"metric_name": canonical, "value": value, "statement_year": snapshot.latest_statement_year}
+        if canonical != metric_name:
+            value = _num(snapshot.metrics.get(metric_name))
+            if value is not None:
+                return {"metric_name": metric_name, "value": value, "statement_year": snapshot.latest_statement_year}
+    canonical_names = {resolve_metric_name(n) for n in metric_names}
+    best: AnnualMetricRow | None = None
+    for row in history:
+        if resolve_metric_name(row.metric_name) not in canonical_names:
+            continue
+        if row.metric_value is None or _num(row.metric_value) is None:
+            continue
+        if best is None or row.statement_year > best.statement_year:
+            best = row
+    if best is None:
+        return {"metric_name": metric_names[0] if metric_names else None, "value": None, "statement_year": None}
+    return {"metric_name": resolve_metric_name(best.metric_name), "value": float(best.metric_value), "statement_year": best.statement_year}
+
+
 def _latest_metric(history: list[AnnualMetricRow], *metric_names: str) -> float | None:
     rows = _metric_series(history, *metric_names)
     return rows[-1][1] if rows else None
@@ -143,6 +167,23 @@ def _total_liabilities(snapshot: FundamentalSnapshot, history: list[AnnualMetric
     return derived if derived > 0 else None
 
 
+def _total_liabilities_detail(snapshot: FundamentalSnapshot, history: list[AnnualMetricRow]) -> dict[str, Any]:
+    direct = _metric_detail(snapshot, history, *TOTAL_LIABILITY_ALIASES)
+    if _positive(direct.get("value")) is not None:
+        return direct
+    total = _metric_detail(snapshot, history, *TOTAL_LIABILITY_AND_EQUITY_ALIASES)
+    equity = _metric_detail(snapshot, history, *EQUITY_ALIASES)
+    if total.get("value") is None or equity.get("value") is None:
+        return {"metric_name": "Total_Liabilities", "value": None, "statement_year": None}
+    derived = float(total["value"]) - float(equity["value"])
+    return {
+        "metric_name": "Total_Liabilities_And_Equity - Total_Equity",
+        "value": derived if derived > 0 else None,
+        "statement_year": total.get("statement_year") or equity.get("statement_year"),
+        "components": [total, equity],
+    }
+
+
 def _book_equity(snapshot: FundamentalSnapshot, history: list[AnnualMetricRow], total_assets: float | None = None, total_liabilities: float | None = None) -> float | None:
     equity = _snapshot_or_history(snapshot, history, *EQUITY_ALIASES)
     if equity is not None:
@@ -151,6 +192,25 @@ def _book_equity(snapshot: FundamentalSnapshot, history: list[AnnualMetricRow], 
         derived = total_assets - total_liabilities
         return derived if derived > 0 else None
     return None
+
+
+def _raw_ratio_detail(
+    *,
+    numerator_label: str,
+    numerator_value: float | None,
+    numerator_metrics: list[dict[str, Any]],
+    denominator_label: str,
+    denominator: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "numerator": {"label": numerator_label, "value": numerator_value, "metrics": numerator_metrics},
+        "denominator": {
+            "label": denominator_label,
+            "metric_name": denominator.get("metric_name"),
+            "value": denominator.get("value"),
+            "statement_year": denominator.get("statement_year"),
+        },
+    }
 
 
 def _screen_unavailable(reason: str, name: str, warnings: list[str] | None = None, *, scope: str | None = None) -> dict[str, Any]:
@@ -372,27 +432,43 @@ def altman_z(
     ta = _positive_snapshot_or_history(snapshot, history, *TOTAL_ASSET_ALIASES)
     if ta is None or ta <= 0:
         return _screen_unavailable("missing_total_assets", "Altman Z", warnings)
+    ta_detail = _metric_detail(snapshot, history, *TOTAL_ASSET_ALIASES)
 
     ca = _snapshot_or_history(snapshot, history, *CURRENT_ASSET_ALIASES) or 0.0
     cl = _snapshot_or_history(snapshot, history, *CURRENT_LIABILITY_ALIASES) or 0.0
     wc = ca - cl
+    ca_detail = _metric_detail(snapshot, history, *CURRENT_ASSET_ALIASES)
+    cl_detail = _metric_detail(snapshot, history, *CURRENT_LIABILITY_ALIASES)
 
     retained = _snapshot_or_history(snapshot, history, "Retained_Earnings", "Reserves")
     if retained is None:
         warnings.append("missing_retained_earnings")
         retained = 0.0
+    retained_detail = _metric_detail(snapshot, history, "Retained_Earnings", "Reserves")
+    if retained_detail.get("value") is None:
+        retained_detail = {"metric_name": "Retained_Earnings", "value": 0.0, "statement_year": snapshot.latest_statement_year}
 
     ebit = _snapshot_or_history(snapshot, history, *EBIT_ALIASES)
     if ebit is None:
         return _screen_unavailable("missing_ebit", "Altman Z", warnings)
+    ebit_detail = _metric_detail(snapshot, history, *EBIT_ALIASES)
 
     tl = _total_liabilities(snapshot, history)
     if tl is None or tl <= 0:
         return _screen_unavailable("missing_total_liabilities", "Altman Z", warnings)
+    tl_detail = _total_liabilities_detail(snapshot, history)
 
     book_equity = _book_equity(snapshot, history, total_assets=ta, total_liabilities=tl)
     if book_equity is None:
         return _screen_unavailable("missing_book_equity", "Altman Z", warnings)
+    equity_detail = _metric_detail(snapshot, history, *EQUITY_ALIASES)
+    if equity_detail.get("value") is None:
+        equity_detail = {
+            "metric_name": "Total_Assets - Total_Liabilities",
+            "value": book_equity,
+            "statement_year": ta_detail.get("statement_year") or tl_detail.get("statement_year"),
+            "components": [ta_detail, tl_detail],
+        }
 
     # Altman Z'' (1995 emerging-market / non-manufacturer model): drops the sales/TA
     # turnover term and uses book equity / total liabilities (not market cap) for X4.
@@ -417,6 +493,36 @@ def altman_z(
             "ratio": components[key],
             "coefficient": coefficient,
             "contribution": coefficient * components[key],
+            "raw": {
+                "wc_ta": _raw_ratio_detail(
+                    numerator_label="Fonds de roulement",
+                    numerator_value=wc,
+                    numerator_metrics=[ca_detail, cl_detail],
+                    denominator_label="Actif total",
+                    denominator=ta_detail,
+                ),
+                "re_ta": _raw_ratio_detail(
+                    numerator_label="Réserves / report à nouveau",
+                    numerator_value=retained,
+                    numerator_metrics=[retained_detail],
+                    denominator_label="Actif total",
+                    denominator=ta_detail,
+                ),
+                "ebit_ta": _raw_ratio_detail(
+                    numerator_label="Résultat d'exploitation (EBIT)",
+                    numerator_value=ebit,
+                    numerator_metrics=[ebit_detail],
+                    denominator_label="Actif total",
+                    denominator=ta_detail,
+                ),
+                "equity_tl": _raw_ratio_detail(
+                    numerator_label="Capitaux propres comptables",
+                    numerator_value=book_equity,
+                    numerator_metrics=[equity_detail],
+                    denominator_label="Total des dettes",
+                    denominator=tl_detail,
+                ),
+            }[key],
         }
         for key, term, label, meaning, coefficient in ALTMAN_Z_EM_TERMS
     ]

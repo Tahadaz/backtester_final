@@ -1295,6 +1295,22 @@
     color: var(--fg3);
   }
 
+  .fund-anchor-highlight {
+    animation: fund-anchor-pulse 1.4s ease-out;
+  }
+
+  @keyframes fund-anchor-pulse {
+    0% {
+      box-shadow: 0 0 0 0 oklch(0.48 0.16 260 / 0.35);
+    }
+    35% {
+      box-shadow: 0 0 0 4px oklch(0.48 0.16 260 / 0.18);
+    }
+    100% {
+      box-shadow: 0 0 0 0 transparent;
+    }
+  }
+
   .fund-stat .lbl {
     display: block;
     color: var(--muted-foreground);

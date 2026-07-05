@@ -249,6 +249,30 @@ def _previous(history: list[AnnualMetricRow], *metric_names: str) -> float | Non
     return values[-2][1] if len(values) >= 2 else None
 
 
+def _latest_point(history: list[AnnualMetricRow], *metric_names: str) -> dict[str, object]:
+    values = _series(history, *metric_names)
+    if not values:
+        return {"metric_name": metric_names[0] if metric_names else None, "value": None, "statement_year": None}
+    year, value = values[-1]
+    return {"metric_name": resolve_metric_name(metric_names[0]) if metric_names else None, "value": value, "statement_year": year}
+
+
+def _previous_point(history: list[AnnualMetricRow], *metric_names: str) -> dict[str, object]:
+    values = _series(history, *metric_names)
+    if len(values) < 2:
+        return {"metric_name": metric_names[0] if metric_names else None, "value": None, "statement_year": None}
+    year, value = values[-2]
+    return {"metric_name": resolve_metric_name(metric_names[0]) if metric_names else None, "value": value, "statement_year": year}
+
+
+def _snapshot_point(snapshot: FundamentalSnapshot, metric_name: str, value: float | None = None) -> dict[str, object]:
+    return {
+        "metric_name": resolve_metric_name(metric_name),
+        "value": _clean(snapshot.metrics.get(metric_name)) if value is None else value,
+        "statement_year": snapshot.latest_statement_year,
+    }
+
+
 def _trailing_average(history: list[AnnualMetricRow], metric_name: str, years: int = 3) -> float | None:
     values = _series(history, metric_name)
     if len(values) < years:
@@ -325,18 +349,80 @@ def _piotroski_lite(snapshot: FundamentalSnapshot, history: list[AnnualMetricRow
     net_income, net_income_source = _net_income_proxy(snapshot, history)
     checks: list[dict[str, object]] = []
 
-    def add(name: str, passed: bool | None, value: float | None = None) -> None:
-        checks.append({"name": name, "available": passed is not None, "passed": bool(passed) if passed is not None else None, "value": value})
+    def add(
+        name: str,
+        passed: bool | None,
+        value: float | None = None,
+        *,
+        comparison: dict[str, object] | None = None,
+    ) -> None:
+        checks.append({
+            "name": name,
+            "available": passed is not None,
+            "passed": bool(passed) if passed is not None else None,
+            "value": value,
+            "comparison": comparison or {},
+        })
 
-    add("positive_roa", roa is not None and roa > 0, roa)
-    add("positive_free_cash_flow", fcf is not None and fcf > 0, fcf)
-    add("roa_improving", _trend_improved(history, "ROA"), roa)
-    add("cash_flow_exceeds_earnings", (fcf > net_income) if fcf is not None and net_income is not None else None, fcf)
-    add("leverage_decreasing", _trend_improved(history, "Debt_to_Equity", lower_is_better=True), snapshot.metrics.get("Debt_to_Equity"))
-    add("liquidity_improving", _trend_improved(history, "Current_Ratio"), snapshot.metrics.get("Current_Ratio"))
-    add("operating_margin_improving", _trend_improved(history, "Operating_Margin"), snapshot.metrics.get("Operating_Margin"))
-    add("asset_turnover_improving", _trend_improved(history, "Asset_Turnover"), snapshot.metrics.get("Asset_Turnover"))
-    add("positive_revenue_growth", (_ratio(snapshot.metrics.get("Revenue_Growth")) or 0.0) > 0, _ratio(snapshot.metrics.get("Revenue_Growth")))
+    add(
+        "positive_roa",
+        roa is not None and roa > 0,
+        roa,
+        comparison={"operator": "> 0", "current": _snapshot_point(snapshot, "ROA", roa)},
+    )
+    add(
+        "positive_free_cash_flow",
+        fcf is not None and fcf > 0,
+        fcf,
+        comparison={"operator": "> 0", "current": _latest_point(history, "Free_Cash_Flow")},
+    )
+    add(
+        "roa_improving",
+        _trend_improved(history, "ROA"),
+        roa,
+        comparison={"operator": ">", "current": _latest_point(history, "ROA"), "prior": _previous_point(history, "ROA")},
+    )
+    add(
+        "cash_flow_exceeds_earnings",
+        (fcf > net_income) if fcf is not None and net_income is not None else None,
+        fcf,
+        comparison={
+            "operator": ">",
+            "current": _latest_point(history, "Free_Cash_Flow"),
+            "prior": {"metric_name": net_income_source or "NetIncome", "value": net_income, "statement_year": snapshot.latest_statement_year},
+        },
+    )
+    add(
+        "leverage_decreasing",
+        _trend_improved(history, "Debt_to_Equity", lower_is_better=True),
+        _clean(snapshot.metrics.get("Debt_to_Equity")),
+        comparison={"operator": "<", "current": _latest_point(history, "Debt_to_Equity"), "prior": _previous_point(history, "Debt_to_Equity")},
+    )
+    add(
+        "liquidity_improving",
+        _trend_improved(history, "Current_Ratio"),
+        _clean(snapshot.metrics.get("Current_Ratio")),
+        comparison={"operator": ">", "current": _latest_point(history, "Current_Ratio"), "prior": _previous_point(history, "Current_Ratio")},
+    )
+    add(
+        "operating_margin_improving",
+        _trend_improved(history, "Operating_Margin"),
+        _clean(snapshot.metrics.get("Operating_Margin")),
+        comparison={"operator": ">", "current": _latest_point(history, "Operating_Margin"), "prior": _previous_point(history, "Operating_Margin")},
+    )
+    add(
+        "asset_turnover_improving",
+        _trend_improved(history, "Asset_Turnover"),
+        _clean(snapshot.metrics.get("Asset_Turnover")),
+        comparison={"operator": ">", "current": _latest_point(history, "Asset_Turnover"), "prior": _previous_point(history, "Asset_Turnover")},
+    )
+    revenue_growth = _ratio(snapshot.metrics.get("Revenue_Growth"))
+    add(
+        "positive_revenue_growth",
+        (revenue_growth or 0.0) > 0,
+        revenue_growth,
+        comparison={"operator": "> 0", "current": _snapshot_point(snapshot, "Revenue_Growth", revenue_growth)},
+    )
 
     available = [item for item in checks if item["available"]]
     passed = [item for item in available if item["passed"]]

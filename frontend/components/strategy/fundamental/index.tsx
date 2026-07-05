@@ -209,7 +209,11 @@ export function SignalFundamentalView({
     setActiveTab(next)
     if (!anchor) return
     window.setTimeout(() => {
-      document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" })
+      const target = document.getElementById(anchor)
+      target?.scrollIntoView({ behavior: "smooth", block: "start" })
+      if (!target) return
+      target.classList.add("fund-anchor-highlight")
+      window.setTimeout(() => target.classList.remove("fund-anchor-highlight"), 1400)
     }, 60)
   }
 

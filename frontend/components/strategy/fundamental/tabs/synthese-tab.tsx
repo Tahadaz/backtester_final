@@ -16,7 +16,7 @@ import {
   SEVERE_VALUATION_WARNINGS,
   SEVERE_VALUATION_WARNING_LABELS_FR,
 } from "../lib/constants"
-import { asNumber, fmtCompactMad, fmtMoney, fmtNumber, fmtPct, scoreClass } from "../lib/formatters"
+import { asNumber, asRecord, fmtCompactMad, fmtMoney, fmtNumber, fmtPct, recordNumber, scoreClass } from "../lib/formatters"
 import { FundCard, RecChip } from "../shared/cards"
 import { FootballField } from "../shared/charts"
 import { VerdictChip, type VerdictTone } from "../shared/verdict-chip"
@@ -116,7 +116,7 @@ function scoreBandLabel(value: number | null | undefined): string {
   return "moyen"
 }
 
-type RiskRow = { key: string; tone: VerdictTone; label: string; text: string }
+type RiskRow = { key: string; tone: VerdictTone; label: string; text: string; tab?: DetailTab; anchor?: string }
 
 function VerdictStripChip({
   tone,
@@ -161,6 +161,7 @@ export function SyntheseTab({
   const upside = detail.ensemble?.upside_pct ?? rowUpside(row)
   const screens = screensFor(detail, row)
   const altman = screenRecord(screens, "altman_z")
+  const piotroski = asRecord(detail.diagnostics?.piotroski_lite)
   const evaScreen = screenRecord(screens, "eva")
   const currentPrice = detail.ensemble?.current_price ?? asNumber(detail.metrics.Current_Price)
   const rateSensitiveWeight = asNumber(detail.rate_sensitive_weight) ?? asNumber(detail.ensemble?.rate_sensitive_weight)
@@ -247,6 +248,19 @@ export function SyntheseTab({
       tone: altmanZoneRaw === "distress" ? "serious" : "warning",
       label: "Bilan",
       text: `Zone Altman : ${altmanLabel.toLowerCase()}.`,
+      tab: "quality",
+      anchor: "altman-section",
+    })
+  }
+  const piotroskiScore = recordNumber(piotroski, "score")
+  if (piotroskiScore != null && piotroskiScore < 45) {
+    riskRows.push({
+      key: "piotroski",
+      tone: "warning",
+      label: "Qualité",
+      text: `Piotroski faible : ${fmtNumber(piotroskiScore, 0)}/100.`,
+      tab: "quality",
+      anchor: "piotroski-section",
     })
   }
   const triggeredSevereWarnings = new Map<string, string[]>()
@@ -394,7 +408,17 @@ export function SyntheseTab({
                 {riskRows.map((riskRow) => (
                   <div key={riskRow.key} className="flex flex-col gap-1 border-b border-line pb-2 last:border-0 last:pb-0">
                     <VerdictChip tone={riskRow.tone} label={riskRow.label} />
-                    <span className="text-[12px] text-muted-foreground">{riskRow.text}</span>
+                    {riskRow.tab ? (
+                      <button
+                        type="button"
+                        className="text-left text-[12px] text-muted-foreground underline decoration-dotted underline-offset-2"
+                        onClick={() => onNavigate(riskRow.tab as DetailTab, riskRow.anchor)}
+                      >
+                        {riskRow.text}
+                      </button>
+                    ) : (
+                      <span className="text-[12px] text-muted-foreground">{riskRow.text}</span>
+                    )}
                   </div>
                 ))}
               </div>
