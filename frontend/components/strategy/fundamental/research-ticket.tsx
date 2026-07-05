@@ -9,7 +9,7 @@ import { financialPeriodLabel } from "@/lib/fundamental-statement-utils.js"
 import { cn } from "@/lib/utils"
 import { FUNDAMENTAL_HORIZONS } from "./lib/constants"
 import { asNumber, fmtCap, fmtCompactMad, fmtMoney, fmtPct, formatDate, recommendationClass, recommendationLabel } from "./lib/formatters"
-import { revisionArrow } from "./shared/cards"
+import { recommendationTooltip, revisionArrow } from "./shared/cards"
 import { FundamentalHorizon } from "./lib/types"
 import { effectiveHorizonPrediction, horizonPredictionsFor, predictionForHorizon, rowAdv20, rowUpside } from "./lib/view-models"
 
@@ -121,7 +121,9 @@ export function ResearchTicket({
 
         <div className={cn("rtv2-rec-card", recommendationClass(recommendation))}>
           <div className="rtv2-rec-lbl">Recommandation {headlineScenario}</div>
-          <div className={cn("rtv2-rec-val", recommendationClass(recommendation))}>{recommendationLabel(recommendation)}</div>
+          <div className={cn("rtv2-rec-val", recommendationClass(recommendation))} title={recommendationTooltip(detail?.assumptions)}>
+            {recommendationLabel(recommendation)}
+          </div>
           <div className="rtv2-conviction">
             <span>Conviction</span>
             {[1, 2, 3, 4, 5].map((item) => (

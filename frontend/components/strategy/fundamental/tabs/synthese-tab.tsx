@@ -369,7 +369,7 @@ export function SyntheseTab({
         <div className="fund-eyebrow">Thèse d'investissement</div>
         {recommendation ? (
           <p>
-            {detail.symbol} ressort à <RecChip value={recommendation} /> avec un objectif 12 mois de <strong>{fmtMoney(fairValue, 2)} {detail.ensemble?.currency ?? "MAD"}</strong>, soit un potentiel de{" "}
+            {detail.symbol} ressort à <RecChip value={recommendation} assumptions={detail.assumptions} /> avec un objectif 12 mois de <strong>{fmtMoney(fairValue, 2)} {detail.ensemble?.currency ?? "MAD"}</strong>, soit un potentiel de{" "}
             <strong className={(upside ?? 0) >= 0 ? "t-pos" : "t-neg"}>{fmtPct(upside)}</strong>. La recommandation combine la juste valeur issue des modèles, la confiance de l'ensemble et l'étendue des modèles utilisables.
           </p>
         ) : (

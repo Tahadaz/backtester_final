@@ -22,6 +22,7 @@ export function UniverseScreen({
   isLoading,
   onSelect,
   onLiquidityFilterChange,
+  ratingAssumptions,
 }: {
   rows: FundamentalUniverseRow[]
   totalRows: number
@@ -30,6 +31,7 @@ export function UniverseScreen({
   isLoading: boolean
   onSelect: (symbol: string) => void
   onLiquidityFilterChange: (enabled: boolean) => void
+  ratingAssumptions?: Record<string, unknown> | null
 }) {
   const [query, setQuery] = useState("")
   const [sortKey, setSortKey] = useState<SortKey>("upside")
@@ -111,9 +113,9 @@ export function UniverseScreen({
           <div className="seg min-w-0 flex-1">
             {[
               ["all", "Tous"],
-              ["BUY", "Buy"],
-              ["HOLD", "Hold"],
-              ["SELL", "Sell"],
+              ["BUY", "Acheter"],
+              ["HOLD", "Conserver"],
+              ["SELL", "Vendre"],
             ].map(([key, label]) => (
               <button key={key} type="button" className={filter === key ? "active" : ""} onClick={() => setFilter(key as RecommendationFilter)}>
                 {label}
@@ -169,7 +171,7 @@ export function UniverseScreen({
                       </div>
                     </td>
                     <td className="r">
-                      <RecChip value={row.recommendation} />
+                      <RecChip value={row.recommendation} assumptions={ratingAssumptions} />
                     </td>
                     <td className="r">
                       <ScorePair valueScore={row.value_score} qualityScore={row.quality_score} />
@@ -186,7 +188,7 @@ export function UniverseScreen({
 
       <div className="fund-univ-footer">
         <span>
-          <span className="t-pos font-bold">{summary.buys} Buy</span> - {summary.holds} Hold - <span className="t-neg font-bold">{summary.sells} Sell</span> - {summary.notRated} N/R
+          <span className="t-pos font-bold">{summary.buys} Acheter</span> - {summary.holds} Conserver - <span className="t-neg font-bold">{summary.sells} Vendre</span> - {summary.notRated} NR
         </span>
         <span>
           Upside moy. <span className={cn("font-mono font-bold", (summary.averageUpside ?? 0) >= 0 ? "t-pos" : "t-neg")}>{fmtPct(summary.averageUpside)}</span>
@@ -195,4 +197,3 @@ export function UniverseScreen({
     </aside>
   )
 }
-

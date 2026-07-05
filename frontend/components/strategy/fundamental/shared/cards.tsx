@@ -3,7 +3,7 @@
 import type { ReactNode } from "react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
-import { fmtNumber, formatModelScalar, formatNestedModelValue, recommendationClass, recommendationLabel, scoreClass, valueLabel } from "../lib/formatters"
+import { asNumber, fmtNumber, fmtPct, formatModelScalar, formatNestedModelValue, recommendationClass, recommendationLabel, scoreClass, valueLabel } from "../lib/formatters"
 import { ModelValueItem, Recommendation, StatementEvidenceGroup } from "../lib/types"
 
 export function revisionArrow(direction: string | null | undefined): ReactNode {
@@ -13,8 +13,27 @@ export function revisionArrow(direction: string | null | undefined): ReactNode {
 }
 
 
-export function RecChip({ value }: { value: Recommendation | null | undefined }) {
-  return <span className={cn("fund-rec-chip", recommendationClass(value))}>{recommendationLabel(value)}</span>
+function thresholdLabel(value: unknown, fallback: string): string {
+  const numberValue = asNumber(value)
+  return numberValue == null ? fallback : fmtPct(numberValue, 0, true)
+}
+
+
+export function recommendationTooltip(assumptions?: Record<string, unknown> | null): string {
+  const buy = thresholdLabel(assumptions?.rating_buy_excess_return, "-")
+  const accumulate = thresholdLabel(assumptions?.rating_accumulate_excess_return, "-")
+  const reduce = thresholdLabel(assumptions?.rating_reduce_excess_return, "-")
+  const sell = thresholdLabel(assumptions?.rating_sell_excess_return, "-")
+  return `Rendement excédentaire vs coût des fonds propres : ≥ ${buy} Acheter, ≥ ${accumulate} Accumuler, ≥ ${reduce} Conserver, ≥ ${sell} Alléger, sinon Vendre. NR si la couverture, la confiance, l'accord des modèles ou la vérification des données ne passent pas.`
+}
+
+
+export function RecChip({ value, assumptions }: { value: Recommendation | null | undefined; assumptions?: Record<string, unknown> | null }) {
+  return (
+    <span className={cn("fund-rec-chip", recommendationClass(value))} title={recommendationTooltip(assumptions)}>
+      {recommendationLabel(value)}
+    </span>
+  )
 }
 
 
@@ -155,4 +174,3 @@ export function StatementEvidenceCard({ group }: { group: StatementEvidenceGroup
     </div>
   )
 }
-

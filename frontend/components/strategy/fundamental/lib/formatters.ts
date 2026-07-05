@@ -162,12 +162,25 @@ export function confidenceLabel(score: number | null | undefined): string | null
 
 
 export function recommendationClass(value: Recommendation | null | undefined): string {
-  return value ? value.toLowerCase() : "not-rated"
+  if (value === "BUY" || value === "ACCUMULATE") return "buy"
+  if (value === "HOLD") return "hold"
+  if (value === "REDUCE" || value === "SELL") return "sell"
+  return "not-rated"
+}
+
+
+const RECOMMENDATION_LABELS: Record<Recommendation, string> = {
+  BUY: "Acheter",
+  ACCUMULATE: "Accumuler",
+  HOLD: "Conserver",
+  REDUCE: "Alléger",
+  SELL: "Vendre",
+  NR: "NR",
 }
 
 
 export function recommendationLabel(value: Recommendation | null | undefined): string {
-  return value === "NR" || value == null ? "N/R" : value
+  return value == null ? "NR" : RECOMMENDATION_LABELS[value] ?? "NR"
 }
 
 
@@ -276,4 +289,3 @@ export function formatStoryValue(value: unknown, format?: ModelStoryMetricFormat
   if (format === "ratio") return fmtRatio(numberValue, digits ?? 2)
   return fmtNumber(numberValue, digits ?? (Math.abs(numberValue) < 10 ? 2 : 0))
 }
-

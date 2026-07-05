@@ -74,6 +74,13 @@ export function SignalFundamentalView({
   })
 
   const rows = useMemo(() => (universeRows ?? []).filter(isMasiFundamentalRow), [universeRows])
+  const ratingAssumptions = useMemo(() => {
+    const out: Record<string, unknown> = {}
+    for (const key of ["rating_buy_excess_return", "rating_accumulate_excess_return", "rating_reduce_excess_return", "rating_sell_excess_return"]) {
+      out[key] = methodology?.assumptions?.[key]?.value
+    }
+    return out
+  }, [methodology])
   const visibleUniverseRows = useMemo(
     () => (liquidityFilter ? rows.filter(isLiquidFundamentalRow) : rows),
     [liquidityFilter, rows],
@@ -294,6 +301,7 @@ export function SignalFundamentalView({
           isLoading={isUniverseLoading}
           onSelect={handleSelectSymbol}
           onLiquidityFilterChange={setLiquidityFilter}
+          ratingAssumptions={ratingAssumptions}
         />
       </ResizablePanel>
 
@@ -420,4 +428,3 @@ export function SignalFundamentalView({
     </ResizablePanelGroup>
   )
 }
-
