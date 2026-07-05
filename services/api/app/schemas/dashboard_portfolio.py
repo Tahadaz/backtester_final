@@ -6,7 +6,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
-DashboardEdgeSource = Literal["signal_engine", "wfo", "auto"]
+DashboardEdgeSource = Literal["signal_engine", "wfo", "auto", "sfc"]
 DashboardSidePolicy = Literal["long_only", "long_short"]
 DashboardPriceSource = Literal["official_close", "live_if_fresh"]
 DashboardEffectivePriceSource = Literal["official_close", "live"]

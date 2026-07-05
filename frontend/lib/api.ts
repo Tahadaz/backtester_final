@@ -420,7 +420,7 @@ export type EdgeMetrics = z.infer<typeof EdgeMetricsSchema>
 export const DashboardPortfolioTicketRequestSchema = z.object({
   symbols: z.array(z.string()).min(1).max(25),
   horizon: z.string().default("monthly"),
-  source: z.enum(["signal_engine", "wfo", "auto"]).default("signal_engine"),
+  source: z.enum(["signal_engine", "wfo", "auto", "sfc"]).default("signal_engine"),
   side_policy: z.enum(["long_only", "long_short"]).default("long_only"),
   total_capital_mad: z.number().positive().default(1_000_000),
   cash_buffer_pct: z.number().min(0).max(95).default(10),
@@ -483,7 +483,7 @@ export type DashboardPortfolioTicketRow = z.infer<typeof DashboardPortfolioTicke
 
 export const DashboardPortfolioTicketSummarySchema = z.object({
   horizon: z.string(),
-  source: z.enum(["signal_engine", "wfo", "auto"]),
+  source: z.enum(["signal_engine", "wfo", "auto", "sfc"]),
   side_policy: z.enum(["long_only", "long_short"]),
   entry_timing: z.string().default("next_open"),
   total_capital_mad: z.number(),
@@ -579,7 +579,7 @@ export type DashboardDailyBlotterRow = z.infer<typeof DashboardDailyBlotterRowSc
 
 export const DashboardDailyBlotterSummarySchema = z.object({
   horizon: z.string(),
-  source: z.enum(["signal_engine", "wfo", "auto"]),
+  source: z.enum(["signal_engine", "wfo", "auto", "sfc"]),
   side_policy: z.enum(["long_only", "long_short"]),
   entry_timing: z.string().default("next_open"),
   selected_count: z.number(),
@@ -1568,7 +1568,7 @@ export type SignalEvidence = z.infer<typeof SignalEvidenceSchema>
 export async function fetchSignalEvidence(args: {
   symbol: string
   horizon: string
-  source?: "auto" | "signal_engine" | "wfo"
+  source?: "auto" | "signal_engine" | "wfo" | "sfc"
   variant?: string
   costBps?: number
   cooldownBars?: number

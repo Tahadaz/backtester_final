@@ -796,7 +796,7 @@ export default function DashboardV1Page() {
   )
 
   const edgeSource = scoreSource === "signal_engine" ? "signal_engine" : "wfo"
-  const ticketSource = dashboardMode === "trade_opportunities" ? "wfo" : edgeSource
+  const ticketSource = dashboardMode === "fundamental_directions" ? "sfc" : dashboardMode === "trade_opportunities" ? "wfo" : edgeSource
   const edgeHorizon = resolveHorizonPreset(horizon).value
   const horizonDays = horizon === "weekly" ? 5 : horizon === "monthly" ? 21 : 63
   const edgeLookupEnabled = edgeEnabled && dashboardMode === "trade_opportunities"

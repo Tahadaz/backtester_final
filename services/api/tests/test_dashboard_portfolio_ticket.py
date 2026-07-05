@@ -551,6 +551,85 @@ def test_dashboard_portfolio_ticket_auto_forces_wfo_best_signal_variant(monkeypa
     assert "variant=expanded_factor_x_ta_simple" not in response.rows[0].proof_url
 
 
+def test_dashboard_portfolio_ticket_sfc_source_avoids_bottom_without_short(monkeypatch) -> None:
+    monkeypatch.setattr(
+        svc,
+        "build_dashboard_payload",
+        lambda *_args, **_kwargs: {
+            "stocks": [
+                {"symbol": "AAA", "display_name": "Alpha", "sector": "Banks", "adv": 1_000_000, "last_price": 100.0},
+                {"symbol": "BBB", "display_name": "Beta", "sector": "Mines", "adv": 1_000_000, "last_price": 100.0},
+            ]
+        },
+    )
+    monkeypatch.setattr(svc, "load_ohlcv_for_symbol", lambda *_args, **_kwargs: _bars())
+    monkeypatch.setattr(svc, "_edge_for_symbol", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("SFC must not query edge")))
+    monkeypatch.setattr(
+        svc,
+        "_sfc_rows_for_symbols",
+        lambda _db, _symbols: (
+            None,
+            {
+                "AAA": SimpleNamespace(symbol="AAA", tercile="top", sfc=1.1),
+                "BBB": SimpleNamespace(symbol="BBB", tercile="bottom", sfc=-1.2),
+            },
+        ),
+    )
+
+    response = svc.build_dashboard_portfolio_ticket(
+        _FakeDB([SimpleNamespace(symbol="AAA", display_name="Alpha", sector="Banks"), SimpleNamespace(symbol="BBB", display_name="Beta", sector="Mines")]),
+        DashboardPortfolioTicketRequest(symbols=["AAA", "BBB"], source="sfc", side_policy="long_short", cash_buffer_pct=0, total_capital_mad=100_000),
+        cost_bps=33.0,
+    )
+
+    rows = {row.symbol: row for row in response.rows}
+    assert response.summary.source == "sfc"
+    assert rows["AAA"].action == "buy"
+    assert rows["AAA"].shares > 0
+    assert rows["BBB"].action == "avoid"
+    assert rows["BBB"].direction is None
+    assert rows["BBB"].shares == 0
+    assert rows["BBB"].signal_bucket == "bottom"
+    assert rows["BBB"].return_calc_method == "sfc_publication_window"
+    assert rows["BBB"].action != "sell_short"
+
+
+def test_dashboard_daily_blotter_sfc_bottom_exits_existing_long_never_short(monkeypatch) -> None:
+    monkeypatch.setattr(
+        svc,
+        "build_dashboard_payload",
+        lambda *_args, **_kwargs: {
+            "stocks": [
+                {"symbol": "BBB", "display_name": "Beta", "sector": "Mines", "adv": 1_000_000, "last_price": 100.0},
+            ]
+        },
+    )
+    monkeypatch.setattr(svc, "load_ohlcv_for_symbol", lambda *_args, **_kwargs: _bars())
+    monkeypatch.setattr(
+        svc,
+        "_sfc_rows_for_symbols",
+        lambda _db, _symbols: (None, {"BBB": SimpleNamespace(symbol="BBB", tercile="bottom", sfc=-1.2)}),
+    )
+
+    response = svc.build_dashboard_daily_blotter(
+        _FakeDB([SimpleNamespace(symbol="BBB", display_name="Beta", sector="Mines")]),
+        DashboardDailyBlotterRequest(
+            symbols=["BBB"],
+            source="sfc",
+            side_policy="long_short",
+            positions=[{"symbol": "BBB", "quantity": 120, "average_price_mad": 95.0}],
+        ),
+        cost_bps=33.0,
+    )
+
+    row = response.rows[0]
+    assert row.action == "avoid"
+    assert row.blotter_action == "EXIT"
+    assert row.target_quantity == 0
+    assert row.delta_quantity == -120
+    assert row.blotter_action != "SELL_SHORT"
+
+
 def test_dashboard_portfolio_ticket_api_contract(monkeypatch) -> None:
     def fake_build(_db, body, *, cost_bps):
         assert body.symbols == ["AAA"]

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from core.quant_core.data import drop_incomplete_ohlcv_rows
 from core.quant_core.horizons import canonical_horizon
+from core.quant_core.research.fundamental_portfolio import SfcPortfolioMember, build_sfc_target_weights, sfc_direction
 from core.quant_core.strategy_plan.allocation import compute_hrp_weights
 from core.quant_core.strategy_plan.execution import compute_execution_plan
 from core.quant_core.strategy_plan.execution_policy import build_execution_horizon_policy
@@ -55,6 +56,7 @@ from .bourse_live_quotes import (
     get_cached_live_quotes,
 )
 from .dashboard_builder import _build_best_signal_payload, build_dashboard_payload
+from .fundamental_cross_section import SFC_CONFIG_HASH, SFC_METHODOLOGY_VERSION, latest_sfc_as_of
 
 
 logger = logging.getLogger(__name__)
@@ -165,6 +167,27 @@ def _proof_url(
         f"&view={view}&source={source}&side={side_policy}&tab=evidence"
     )
     return url
+
+
+def _sfc_proof_url(symbol: str) -> str:
+    return f"/signals?mode=fundamental&symbol={symbol}&fund_tab=synthese"
+
+
+def _sfc_rows_for_symbols(db: Session, symbols: list[str]) -> tuple[dt.date | None, dict[str, models.FundamentalCrossSectionScore]]:
+    as_of = latest_sfc_as_of(db)
+    if as_of is None or not symbols:
+        return as_of, {}
+    rows = (
+        db.query(models.FundamentalCrossSectionScore)
+        .filter(
+            models.FundamentalCrossSectionScore.as_of_date == as_of,
+            models.FundamentalCrossSectionScore.methodology_version == SFC_METHODOLOGY_VERSION,
+            models.FundamentalCrossSectionScore.config_hash == SFC_CONFIG_HASH,
+            models.FundamentalCrossSectionScore.symbol.in_(symbols),
+        )
+        .all()
+    )
+    return as_of, {str(row.symbol).upper(): row for row in rows}
 
 
 def _position_to_schema(row: Any) -> DashboardManualPosition:
@@ -727,6 +750,8 @@ def _target_signed_for_row(
     is_actionable_entry = row.status == "entry_zone" and row_shares > 0
 
     if has_position and current_signed > 0:
+        if action == "avoid":
+            return "EXIT", 0, warnings
         if direction == "short":
             return "EXIT", 0, warnings
         if direction == "long":
@@ -741,6 +766,9 @@ def _target_signed_for_row(
         return "REVIEW", int(round(current_signed)), warnings
 
     if has_position and current_signed < 0:
+        if action == "avoid":
+            warnings.append("short_position_requires_review")
+            return "REVIEW", int(round(current_signed)), warnings
         if direction == "long":
             return "COVER", 0, warnings
         if direction == "short" and side_policy == "long_short":
@@ -758,6 +786,8 @@ def _target_signed_for_row(
         return "BUY", row_shares, warnings
     if action == "sell_short" and is_actionable_entry:
         return "SELL_SHORT", -row_shares, warnings
+    if action == "avoid":
+        return "AVOID", 0, warnings
     if direction == "long":
         warnings.append("not_in_entry_zone" if row.status != "entry_zone" else "zero_target_size")
         return "WATCH", 0, warnings
@@ -876,6 +906,7 @@ def build_dashboard_portfolio_ticket(
 ) -> DashboardPortfolioTicketResponse:
     horizon = canonical_horizon(body.horizon, allow_legacy=True)
     symbols = list(dict.fromkeys(symbol.strip().upper() for symbol in body.symbols if symbol.strip()))
+    sfc_mode = body.source == "sfc"
     deployable_capital = body.total_capital_mad * max(0.0, 1.0 - body.cash_buffer_pct / 100.0)
     cash_buffer = body.total_capital_mad - deployable_capital
 
@@ -913,6 +944,7 @@ def build_dashboard_portfolio_ticket(
     prelim_rows: dict[str, dict[str, Any]] = {}
     eligible_symbols: list[str] = []
     sectors: dict[str, str] = {}
+    sfc_as_of, sfc_rows = _sfc_rows_for_symbols(db, symbols) if sfc_mode else (None, {})
 
     exec_horizon = _legacy_execution_horizon(horizon)
     policy = build_execution_horizon_policy(exec_horizon, timeframe=body.timeframe)
@@ -932,22 +964,36 @@ def build_dashboard_portfolio_ticket(
         if body.price_source == "live_if_fresh" and current_price_source != "live":
             warnings.append("live_price_unavailable_using_official_close")
 
-        edge, selected_source, selected_variant = _selected_edge_for_symbol(
-            db,
-            symbol=symbol,
-            horizon=horizon,
-            source=body.source,
-            cost_bps=cost_bps,
-        )
+        sfc_row = sfc_rows.get(symbol)
+        if sfc_mode:
+            edge, selected_source, selected_variant = None, "sfc", None
+        else:
+            edge, selected_source, selected_variant = _selected_edge_for_symbol(
+                db,
+                symbol=symbol,
+                horizon=horizon,
+                source=body.source,
+                cost_bps=cost_bps,
+            )
         edges[symbol] = edge
         edge_sources[symbol] = selected_source
         edge_variants[symbol] = selected_variant
-        if edge is None:
+        if sfc_mode and sfc_row is None:
+            warnings.append("sfc_unavailable")
+        if not sfc_mode and edge is None:
             warnings.append("edge_unavailable")
 
-        proven = bool(edge.proven_edge_net) if edge is not None else False
-        direction = edge.direction if edge is not None else None
-        if edge is not None and not proven:
+        proven = True if sfc_mode and sfc_row is not None else (bool(edge.proven_edge_net) if edge is not None else False)
+        if sfc_mode:
+            sfc_intent = sfc_direction(getattr(sfc_row, "tercile", None) if sfc_row is not None else None)
+            direction = "long" if sfc_intent in {"long", "neutral"} else None
+            if sfc_as_of is not None:
+                warnings.append(f"sfc_as_of_{sfc_as_of.isoformat()}")
+            if sfc_intent == "avoid":
+                warnings.append("sfc_bottom_tercile_avoid")
+        else:
+            direction = edge.direction if edge is not None else None
+        if not sfc_mode and edge is not None and not proven:
             warnings.append("edge_not_proven")
         if body.side_policy == "long_only" and direction == "short":
             warnings.append("short_blocked_by_long_only")
@@ -966,7 +1012,24 @@ def build_dashboard_portfolio_ticket(
             "atr_14": None,
             "explain": "OHLCV unavailable.",
         }
-        if bars.empty or not {"High", "Low", "Close"}.issubset(set(map(str, bars.columns))):
+        if sfc_mode:
+            entry_ref = _safe_float(current_price)
+            plan = {
+                "direction": direction,
+                "status": "entry_zone" if direction == "long" and entry_ref not in (None, 0.0) else "no_setup",
+                "entry_price": entry_ref,
+                "entry_zone_low": entry_ref,
+                "entry_zone_high": entry_ref,
+                "stop_loss": None,
+                "target_1": None,
+                "target_2": None,
+                "rr_ratio": None,
+                "atr_14": None,
+                "explain": "SFC publication-window rebalance target.",
+            }
+            if entry_ref in (None, 0.0):
+                warnings.append("entry_price_unavailable")
+        elif bars.empty or not {"High", "Low", "Close"}.issubset(set(map(str, bars.columns))):
             warnings.append("ohlcv_unavailable")
         else:
             high = bars["High"].to_numpy(dtype="float64")
@@ -1030,13 +1093,13 @@ def build_dashboard_portfolio_ticket(
         entry_price_value = _safe_float(plan.get("entry_price"))
         plan_direction = str(plan.get("direction") or direction or "")
         plan_status = str(plan.get("status") or "no_setup")
-        strict_edge_blocked = bool(body.require_proven_edge and edge is not None and not proven)
+        strict_edge_blocked = bool((not sfc_mode) and body.require_proven_edge and edge is not None and not proven)
         side_blocked = bool(body.side_policy == "long_only" and plan_direction == "short")
         allocation_eligible = (
-            edge is not None
+            (sfc_row is not None if sfc_mode else edge is not None)
             and not strict_edge_blocked
             and not side_blocked
-            and plan_direction in {"long", "short"}
+            and plan_direction in ({"long"} if sfc_mode else {"long", "short"})
             and plan_status in {"entry_zone", "watching"}
             and entry_price_value not in (None, 0.0)
         )
@@ -1045,7 +1108,9 @@ def build_dashboard_portfolio_ticket(
 
         if allocation_eligible:
             allocation_reason = "entry_zone" if plan_status == "entry_zone" else "waiting_for_entry_zone"
-        elif edge is None:
+        elif sfc_mode and sfc_row is None:
+            allocation_reason = "sfc_unavailable"
+        elif not sfc_mode and edge is None:
             allocation_reason = "edge_unavailable"
         elif strict_edge_blocked:
             allocation_reason = "strict_edge_gate"
@@ -1064,14 +1129,28 @@ def build_dashboard_portfolio_ticket(
             "plan": plan,
             "warnings": warnings,
             "sector": sector,
-            "score": (None if body.source == "auto" else _current_score(stock_payload, selected_source)) or _score_from_edge_bucket(edge),
+            "score": _safe_float(getattr(sfc_row, "sfc", None)) if sfc_mode else ((None if body.source == "auto" else _current_score(stock_payload, selected_source)) or _score_from_edge_bucket(edge)),
             "allocation_eligible": allocation_eligible,
             "allocation_reason": allocation_reason,
             "price_source": current_price_source,
             "live_quote_age_seconds": current_quote_age,
+            "sfc_row": sfc_row,
         }
 
-    base_weights = compute_hrp_weights(price_history, eligible_symbols, lookback_bars=body.lookback_bars)
+    if sfc_mode:
+        base_weights = build_sfc_target_weights(
+            [
+                SfcPortfolioMember(
+                    symbol=symbol,
+                    tercile=str(getattr(sfc_rows.get(symbol), "tercile", "unavailable")),
+                    sfc=_safe_float(getattr(sfc_rows.get(symbol), "sfc", None)),
+                )
+                for symbol in symbols
+            ],
+            active_cap=0.03,
+        )
+    else:
+        base_weights = compute_hrp_weights(price_history, eligible_symbols, lookback_bars=body.lookback_bars)
     if not base_weights and eligible_symbols:
         base_weights = {symbol: 1.0 / len(eligible_symbols) for symbol in eligible_symbols}
 
@@ -1081,7 +1160,7 @@ def build_dashboard_portfolio_ticket(
     for symbol in eligible_symbols:
         edge = edges.get(symbol)
         hrp_weight = float(base_weights.get(symbol, 0.0))
-        kelly_full = _full_kelly_from_expectancy(edge)
+        kelly_full = None if sfc_mode else _full_kelly_from_expectancy(edge)
         kelly_cap = kelly_full * body.kelly_fraction if kelly_full is not None else None
         cap = min(max_position_frac, kelly_cap) if kelly_cap is not None else max_position_frac
         raw_weights[symbol] = min(hrp_weight, cap)
@@ -1123,13 +1202,13 @@ def build_dashboard_portfolio_ticket(
             display_name=getattr(meta, "display_name", None) or stock_payload.get("display_name"),
             sector=item["sector"],
             direction=plan.get("direction"),
-            action=_ticket_action(plan.get("direction"), body.side_policy),
+            action=("avoid" if sfc_mode and sfc_direction(getattr(item.get("sfc_row"), "tercile", None)) == "avoid" else _ticket_action(plan.get("direction"), body.side_policy)),
             status=str(plan.get("status") or "no_setup"),
-            signal_bucket=getattr(edge, "bucket", None) if edge is not None else None,
+            signal_bucket=str(getattr(item.get("sfc_row"), "tercile", "")) if sfc_mode and item.get("sfc_row") is not None else (getattr(edge, "bucket", None) if edge is not None else None),
             signal_score=item["score"],
-            proven_edge=bool(getattr(edge, "proven_edge_net", False)) if edge is not None else False,
-            holding_period_bars=getattr(edge, "fwd_horizon_bars", None) if edge is not None else None,
-            return_calc_method=getattr(edge, "return_calc_method", None) if edge is not None else None,
+            proven_edge=bool(sfc_mode and item.get("sfc_row") is not None) or (bool(getattr(edge, "proven_edge_net", False)) if edge is not None else False),
+            holding_period_bars=None if sfc_mode else (getattr(edge, "fwd_horizon_bars", None) if edge is not None else None),
+            return_calc_method="sfc_publication_window" if sfc_mode else (getattr(edge, "return_calc_method", None) if edge is not None else None),
             action_expected_return_net=action_er,
             stock_expected_return=_safe_float(getattr(edge, "stock_expected_return", None) if edge is not None else None),
             allocation_eligible=bool(item["allocation_eligible"]),
@@ -1152,7 +1231,7 @@ def build_dashboard_portfolio_ticket(
             max_liquidity_size_mad=round(max_liquidity_size, 2) if max_liquidity_size is not None else None,
             execution_explain=str(plan.get("explain") or "") or None,
             warnings=warnings,
-            proof_url=_proof_url(
+            proof_url=_sfc_proof_url(symbol) if sfc_mode else _proof_url(
                 symbol,
                 horizon,
                 edge_sources.get(symbol, body.source),
