@@ -1628,11 +1628,16 @@ def _core_statement_metric_count(snapshot: models.FundamentalLatestSnapshot) -> 
     return count
 
 
-def _data_verification_rank(snapshot: models.FundamentalLatestSnapshot) -> tuple[int, int]:
+def _data_verification_rank(
+    snapshot: models.FundamentalLatestSnapshot,
+    verification_status: str | None = None,
+) -> tuple[int, int]:
     source = dict(snapshot.source_json or {})
-    coverage = dict(snapshot.coverage_json or {})
-    verification = coverage.get("data_verification") if isinstance(coverage, dict) else None
-    status = str((verification or {}).get("status") or "").strip().lower() if isinstance(verification, dict) else ""
+    status = str(verification_status or "").strip().lower()
+    if not status:
+        coverage = dict(snapshot.coverage_json or {})
+        verification = coverage.get("data_verification") if isinstance(coverage, dict) else None
+        status = str((verification or {}).get("status") or "").strip().lower() if isinstance(verification, dict) else ""
     status_rank = 2 if status == "verified" else 1 if status == "data_unverified" else 0
     proof_rank = 1 if source.get("brief42_fy2025_reingestion") else 0
     return proof_rank, status_rank
@@ -1643,6 +1648,7 @@ def _latest_symbol_rank(
     import_row: models.FundamentalImport,
     stock: models.StockMaster | None,
     required_complete: int = 0,
+    verification_status: str | None = None,
 ) -> tuple[int, int, int, int, int, int, dt.datetime]:
     source = str(import_row.data_source or "workbook").strip().lower()
     source_rank = 0
@@ -1660,7 +1666,7 @@ def _latest_symbol_rank(
     # incomplete import keeps an unratable one canonical. required_complete is judged
     # from fundamental_annual_metric (the same source the verification gate reads), not
     # from the snapshot's metrics_json, which holds derived ratios for some imports.
-    proof_rank, status_rank = _data_verification_rank(snapshot)
+    proof_rank, status_rank = _data_verification_rank(snapshot, verification_status=verification_status)
     # Tuple comparison: higher is better.
     # status_rank (verified=2 > data_unverified=1 > unknown=0) must come before proof_rank so
     # a verified import always beats a data_unverified one regardless of proof flags.
@@ -1674,6 +1680,44 @@ def _latest_symbol_rank(
         core_metric_count,
         _latest_key(import_row),
     )
+
+
+def _verification_statuses_for_candidates(
+    db: Session,
+    candidate_rows: list[tuple[models.FundamentalLatestSnapshot, models.FundamentalImport, models.StockMaster | None]],
+) -> dict[tuple[uuid.UUID, str, int], str]:
+    """Return live tie-out statuses keyed by candidate import/symbol/year."""
+
+    if not candidate_rows or not _table_exists(db, models.FundamentalDataVerification):
+        return {}
+    keys = {
+        (snapshot.import_id, str(snapshot.symbol).upper(), int(snapshot.latest_statement_year))
+        for snapshot, _import_row, _stock in candidate_rows
+        if snapshot.latest_statement_year is not None
+    }
+    if not keys:
+        return {}
+    import_ids = {import_id for import_id, _symbol, _year in keys}
+    symbols = {symbol for _import_id, symbol, _year in keys}
+    years = {year for _import_id, _symbol, year in keys}
+    rows = (
+        db.query(
+            models.FundamentalDataVerification.import_id,
+            models.FundamentalDataVerification.symbol,
+            models.FundamentalDataVerification.statement_year,
+            models.FundamentalDataVerification.status,
+        )
+        .filter(models.FundamentalDataVerification.import_id.in_(import_ids))
+        .filter(func.upper(models.FundamentalDataVerification.symbol).in_(symbols))
+        .filter(models.FundamentalDataVerification.statement_year.in_(years))
+        .all()
+    )
+    out: dict[tuple[uuid.UUID, str, int], str] = {}
+    for import_id, symbol, year, status in rows:
+        key = (import_id, str(symbol).upper(), int(year))
+        if key in keys:
+            out[key] = str(status or "")
+    return out
 
 
 def _required_complete_imports(
@@ -1763,6 +1807,7 @@ def _resolve_canonical_snapshot_rows(
 ) -> dict[str, tuple[models.FundamentalLatestSnapshot, models.FundamentalImport]]:
     rows, snapshot_columns = _canonical_snapshot_candidate_rows(db, symbols=symbols, scope=scope)
     complete_imports = _required_complete_imports(db, rows)
+    verification_statuses = _verification_statuses_for_candidates(db, rows)
     ranked: dict[str, tuple[tuple[int, int, int, int, int, int, dt.datetime], models.FundamentalLatestSnapshot, models.FundamentalImport]] = {}
     flagged: dict[str, tuple[tuple[int, int, int, int, int, int, dt.datetime], models.FundamentalLatestSnapshot, models.FundamentalImport]] = {}
     has_canonical_column = "is_canonical" in snapshot_columns
@@ -1770,7 +1815,18 @@ def _resolve_canonical_snapshot_rows(
         snapshot = _apply_snapshot_schema_compat(snapshot, import_row, snapshot_columns)
         symbol = str(snapshot.symbol).upper()
         required_complete = 1 if (import_row.id, symbol) in complete_imports else 0
-        key = _latest_symbol_rank(snapshot, import_row, stock, required_complete=required_complete)
+        verification_key = (
+            import_row.id,
+            symbol,
+            int(snapshot.latest_statement_year),
+        ) if snapshot.latest_statement_year is not None else None
+        key = _latest_symbol_rank(
+            snapshot,
+            import_row,
+            stock,
+            required_complete=required_complete,
+            verification_status=verification_statuses.get(verification_key) if verification_key is not None else None,
+        )
         if symbol not in ranked or key > ranked[symbol][0]:
             ranked[symbol] = (key, snapshot, import_row)
         if has_canonical_column and bool(getattr(snapshot, "is_canonical", False)):
@@ -1778,7 +1834,7 @@ def _resolve_canonical_snapshot_rows(
                 flagged[symbol] = (key, snapshot, import_row)
     out: dict[str, tuple[models.FundamentalLatestSnapshot, models.FundamentalImport]] = {}
     for symbol in sorted(set(ranked) | set(flagged)):
-        if prefer_persisted and symbol in flagged:
+        if prefer_persisted and symbol in flagged and (symbol not in ranked or flagged[symbol][0] >= ranked[symbol][0]):
             _key, snapshot, import_row = flagged[symbol]
         else:
             _key, snapshot, import_row = ranked[symbol]

@@ -43,6 +43,7 @@ def db_session():
         models.FundamentalProjection.__table__,
         models.FundamentalIntegrityReport.__table__,
         models.FundamentalPillarScoreHistory.__table__,
+        models.FundamentalDataVerification.__table__,
     ):
         table.create(engine)
     db = SessionLocal()
@@ -125,6 +126,60 @@ def _valuation(import_id, *, symbol: str = "MNG") -> models.FundamentalValuation
         outputs_json={},
         warnings_json=["fixture"],
     )
+
+
+def test_canonical_resolution_ignores_stale_persisted_flag_when_latest_verification_is_verified(db_session) -> None:
+    db = db_session
+    db.add(models.StockMaster(symbol="NRX", display_name="NR Fix", sector="Industrie", market_region="masi"))
+    older_unverified = _run(filename="older-unverified.xlsx", data_source="bvc", completed_at=dt.datetime(2025, 1, 1, tzinfo=dt.timezone.utc))
+    newer_verified = _run(filename="newer-verified.xlsx", data_source="bvc", completed_at=dt.datetime(2025, 2, 1, tzinfo=dt.timezone.utc))
+    db.add_all([older_unverified, newer_verified])
+    db.flush()
+    db.add_all(
+        [
+            _snapshot(older_unverified.id, symbol="NRX", is_canonical=True),
+            _snapshot(newer_verified.id, symbol="NRX", is_canonical=False),
+            models.FundamentalDataVerification(
+                import_id=older_unverified.id,
+                symbol="NRX",
+                statement_year=2024,
+                status="data_unverified",
+                reason="stale_t1_balance_sheet",
+                failed_checks_json=["t1_balance_sheet"],
+                warnings_json=[],
+                offending_metrics_json={},
+                recomputed_metrics_json={},
+                corrections_json={},
+                provenance_json={},
+                source_urls_json=[],
+                stockanalysis_json={},
+                tieout_report_json={},
+            ),
+            models.FundamentalDataVerification(
+                import_id=newer_verified.id,
+                symbol="NRX",
+                statement_year=2024,
+                status="verified",
+                reason=None,
+                failed_checks_json=[],
+                warnings_json=[],
+                offending_metrics_json={},
+                recomputed_metrics_json={},
+                corrections_json={},
+                provenance_json={},
+                source_urls_json=[],
+                stockanalysis_json={},
+                tieout_report_json={},
+            ),
+        ]
+    )
+    db.commit()
+
+    snapshot = fundamentals_service.latest_snapshot_rows_by_symbol(db, symbols=["NRX"])["NRX"]
+    import_row = fundamentals_service.latest_imports_by_symbol(db, symbols=["NRX"])["NRX"]
+
+    assert snapshot.import_id == newer_verified.id
+    assert import_row.id == newer_verified.id
 
 
 def test_canonical_resolution_is_shared_by_rows_imports_overlay_and_revalue(db_session) -> None:

@@ -13,7 +13,16 @@ from core.quant_core.signal_engine.modes import ALL_SIGNAL_MODE_NAMES, signal_mo
 from ..auth import rate_limit_trigger, require_admin
 from ..config import settings
 from ..db import get_db
+from .. import models
 from ..models import SchedulerRun, SignalEngineGlobalResult, WfoGlobalSignal
+from ..services.fundamentals import (
+    derive_research_overlay,
+    latest_data_verification,
+    latest_imports_by_symbol,
+    latest_snapshot_rows_by_symbol,
+    recompute_symbol_valuations_all_scenarios,
+    reverify_symbol,
+)
 from ..services.market_universe import is_masi_dashboard_member, list_signal_universe
 from ..services.scheduler_registry import QUEUE_NAMES, SCHEDULE_SPECS, get_schedule_spec
 from ..services.weekly_recompute_policy import HORIZONS, needs_weekly_recompute
@@ -205,6 +214,77 @@ def recompute_sfc_now() -> dict[str, Any]:
     from services.worker.tasks.scheduler_dispatch import dispatch_schedule
 
     return dispatch_schedule("weekly_fundamental_cross_section", trigger_source="manual_sfc_recompute")
+
+
+@router.post("/fundamentals/reverify-nr", dependencies=[Depends(rate_limit_trigger)])
+def reverify_fundamental_nr_symbols(db: Session = Depends(get_db)) -> dict[str, Any]:
+    snapshots = latest_snapshot_rows_by_symbol(db, scope="masi")
+    imports = latest_imports_by_symbol(db, scope="masi")
+    nr_symbols: list[str] = []
+    for symbol, snapshot in sorted(snapshots.items()):
+        ensemble = (
+            db.query(models.FundamentalEnsembleResult)
+            .filter(
+                models.FundamentalEnsembleResult.import_id == snapshot.import_id,
+                models.FundamentalEnsembleResult.symbol == symbol,
+                models.FundamentalEnsembleResult.scenario == "base",
+            )
+            .one_or_none()
+        )
+        overlay = derive_research_overlay(
+            db,
+            symbol=symbol,
+            scenario="base",
+            ensemble=ensemble,
+            import_row=imports.get(symbol),
+            current_price=(snapshot.metrics_json or {}).get("Current_Price"),
+        )
+        if overlay.get("recommendation") == "NR":
+            nr_symbols.append(symbol)
+
+    reverified: list[dict[str, Any]] = []
+    for symbol in nr_symbols:
+        row = reverify_symbol(db, symbol)
+        snapshot = latest_snapshot_rows_by_symbol(db, symbols=[symbol]).get(symbol)
+        if snapshot is not None:
+            recompute_symbol_valuations_all_scenarios(db, import_id=snapshot.import_id, symbol=symbol)
+        reverified.append(
+            {
+                "symbol": symbol,
+                "status": row.status if row is not None else "missing_verification",
+                "reason": row.reason if row is not None else "no_canonical_verification_row",
+                "failed_checks": list(row.failed_checks_json or []) if row is not None else [],
+            }
+        )
+    db.commit()
+
+    remaining: list[dict[str, Any]] = []
+    refreshed_snapshots = latest_snapshot_rows_by_symbol(db, symbols=nr_symbols, scope="masi") if nr_symbols else {}
+    for symbol, snapshot in sorted(refreshed_snapshots.items()):
+        row = latest_data_verification(
+            db,
+            import_id=snapshot.import_id,
+            symbol=symbol,
+            statement_year=snapshot.latest_statement_year,
+        )
+        if row is None or row.status != "data_unverified":
+            continue
+        failed_checks = list(row.failed_checks_json or [])
+        remaining.append(
+            {
+                "symbol": symbol,
+                "failed_check": failed_checks[0] if failed_checks else row.reason or "data_unverified",
+                "failed_checks": failed_checks,
+                "reason": row.reason,
+            }
+        )
+    return {
+        "input_nr_count": len(nr_symbols),
+        "reverified_count": len(reverified),
+        "remaining_nr_count": len(remaining),
+        "remaining_nr": remaining,
+        "reverified": reverified,
+    }
 
 
 @router.get("/scheduler/runs")
