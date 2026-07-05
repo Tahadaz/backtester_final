@@ -23,6 +23,7 @@ class PanelConfig:
     freq: str = "ME"
     min_history_year: int = 2016
     horizons: tuple[str, ...] = ("3m", "6m", "12m")
+    as_of_dates: tuple[dt.date, ...] | None = None
 
 
 def _date(value: Any) -> dt.date | None:
@@ -74,6 +75,24 @@ def availability_date(
     return end + dt.timedelta(days=lag)
 
 
+def availability_kind(
+    *,
+    period_type: str = "annual",
+    publication_date: dt.date | None = None,
+    as_of_date: dt.date | None = None,
+) -> str:
+    if publication_date is not None:
+        return "publication_date"
+    if as_of_date is not None:
+        return "as_of_date"
+    ptype = str(period_type or "annual").lower()
+    if ptype in {"semiannual", "half", "h1", "h2"}:
+        return "fallback_semiannual_60d"
+    if ptype in {"quarterly", "quarter", "q1", "q2", "q3", "q4"}:
+        return "fallback_quarterly_45d"
+    return "fallback_annual_90d"
+
+
 def _as_annual_metric(row: Any) -> dict[str, Any]:
     statement_year = int(_get(row, "statement_year", _get(row, "fiscal_year")))
     period_type = str(_get(row, "period_type", "annual") or "annual")
@@ -86,6 +105,11 @@ def _as_annual_metric(row: Any) -> dict[str, Any]:
         period_end_date=period_end,
         as_of_date=_date(_get(row, "as_of_date")),
     )
+    kind = availability_kind(
+        period_type=period_type,
+        publication_date=pub,
+        as_of_date=_date(_get(row, "as_of_date")),
+    )
     return {
         "symbol": str(_get(row, "symbol")).strip().upper(),
         "company_name": str(_get(row, "company_name", "") or ""),
@@ -96,6 +120,7 @@ def _as_annual_metric(row: Any) -> dict[str, Any]:
         "metric_name": str(_get(row, "metric_name")),
         "metric_value": _float(_get(row, "metric_value")),
         "availability_date": avail,
+        "availability_kind": kind,
         "source_document_id": _get(row, "source_document_id"),
     }
 
@@ -132,16 +157,18 @@ def assert_metric_rows_no_lookahead(rows: Iterable[Any], as_of_date: dt.date) ->
         raise AssertionError(f"LOOK-AHEAD VIOLATION for as_of={as_of_date}: {bad[:3]!r}")
 
 
-def _latest_metric_map(rows: list[dict[str, Any]], as_of_date: dt.date) -> tuple[dict[str, float], list[AnnualMetricRow], dt.date | None]:
+def _latest_metric_map(rows: list[dict[str, Any]], as_of_date: dt.date) -> tuple[dict[str, float], list[AnnualMetricRow], dt.date | None, dict[str, int]]:
     eligible = [r for r in rows if r["availability_date"] <= as_of_date]
     latest: dict[str, tuple[dt.date, int, float]] = {}
     history: list[AnnualMetricRow] = []
     max_avail: dt.date | None = None
+    availability_counts: dict[str, int] = {}
     for row in eligible:
         val = row["metric_value"]
         if val is None:
             continue
         max_avail = row["availability_date"] if max_avail is None else max(max_avail, row["availability_date"])
+        availability_counts[row["availability_kind"]] = availability_counts.get(row["availability_kind"], 0) + 1
         history.append(
             AnnualMetricRow(
                 symbol=row["symbol"],
@@ -157,7 +184,7 @@ def _latest_metric_map(rows: list[dict[str, Any]], as_of_date: dt.date) -> tuple
         key = (row["availability_date"], row["statement_year"])
         if prev is None or key >= (prev[0], prev[1]):
             latest[row["metric_name"]] = (row["availability_date"], row["statement_year"], val)
-    return {name: val for name, (_, _, val) in latest.items()}, history, max_avail
+    return {name: val for name, (_, _, val) in latest.items()}, history, max_avail, availability_counts
 
 
 def _latest_consensus(rows: list[dict[str, Any]], as_of_date: dt.date) -> dict[str, float]:
@@ -191,6 +218,8 @@ def _forward_return(prices: pd.Series | None, as_of_date: dt.date, bars: int) ->
 
 
 def _default_monthly_dates(config: PanelConfig, metric_rows: list[dict[str, Any]], price_by_symbol: dict[str, pd.Series | None]) -> list[dt.date]:
+    if config.as_of_dates is not None:
+        return sorted(config.as_of_dates)
     starts = [r["availability_date"] for r in metric_rows if r.get("availability_date")]
     ends = []
     for prices in price_by_symbol.values():
@@ -250,7 +279,7 @@ def build_pit_panel(
             close = _pit_close(prices, as_of_date)
             if close is None:
                 continue
-            metric_map, history, max_avail = _latest_metric_map(by_symbol.get(sym, []), as_of_date)
+            metric_map, history, max_avail, availability_counts = _latest_metric_map(by_symbol.get(sym, []), as_of_date)
             if not metric_map:
                 continue
             metric_map.update(_latest_consensus(consensus_by_symbol.get(sym, []), as_of_date))
@@ -276,6 +305,7 @@ def build_pit_panel(
                 "is_financial": archetype in FINANCIAL_ARCHETYPES,
                 "sector": sector_map.get(sym),
                 "max_metric_availability_date": max_avail,
+                "availability_counts": availability_counts,
             }
             for horizon in cfg.horizons:
                 row[f"fwd_return_{horizon}"] = _forward_return(prices, as_of_date, HORIZON_BARS[horizon])
@@ -285,6 +315,18 @@ def build_pit_panel(
     if not frame.empty:
         _assert_no_lookahead(frame)
     return frame
+
+
+def publication_coverage_stats(panel: pd.DataFrame) -> dict[str, Any]:
+    totals: dict[str, int] = {}
+    if panel.empty or "availability_counts" not in panel:
+        return {"total_metric_values": 0, "shares": {}, "counts": {}}
+    for item in panel["availability_counts"]:
+        for key, count in dict(item or {}).items():
+            totals[str(key)] = totals.get(str(key), 0) + int(count)
+    total = sum(totals.values())
+    shares = {key: (value / total if total else 0.0) for key, value in sorted(totals.items())}
+    return {"total_metric_values": int(total), "shares": shares, "counts": dict(sorted(totals.items()))}
 
 
 def load_universe(path: str | None = None) -> pd.DataFrame:

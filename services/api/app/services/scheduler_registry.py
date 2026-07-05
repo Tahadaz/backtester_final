@@ -16,6 +16,7 @@ ScheduleKind = Literal[
     "factor_monitor",
     "factor_recalibration",
     "fundamental_beta_refresh",
+    "fundamental_cross_section",
     "fundamental_refresh",
     "wfo_dispatch",
     "signal_engine_dispatch",
@@ -96,6 +97,15 @@ SCHEDULE_SPECS: tuple[ScheduleSpec, ...] = (
         cron="0 19 * * sat",
         timezone="UTC",
         description="Refresh market-data-derived fundamental betas and valuation WACC inputs.",
+    ),
+    ScheduleSpec(
+        id="weekly_fundamental_cross_section",
+        label="Weekly SFC cross-section",
+        kind="fundamental_cross_section",
+        queue="market_refresh",
+        cron="30 20 * * sat",
+        timezone="UTC",
+        description="Recompute the publication-date PIT SFC cross-section after the weekly fundamentals window.",
     ),
     ScheduleSpec(
         id="weekly_wfo_dispatch",

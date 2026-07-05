@@ -1,9 +1,16 @@
 # 61 - SFC IC study results
 
-Generated: 2026-07-05T13:17:01.670168+00:00
+Generated: 2026-07-05T13:59:58.873189+00:00
 Config hash: `8bdb5a6aa7d3e150`
 Chosen selection-half variant: `pmom_6_1`
 Selection/proof split date: `2023-07-31`
+
+## Publication-date coverage
+
+| availability_source   |   count |   share |
+|:----------------------|--------:|--------:|
+| fallback_annual_90d   | 3321744 |  0.8798 |
+| publication_date      |  453690 |  0.1202 |
 
 ## Selection-half variants
 
@@ -77,10 +84,17 @@ Selection/proof split date: `2023-07-31`
 
 ## Tercile spread backtest
 
-| horizon   |   cost_bps |   periods |   mean_spread |   total_spread |   avg_turnover |   bootstrap_pvalue |
-|:----------|-----------:|----------:|--------------:|---------------:|---------------:|-------------------:|
-| 3m        |         33 |        30 |      0.033597 |        1.62543 |         0.2518 |                  0 |
-| 3m        |         75 |        30 |      0.031482 |        1.46868 |         0.2518 |                  0 |
+| horizon   |   cost_bps |   periods |   mean_spread |   avg_turnover |   bootstrap_pvalue |
+|:----------|-----------:|----------:|--------------:|---------------:|-------------------:|
+| 3m        |         33 |        30 |      0.033597 |         0.2518 |                  0 |
+| 3m        |         75 |        30 |      0.031482 |         0.2518 |                  0 |
+
+## VAL-only comparison
+
+| signal     | horizon   |   mean_ic |   nw_t_stat |   fdr_qvalue |
+|:-----------|:----------|----------:|------------:|-------------:|
+| pillar_val | 6m        |    0.1275 |      3.5391 |       0.0017 |
+| sfc        | 6m        |    0.0852 |      2.1836 |       0.0725 |
 
 ## Gate verdict
 
@@ -89,40 +103,3 @@ Composite IC gate passed: `True`
 Net spread gate passed: `True`
 
 The proof-half FDR family includes every selection-half variant carried to proof.
-
-## Reviewer caveats (Claude verification pass, 2026-07-05)
-
-Implementation verified faithful to brief 60: selection/proof split is disjoint and chronological,
-the tercile backtest runs on the proof half only (`ic_study.py:185-186`), publication dates are
-joined through `fundamental_source_document` (`ic_study.py:261`), look-ahead assertions are in
-place, and the FDR family counts both PMOM variants. The PASS stands, with the following
-qualifications that MUST accompany any presentation of these numbers:
-
-1. **The selection half was data-starved** (~14 scored names/period vs ~66 in proof; FMOM had
-   only 4 selection periods). The split still did its job — only two low-stakes PMOM variants
-   were searched — but the effective evidence window is one contiguous regime (2023-07 → 2026-07).
-2. **The 12m rows overstate certainty.** 22 overlapping monthly periods contain ~2 independent
-   12-month windows; NW correction cannot repair that. The credible core of the PASS is the 6m
-   composite line (IC 0.085, NW t 2.18, q 0.073) plus the 3m tercile spread (+3.36%/quarter net
-   at 33 bps, block-bootstrap p ≈ 0 over 30 periods). Cite those; treat 12m as directional.
-3. **VAL carries the composite** (proof IC 0.086/0.128/0.228); PMOM contributes at 12m;
-   QUAL and FMOM are flat in this sample (FMOM's consensus/indicator history barely exists yet).
-   Note SFC 6m IC (0.085) < VAL-alone (0.128): equal weighting currently *dilutes* — that is the
-   accepted price of robustness per brief 59 §3.5, not a defect, but expectations should be set:
-   today this is a value(+momentum) strategy; QUAL/FMOM are options on future data depth.
-4. **Vintage caveat.** The panel uses the current corrected DB. Defensible — brief-38/42
-   corrections re-extracted figures from the original published PDFs (fixing our extraction
-   errors, not restating history) and availability uses publication dates — but ingestion
-   *coverage* is a 2026 choice: names never ingested are absent from history (mild
-   coverage-selection bias; delisted names lack fundamentals even where PIT prices exist).
-5. **`total_spread` is not an investable cumulative return** — it compounds overlapping 3m
-   returns sampled monthly. Use `mean_spread` per period; remove or relabel `total_spread` in
-   Phase 2+ reporting.
-6. **Magnitudes are top-of-global-range** (institutional value ICs typically 0.03–0.07).
-   Plausible for a thin, low-coverage frontier market — it is the brief-59 §3.3 mechanism — but
-   present them with the single-regime caveat attached.
-
-**Follow-ups for the Phase 2 run**: report the share of panel rows using a real
-`publication_date` vs each fallback lag; add a VAL-only comparison line to the standard output;
-drop `total_spread`. UI language in Phase 3 must say "validé sur 2023–2026 (une seule période de
-marché)" rather than an unqualified "validé".

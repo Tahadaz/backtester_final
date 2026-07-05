@@ -43,6 +43,7 @@ DASHBOARD_SNAPSHOT_JOB_TIMEOUT_SECONDS = 3600
 BEST_SIGNAL_EVIDENCE_SNAPSHOT_JOB_TIMEOUT_SECONDS = 7200
 FUNDAMENTAL_REFRESH_JOB_TIMEOUT_SECONDS = 14400
 FUNDAMENTAL_BETA_REFRESH_JOB_TIMEOUT_SECONDS = 7200
+FUNDAMENTAL_CROSS_SECTION_JOB_TIMEOUT_SECONDS = 7200
 FUNDAMENTAL_REFRESH_NON_STOCK_SYMBOLS = ("INSTRUMENT", "MAJ", "MAJJ", "WORKSHEET")
 
 
@@ -111,6 +112,8 @@ def dispatch_schedule(schedule_id: str, *, trigger_source: str = "scheduled") ->
             result = _dispatch_fundamental_refresh(db, trigger_source=trigger_source, batch_id=str(run.id))
         elif spec.kind == "fundamental_beta_refresh":
             result = _dispatch_fundamental_beta_refresh(db, trigger_source=trigger_source, batch_id=str(run.id))
+        elif spec.kind == "fundamental_cross_section":
+            result = _dispatch_fundamental_cross_section(trigger_source=trigger_source, batch_id=str(run.id))
         elif spec.kind == "signal_engine_dispatch":
             result = _dispatch_stale_signal_engine(db, trigger_source=trigger_source, batch_id=str(run.id))
         elif spec.kind == "wfo_dispatch":
@@ -329,6 +332,21 @@ def _dispatch_fundamental_beta_refresh(
         "symbols_total": active_count,
         "market_region": "masi",
         "source": "market_data_store",
+    }
+
+
+def _dispatch_fundamental_cross_section(*, trigger_source: str, batch_id: str) -> dict[str, Any]:
+    job = _queue(settings.MARKET_REFRESH_QUEUE_NAME).enqueue(
+        "services.worker.tasks.fundamental_cross_section.recompute_fundamental_cross_section",
+        triggered_by=trigger_source,
+        batch_id=batch_id,
+        job_timeout=FUNDAMENTAL_CROSS_SECTION_JOB_TIMEOUT_SECONDS,
+    )
+    return {
+        "enqueued_jobs": 1,
+        "rq_job_id": str(job.id),
+        "market_region": "masi",
+        "source": "sfc",
     }
 
 

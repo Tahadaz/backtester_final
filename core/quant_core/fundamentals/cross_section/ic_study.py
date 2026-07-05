@@ -18,7 +18,7 @@ from sqlalchemy import create_engine, text
 
 from quant_core.factor_selection.direct import _hac_t_stat, _nw_maxlags
 from quant_core.fundamentals.cross_section.composite import compute_sfc
-from quant_core.fundamentals.cross_section.panel import PanelConfig, build_pit_panel, load_universe
+from quant_core.fundamentals.cross_section.panel import PanelConfig, build_pit_panel, load_universe, publication_coverage_stats
 from quant_core.fundamentals.cross_section.pillars import PillarConfig, compute_pillar_scores
 from quant_core.significance import monte_carlo_luck_test
 
@@ -143,7 +143,6 @@ def tercile_backtest(frame: pd.DataFrame, *, cost_bps: float, horizon: str = "3m
         "cost_bps": float(cost_bps),
         "periods": len(returns),
         "mean_spread": float(np.mean(returns)) if returns else float("nan"),
-        "total_spread": float(np.prod(1.0 + np.asarray(returns, dtype=float)) - 1.0) if returns else float("nan"),
         "avg_turnover": float(np.mean(turnovers)) if turnovers else float("nan"),
         "bootstrap_pvalue": sig.get("pvalue"),
     }
@@ -216,6 +215,7 @@ def run_study(panel: pd.DataFrame, *, price_by_symbol: dict[str, pd.Series | Non
         "spread_pass": spread_pass,
         "config": config,
         "config_hash": config_hash,
+        "publication_coverage": publication_coverage_stats(panel),
     }
 
 
@@ -230,6 +230,15 @@ def format_results_markdown(result: dict[str, Any]) -> str:
         f"Chosen selection-half variant: `{result['chosen_variant']}`",
         f"Selection/proof split date: `{result['split_date']}`",
         "",
+        "## Publication-date coverage",
+        "",
+        pd.DataFrame(
+            [
+                {"availability_source": key, "count": value, "share": result["publication_coverage"]["shares"].get(key, 0.0)}
+                for key, value in result["publication_coverage"]["counts"].items()
+            ]
+        ).round({"share": 4}).to_markdown(index=False),
+        "",
         "## Selection-half variants",
         "",
         selection.to_markdown(index=False) if not selection.empty else "_No selection IC rows._",
@@ -242,6 +251,10 @@ def format_results_markdown(result: dict[str, Any]) -> str:
         "",
         pd.DataFrame([result["backtest_33bps"], result["backtest_75bps"]]).round(6).to_markdown(index=False),
         "",
+        "## VAL-only comparison",
+        "",
+        _format_val_only_comparison(proof, result["chosen_variant"]),
+        "",
         "## Gate verdict",
         "",
         f"Verdict: **{result['verdict']}**",
@@ -251,6 +264,19 @@ def format_results_markdown(result: dict[str, Any]) -> str:
         "The proof-half FDR family includes every selection-half variant carried to proof.",
     ]
     return "\n".join(lines) + "\n"
+
+
+def _format_val_only_comparison(proof_ic: pd.DataFrame, chosen_variant: str) -> str:
+    if proof_ic.empty:
+        return "_No proof IC rows._"
+    rows = proof_ic[
+        (proof_ic["variant_id"] == chosen_variant)
+        & (proof_ic["signal"].isin(["pillar_val", "sfc"]))
+        & (proof_ic["horizon"] == "6m")
+    ].copy()
+    if rows.empty:
+        return "_No 6m VAL/SFC comparison rows._"
+    return rows[["signal", "horizon", "mean_ic", "nw_t_stat", "fdr_qvalue"]].round(4).to_markdown(index=False)
 
 
 def _load_rows_from_db() -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], dict[str, str | None]]:

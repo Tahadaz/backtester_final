@@ -8,7 +8,7 @@ import pytest
 
 from quant_core.fundamentals.cross_section.composite import compute_sfc
 from quant_core.fundamentals.cross_section.ic_study import benjamini_hochberg, tercile_backtest
-from quant_core.fundamentals.cross_section.panel import assert_metric_rows_no_lookahead, build_pit_panel
+from quant_core.fundamentals.cross_section.panel import PanelConfig, assert_metric_rows_no_lookahead, build_pit_panel, publication_coverage_stats
 from quant_core.fundamentals.cross_section.pillars import PillarConfig, compute_pillar_scores, mad_winsorized_z
 
 
@@ -117,6 +117,22 @@ def test_build_panel_uses_publication_date_not_statement_year() -> None:
     assert panel["as_of_date"].min() >= dt.date(2021, 4, 30)
 
 
+def test_publication_coverage_stats_counts_real_and_fallback_dates() -> None:
+    symbols = ["AAA", "BBB"]
+    prices = _prices(symbols)
+    rows = _annual_rows(["AAA"], publication_date=dt.date(2021, 4, 1))
+    fallback_rows = _annual_rows(["BBB"], publication_date=None)
+    panel = build_pit_panel(
+        annual_rows=rows + fallback_rows,
+        price_loader=lambda symbol: prices[symbol],
+        universe_df=_universe(symbols),
+        config=PanelConfig(as_of_dates=(dt.date(2021, 12, 31),)),
+    )
+    stats = publication_coverage_stats(panel)
+    assert stats["counts"]["publication_date"] > 0
+    assert stats["counts"]["fallback_annual_90d"] > 0
+
+
 def test_mad_winsorized_z_clips_extreme_outlier() -> None:
     values = pd.Series([1.0, 2.0, 3.0, 4.0, 1000.0])
     z = mad_winsorized_z(values, clip=3.0)
@@ -170,6 +186,7 @@ def test_known_top_rank_enters_top_tercile() -> None:
     result = tercile_backtest(frame, cost_bps=0.0, horizon="3m")
     assert result["periods"] == 1
     assert result["mean_spread"] > 0
+    assert "total_spread" not in result
 
 
 def test_bh_fdr_hand_computed_example() -> None:

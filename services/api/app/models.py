@@ -1,6 +1,6 @@
 import uuid
 from sqlalchemy import (
-    Column, String, DateTime, Date, ForeignKey, Text, BigInteger, Float, UniqueConstraint, Index, Integer, Boolean, CheckConstraint, text
+    Column, String, DateTime, Date, ForeignKey, Text, BigInteger, Float, UniqueConstraint, Index, Integer, Boolean, CheckConstraint, text, JSON
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.sql import func
@@ -1987,6 +1987,39 @@ class SchedulerRun(Base):
     __table_args__ = (
         Index("ix_scheduler_run_schedule_started", "schedule_id", "started_at"),
         Index("ix_scheduler_run_status", "status"),
+    )
+
+
+class FundamentalCrossSectionScore(Base):
+    """Persisted SFC cross-sectional rank for one symbol/as-of methodology vintage."""
+    __tablename__ = "fundamental_cross_section_score"
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    symbol = Column(String, nullable=False)
+    as_of_date = Column(Date, nullable=False)
+    sfc = Column(Float, nullable=True)
+    rank = Column(Integer, nullable=True)
+    tercile = Column(String(16), nullable=False)
+    pillar_val = Column(Float, nullable=True)
+    pillar_qual = Column(Float, nullable=True)
+    pillar_fmom = Column(Float, nullable=True)
+    pillar_pmom = Column(Float, nullable=True)
+    coverage_ratio = Column(Float, nullable=False, server_default="0")
+    attribution_json = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False, default=dict)
+    config_hash = Column(String(64), nullable=False)
+    methodology_version = Column(String(64), nullable=False)
+    computed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "symbol",
+            "as_of_date",
+            "methodology_version",
+            "config_hash",
+            name="uq_fundamental_cross_section_score_key",
+        ),
+        Index("ix_fundamental_cross_section_score_asof_rank", "as_of_date", "rank"),
+        Index("ix_fundamental_cross_section_score_symbol_asof", "symbol", "as_of_date"),
     )
 
 
