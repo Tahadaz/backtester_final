@@ -17,6 +17,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Any
 
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.orm import Session
 
 from core.quant_core.fundamentals.consensus.domain import (
@@ -45,6 +46,13 @@ _METRIC_TO_KEY = {
 }
 
 
+def _missing_consensus_table(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return "fundamental_consensus_estimate" in text and (
+        "no such table" in text or "does not exist" in text
+    )
+
+
 def load_forward_view(
     db: Session,
     symbol: str,
@@ -66,16 +74,21 @@ def load_forward_view(
     """
     val_date = valuation_date or dt.date.today()
 
-    rows = (
-        db.query(FundamentalConsensusEstimate)
-        .filter(
-            FundamentalConsensusEstimate.symbol == symbol.upper(),
-            FundamentalConsensusEstimate.fiscal_year == fiscal_year,
-            FundamentalConsensusEstimate.as_of_date <= val_date,
-            FundamentalConsensusEstimate.is_estimate.is_(True),
+    try:
+        rows = (
+            db.query(FundamentalConsensusEstimate)
+            .filter(
+                FundamentalConsensusEstimate.symbol == symbol.upper(),
+                FundamentalConsensusEstimate.fiscal_year == fiscal_year,
+                FundamentalConsensusEstimate.as_of_date <= val_date,
+                FundamentalConsensusEstimate.is_estimate.is_(True),
+            )
+            .all()
         )
-        .all()
-    )
+    except (OperationalError, ProgrammingError) as exc:
+        if _missing_consensus_table(exc):
+            return {}
+        raise
     if not rows:
         return {}
 
@@ -127,17 +140,22 @@ def load_broker_target(
     anchors, so the latest as_of wins regardless of fiscal_year.
     """
     val_date = valuation_date or dt.date.today()
-    row = (
-        db.query(FundamentalConsensusEstimate)
-        .filter(
-            FundamentalConsensusEstimate.symbol == symbol.upper(),
-            FundamentalConsensusEstimate.metric == METRIC_TARGET_PRICE,
-            FundamentalConsensusEstimate.as_of_date <= val_date,
-            FundamentalConsensusEstimate.value.isnot(None),
+    try:
+        row = (
+            db.query(FundamentalConsensusEstimate)
+            .filter(
+                FundamentalConsensusEstimate.symbol == symbol.upper(),
+                FundamentalConsensusEstimate.metric == METRIC_TARGET_PRICE,
+                FundamentalConsensusEstimate.as_of_date <= val_date,
+                FundamentalConsensusEstimate.value.isnot(None),
+            )
+            .order_by(FundamentalConsensusEstimate.as_of_date.desc())
+            .first()
         )
-        .order_by(FundamentalConsensusEstimate.as_of_date.desc())
-        .first()
-    )
+    except (OperationalError, ProgrammingError) as exc:
+        if _missing_consensus_table(exc):
+            return None
+        raise
     if row is None or row.value is None or float(row.value) <= 0:
         return None
     return {
