@@ -78,6 +78,38 @@ export const SEVERE_VALUATION_WARNING_LABELS_FR: Record<string, string> = {
   price_to_book_below_plausible_range: "P/B impliqué sous la plage plausible",
 }
 
+export const VALUATION_WARNING_LABELS_FR: Record<string, string> = {
+  ...SEVERE_VALUATION_WARNING_LABELS_FR,
+  capex_pct_from_peer_median: "Capex : proxy médiane secteur",
+  capex_pct_unavailable_no_history_no_peer: "Capex : historique et proxy secteur indisponibles",
+  cash_flow_statement_missing_driver_fallback: "Cash-flow : proxy faute de tableau de flux",
+  d_and_a_pct_from_peer_median: "D&A : proxy médiane secteur",
+  direct_driver_fcff_fallback: "FCFF : proxy direct faute de drivers",
+  earnings_growth_proxy: "Croissance : proxy bénéfices",
+  ebit_margin_from_peer_median: "Marge EBIT : proxy médiane secteur",
+  fcfe_proxy_from_free_cash_flow: "FCFE : proxy depuis free cash-flow",
+  fcff_dcf_projection_driver_unavailable: "FCFF DCF : drivers projetés incomplets",
+  fcfe_dcf_projection_driver_unavailable: "FCFE DCF : drivers projetés incomplets",
+  midcycle_ebit_margin_applied: "Marge EBIT : proxy milieu de cycle",
+  midcycle_maintenance_capex_applied: "Capex : proxy milieu de cycle",
+  midcycle_maintenance_capex_unavailable_registry_assumption: "Capex : proxy 4 % CA (défaut)",
+  missing_book_value_proxy: "Book value : proxy requis",
+  missing_fcf_growth_driver: "Croissance : proxy faute de driver FCF",
+  missing_fcfe_growth_driver: "Croissance : proxy faute de driver FCFE",
+  missing_net_debt_bridge: "Dette nette : bridge incomplet",
+  payout_ratio_from_peer_median: "Payout : proxy médiane secteur",
+  revenue_growth_from_peer_median: "Croissance : proxy secteur",
+  roe_from_peer_median: "ROE : proxy médiane secteur",
+  stable_payout_assumption: "Payout : hypothèse stable",
+  using_stable_payout_assumption: "Payout : hypothèse stable",
+  working_capital_pct_from_peer_median: "BFR : proxy médiane secteur",
+}
+
+
+export function valuationWarningLabel(warning: string): string {
+  return VALUATION_WARNING_LABELS_FR[warning] ?? warning
+}
+
 
 // Per-model glossary entry ids for GlossaryTerm wiring (football field legend,
 // valuation model rail...). Falls back to the general "dcf" entry when a model
@@ -442,4 +474,3 @@ export const DEFAULT_FORWARD_GROWTH = 0.03
 
 
 export const DEFAULT_STABLE_PAYOUT = 0.55
-

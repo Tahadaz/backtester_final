@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils"
 import { GlossaryTerm } from "@/components/ui/glossary-term"
 import { TriangulationBand } from "@/components/strategy/triangulation-band"
 import { DetailTab } from "../lib/types"
-import { ASSUMPTION_FIELDS, JUSTIFIED_MULTIPLE_RATIOS, JUSTIFIED_MULTIPLE_RATIO_DEFAULT_MASK, JUSTIFIED_MULTIPLE_RATIO_MASK_KEY, MODEL_GLOSSARY_IDS, MODEL_LABELS, MODEL_ORDER, RELATIVE_MULTIPLE_RATIOS, RELATIVE_MULTIPLE_RATIO_DEFAULT_MASK, RELATIVE_MULTIPLE_RATIO_MASK_KEY, SCENARIOS, SEVERE_VALUATION_WARNINGS } from "../lib/constants"
+import { ASSUMPTION_FIELDS, JUSTIFIED_MULTIPLE_RATIOS, JUSTIFIED_MULTIPLE_RATIO_DEFAULT_MASK, JUSTIFIED_MULTIPLE_RATIO_MASK_KEY, MODEL_GLOSSARY_IDS, MODEL_LABELS, MODEL_ORDER, RELATIVE_MULTIPLE_RATIOS, RELATIVE_MULTIPLE_RATIO_DEFAULT_MASK, RELATIVE_MULTIPLE_RATIO_MASK_KEY, SCENARIOS, SEVERE_VALUATION_WARNINGS, valuationWarningLabel } from "../lib/constants"
 import { asNumber, asRecord, boundedMask, comparableMetricLabel, confidenceClass, fmtMoney, fmtNumber, fmtPct, fmtRatio } from "../lib/formatters"
 import { ComparableBenchmarkPanel } from "../panels/comparables"
 import { CostOfCapitalBuildUp } from "../panels/cost-of-capital"
@@ -325,9 +325,9 @@ function ValuationMethodCard({
       </details>
 
       <div className="valuation-warning-row">
-        <span className="valuation-warning-label">Warnings</span>
+        <span className="valuation-warning-label">Provenance</span>
         <div className="flex flex-wrap gap-1.5">
-          {row.warnings.length ? row.warnings.map((warning) => <span key={warning} className="fund-warning-chip">{warning}</span>) : <span className="text-xs text-muted-foreground">No warnings.</span>}
+          {row.warnings.length ? row.warnings.map((warning) => <span key={warning} className="fund-warning-chip">{valuationWarningLabel(warning)}</span>) : <span className="text-xs text-muted-foreground">Aucun avertissement.</span>}
         </div>
       </div>
     </section>

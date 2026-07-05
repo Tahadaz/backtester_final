@@ -9,7 +9,7 @@ import {
 import { GlossaryTerm } from "@/components/ui/glossary-term"
 import { buildDcfViewModel } from "@/lib/fundamental-dcf-utils.js"
 import { cn } from "@/lib/utils"
-import { MODEL_LABELS } from "../lib/constants"
+import { MODEL_LABELS, valuationWarningLabel } from "../lib/constants"
 import { asNumber, confidenceClass, fmtMoney, fmtNumber, fmtPct, fmtRatio, formatDcfStepValue } from "../lib/formatters"
 import { CostOfCapitalBuildUp } from "../panels/cost-of-capital"
 import { ModelSensitivityPanel } from "../panels/sensitivity"
@@ -363,12 +363,11 @@ export function DcfMethodView({
       )}
 
       <div className="valuation-warning-row">
-        <span className="valuation-warning-label">Warnings</span>
+        <span className="valuation-warning-label">Provenance</span>
         <div className="flex flex-wrap gap-1.5">
-          {row.warnings.length ? row.warnings.map((warning) => <span key={warning} className="fund-warning-chip">{warning}</span>) : <span className="text-xs text-muted-foreground">No warnings.</span>}
+          {row.warnings.length ? row.warnings.map((warning) => <span key={warning} className="fund-warning-chip">{valuationWarningLabel(warning)}</span>) : <span className="text-xs text-muted-foreground">Aucun avertissement.</span>}
         </div>
       </div>
     </section>
   )
 }
-
