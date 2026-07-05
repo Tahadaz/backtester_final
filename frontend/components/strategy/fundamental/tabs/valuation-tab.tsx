@@ -626,7 +626,12 @@ export function ValuationTab({
 
       <TriangulationBand triangulation={detail.triangulation} />
 
-      <SensitivityHeatmap sensitivity={sensitivity} assumptions={detail.assumptions} isLoading={isSensitivityLoading} />
+      <SensitivityHeatmap
+        sensitivity={sensitivity}
+        assumptions={detail.assumptions}
+        rateSensitiveWeight={detail.rate_sensitive_weight ?? detail.ensemble?.rate_sensitive_weight ?? null}
+        isLoading={isSensitivityLoading}
+      />
 
       <AssumptionStrip detail={detail} onNavigate={onNavigate} />
 

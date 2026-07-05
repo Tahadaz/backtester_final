@@ -163,6 +163,8 @@ export function SyntheseTab({
   const altman = screenRecord(screens, "altman_z")
   const evaScreen = screenRecord(screens, "eva")
   const currentPrice = detail.ensemble?.current_price ?? asNumber(detail.metrics.Current_Price)
+  const rateSensitiveWeight = asNumber(detail.rate_sensitive_weight) ?? asNumber(detail.ensemble?.rate_sensitive_weight)
+  const isMultiplesLed = rateSensitiveWeight != null && rateSensitiveWeight < 0.10
 
   // --- Comparables view (default "sector" benchmark, same view-model as Valorisation/Comparables). ---
   const { comparables, isLoading: isComparablesLoading } = useOptionalSelectedComparableView(detail, row, rows, "sector")
@@ -326,6 +328,17 @@ export function SyntheseTab({
 
       <div data-capture="scenarios">
         <div className="fund-section-label">Scénarios à 12 mois — fourchette bear/base/bull</div>
+        {isMultiplesLed ? (
+          <div className="rounded-md border border-dashed border-[var(--border)] bg-[var(--surface-muted)] p-3 text-sm">
+            <div className="font-semibold text-foreground">
+              Insensible aux hypothèses d'actualisation : ancres ~100 % multiples
+            </div>
+            <div className="mt-1 text-muted-foreground">
+              Poids DCF/DDM/RI {fmtPct(rateSensitiveWeight, 0, false)} ; les scénarios bear/base/bull déplacent surtout WACC et croissance terminale, donc ils ne modifient pas une cible portée par les multiples.
+            </div>
+          </div>
+        ) : (
+          <>
         <div className="scn-grid">
           {scenarios.map((scenario) => (
             <div key={scenario.key} className={cn("scn-card", scenario.tone)}>
@@ -346,6 +359,8 @@ export function SyntheseTab({
         <div className="mt-2 text-right text-[11px] text-muted-foreground">
           Valeur pondérée par scénario (probabilités maison) = <strong className="text-foreground">{fmtMoney(expected, 1)} MAD</strong>
         </div>
+          </>
+        )}
       </div>
 
       <TriangulationBand triangulation={detail.triangulation} />

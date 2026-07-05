@@ -120,6 +120,7 @@ from ..storage import put_bytes
 
 router = APIRouter(prefix="/fundamentals", tags=["fundamentals"])
 
+RATE_SENSITIVE_MODELS = frozenset({"fcff_dcf", "fcfe_dcf", "ddm", "residual_income"})
 REQUIRED_COVERAGE_METRICS = ("Current_Price", "PER", "Price_to_Book", "ROE", "Debt_to_Equity", "FCF_Yield")
 TARGETED_BVC_IGNORED_SYMBOLS = {"INSTRUMENT", "MAJ"}
 FUNDAMENTAL_NON_STOCK_SYMBOLS = {"INSTRUMENT", "MAJ", "MAJJ", "WORKSHEET"}
@@ -195,6 +196,15 @@ def _num(value: Any) -> float | None:
 def _positive_num(value: Any) -> float | None:
     out = _num(value)
     return out if out is not None and out > 0 else None
+
+
+def _rate_sensitive_weight_from_weights(weights: dict[str, Any] | None) -> float:
+    total = 0.0
+    for model in RATE_SENSITIVE_MODELS:
+        value = _num((weights or {}).get(model))
+        if value is not None and value > 0:
+            total += value
+    return max(0.0, min(1.0, total))
 
 
 def _upside_from_price(fair_value: Any, current_price: Any) -> float | None:
@@ -345,6 +355,7 @@ def _ensemble_out(
         if override_price is not None
         else row.upside_pct
     )
+    model_weights = dict(row.model_weights_json or {})
     return EnsembleOut(
         symbol=row.symbol,
         scenario=row.scenario,
@@ -356,7 +367,8 @@ def _ensemble_out(
         confidence_score=row.confidence_score,
         usable_model_count=int(row.usable_model_count or 0),
         excluded_model_count=int(row.excluded_model_count or 0),
-        model_weights=dict(row.model_weights_json or {}),
+        model_weights=model_weights,
+        rate_sensitive_weight=_rate_sensitive_weight_from_weights(model_weights),
         warnings=list(row.warnings_json or []),
         currency=row.currency,
         model_dispersion_low=row.model_dispersion_low,
@@ -855,6 +867,7 @@ def _valuation_summary(
             if override_price is not None
             else ensemble.upside_pct
         )
+    model_weights = dict(ensemble.model_weights_json or {}) if ensemble else {}
     return {
         "model_count": len(rows),
         "usable_model_count": int(ensemble.usable_model_count or 0) if ensemble else 0,
@@ -863,7 +876,8 @@ def _valuation_summary(
         "consensus_upside_pct": consensus_upside,
         "confidence_score": ensemble.confidence_score if ensemble else None,
         "confidence_by_model": confidence_by_model,
-        "model_weights": dict(ensemble.model_weights_json or {}) if ensemble else {},
+        "model_weights": model_weights,
+        "rate_sensitive_weight": _rate_sensitive_weight_from_weights(model_weights),
         "snapshot_import_id": str(snapshot_import_id) if snapshot_import_id else None,
         "valuation_import_id": str(valuation_import_id) if valuation_import_id else None,
         "valuation_source": "latest_available" if is_stale else "latest_snapshot" if valuation_import_id else "missing",
@@ -2660,6 +2674,7 @@ def get_fundamental_stock_detail(symbol: str, db: Session = Depends(get_db), sce
         annual_rows=annual_rows,
         statement_year=enriched_snapshot.latest_statement_year if enriched_snapshot is not None else snapshot.latest_statement_year,
     )
+    ensemble_weights = dict(ensemble.model_weights_json or {}) if ensemble else {}
     return FundamentalStockDetailOut(
         symbol=symbol,
         company_name=snapshot.company_name,
@@ -2680,6 +2695,7 @@ def get_fundamental_stock_detail(symbol: str, db: Session = Depends(get_db), sce
         valuations=[_valuation_out(row, current_price_override=current_price) for row in valuations],
         ensemble=_ensemble_out(ensemble, current_price_override=current_price),
         ensembles=scenario_ensembles,
+        rate_sensitive_weight=_rate_sensitive_weight_from_weights(ensemble_weights),
         triangulation=triangulation,
         assumptions=assumptions,
         assumption_provenance=provenance_by_scenario,

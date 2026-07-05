@@ -35,6 +35,16 @@ function sensitivityGridFromResponse(sensitivity: FundamentalSensitivity | undef
 }
 
 
+function diagnosticModelGrids(sensitivity: FundamentalSensitivity | undefined): SensitivityGridView[] {
+  return Object.entries(asRecord(sensitivity?.model_grids))
+    .map(([model, value]) => {
+      const grid = sensitivityGridFromUnknown(value)
+      return grid ? { ...grid, model: grid.model ?? model } : null
+    })
+    .filter((grid): grid is SensitivityGridView => grid != null)
+}
+
+
 function modelUsesSensitivityAxis(row: FundamentalValuationResult, axis: string): boolean {
   const meta = MODEL_FORMULA_META[row.model]
   const keys = new Set(meta?.assumptionKeys ?? Object.keys(asRecord(row.inputs)))
@@ -137,25 +147,56 @@ export function SensitivityHeatmap({
   sensitivity,
   grid,
   assumptions,
+  rateSensitiveWeight,
   isLoading,
-  title = "Sensibilite - juste valeur",
+  title = "Sensibilité - juste valeur",
 }: {
   sensitivity: FundamentalSensitivity | undefined
   grid?: SensitivityGridView | null
   assumptions: Record<string, unknown>
+  rateSensitiveWeight?: number | null
   isLoading: boolean
   title?: string
 }) {
   const activeGrid = grid ?? sensitivityGridFromResponse(sensitivity)
+  const isMultiplesLed = rateSensitiveWeight != null && rateSensitiveWeight < 0.10
+  const diagnosticGrids = isMultiplesLed ? diagnosticModelGrids(sensitivity) : []
   if (isLoading && !activeGrid) {
     return (
-      <FundCard title="Sensibilite">
+      <FundCard title="Sensibilité">
         <div className="grid grid-cols-6 gap-1">
           {Array.from({ length: 36 }).map((_, index) => (
             <Skeleton key={index} className="h-8 w-full" />
           ))}
         </div>
       </FundCard>
+    )
+  }
+  if (isMultiplesLed) {
+    return (
+      <div data-capture="sensitivity">
+        <FundCard title={title} aside={`Poids DCF/DDM/RI ${fmtPct(rateSensitiveWeight, 0, false)}`}>
+          <div className="rounded-md border border-dashed border-[var(--border)] bg-[var(--surface-muted)] p-3 text-sm text-foreground">
+            Insensible aux hypothèses d'actualisation : ancres ~100 % multiples
+          </div>
+          {diagnosticGrids.length ? (
+            <details className="mt-3 text-sm">
+              <summary className="cursor-pointer font-semibold text-foreground">Grilles diagnostiques DCF</summary>
+              <div className="mt-3 space-y-4">
+                {diagnosticGrids.map((diagnosticGrid, index) => (
+                  <div key={`${diagnosticGrid.model ?? "grid"}-${index}`} className="space-y-2">
+                    <div className="driver-evidence-head">
+                      <span className="valuation-mini-title">Diagnostic {diagnosticGrid.model ? MODEL_LABELS[diagnosticGrid.model] ?? diagnosticGrid.model : "modèle"}</span>
+                      <span>{axisDisplayLabel(diagnosticGrid.axis_y)} x {axisDisplayLabel(diagnosticGrid.axis_x)}</span>
+                    </div>
+                    <SensitivityMatrix grid={diagnosticGrid} assumptions={assumptions} />
+                  </div>
+                ))}
+              </div>
+            </details>
+          ) : null}
+        </FundCard>
+      </div>
     )
   }
   if (!activeGrid) return null
@@ -190,4 +231,3 @@ export function ModelSensitivityPanel({
     </div>
   )
 }
-

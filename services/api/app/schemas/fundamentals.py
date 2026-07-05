@@ -152,6 +152,7 @@ class EnsembleOut(BaseModel):
     usable_model_count: int = 0
     excluded_model_count: int = 0
     model_weights: dict[str, float] = Field(default_factory=dict)
+    rate_sensitive_weight: float = 0.0
     warnings: list[str] = Field(default_factory=list)
     currency: str | None = None
     model_dispersion_low: float | None = None
@@ -341,6 +342,7 @@ class FundamentalStockDetailOut(BaseModel):
     valuations: list[ValuationResultOut] = Field(default_factory=list)
     ensemble: EnsembleOut | None = None
     ensembles: dict[str, EnsembleOut] = Field(default_factory=dict)
+    rate_sensitive_weight: float = 0.0
     triangulation: dict[str, Any] | None = None
     assumptions: dict[str, Any] = Field(default_factory=dict)
     assumption_provenance: dict[str, dict[str, str]] = Field(default_factory=dict)
