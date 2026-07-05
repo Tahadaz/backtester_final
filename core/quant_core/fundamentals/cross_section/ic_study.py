@@ -148,7 +148,12 @@ def tercile_backtest(frame: pd.DataFrame, *, cost_bps: float, horizon: str = "3m
     }
 
 
-def run_study(panel: pd.DataFrame, *, price_by_symbol: dict[str, pd.Series | None]) -> dict[str, Any]:
+def run_study(
+    panel: pd.DataFrame,
+    *,
+    price_by_symbol: dict[str, pd.Series | None],
+    frozen_variant: str | None = None,
+) -> dict[str, Any]:
     variants = [
         ("pmom_6_1", PillarConfig(pmom_months=6)),
         ("pmom_12_1", PillarConfig(pmom_months=12)),
@@ -161,13 +166,19 @@ def run_study(panel: pd.DataFrame, *, price_by_symbol: dict[str, pd.Series | Non
         variant_frames[variant_id] = scored
         selection_tables.append(compute_ic_table(selection, split="selection", variant_id=variant_id))
     selection_ic = pd.concat(selection_tables, ignore_index=True) if selection_tables else pd.DataFrame()
-    chooser = selection_ic[(selection_ic["signal"] == "sfc") & (selection_ic["horizon"] == "6m")].copy()
-    if chooser.empty:
-        chosen_variant = "pmom_6_1"
+    if frozen_variant:
+        valid_variants = {variant_id for variant_id, _ in variants}
+        if frozen_variant not in valid_variants:
+            raise ValueError(f"Unknown frozen variant {frozen_variant!r}; expected one of {sorted(valid_variants)!r}")
+        chosen_variant = frozen_variant
     else:
-        chooser["sort_t"] = chooser["nw_t_stat"].fillna(-999.0)
-        chooser["sort_ic"] = chooser["mean_ic"].fillna(-999.0)
-        chosen_variant = str(chooser.sort_values(["sort_t", "sort_ic"], ascending=False).iloc[0]["variant_id"])
+        chooser = selection_ic[(selection_ic["signal"] == "sfc") & (selection_ic["horizon"] == "6m")].copy()
+        if chooser.empty:
+            chosen_variant = "pmom_6_1"
+        else:
+            chooser["sort_t"] = chooser["nw_t_stat"].fillna(-999.0)
+            chooser["sort_ic"] = chooser["mean_ic"].fillna(-999.0)
+            chosen_variant = str(chooser.sort_values(["sort_t", "sort_ic"], ascending=False).iloc[0]["variant_id"])
     chosen_frame = variant_frames[chosen_variant]
     _, proof, split_date = chronological_split(chosen_frame)
 
@@ -201,6 +212,7 @@ def run_study(panel: pd.DataFrame, *, price_by_symbol: dict[str, pd.Series | Non
         "horizons": list(HORIZONS),
         "equal_pillar_weights": True,
         "fdr_family_test_count": int(len(proof_ic)),
+        "frozen_variant": frozen_variant,
     }
     config_hash = hashlib.sha256(json.dumps(config, sort_keys=True).encode("utf-8")).hexdigest()[:16]
     return {
@@ -367,6 +379,10 @@ def main() -> None:
     parser.add_argument("--start", default=None)
     parser.add_argument("--end", default=None)
     parser.add_argument("--out", default="docs/fundamentals-layer/61-sfc-ic-study-results.md")
+    parser.add_argument("--annual-lag-days", type=int, default=90)
+    parser.add_argument("--semiannual-lag-days", type=int, default=60)
+    parser.add_argument("--quarterly-lag-days", type=int, default=45)
+    parser.add_argument("--frozen-variant", default=None)
     args = parser.parse_args()
 
     annual, period, consensus, sectors = _load_rows_from_db()
@@ -375,6 +391,9 @@ def main() -> None:
     cfg = PanelConfig(
         start=pd.Timestamp(args.start).date() if args.start else None,
         end=pd.Timestamp(args.end).date() if args.end else None,
+        annual_lag_days=args.annual_lag_days,
+        semiannual_lag_days=args.semiannual_lag_days,
+        quarterly_lag_days=args.quarterly_lag_days,
     )
     panel = build_pit_panel(
         annual_rows=annual,
@@ -385,7 +404,7 @@ def main() -> None:
         config=cfg,
         sectors=sectors,
     )
-    result = run_study(panel, price_by_symbol=price_cache)
+    result = run_study(panel, price_by_symbol=price_cache, frozen_variant=args.frozen_variant)
     markdown = format_results_markdown(result)
     Path(args.out).write_text(markdown, encoding="utf-8")
     print(markdown)

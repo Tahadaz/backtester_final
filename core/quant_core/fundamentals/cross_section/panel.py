@@ -24,6 +24,9 @@ class PanelConfig:
     min_history_year: int = 2016
     horizons: tuple[str, ...] = ("3m", "6m", "12m")
     as_of_dates: tuple[dt.date, ...] | None = None
+    annual_lag_days: int = 90
+    semiannual_lag_days: int = 60
+    quarterly_lag_days: int = 45
 
 
 def _date(value: Any) -> dt.date | None:
@@ -60,6 +63,9 @@ def availability_date(
     publication_date: dt.date | None = None,
     period_end_date: dt.date | None = None,
     as_of_date: dt.date | None = None,
+    annual_lag_days: int = 90,
+    semiannual_lag_days: int = 60,
+    quarterly_lag_days: int = 45,
 ) -> dt.date:
     if publication_date is not None:
         return publication_date
@@ -67,11 +73,11 @@ def availability_date(
         return as_of_date
     end = period_end_date or dt.date(int(statement_year), 12, 31)
     ptype = str(period_type or "annual").lower()
-    lag = 90
+    lag = int(annual_lag_days)
     if ptype in {"semiannual", "half", "h1", "h2"}:
-        lag = 60
+        lag = int(semiannual_lag_days)
     elif ptype in {"quarterly", "quarter", "q1", "q2", "q3", "q4"}:
-        lag = 45
+        lag = int(quarterly_lag_days)
     return end + dt.timedelta(days=lag)
 
 
@@ -80,6 +86,9 @@ def availability_kind(
     period_type: str = "annual",
     publication_date: dt.date | None = None,
     as_of_date: dt.date | None = None,
+    annual_lag_days: int = 90,
+    semiannual_lag_days: int = 60,
+    quarterly_lag_days: int = 45,
 ) -> str:
     if publication_date is not None:
         return "publication_date"
@@ -87,13 +96,14 @@ def availability_kind(
         return "as_of_date"
     ptype = str(period_type or "annual").lower()
     if ptype in {"semiannual", "half", "h1", "h2"}:
-        return "fallback_semiannual_60d"
+        return f"fallback_semiannual_{int(semiannual_lag_days)}d"
     if ptype in {"quarterly", "quarter", "q1", "q2", "q3", "q4"}:
-        return "fallback_quarterly_45d"
-    return "fallback_annual_90d"
+        return f"fallback_quarterly_{int(quarterly_lag_days)}d"
+    return f"fallback_annual_{int(annual_lag_days)}d"
 
 
-def _as_annual_metric(row: Any) -> dict[str, Any]:
+def _as_annual_metric(row: Any, config: PanelConfig | None = None) -> dict[str, Any]:
+    cfg = config or PanelConfig()
     statement_year = int(_get(row, "statement_year", _get(row, "fiscal_year")))
     period_type = str(_get(row, "period_type", "annual") or "annual")
     period_end = _date(_get(row, "period_end_date")) or dt.date(statement_year, 12, 31)
@@ -104,11 +114,17 @@ def _as_annual_metric(row: Any) -> dict[str, Any]:
         publication_date=pub,
         period_end_date=period_end,
         as_of_date=_date(_get(row, "as_of_date")),
+        annual_lag_days=cfg.annual_lag_days,
+        semiannual_lag_days=cfg.semiannual_lag_days,
+        quarterly_lag_days=cfg.quarterly_lag_days,
     )
     kind = availability_kind(
         period_type=period_type,
         publication_date=pub,
         as_of_date=_date(_get(row, "as_of_date")),
+        annual_lag_days=cfg.annual_lag_days,
+        semiannual_lag_days=cfg.semiannual_lag_days,
+        quarterly_lag_days=cfg.quarterly_lag_days,
     )
     return {
         "symbol": str(_get(row, "symbol")).strip().upper(),
@@ -147,10 +163,10 @@ def _assert_no_lookahead(panel: pd.DataFrame) -> None:
         raise AssertionError(f"LOOK-AHEAD VIOLATION in SFC panel: {sample!r}")
 
 
-def assert_metric_rows_no_lookahead(rows: Iterable[Any], as_of_date: dt.date) -> None:
+def assert_metric_rows_no_lookahead(rows: Iterable[Any], as_of_date: dt.date, config: PanelConfig | None = None) -> None:
     bad = []
     for row in rows:
-        item = _as_annual_metric(row)
+        item = _as_annual_metric(row, config)
         if item["availability_date"] > as_of_date:
             bad.append((item["symbol"], item["metric_name"], item["availability_date"]))
     if bad:
@@ -247,8 +263,8 @@ def build_pit_panel(
     metrics, per-symbol PIT history, PIT close, and forward returns.
     """
     cfg = config or PanelConfig()
-    metrics = [_as_annual_metric(r) for r in annual_rows]
-    metrics.extend(_as_annual_metric(r) for r in (period_rows or []))
+    metrics = [_as_annual_metric(r, cfg) for r in annual_rows]
+    metrics.extend(_as_annual_metric(r, cfg) for r in (period_rows or []))
     metrics = [r for r in metrics if r["statement_year"] >= cfg.min_history_year and r["symbol"]]
     by_symbol: dict[str, list[dict[str, Any]]] = {}
     for row in metrics:

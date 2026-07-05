@@ -103,3 +103,50 @@ Composite IC gate passed: `True`
 Net spread gate passed: `True`
 
 The proof-half FDR family includes every selection-half variant carried to proof.
+
+## Lag sensitivity (+120d annual)
+
+Rerun: annual fallback +120d, semiannual +75d, quarterly +60d; frozen variant `pmom_6_1`; same start/end and proof protocol as the primary study.
+
+Composite proof-half IC:
+
+| signal | horizon | periods | pairs | mean_ic | nw_t_stat | fdr_qvalue |
+|:-------|:--------|--------:|------:|--------:|----------:|-----------:|
+| sfc | 6m | 28 | 1879 | 0.0858 | 2.1287 | 0.0768 |
+| sfc | 12m | 22 | 1464 | 0.1662 | 5.3281 | 0.0000 |
+
+3m tercile spread backtest:
+
+| horizon | cost_bps | periods | mean_spread | avg_turnover | bootstrap_pvalue |
+|:--------|---------:|--------:|------------:|-------------:|-----------------:|
+| 3m | 33 | 30 | 0.032083 | 0.254619 | 0 |
+| 3m | 75 | 30 | 0.029944 | 0.254619 | 0 |
+
+Gate criteria still hold under the +120d annual fallback: composite 6m/12m IC remains positive with NW t-stat >= 2, and 3m net spread remains positive at both 33 bps and 75 bps.
+
+## Reviewer caveats (Claude verification pass, 2026-07-05 — re-appended after regen; keep this section when regenerating)
+
+The PASS is legitimate and the protocol was followed (disjoint selection/proof, proof-only
+spread backtest, publication-date joins, BH-FDR over both variants). Any presentation of
+these numbers must carry the following qualifications:
+
+1. **Effective evidence window is one regime** (2023-07 → 2026-07). The selection half was
+   data-starved (~14 scored names/period vs ~66 in proof), so it protected against variant
+   shopping but is not independent confirmation. The 12m rows sit on ~2 independent windows —
+   directional only. Credible core: 6m composite IC 0.085 (NW t 2.18, q 0.073) + 3m tercile
+   spread +3.36%/quarter net at 33 bps (p ≈ 0, turnover 25%, near-unchanged at 75 bps).
+2. **VAL carries the composite; QUAL/FMOM are flat** in this sample (FMOM history is thin).
+   VAL-only 6m IC 0.128 > SFC 0.085: equal weighting currently dilutes — accepted per brief 59
+   §3.5 for robustness; expectations: today this is value(+momentum), with QUAL/FMOM as
+   options on future data depth.
+3. **88% of panel rows use the fallback availability lag (annual +90d), only 12% a real
+   publication date.** Moroccan annual publications can extend past +90 days for late
+   publishers, so the fallback may mark some statements available a few weeks early.
+   **Required robustness check before treating the gate as final: rerun the study with the
+   annual fallback at +120d and confirm the 6m composite line and the net spread survive.**
+4. **Vintage caveat**: current corrected DB (defensible — corrections re-extracted originally
+   published figures), but ingestion coverage is a 2026 choice; never-ingested and delisted
+   names are absent from fundamental cross-sections.
+5. **Magnitudes are top-of-global-range** (typical institutional value IC 0.03–0.07);
+   plausible for a thin low-coverage frontier market, but always present with the
+   single-regime caveat. UI wording stays "validé sur 2023–2026 (une seule période de marché)".
