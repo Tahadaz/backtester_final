@@ -177,11 +177,18 @@ function clampNumber(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
 }
 
-function bestActionableSignal(stock: DashboardStock) {
+function isMasiEquity(stock: DashboardStock) {
+  return (stock.asset_class ?? "equity") === "equity"
+    && (stock.asset_type ?? "equity") === "equity"
+    && stock.market_region === "masi"
+}
+
+function bestActionableSignal(stock: DashboardStock, opts?: { excludeMasiShorts?: boolean }) {
   const signal = stock.best_signal ?? null
   if (!signal) return null
   if (signal.source !== "wfo") return null
   if (signal.direction === "none" || signal.bucket === "hold") return null
+  if (opts?.excludeMasiShorts && isMasiEquity(stock) && signal.direction === "short") return null
   if ((signal.bucket === "buy" || signal.bucket === "strong_buy") && signal.direction !== "long") return null
   if ((signal.bucket === "sell" || signal.bucket === "strong_sell") && signal.direction !== "short") return null
   if (!["buy", "strong_buy", "sell", "strong_sell"].includes(String(signal.bucket))) return null
@@ -213,7 +220,7 @@ function TopActionableSignals({
   const rows = useMemo(
     () =>
       stocks
-        .map((stock) => ({ stock, signal: bestActionableSignal(stock) }))
+        .map((stock) => ({ stock, signal: bestActionableSignal(stock, { excludeMasiShorts: true }) }))
         .filter((row): row is { stock: DashboardStock; signal: NonNullable<ReturnType<typeof bestActionableSignal>> } => Boolean(row.signal))
         .sort((left, right) => {
           const proven = Number(Boolean(right.signal.proven_edge_net)) - Number(Boolean(left.signal.proven_edge_net))
@@ -236,7 +243,7 @@ function TopActionableSignals({
         <div>
           <h2 className="dashboard-section-title">Top signaux actionnables</h2>
           <p className="mt-0.5 text-[11px] text-muted-foreground">
-            Classement par edge prouvé, score puis retour attendu net.
+            Classement par edge validé (OOS), score puis retour attendu net.
           </p>
         </div>
         <div className="dashboard-meta">{rows.length} setups prêts à justifier</div>
@@ -289,10 +296,10 @@ function TopActionableSignals({
                 <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Preuve</div>
                 <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px]">
                   <span className={cn("rounded px-2 py-0.5 font-semibold", signal.proven_edge_net ? "dashboard-chip-positive" : "dashboard-action-warning")}>
-                    {signal.proven_edge_net ? "Prouvé" : "Watch"}
+                    {signal.proven_edge_net ? "Validé OOS" : "Watch"}
                   </span>
                   <span className="dashboard-mono text-muted-foreground">
-                    %succés {formatPercent(signal.hit_rate)} · {signal.fwd_horizon_bars ?? "--"}j
+                    %succès {formatPercent(signal.hit_rate)} · {signal.fwd_horizon_bars ?? "--"}j
                   </span>
                   <span className="dashboard-mono text-muted-foreground">
                     n={signal.proof_n ?? signal.n ?? "--"}
@@ -311,9 +318,10 @@ function TopActionableSignals({
 
 function downloadStocksCsv(stocks: DashboardStock[]) {
   const lines = [
-    ["symbol", "display_name", "sector", "asset_class", "asset_type", "market_region", "adv20_mad"].join(","),
-    ...stocks.map((stock) =>
-      [
+    ["symbol", "display_name", "sector", "asset_class", "asset_type", "market_region", "adv20_mad", "actionable", "actionable_side"].join(","),
+    ...stocks.map((stock) => {
+      const signal = bestActionableSignal(stock, { excludeMasiShorts: true })
+      return [
         stock.symbol,
         stock.display_name ?? "",
         stock.sector ?? "",
@@ -321,20 +329,22 @@ function downloadStocksCsv(stocks: DashboardStock[]) {
         stock.asset_type ?? "",
         stock.market_region ?? "",
         stock.adv ?? "",
+        signal ? "true" : "false",
+        signal?.direction ?? "",
       ]
         .map((value) => {
           const raw = String(value)
           const escaped = raw.replaceAll("\"", "\"\"")
           return /[",\n\r]/.test(raw) ? `"${escaped}"` : escaped
         })
-        .join(","),
-    ),
+        .join(",")
+    }),
   ]
   const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" })
   const url = URL.createObjectURL(blob)
   const link = document.createElement("a")
   link.href = url
-  link.download = "dashboard-v1.csv"
+  link.download = "dashboard.csv"
   link.click()
   URL.revokeObjectURL(url)
 }
@@ -1157,7 +1167,7 @@ export default function DashboardV1Page() {
       <div className="flex flex-col gap-4 border-b border-border pb-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-1">
           <h1 className="text-[18px] font-semibold tracking-tight sm:text-[22px]">
-            Tableau de Bord <span className="dashboard-meta align-middle">v1</span>
+            Tableau de Bord
           </h1>
           <p className="text-[12px] text-muted-foreground">
             Signaux techniques · <span className="font-medium text-foreground">Univers multi-actifs</span>
@@ -1245,10 +1255,10 @@ export default function DashboardV1Page() {
             value={visibleMasiStocks.length.toLocaleString("fr-FR")}
             sub={basketOnly ? "titres du panier" : "titres après filtres"}
           />
-          <KpiTile label={isFundamentalDashboardMode ? "Top tercile SFC" : isTechnicalDashboardMode ? "Directions haussieres" : "Opportunites long"} value={bullishCount.toLocaleString("fr-FR")} tone="positive" sub={isFundamentalDashboardMode ? "favoriser" : isTechnicalDashboardMode ? `${technicalModeShortLabel(technicalDirectionMode)} technique > +15` : "edge eligible"} />
-          <KpiTile label={isFundamentalDashboardMode ? "Bottom tercile SFC" : isTechnicalDashboardMode ? "Directions baissieres" : "Opportunites short"} value={bearishCount.toLocaleString("fr-FR")} tone="negative" sub={isFundamentalDashboardMode ? "à éviter, jamais short" : isTechnicalDashboardMode ? `${technicalModeShortLabel(technicalDirectionMode)} technique < -15` : "edge eligible"} />
+          <KpiTile label={isFundamentalDashboardMode ? "Top tercile SFC" : isTechnicalDashboardMode ? "Directions haussières" : "Opportunités long"} value={bullishCount.toLocaleString("fr-FR")} tone="positive" sub={isFundamentalDashboardMode ? "favoriser" : isTechnicalDashboardMode ? `${technicalModeShortLabel(technicalDirectionMode)} technique > +15` : "edge eligible"} />
+          <KpiTile label={isFundamentalDashboardMode ? "Bottom tercile SFC" : isTechnicalDashboardMode ? "Directions baissières" : "À éviter / alléger"} value={bearishCount.toLocaleString("fr-FR")} sub={isFundamentalDashboardMode ? "à éviter, jamais short" : isTechnicalDashboardMode ? `${technicalModeShortLabel(technicalDirectionMode)} technique < -15` : "signal de sortie"} />
           <KpiTile
-            label={isFundamentalDashboardMode ? "SFC median" : isTechnicalDashboardMode ? "Score technique median" : "Action E[R] opt. median"}
+            label={isFundamentalDashboardMode ? "SFC médian" : isTechnicalDashboardMode ? "Score technique médian" : "Action E[R] opt. médian"}
             value={isFundamentalDashboardMode ? (medianFundamentalUpside != null ? formatDecimal(medianFundamentalUpside, 2) : "--") : isTechnicalDashboardMode ? (medianTechnicalScore != null ? formatDecimal(medianTechnicalScore, 1) : "--") : (medianEr != null ? formatPercent(medianEr) : "--")}
             tone={isFundamentalDashboardMode || isTechnicalDashboardMode ? undefined : medianEr != null && medianEr > 0 ? "positive" : medianEr != null && medianEr < 0 ? "negative" : undefined}
             sub={
@@ -1265,10 +1275,10 @@ export default function DashboardV1Page() {
       ) : (
         <div className="grid grid-cols-2 gap-2 md:grid-cols-2 xl:grid-cols-4">
           <KpiTile label="Univers total" value={completStocks.length.toLocaleString("fr-FR")} sub={isFundamentalDashboardMode ? "scores SFC" : isTechnicalDashboardMode ? "directions techniques" : "instruments disponibles"} />
-          <KpiTile label={isFundamentalDashboardMode ? "Top tercile SFC" : isTechnicalDashboardMode ? "Directions haussieres" : "Opportunites long"} value={completeBullishCount.toLocaleString("fr-FR")} tone="positive" sub={isFundamentalDashboardMode ? "favoriser" : isTechnicalDashboardMode ? `${technicalModeShortLabel(technicalDirectionMode)} technique > +15` : "edge eligible"} />
-          <KpiTile label={isFundamentalDashboardMode ? "Bottom tercile SFC" : isTechnicalDashboardMode ? "Directions baissieres" : "Opportunites short"} value={completeBearishCount.toLocaleString("fr-FR")} tone="negative" sub={isFundamentalDashboardMode ? "à éviter, jamais short" : isTechnicalDashboardMode ? `${technicalModeShortLabel(technicalDirectionMode)} technique < -15` : "edge eligible"} />
+          <KpiTile label={isFundamentalDashboardMode ? "Top tercile SFC" : isTechnicalDashboardMode ? "Directions haussières" : "Opportunités long"} value={completeBullishCount.toLocaleString("fr-FR")} tone="positive" sub={isFundamentalDashboardMode ? "favoriser" : isTechnicalDashboardMode ? `${technicalModeShortLabel(technicalDirectionMode)} technique > +15` : "edge eligible"} />
+          <KpiTile label={isFundamentalDashboardMode ? "Bottom tercile SFC" : isTechnicalDashboardMode ? "Directions baissières" : "Opportunités short"} value={completeBearishCount.toLocaleString("fr-FR")} tone="negative" sub={isFundamentalDashboardMode ? "à éviter, jamais short" : isTechnicalDashboardMode ? `${technicalModeShortLabel(technicalDirectionMode)} technique < -15` : "edge eligible"} />
           <KpiTile
-            label={isFundamentalDashboardMode ? "SFC median" : isTechnicalDashboardMode ? "Score technique median" : "Edge prouve"}
+            label={isFundamentalDashboardMode ? "SFC médian" : isTechnicalDashboardMode ? "Score technique médian" : "Edge validé (OOS)"}
             value={isFundamentalDashboardMode ? (medianCompleteFundamentalUpside != null ? formatDecimal(medianCompleteFundamentalUpside, 2) : "--") : isTechnicalDashboardMode ? (medianCompleteTechnicalScore != null ? formatDecimal(medianCompleteTechnicalScore, 1) : "--") : completeProvenEdgeCount.toLocaleString("fr-FR")}
             tone={isFundamentalDashboardMode || isTechnicalDashboardMode ? undefined : "positive"}
             sub={isFundamentalDashboardMode ? `${completeFundamentalUpsideValues.length} scores - ${sfcData?.validation_label ?? "validé sur 2023–2026 (une seule période de marché)"}` : isTechnicalDashboardMode ? `${completeTechnicalScoreValues.length} directions techniques` : `sur ${completStocks.length} instruments`}
@@ -1434,7 +1444,7 @@ export default function DashboardV1Page() {
                   </div>
                   <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
                     <Checkbox checked={edgeOnly} onCheckedChange={(checked) => setEdgeOnly(checked === true)} />
-                    Edge prouvé seulement
+                    Edge validé (OOS) seulement
                   </label>
                 </>
               ) : null}

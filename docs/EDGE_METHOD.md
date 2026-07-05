@@ -81,6 +81,13 @@ net action return = gross action return - 2 * cost_bps_per_side
 
 The default cost is configured by `EDGE_COST_BPS_PER_SIDE`.
 
+Execution and cost assumptions:
+
+- 33 bps/side is the desk fee schedule.
+- Execution is assumed at the opening auction, so no spread is crossed.
+- Market impact is bounded by the blotter's ADV participation cap.
+- These assumptions must be validated against live fills.
+
 ## Proven Edge Gates
 
 A row is marked proven only when all gates pass:

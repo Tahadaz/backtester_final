@@ -755,10 +755,10 @@ export const glossaryEntries: GlossaryEntry[] = [
   {
     id: "proven-edge",
     categoryId: "edge",
-    title: { fr: "Edge prouvé", en: "Proven edge" },
+    title: { fr: "Edge validé (OOS)", en: "Validated edge (OOS)" },
     plain: {
-      fr: "Statut positif quand l'échantillon est suffisant et que les tests de robustesse acceptent le signal.",
-      en: "Positive status when sample size is sufficient and robustness tests accept the signal.",
+      fr: "Statut positif quand l'échantillon OOS est suffisant et que les tests de robustesse acceptent le signal.",
+      en: "Positive status when the OOS sample is sufficient and robustness tests accept the signal.",
     },
     details: [
       {
@@ -766,7 +766,7 @@ export const glossaryEntries: GlossaryEntry[] = [
         en: "If the badge says Watch, it may still be interesting, but statistical evidence is not strong enough yet.",
       },
     ],
-    aliases: ["proven_edge_net", "Prouve", "A surveiller"],
+    aliases: ["proven_edge_net", "Edge prouvé", "Prouvé", "À surveiller"],
     appLinks: [dashboardLink],
   },
   {
@@ -774,8 +774,8 @@ export const glossaryEntries: GlossaryEntry[] = [
     categoryId: "edge",
     title: { fr: "Gates d'edge", en: "Edge gates" },
     plain: {
-      fr: "Les contrôles que le signal doit passer avant d'être marqué comme edge prouvé: taille d'échantillon, Monte Carlo, label shuffle et borne Wilson.",
-      en: "The checks a signal must pass before being marked as proven edge: sample size, Monte Carlo, label shuffle, and Wilson lower bound.",
+      fr: "Les contrôles que le signal doit passer avant d'être marqué comme edge validé (OOS): taille d'échantillon, Monte Carlo, label shuffle et borne Wilson.",
+      en: "The checks a signal must pass before being marked as validated edge (OOS): sample size, Monte Carlo, label shuffle, and Wilson lower bound.",
     },
     aliases: ["gates", "mc gate", "wilson"],
     appLinks: [dashboardLink, analyticsLink],

@@ -201,7 +201,7 @@ export function EdgePanel({
               <div className="grid gap-3 md:grid-cols-3">
                 <StatBox
                   label="Mode actif"
-                  value={selected.proven ? "Edge prouve" : edge.n < 30 ? "Insuffisant" : "A surveiller"}
+                  value={selected.proven ? "Edge validé (OOS)" : edge.n < 30 ? "Insuffisant" : "À surveiller"}
                   sub={`${actionLabel(edge)} - ${edge.side_policy} - cout par cote: ${edge.cost_bps_per_side} bps`}
                 />
                 <StatBox

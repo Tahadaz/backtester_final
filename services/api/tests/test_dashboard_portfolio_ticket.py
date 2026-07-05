@@ -67,6 +67,22 @@ def _edge(symbol: str, direction: str = "long", proven: bool = True, *, p_win: f
     )
 
 
+def test_full_kelly_uses_ci_lower_bounds_for_conservative_sizing() -> None:
+    expectancy = SimpleNamespace(p_win=0.60, avg_win=0.04, avg_loss=-0.02, expectancy=0.016)
+    tight_ci = SimpleNamespace(
+        expectancy_net=expectancy,
+        hit_ci_lower=0.56,
+        action_expected_return_net_ci_lower=0.014,
+    )
+    wide_ci = SimpleNamespace(
+        expectancy_net=expectancy,
+        hit_ci_lower=0.51,
+        action_expected_return_net_ci_lower=0.006,
+    )
+
+    assert svc._full_kelly_from_expectancy(wide_ci) < svc._full_kelly_from_expectancy(tight_ci)
+
+
 def test_dashboard_portfolio_ticket_sizes_manual_basket(monkeypatch) -> None:
     monkeypatch.setattr(
         svc,

@@ -18,7 +18,7 @@ from .oos_index import OosSample
 from .score_history import BUCKET_NAMES, _bucket_for, _calculate_forward_returns
 from .stats.hit_rate import wilson_ci
 
-METHODOLOGY_VERSION = "2026-05-13-net-edge-score-v1"
+METHODOLOGY_VERSION = "2026-07-05-net-edge-score-v2"
 DEFAULT_COST_BPS_PER_SIDE = 33.0
 MC_PVALUE_THRESHOLD = 0.05
 LABEL_SHUFFLE_PVALUE_THRESHOLD = 0.05

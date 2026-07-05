@@ -106,7 +106,9 @@ def _full_kelly_from_expectancy(edge: Any) -> float | None:
     exp = getattr(edge, "expectancy_net", None)
     if exp is None:
         return None
-    p_win = _safe_float(getattr(exp, "p_win", None))
+    p_win = _safe_float(getattr(edge, "hit_ci_lower", None))
+    if p_win is None:
+        p_win = _safe_float(getattr(exp, "p_win", None))
     avg_win = _safe_float(getattr(exp, "avg_win", None))
     avg_loss = _safe_float(getattr(exp, "avg_loss", None))
     if p_win is None or avg_win is None or avg_loss is None:
@@ -114,6 +116,10 @@ def _full_kelly_from_expectancy(edge: Any) -> float | None:
     loss = abs(avg_loss)
     if p_win <= 0.0 or p_win >= 1.0 or avg_win <= 0.0 or loss <= 0.0:
         return None
+    conservative_expectancy = _safe_float(getattr(edge, "action_expected_return_net_ci_lower", None))
+    if conservative_expectancy is not None:
+        conservative_expectancy = min(conservative_expectancy, p_win * avg_win)
+        return max(0.0, conservative_expectancy / avg_win)
     b = avg_win / loss
     if b <= 0.0:
         return None
