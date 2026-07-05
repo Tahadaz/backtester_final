@@ -216,8 +216,8 @@ export function tabFromQuery(value: string | null): DetailTab {
 }
 
 
-export function weightModeFromQuery(value: string | null): WeightMode {
-  return value?.trim() === "equal" ? "equal" : "ic"
+export function weightModeFromQuery(_value: string | null): WeightMode {
+  return "equal"
 }
 
 
@@ -926,4 +926,3 @@ export function dcfVerdict(displayUpside: number | null | undefined, mode: DcfMo
     ? `Sous-evalue de ${magnitude} selon le DCF ${mode.toUpperCase()}.`
     : `Surevalue de ${magnitude} selon le DCF ${mode.toUpperCase()}.`
 }
-

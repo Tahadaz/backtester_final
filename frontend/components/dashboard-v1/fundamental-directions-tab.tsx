@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useMemo, useState } from "react"
 import { ArrowRight, ChevronDown, ChevronUp, ChevronsUpDown, Columns3 } from "lucide-react"
+import type { FundamentalCrossSectionRow } from "@/lib/api"
 import type { DashboardFundamentals, DashboardStock } from "@/lib/dashboard-types"
 import {
   DEFAULT_DASHBOARD_FUNDAMENTAL_COLUMNS,
@@ -27,6 +28,9 @@ import { cn } from "@/lib/utils"
 type SortDir = "asc" | "desc"
 type SortKey =
   | "symbol"
+  | "sfc_rank"
+  | "sfc_score"
+  | "sfc_coverage"
   | "price"
   | "var1j"
   | "direction"
@@ -43,6 +47,9 @@ interface FundamentalDirectionsTabProps {
   stocks: DashboardStock[]
   columns?: DashboardFundamentalColumn[]
   onColumnsChange?: (columns: DashboardFundamentalColumn[]) => void
+  sfcRowsBySymbol?: Record<string, FundamentalCrossSectionRow | undefined>
+  sfcAsOf?: string | null
+  sfcValidationLabel?: string | null
 }
 
 const COLUMN_LABELS: Record<DashboardFundamentalColumn, string> = {
@@ -126,6 +133,36 @@ function sourceLabel(value: string | null | undefined) {
   return "--"
 }
 
+function sfcDirectionLabel(row: FundamentalCrossSectionRow | null | undefined, fundamentals: DashboardFundamentals | null | undefined): string {
+  if (row?.tercile === "top") return "Favoriser"
+  if (row?.tercile === "bottom") return "À éviter"
+  if (row?.tercile === "middle") return "Neutre"
+  if (row) return "Non classé"
+  return fundamentalSignalLabel(fundamentals)
+}
+
+function tercileTone(tercile: string | null | undefined) {
+  if (tercile === "top") return "border-emerald-400/40 bg-emerald-500/10 text-emerald-700"
+  if (tercile === "bottom") return "border-rose-400/40 bg-rose-500/10 text-rose-700"
+  if (tercile === "middle") return "border-sky-400/40 bg-sky-500/10 text-sky-700"
+  return "border-border bg-muted text-muted-foreground"
+}
+
+function pillarTitle(row: FundamentalCrossSectionRow | null | undefined): string {
+  if (!row) return "Score composite indisponible"
+  return Object.entries(row.pillars)
+    .map(([key, value]) => `${key.toUpperCase()}: ${value == null ? "--" : value.toFixed(2)}`)
+    .join(" | ")
+}
+
+function sfcSortValue(row: FundamentalCrossSectionRow | null | undefined, key: SortKey): number | null {
+  if (!row) return null
+  if (key === "sfc_rank") return row.rank == null ? null : -row.rank
+  if (key === "sfc_score") return finite(row.sfc)
+  if (key === "sfc_coverage") return finite(row.coverage_ratio)
+  return null
+}
+
 function columnValue(fundamentals: DashboardFundamentals | null | undefined, key: SortKey): number | string | null {
   if (key === "symbol") return null
   if (!fundamentals) return null
@@ -179,8 +216,11 @@ export function FundamentalDirectionsTab({
   stocks,
   columns = DEFAULT_DASHBOARD_FUNDAMENTAL_COLUMNS,
   onColumnsChange,
+  sfcRowsBySymbol = {},
+  sfcAsOf,
+  sfcValidationLabel,
 }: FundamentalDirectionsTabProps) {
-  const [sortKey, setSortKey] = useState<SortKey>("upside")
+  const [sortKey, setSortKey] = useState<SortKey>("sfc_rank")
   const [sortDir, setSortDir] = useState<SortDir>("desc")
   const visibleColumns = useMemo(
     () => columns.filter((column) => FUNDAMENTAL_COLUMNS.includes(column)),
@@ -192,17 +232,20 @@ export function FundamentalDirectionsTab({
       if (sortKey === "symbol") return stock.symbol
       if (sortKey === "price") return priceForDisplay(stock)
       if (sortKey === "var1j") return oneDayVarPct(stock)
+      if (sortKey === "sfc_rank" || sortKey === "sfc_score" || sortKey === "sfc_coverage") {
+        return sfcSortValue(sfcRowsBySymbol[stock.symbol.toUpperCase()], sortKey)
+      }
       return columnValue(stock.fundamentals, sortKey)
     }
     return [...stocks].sort((left, right) => {
       const primary = compareValues(sortValueFor(left), sortValueFor(right), sortDir)
       return primary !== 0 ? primary : left.symbol.localeCompare(right.symbol)
     })
-  }, [stocks, sortDir, sortKey])
+  }, [sfcRowsBySymbol, stocks, sortDir, sortKey])
 
   const covered = useMemo(
-    () => stocks.filter((stock) => stock.fundamentals?.upside_pct != null).length,
-    [stocks],
+    () => stocks.filter((stock) => sfcRowsBySymbol[stock.symbol.toUpperCase()]?.sfc != null).length,
+    [sfcRowsBySymbol, stocks],
   )
 
   function onSort(nextKey: SortKey) {
@@ -211,7 +254,7 @@ export function FundamentalDirectionsTab({
       return
     }
     setSortKey(nextKey)
-    setSortDir("desc")
+    setSortDir(nextKey === "sfc_rank" ? "desc" : "desc")
   }
 
   function toggleColumn(column: DashboardFundamentalColumn, checked: boolean) {
@@ -231,7 +274,9 @@ export function FundamentalDirectionsTab({
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-bg2 px-4 py-3">
         <div>
           <h3 className="dashboard-section-title">Directions fondamentales</h3>
-          <div className="dashboard-meta">{sorted.length} lignes - {covered} couvertes</div>
+          <div className="dashboard-meta">
+            {sorted.length} lignes - {covered} scores SFC{ sfcAsOf ? ` - ${asOfLabel(sfcAsOf)}` : "" }{sfcValidationLabel ? ` - ${sfcValidationLabel}` : ""}
+          </div>
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -259,6 +304,7 @@ export function FundamentalDirectionsTab({
       <div className="grid gap-2 bg-background p-2 md:hidden">
         {sorted.map((stock) => {
           const fundamentals = stock.fundamentals ?? null
+          const sfc = sfcRowsBySymbol[stock.symbol.toUpperCase()]
           const href = `/signals?mode=fundamental&symbol=${encodeURIComponent(stock.symbol)}`
           return (
             <article key={`fund-mobile-${stock.symbol}`} className="rounded-lg border border-border bg-card px-3 py-3 shadow-xs">
@@ -278,22 +324,20 @@ export function FundamentalDirectionsTab({
                     )
                   })()}
                 </div>
-                <SignalBadge label={fundamentalSignalLabel(fundamentals)} />
+                <SignalBadge label={sfcDirectionLabel(sfc, fundamentals)} />
               </div>
               <div className="mt-3 grid grid-cols-3 gap-2 border-t border-border pt-2">
                 <div>
-                  <div className="text-[9px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Upside</div>
-                  <div className={cn("dashboard-mono mt-0.5 text-[13px] font-semibold", (fundamentals?.upside_pct ?? 0) > 0 ? "dashboard-text-positive" : (fundamentals?.upside_pct ?? 0) < 0 ? "dashboard-text-negative" : undefined)}>
-                    {formatPercent(fundamentals?.upside_pct)}
-                  </div>
+                  <div className="text-[9px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Rang</div>
+                  <div className="dashboard-mono mt-0.5 text-[13px] font-semibold">{sfc?.rank ?? "--"}</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-[9px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Value</div>
-                  <div className="dashboard-mono mt-0.5 text-[13px] font-semibold">{formatNumber(fundamentals?.value_score, 1)}</div>
+                  <div className="text-[9px] font-bold uppercase tracking-[0.08em] text-muted-foreground">SFC</div>
+                  <div className="dashboard-mono mt-0.5 text-[13px] font-semibold">{formatNumber(sfc?.sfc, 2)}</div>
                 </div>
                 <div className="text-right">
-                  <div className="text-[9px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Quality</div>
-                  <div className="dashboard-mono mt-0.5 text-[13px] font-semibold">{formatNumber(fundamentals?.quality_score, 1)}</div>
+                  <div className="text-[9px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Couverture</div>
+                  <div className="dashboard-mono mt-0.5 text-[13px] font-semibold">{sfc?.coverage_ratio == null ? "--" : `${(sfc.coverage_ratio * 100).toFixed(0)}%`}</div>
                 </div>
               </div>
               <Link href={href} className="mt-3 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-border bg-bg2 text-[12px] font-semibold text-foreground">
@@ -334,6 +378,19 @@ export function FundamentalDirectionsTab({
                   <SortIcon active={sortKey === "direction"} dir={sortDir} />
                 </button>
               </TableHead>
+              <TableHead className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                <button type="button" className="inline-flex items-center gap-1" onClick={() => onSort("sfc_rank")}>
+                  Rang SFC
+                  <SortIcon active={sortKey === "sfc_rank"} dir={sortDir} />
+                </button>
+              </TableHead>
+              <TableHead className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                <button type="button" className="inline-flex items-center gap-1" onClick={() => onSort("sfc_score")}>
+                  SFC
+                  <SortIcon active={sortKey === "sfc_score"} dir={sortDir} />
+                </button>
+              </TableHead>
+              <TableHead className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Piliers</TableHead>
               {visibleColumns.map((column) => (
                 <TableHead key={column} className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                   <button type="button" className="inline-flex items-center gap-1" onClick={() => onSort(column)}>
@@ -350,6 +407,7 @@ export function FundamentalDirectionsTab({
           <TableBody>
             {sorted.map((stock) => {
               const fundamentals = stock.fundamentals ?? null
+              const sfc = sfcRowsBySymbol[stock.symbol.toUpperCase()]
               const href = `/signals?mode=fundamental&symbol=${encodeURIComponent(stock.symbol)}`
               return (
                 <TableRow key={stock.symbol} className="border-b border-border/70 hover:bg-bg2">
@@ -379,7 +437,22 @@ export function FundamentalDirectionsTab({
                     )
                   })()}
                   <TableCell className="px-3 py-2.5">
-                    <SignalBadge label={fundamentalSignalLabel(fundamentals)} />
+                    <SignalBadge label={sfcDirectionLabel(sfc, fundamentals)} />
+                  </TableCell>
+                  <TableCell className="dashboard-mono px-3 py-2.5 text-right text-[11px] font-semibold">
+                    {sfc?.rank ?? "--"}
+                  </TableCell>
+                  <TableCell className="dashboard-mono px-3 py-2.5 text-right text-[11px] font-semibold">
+                    {formatNumber(sfc?.sfc, 2)}
+                  </TableCell>
+                  <TableCell className="px-3 py-2.5">
+                    <div className="flex flex-wrap gap-1" title={pillarTitle(sfc)}>
+                      {(["val", "qual", "fmom", "pmom"] as const).map((pillar) => (
+                        <Badge key={pillar} variant="outline" className="dashboard-mono text-[9px]">
+                          {pillar.toUpperCase()} {formatNumber(sfc?.pillars[pillar], 1)}
+                        </Badge>
+                      ))}
+                    </div>
                   </TableCell>
                   {visibleColumns.map((column) => (
                     <TableCell
@@ -395,8 +468,8 @@ export function FundamentalDirectionsTab({
                     </TableCell>
                   ))}
                   <TableCell className="px-3 py-2.5">
-                    <Badge variant="outline" className={cn("text-[10px]", confidenceTone(fundamentals?.confidence))}>
-                      {fundamentals?.confidence ?? "--"}
+                    <Badge variant="outline" className={cn("text-[10px]", sfc ? tercileTone(sfc.tercile) : confidenceTone(fundamentals?.confidence))}>
+                      {sfc?.tercile ?? fundamentals?.confidence ?? "--"}
                     </Badge>
                   </TableCell>
                   <TableCell className="dashboard-mono px-3 py-2.5 text-right text-[11px] text-muted-foreground">

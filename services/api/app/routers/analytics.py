@@ -11,6 +11,7 @@ Endpoints:
 from __future__ import annotations
 
 import math
+import datetime as dt
 import time
 import uuid
 from collections import defaultdict
@@ -74,13 +75,101 @@ from core.quant_core.research.score_history import (
     )
 from core.quant_core.horizons import LEGACY_HORIZON_ALIASES, canonical_horizon
 from core.quant_core.signal_engine.modes import SIGNAL_MODE_ALIASES, SIGNAL_MODES, resolve_signal_mode, signal_mode_read_names
+from ..services.fundamental_cross_section import (
+    SFC_CONFIG_HASH,
+    SFC_METHODOLOGY_VERSION,
+    latest_sfc_as_of,
+)
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
+
+SFC_VALIDATION_LABEL = "validé sur 2023–2026 (une seule période de marché)"
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _sfc_row_to_dict(row: models.FundamentalCrossSectionScore) -> dict[str, Any]:
+    return {
+        "symbol": row.symbol,
+        "as_of_date": row.as_of_date.isoformat(),
+        "rank": row.rank,
+        "tercile": row.tercile,
+        "sfc": row.sfc,
+        "pillars": {
+            "val": row.pillar_val,
+            "qual": row.pillar_qual,
+            "fmom": row.pillar_fmom,
+            "pmom": row.pillar_pmom,
+        },
+        "coverage_ratio": row.coverage_ratio,
+        "attribution": row.attribution_json or {},
+        "methodology_version": row.methodology_version,
+        "config_hash": row.config_hash,
+        "computed_at": row.computed_at.isoformat() if row.computed_at else None,
+    }
+
+
+def _sfc_latest_or_404(db: Session, as_of: Optional[dt.date]) -> dt.date:
+    target = latest_sfc_as_of(db, as_of)
+    if target is None:
+        raise HTTPException(status_code=404, detail="No fundamental cross-section scores available")
+    return target
+
+
+@router.get("/fundamental-cross-section")
+def get_fundamental_cross_section(
+    as_of: Optional[dt.date] = Query(None),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    target = _sfc_latest_or_404(db, as_of)
+    rows = (
+        db.query(models.FundamentalCrossSectionScore)
+        .filter(
+            models.FundamentalCrossSectionScore.as_of_date == target,
+            models.FundamentalCrossSectionScore.methodology_version == SFC_METHODOLOGY_VERSION,
+            models.FundamentalCrossSectionScore.config_hash == SFC_CONFIG_HASH,
+        )
+        .all()
+    )
+    rows = sorted(rows, key=lambda row: (row.rank if row.rank is not None else 10**9, row.symbol))
+    if not rows:
+        raise HTTPException(status_code=404, detail=f"No fundamental cross-section scores for {target.isoformat()}")
+    return {
+        "as_of_date": target.isoformat(),
+        "methodology_version": SFC_METHODOLOGY_VERSION,
+        "config_hash": SFC_CONFIG_HASH,
+        "validation_label": SFC_VALIDATION_LABEL,
+        "rows": [_sfc_row_to_dict(row) for row in rows],
+    }
+
+
+@router.get("/fundamental-cross-section/{symbol}")
+def get_fundamental_cross_section_symbol(
+    symbol: str,
+    as_of: Optional[dt.date] = Query(None),
+    limit: int = Query(52, ge=1, le=260),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    query = db.query(models.FundamentalCrossSectionScore).filter(
+        models.FundamentalCrossSectionScore.symbol == symbol.upper(),
+        models.FundamentalCrossSectionScore.methodology_version == SFC_METHODOLOGY_VERSION,
+        models.FundamentalCrossSectionScore.config_hash == SFC_CONFIG_HASH,
+    )
+    if as_of:
+        target = _sfc_latest_or_404(db, as_of)
+        query = query.filter(models.FundamentalCrossSectionScore.as_of_date <= target)
+    rows = query.order_by(models.FundamentalCrossSectionScore.as_of_date.desc()).limit(limit).all()
+    if not rows:
+        raise HTTPException(status_code=404, detail=f"No fundamental cross-section scores for {symbol.upper()}")
+    return {
+        "symbol": symbol.upper(),
+        "methodology_version": SFC_METHODOLOGY_VERSION,
+        "config_hash": SFC_CONFIG_HASH,
+        "validation_label": SFC_VALIDATION_LABEL,
+        "history": [_sfc_row_to_dict(row) for row in rows],
+    }
 
 def _report_to_out(report) -> SignalEvaluationReportOut:
     """Convert a SignalEvaluationReport domain object to the Pydantic schema."""

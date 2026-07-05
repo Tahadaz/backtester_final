@@ -567,9 +567,10 @@ export function ValuationTab({
           Pondération <GlossaryTerm id="ic-weighting" iconOnly />
         </span>
         <div className="seg compact">
-          <button type="button" className={weightMode === "ic" ? "active" : ""} onClick={() => onWeightModeChange("ic")}>IC</button>
+          <button type="button" className={weightMode === "ic" ? "active" : ""} disabled title="IC indisponible comme pondération active: spread dégénéré sur la validation. SFC validé sur 2023–2026 (une seule période de marché).">IC</button>
           <button type="button" className={weightMode === "equal" ? "active" : ""} onClick={() => onWeightModeChange("equal")}>Égale</button>
         </div>
+        <span className="text-[11px] text-muted-foreground">SFC validé sur 2023–2026 (une seule période de marché)</span>
         <span className="ml-auto text-[11px] text-muted-foreground">
           <GlossaryTerm id="wacc">WACC</GlossaryTerm>{" "}
           <span className="font-mono text-foreground">{fmtPct(asNumber(detail.assumptions.wacc), 1, false)}</span>
@@ -706,4 +707,3 @@ export function ValuationTab({
     </div>
   )
 }
-

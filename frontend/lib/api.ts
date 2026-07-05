@@ -504,6 +504,44 @@ export const DashboardPortfolioTicketResponseSchema = z.object({
 })
 export type DashboardPortfolioTicketResponse = z.infer<typeof DashboardPortfolioTicketResponseSchema>
 
+export const FundamentalCrossSectionRowSchema = z.object({
+  symbol: z.string(),
+  as_of_date: z.string(),
+  rank: z.number().nullable().optional(),
+  tercile: z.string(),
+  sfc: z.number().nullable().optional(),
+  pillars: z.object({
+    val: z.number().nullable().optional(),
+    qual: z.number().nullable().optional(),
+    fmom: z.number().nullable().optional(),
+    pmom: z.number().nullable().optional(),
+  }),
+  coverage_ratio: z.number().nullable().optional(),
+  attribution: z.record(z.unknown()).default({}),
+  methodology_version: z.string(),
+  config_hash: z.string(),
+  computed_at: z.string().nullable().optional(),
+})
+export type FundamentalCrossSectionRow = z.infer<typeof FundamentalCrossSectionRowSchema>
+
+export const FundamentalCrossSectionResponseSchema = z.object({
+  as_of_date: z.string(),
+  methodology_version: z.string(),
+  config_hash: z.string(),
+  validation_label: z.string(),
+  rows: z.array(FundamentalCrossSectionRowSchema).default([]),
+})
+export type FundamentalCrossSectionResponse = z.infer<typeof FundamentalCrossSectionResponseSchema>
+
+export const FundamentalCrossSectionHistoryResponseSchema = z.object({
+  symbol: z.string(),
+  methodology_version: z.string(),
+  config_hash: z.string(),
+  validation_label: z.string(),
+  history: z.array(FundamentalCrossSectionRowSchema).default([]),
+})
+export type FundamentalCrossSectionHistoryResponse = z.infer<typeof FundamentalCrossSectionHistoryResponseSchema>
+
 export const DashboardManualPositionSchema = z.object({
   symbol: z.string(),
   side: z.enum(["long", "short"]).default("long"),
@@ -1571,6 +1609,21 @@ export async function fetchDashboardPortfolioTicket(
     body: JSON.stringify(DashboardPortfolioTicketRequestSchema.parse(body)),
   })
   return DashboardPortfolioTicketResponseSchema.parse(payload)
+}
+
+export async function fetchFundamentalCrossSection(asOf?: string): Promise<FundamentalCrossSectionResponse> {
+  const qs = asOf ? `?as_of=${encodeURIComponent(asOf)}` : ""
+  const payload = await request<unknown>(`/analytics/fundamental-cross-section${qs}`)
+  return FundamentalCrossSectionResponseSchema.parse(payload)
+}
+
+export async function fetchFundamentalCrossSectionHistory(symbol: string, opts?: { asOf?: string; limit?: number }): Promise<FundamentalCrossSectionHistoryResponse> {
+  const params = new URLSearchParams()
+  if (opts?.asOf) params.set("as_of", opts.asOf)
+  if (opts?.limit) params.set("limit", String(opts.limit))
+  const qs = params.toString()
+  const payload = await request<unknown>(`/analytics/fundamental-cross-section/${encodeURIComponent(symbol)}${qs ? `?${qs}` : ""}`)
+  return FundamentalCrossSectionHistoryResponseSchema.parse(payload)
 }
 
 export async function fetchDashboardPortfolioPositions(): Promise<DashboardManualPosition[]> {
