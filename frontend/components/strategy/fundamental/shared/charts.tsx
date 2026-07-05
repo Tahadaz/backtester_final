@@ -75,30 +75,101 @@ export function FootballField({
 function MiniSeriesChart({
   historical,
   projected,
+  consensus = [],
   format,
 }: {
   historical: SeriesPoint[]
   projected: SeriesPoint[]
+  consensus?: SeriesPoint[]
   format: "pct" | "money" | "number"
 }) {
-  const width = 320
-  const height = 110
-  const allPoints = [...historical, ...projected]
-  if (!allPoints.length) return <div className="fund-empty-small">Serie indisponible.</div>
-  const historicalPath = seriesPath(historical, width, height)
-  const projectedPath = seriesPath(projected, width, height)
+  const width = 360
+  const height = 156
+  const pad = { left: 46, right: 14, top: 16, bottom: 34 }
+  const allPoints = [...historical, ...projected, ...consensus]
+  const [hovered, setHovered] = useState<SeriesPoint | null>(null)
+  if (allPoints.length < 2) return <div className="fund-empty-small">Données insuffisantes pour tracer la trajectoire.</div>
+  const chartPad = Math.max(pad.left, pad.right, pad.top, pad.bottom)
+  const historicalPath = seriesPath(historical, width, height, chartPad)
+  const projectedPath = seriesPath(projected, width, height, chartPad)
+  const consensusPath = seriesPath(consensus, width, height, chartPad)
+  const years = allPoints.map((point) => point.year)
+  const values = allPoints.map((point) => point.value)
+  const minYear = Math.min(...years)
+  const maxYear = Math.max(...years)
+  const minValue = Math.min(...values)
+  const maxValue = Math.max(...values)
+  const yTicks = Array.from({ length: 3 }, (_, index) => minValue + ((maxValue - minValue) / 2) * index)
+  const xTicks = Array.from(new Set([minYear, maxYear])).sort((a, b) => a - b)
+  const unitLabel = format === "pct" ? "%" : format === "money" ? "MAD" : "valeur"
   const latest = allPoints[allPoints.length - 1]
+  const activePoint = hovered ?? latest
+  const activePosition = activePoint ? seriesPointPosition(activePoint, allPoints, width, height, chartPad) : null
+  const sourceLabel = activePoint?.kind === "projected" ? "Projeté" : activePoint?.kind === "consensus" ? "Consensus" : "Observé"
   return (
     <div className="mini-series">
-      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Historique et projection">
-        <line x1="8" x2={width - 8} y1={height - 8} y2={height - 8} stroke="var(--line)" />
-        {historicalPath ? <path d={historicalPath} fill="none" stroke="var(--fg3)" strokeWidth="2" /> : null}
-        {projectedPath ? <path d={projectedPath} fill="none" stroke="var(--primary)" strokeWidth="2.5" strokeDasharray="4 3" /> : null}
-        {allPoints.map((point) => {
-          const position = seriesPointPosition(point, allPoints, width, height)
-          return <circle key={`${point.kind}-${point.year}-${point.value}`} cx={position.x} cy={position.y} r="2.8" fill={point.kind === "projected" ? "var(--primary)" : "var(--fg3)"} />
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Trajectoire historique, projetée et consensus">
+        {yTicks.map((tick) => {
+          const position = seriesPointPosition({ year: minYear, value: tick }, allPoints, width, height, chartPad)
+          return (
+            <g key={`y-${tick}`}>
+              <line x1={pad.left} x2={width - pad.right} y1={position.y} y2={position.y} stroke="var(--line)" strokeWidth="0.6" opacity="0.65" />
+              <text x={pad.left - 6} y={position.y + 3} textAnchor="end" fontSize="9" fill="var(--fg3)" fontFamily="var(--font-mono)">
+                {formatProjectionValue(tick, format)}
+              </text>
+            </g>
+          )
         })}
+        <line x1={pad.left} x2={width - pad.right} y1={height - chartPad} y2={height - chartPad} stroke="var(--line)" />
+        <line x1={pad.left} x2={pad.left} y1={chartPad} y2={height - chartPad} stroke="var(--line)" />
+        {xTicks.map((tick) => {
+          const position = seriesPointPosition({ year: tick, value: minValue }, allPoints, width, height, chartPad)
+          return (
+            <text key={`x-${tick}`} x={position.x} y={height - 12} textAnchor="middle" fontSize="9" fill="var(--fg3)" fontFamily="var(--font-mono)">
+              {tick}
+            </text>
+          )
+        })}
+        <text x={width / 2} y={height - 2} textAnchor="middle" fontSize="9" fill="var(--fg3)">Année</text>
+        <text x={12} y={height / 2} textAnchor="middle" fontSize="9" fill="var(--fg3)" transform={`rotate(-90 12 ${height / 2})`}>{unitLabel}</text>
+        {historicalPath ? <path d={historicalPath} fill="none" stroke="var(--fg3)" strokeWidth="2" /> : null}
+        {projectedPath ? <path d={projectedPath} fill="none" stroke="var(--primary)" strokeWidth="2.5" strokeDasharray="5 3" /> : null}
+        {consensusPath ? <path d={consensusPath} fill="none" stroke="var(--pos)" strokeWidth="2.5" strokeDasharray="2 3" /> : null}
+        {allPoints.map((point) => {
+          const position = seriesPointPosition(point, allPoints, width, height, chartPad)
+          const fill = point.kind === "projected" ? "var(--primary)" : point.kind === "consensus" ? "var(--pos)" : "var(--fg3)"
+          return (
+            <circle
+              key={`${point.kind}-${point.year}-${point.value}`}
+              cx={position.x}
+              cy={position.y}
+              r={hovered === point ? "4" : "3"}
+              fill={fill}
+              stroke="var(--card)"
+              strokeWidth="1"
+              onMouseEnter={() => setHovered(point)}
+              onMouseLeave={() => setHovered(null)}
+            />
+          )
+        })}
+        {activePoint && activePosition ? (
+          <g pointerEvents="none">
+            <line x1={activePosition.x} x2={activePosition.x} y1={chartPad} y2={height - chartPad} stroke="var(--line)" strokeDasharray="3 3" />
+            <rect x={Math.min(width - 132, Math.max(pad.left, activePosition.x + 8))} y={Math.max(8, activePosition.y - 28)} width="124" height="36" rx="4" fill="var(--card)" stroke="var(--line)" />
+            <text x={Math.min(width - 124, Math.max(pad.left + 8, activePosition.x + 16))} y={Math.max(22, activePosition.y - 13)} fontSize="10" fill="var(--fg2)">
+              {activePoint.year} - {sourceLabel}
+            </text>
+            <text x={Math.min(width - 124, Math.max(pad.left + 8, activePosition.x + 16))} y={Math.max(36, activePosition.y + 1)} fontSize="10" fill="var(--fg)" fontFamily="var(--font-mono)" fontWeight="700">
+              {formatProjectionValue(activePoint.value, format)}
+            </text>
+          </g>
+        ) : null}
       </svg>
+      <div className="mini-series-foot">
+        <span><span className="inline-block h-2 w-2 rounded-full bg-[var(--fg3)]" /> Observé</span>
+        <span><span className="inline-block h-2 w-2 rounded-full bg-[var(--primary)]" /> Projeté</span>
+        {consensus.length ? <span><span className="inline-block h-2 w-2 rounded-full bg-[var(--pos)]" /> Consensus</span> : null}
+      </div>
       <div className="mini-series-foot">
         <span>Dernier point</span>
         <strong>{formatProjectionValue(latest.value, format)}</strong>
@@ -221,4 +292,3 @@ export function FcfBridge({ projection, mode }: { projection: ProjectionView; mo
     </div>
   )
 }
-

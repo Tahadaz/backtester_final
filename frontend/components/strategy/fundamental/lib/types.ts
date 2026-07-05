@@ -262,7 +262,7 @@ export type ProjectionView = {
 export type SeriesPoint = {
   year: number
   value: number
-  kind?: "historical" | "projected"
+  kind?: "historical" | "projected" | "consensus"
 }
 
 
@@ -365,4 +365,3 @@ export type ComparableView = {
   peers: ComparablePeerView[]
   warnings: string[]
 }
-
