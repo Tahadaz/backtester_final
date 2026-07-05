@@ -200,6 +200,13 @@ def backfill_signals() -> dict[str, Any]:
     return dispatch_signal_backfill(trigger_source="manual_backfill")
 
 
+@router.post("/sfc/recompute", dependencies=[Depends(rate_limit_trigger)])
+def recompute_sfc_now() -> dict[str, Any]:
+    from services.worker.tasks.scheduler_dispatch import dispatch_schedule
+
+    return dispatch_schedule("weekly_fundamental_cross_section", trigger_source="manual_sfc_recompute")
+
+
 @router.get("/scheduler/runs")
 def scheduler_runs(limit: int = 50, db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     safe_limit = min(max(int(limit or 50), 1), 200)

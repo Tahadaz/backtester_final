@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from core.quant_core.fundamentals.cross_section.composite import compute_sfc
 from core.quant_core.fundamentals.cross_section.panel import PanelConfig, build_pit_panel, load_universe, publication_coverage_stats
 from core.quant_core.fundamentals.cross_section.pillars import PillarConfig, compute_pillar_scores
+from core.quant_core.fundamentals.pit_ic_backtest import normalize_price_index
 
 from .. import models
 from ..json_sanitize import sanitize_json_compatible
@@ -112,7 +113,7 @@ def _price_loader(db: Session):
             cache[sym] = None
             return None
         try:
-            cache[sym] = load_close_series_from_store(object_key=key)
+            cache[sym] = normalize_price_index(load_close_series_from_store(object_key=key))
         except Exception:
             cache[sym] = None
         return cache[sym]

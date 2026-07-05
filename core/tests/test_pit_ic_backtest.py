@@ -170,6 +170,12 @@ class TestPitClose:
         prices = _make_prices([("2021-12-31", 0.0)])
         assert _pit_close(prices, dt.date(2021, 12, 31)) is None
 
+    def test_accepts_utc_aware_price_index(self):
+        idx = pd.to_datetime(["2021-12-30 23:00:00+00:00", "2022-01-03 00:00:00+00:00"])
+        prices = pd.Series([99.0, 101.0], index=idx, dtype=float)
+        result = _pit_close(prices, dt.date(2021, 12, 31))
+        assert result == pytest.approx(99.0)
+
 
 # ─── _build_pit_snapshot ──────────────────────────────────────────────────────
 

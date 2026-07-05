@@ -109,8 +109,23 @@ def _filter_pit_history(
 
 # ─── PIT price helpers ────────────────────────────────────────────────────────
 
+def normalize_price_index(prices: "pd.Series | None") -> "pd.Series | None":
+    """Return prices with a tz-naive DatetimeIndex, preserving naive inputs."""
+    if prices is None or prices.empty:
+        return None
+    if not isinstance(prices.index, pd.DatetimeIndex):
+        return prices
+    idx = prices.index
+    if idx.tz is None:
+        return prices
+    out = prices.copy()
+    out.index = idx.tz_convert("UTC").tz_localize(None)
+    return out
+
+
 def _pit_close(prices: "pd.Series | None", as_of_date: dt.date) -> float | None:
     """Most recent Close at or before as_of_date; None if unavailable."""
+    prices = normalize_price_index(prices)
     if prices is None or prices.empty:
         return None
     ts = pd.Timestamp(as_of_date)

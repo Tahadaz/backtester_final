@@ -9,7 +9,7 @@ import pandas as pd
 
 from quant_core.fundamentals.cgnc_mapping import FINANCIAL_ARCHETYPES, infer_statement_archetype
 from quant_core.fundamentals.domain import AnnualMetricRow, FundamentalSnapshot
-from quant_core.fundamentals.pit_ic_backtest import UNIVERSE_PATH, _is_live, _pit_close
+from quant_core.fundamentals.pit_ic_backtest import UNIVERSE_PATH, _is_live, _pit_close, normalize_price_index
 
 PriceLoader = Callable[[str], pd.Series | None]
 
@@ -217,6 +217,7 @@ def _latest_consensus(rows: list[dict[str, Any]], as_of_date: dt.date) -> dict[s
 
 
 def _forward_return(prices: pd.Series | None, as_of_date: dt.date, bars: int) -> float | None:
+    prices = normalize_price_index(prices)
     if prices is None or prices.empty:
         return None
     series = prices.sort_index().dropna()
