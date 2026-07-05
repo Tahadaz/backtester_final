@@ -6490,6 +6490,8 @@ export const FundamentalTriangulationSchema = z.object({
     "no_price",
   ]),
   agreement: z.number().nullable().optional(),
+  effective_method_mix: z.record(z.number()).default({}),
+  anchor_diversity: z.enum(["single_family", "multi_family"]).default("single_family"),
   warnings: z.array(z.string()).default([]),
   broker: FundamentalTriangulationBrokerSchema.nullable().optional(),
 })

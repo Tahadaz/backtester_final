@@ -30,11 +30,16 @@ from typing import Any, Iterable, Mapping
 from core.quant_core.fundamentals.valuation import (
     ENSEMBLE_INTRINSIC_METHOD_MODELS,
     ENSEMBLE_MARKET_METHOD_MODELS,
+    RELATIVE_FAMILY_MODELS,
 )
 
 INTRINSIC_FAMILY = "intrinsic"
 MARKET_FAMILY = "market"
 DIAGNOSTIC_FAMILY = "diagnostic"
+BROKER_FAMILY = "broker"
+MULTIPLES_FAMILY = "multiples"
+ANCHOR_DIVERSITY_SINGLE = "single_family"
+ANCHOR_DIVERSITY_MULTI = "multi_family"
 
 # Persisted `family` values drifted across vintages ("valuation", "intrinsic",
 # "relative"), so classification keys on the model name via the engine's
@@ -91,6 +96,8 @@ class TriangulationResult:
     price_position: float | None
     verdict: str
     agreement: float | None
+    effective_method_mix: dict[str, float] = field(default_factory=dict)
+    anchor_diversity: str = ANCHOR_DIVERSITY_SINGLE
     warnings: tuple[str, ...] = field(default_factory=tuple)
 
     def to_dict(self) -> dict[str, Any]:
@@ -112,6 +119,8 @@ class TriangulationResult:
             "price_position": self.price_position,
             "verdict": self.verdict,
             "agreement": self.agreement,
+            "effective_method_mix": dict(self.effective_method_mix),
+            "anchor_diversity": self.anchor_diversity,
             "warnings": list(self.warnings),
         }
 
@@ -139,6 +148,39 @@ def _class_anchor(
         n_models=len(rows),
         models=tuple(model for model, _value in rows),
     )
+
+
+def _economic_model_family(model: str, anchor_kind: str) -> str:
+    if model in RELATIVE_FAMILY_MODELS:
+        return MULTIPLES_FAMILY
+    if model in ENSEMBLE_INTRINSIC_METHOD_MODELS or model in ENSEMBLE_MARKET_METHOD_MODELS:
+        return INTRINSIC_FAMILY
+    return MULTIPLES_FAMILY if anchor_kind == MARKET_FAMILY else INTRINSIC_FAMILY
+
+
+def _effective_method_mix(anchors: Iterable[AnchorValue]) -> dict[str, float]:
+    totals: dict[str, float] = {}
+    anchor_count = 0
+    for anchor in anchors:
+        anchor_count += 1
+        if anchor.kind == BROKER_FAMILY or not anchor.models:
+            totals[BROKER_FAMILY] = totals.get(BROKER_FAMILY, 0.0) + 1.0
+            continue
+        family_counts: dict[str, int] = {}
+        for model in anchor.models:
+            family = _economic_model_family(model, anchor.kind)
+            family_counts[family] = family_counts.get(family, 0) + 1
+        model_count = sum(family_counts.values()) or 1
+        for family, count in family_counts.items():
+            totals[family] = totals.get(family, 0.0) + count / model_count
+    if anchor_count <= 0:
+        return {}
+    return {family: weight / anchor_count for family, weight in sorted(totals.items()) if weight > 0}
+
+
+def _anchor_diversity(method_mix: Mapping[str, float]) -> str:
+    active_families = [family for family, weight in method_mix.items() if weight > 0]
+    return ANCHOR_DIVERSITY_MULTI if len(active_families) > 1 else ANCHOR_DIVERSITY_SINGLE
 
 
 def compute_triangulation(
@@ -196,13 +238,14 @@ def compute_triangulation(
 
     broker = _positive(broker_target)
     if broker is not None:
-        anchors.append(AnchorValue(name=ANCHOR_BROKER, kind="broker", value=broker, n_models=0))
+        anchors.append(AnchorValue(name=ANCHOR_BROKER, kind=BROKER_FAMILY, value=broker, n_models=0))
     else:
         warnings.append("no_broker_anchor")
 
     price = _positive(current_price)
 
     if len(anchors) < min_anchors:
+        method_mix = _effective_method_mix(anchors)
         return TriangulationResult(
             current_price=price,
             anchors=tuple(anchors),
@@ -212,6 +255,8 @@ def compute_triangulation(
             price_position=None,
             verdict=VERDICT_INSUFFICIENT,
             agreement=None,
+            effective_method_mix=method_mix,
+            anchor_diversity=_anchor_diversity(method_mix),
             warnings=tuple(warnings),
         )
 
@@ -239,6 +284,7 @@ def compute_triangulation(
         position = (price - band_low) / width if width > 0 else 0.5
         verdict = VERDICT_LOWER if position <= 0.5 else VERDICT_UPPER
 
+    method_mix = _effective_method_mix(anchors)
     return TriangulationResult(
         current_price=price,
         anchors=tuple(anchors),
@@ -248,5 +294,7 @@ def compute_triangulation(
         price_position=position,
         verdict=verdict,
         agreement=agreement,
+        effective_method_mix=method_mix,
+        anchor_diversity=_anchor_diversity(method_mix),
         warnings=tuple(warnings),
     )

@@ -40,6 +40,13 @@ const ANCHOR_KIND_LABELS: Record<string, string> = {
   broker: "Objectif broker",
 }
 
+const METHOD_FAMILY_LABELS: Record<string, string> = {
+  intrinsic: "intrinsèque",
+  multiples: "multiples",
+  broker: "broker",
+}
+
+
 function anchorLabel(anchor: FundamentalTriangulationAnchor): string {
   return ANCHOR_LABELS[anchor.name] ?? ANCHOR_KIND_LABELS[anchor.kind] ?? anchor.name
 }
@@ -47,6 +54,19 @@ function anchorLabel(anchor: FundamentalTriangulationAnchor): string {
 function fmtVal(value: number | null | undefined, digits = 2): string {
   if (value == null || Number.isNaN(value)) return "-"
   return value.toLocaleString("fr-FR", { maximumFractionDigits: digits, minimumFractionDigits: digits })
+}
+
+function fmtPct(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return "-"
+  return value.toLocaleString("fr-FR", { style: "percent", maximumFractionDigits: 0, minimumFractionDigits: 0 })
+}
+
+function methodMixLabel(mix: Record<string, number>): string | null {
+  const parts = Object.entries(mix)
+    .filter(([, weight]) => Number.isFinite(weight) && weight > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([family, weight]) => `${fmtPct(weight)} ${METHOD_FAMILY_LABELS[family] ?? family}`)
+  return parts.length ? `Ancres : ${parts.join(" / ")}` : null
 }
 
 function TriangulationBandSvg({ triangulation }: { triangulation: FundamentalTriangulation }) {
@@ -110,6 +130,8 @@ export function TriangulationBand({ triangulation }: { triangulation: Fundamenta
   const anchors = triangulation.anchors
   const broker = triangulation.broker
   const agreement = triangulation.agreement
+  const mixLabel = methodMixLabel(triangulation.effective_method_mix ?? {})
+  const singleFamily = triangulation.anchor_diversity === "single_family"
 
   return (
     <div className="fund-card">
@@ -143,9 +165,19 @@ export function TriangulationBand({ triangulation }: { triangulation: Fundamenta
           </div>
         ) : null}
 
+        {mixLabel ? (
+          <div className="mt-2 text-[11px] text-muted-foreground">
+            {mixLabel}
+          </div>
+        ) : null}
+
         {agreement != null ? (
           <div className="mt-2 text-[11px] text-muted-foreground">
-            Cohérence des ancrages: <span className="font-mono text-foreground">{Math.round(agreement * 100)}%</span>
+            {singleFamily ? (
+              <span className="font-semibold text-foreground">Corroboration limitée — ancres non indépendantes</span>
+            ) : (
+              <>Cohérence des ancrages : <span className="font-mono text-foreground">{Math.round(agreement * 100)}%</span></>
+            )}
           </div>
         ) : null}
 

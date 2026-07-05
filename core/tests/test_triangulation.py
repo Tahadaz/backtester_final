@@ -11,6 +11,8 @@ from core.quant_core.fundamentals.triangulation import (
     VERDICT_LOWER,
     VERDICT_NO_PRICE,
     VERDICT_UPPER,
+    ANCHOR_DIVERSITY_MULTI,
+    ANCHOR_DIVERSITY_SINGLE,
     compute_triangulation,
 )
 
@@ -170,6 +172,25 @@ class TestAgreement:
         assert 0.0 <= wide.agreement <= 1.0
 
 
+class TestAnchorDiversity:
+    def test_justified_and_relative_multiples_are_single_economic_family(self):
+        rows = [
+            _row("justified_multiples", "intrinsic", 100.0),
+            _row("relative_multiples", "market", 120.0),
+        ]
+        result = compute_triangulation(rows, 110.0)
+
+        assert result.anchor_diversity == ANCHOR_DIVERSITY_SINGLE
+        assert result.effective_method_mix == {"multiples": 1.0}
+        assert result.agreement is not None
+
+    def test_broker_or_intrinsic_anchor_makes_mix_multi_family(self):
+        result = compute_triangulation(FULL_SET, 130.0, broker_target=180.0)
+
+        assert result.anchor_diversity == ANCHOR_DIVERSITY_MULTI
+        assert set(result.effective_method_mix) == {"broker", "intrinsic", "multiples"}
+
+
 class TestSerialization:
     def test_to_dict_round_trip_shape(self):
         result = compute_triangulation(FULL_SET, 130.0, broker_target=180.0)
@@ -177,4 +198,6 @@ class TestSerialization:
         assert payload["verdict"] == result.verdict
         assert len(payload["anchors"]) == 3
         assert payload["anchors"][0]["name"] == ANCHOR_INTRINSIC
+        assert payload["anchor_diversity"] == result.anchor_diversity
+        assert payload["effective_method_mix"] == result.effective_method_mix
         assert isinstance(payload["warnings"], list)
