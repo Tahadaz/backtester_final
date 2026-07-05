@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import useSWR, { useSWRConfig } from "swr"
-import { AlertTriangle, Landmark } from "lucide-react"
+import { AlertTriangle, Landmark, Maximize2, Minimize2 } from "lucide-react"
 import {
   getFundamentalMethodology,
   getFundamentalSensitivity,
@@ -55,6 +55,8 @@ export function SignalFundamentalView({
   const [isDeskSaving, setIsDeskSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [liquidityFilter, setLiquidityFilter] = useState(true)
+  const detailViewRef = useRef<HTMLElement | null>(null)
+  const [isDetailFullscreen, setIsDetailFullscreen] = useState(false)
 
   const {
     data: universeRows,
@@ -255,6 +257,44 @@ export function SignalFundamentalView({
     updateSearchParams({ scenario: null, fund_excluded_models: nextExcludedModels })
   }
 
+  useEffect(() => {
+    function handleFullscreenChange() {
+      setIsDetailFullscreen(document.fullscreenElement === detailViewRef.current || detailViewRef.current?.classList.contains("is-fallback-fullscreen") === true)
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && detailViewRef.current?.classList.contains("is-fallback-fullscreen")) {
+        detailViewRef.current.classList.remove("is-fallback-fullscreen")
+        setIsDetailFullscreen(false)
+      }
+    }
+    document.addEventListener("fullscreenchange", handleFullscreenChange)
+    window.addEventListener("keydown", handleKeyDown)
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange)
+      window.removeEventListener("keydown", handleKeyDown)
+    }
+  }, [])
+
+  async function toggleDetailFullscreen() {
+    const target = detailViewRef.current
+    if (!target) return
+    if (document.fullscreenElement === target) {
+      await document.exitFullscreen()
+      return
+    }
+    if (target.classList.contains("is-fallback-fullscreen")) {
+      target.classList.remove("is-fallback-fullscreen")
+      setIsDetailFullscreen(false)
+      return
+    }
+    if (target.requestFullscreen) {
+      await target.requestFullscreen()
+      return
+    }
+    target.classList.add("is-fallback-fullscreen")
+    setIsDetailFullscreen(true)
+  }
+
   async function saveAssumptions() {
     if (!selectedSymbol || !detail) return
     const payload = editableAssumptionDraft(methodology, assumptionDraft)
@@ -312,7 +352,7 @@ export function SignalFundamentalView({
       <ResizableHandle withHandle className="max-xl:hidden" />
 
       <ResizablePanel defaultSize={72} minSize={45} className="min-w-0 max-xl:!h-auto">
-        <section className="signal-fund-detail">
+        <section ref={detailViewRef} className={cn("signal-fund-detail", isDetailFullscreen && "is-detail-fullscreen")}>
           {displayError ? (
             <div className="m-3 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -334,6 +374,15 @@ export function SignalFundamentalView({
             </div>
           ) : (
             <div className="signal-fund-detail-shell">
+              <button
+                type="button"
+                className="signal-fund-fullscreen-toggle"
+                onClick={() => void toggleDetailFullscreen()}
+                title={isDetailFullscreen ? "Quitter le plein écran" : "Plein écran"}
+                aria-label={isDetailFullscreen ? "Quitter le plein écran" : "Plein écran"}
+              >
+                {isDetailFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+              </button>
               <ResearchTicket
                 row={selectedRow}
                 detail={detail}

@@ -8,6 +8,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { MODEL_FORMULA_META, MODEL_LABELS } from "../lib/constants"
 import { asNumber, asRecord, fmtMoney, fmtPct } from "../lib/formatters"
+import { ChartLightbox } from "../shared/chart-lightbox"
 import { FundCard } from "../shared/cards"
 import { SensitivityGridView } from "../lib/types"
 
@@ -189,7 +190,9 @@ export function SensitivityHeatmap({
                       <span className="valuation-mini-title">Diagnostic {diagnosticGrid.model ? MODEL_LABELS[diagnosticGrid.model] ?? diagnosticGrid.model : "modèle"}</span>
                       <span>{axisDisplayLabel(diagnosticGrid.axis_y)} x {axisDisplayLabel(diagnosticGrid.axis_x)}</span>
                     </div>
-                    <SensitivityMatrix grid={diagnosticGrid} assumptions={assumptions} />
+                    <ChartLightbox title={`Sensibilité - ${diagnosticGrid.model ? MODEL_LABELS[diagnosticGrid.model] ?? diagnosticGrid.model : "modèle"}`}>
+                      <SensitivityMatrix grid={diagnosticGrid} assumptions={assumptions} />
+                    </ChartLightbox>
                   </div>
                 ))}
               </div>
@@ -203,7 +206,9 @@ export function SensitivityHeatmap({
   return (
     <div data-capture="sensitivity">
       <FundCard title={title} aside={`${axisDisplayLabel(activeGrid.axis_y)} x ${axisDisplayLabel(activeGrid.axis_x)}`}>
-        <SensitivityMatrix grid={activeGrid} assumptions={assumptions} />
+        <ChartLightbox title={title}>
+          <SensitivityMatrix grid={activeGrid} assumptions={assumptions} />
+        </ChartLightbox>
       </FundCard>
     </div>
   )
@@ -227,7 +232,9 @@ export function ModelSensitivityPanel({
         <span className="valuation-mini-title">Sensibilite modele - {MODEL_LABELS[row.model] ?? row.model}</span>
         <span>{axisDisplayLabel(grid.axis_y)} x {axisDisplayLabel(grid.axis_x)}</span>
       </div>
-      <SensitivityMatrix grid={grid} assumptions={detail.assumptions} />
+      <ChartLightbox title={`Sensibilité modèle - ${MODEL_LABELS[row.model] ?? row.model}`}>
+        <SensitivityMatrix grid={grid} assumptions={detail.assumptions} />
+      </ChartLightbox>
     </div>
   )
 }

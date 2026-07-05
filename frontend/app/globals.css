@@ -1178,13 +1178,49 @@
     overflow: hidden;
   }
 
+  .signal-fund-detail:fullscreen,
+  .signal-fund-detail.is-fallback-fullscreen {
+    height: 100vh;
+    width: 100vw;
+    background: var(--background);
+  }
+
+  .signal-fund-detail.is-fallback-fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+  }
+
   .signal-fund-detail-shell {
     display: flex;
+    position: relative;
     height: 100%;
     min-height: 0;
     width: 100%;
     flex-direction: column;
     overflow: hidden;
+  }
+
+  .signal-fund-fullscreen-toggle {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.625rem;
+    z-index: 12;
+    display: inline-flex;
+    height: 1.875rem;
+    width: 1.875rem;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: color-mix(in oklab, var(--card) 92%, transparent);
+    color: var(--fg2);
+    box-shadow: 0 8px 22px oklch(0.18 0.02 260 / 0.10);
+  }
+
+  .signal-fund-fullscreen-toggle:hover {
+    color: var(--fg1);
+    border-color: color-mix(in oklab, var(--primary) 35%, var(--line));
   }
 
   .signal-fund-tab-pane {
@@ -1214,6 +1250,7 @@
     z-index: 4;
     border-bottom: 1px solid var(--line);
     background: var(--bg2);
+    box-shadow: 0 1px 0 var(--line);
     overscroll-behavior-x: contain;
     scrollbar-gutter: stable;
   }
@@ -1660,6 +1697,91 @@
 
   .fund-card-body {
     padding: 0.875rem;
+  }
+
+  .fund-chart-lightbox-host {
+    position: relative;
+    min-width: 0;
+  }
+
+  .fund-chart-expand {
+    position: absolute;
+    top: 0.375rem;
+    right: 0.375rem;
+    z-index: 2;
+    display: inline-flex;
+    height: 1.625rem;
+    width: 1.625rem;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: color-mix(in oklab, var(--card) 94%, transparent);
+    color: var(--fg3);
+  }
+
+  .fund-chart-expand:hover,
+  .fund-chart-modal-close:hover {
+    color: var(--fg1);
+    border-color: color-mix(in oklab, var(--primary) 35%, var(--line));
+  }
+
+  .fund-chart-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 120;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: oklch(0.18 0.02 260 / 0.58);
+    padding: 1rem;
+  }
+
+  .fund-chart-modal-panel {
+    display: flex;
+    max-height: min(92vh, 860px);
+    width: min(1100px, 96vw);
+    min-width: 0;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--card);
+    box-shadow: 0 24px 60px oklch(0.18 0.02 260 / 0.28);
+  }
+
+  .fund-chart-modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    border-bottom: 1px solid var(--line);
+    background: var(--bg2);
+    padding: 0.625rem 0.875rem;
+    color: var(--fg1);
+    font-size: 0.8125rem;
+    font-weight: 700;
+  }
+
+  .fund-chart-modal-close {
+    display: inline-flex;
+    height: 1.875rem;
+    width: 1.875rem;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--card);
+    color: var(--fg2);
+  }
+
+  .fund-chart-modal-body {
+    overflow: auto;
+    padding: 1rem;
+  }
+
+  .fund-chart-modal-body .mini-series svg {
+    height: 18rem;
   }
 
   /* estimates & hypotheses tab — sticky unsaved-draft bar (brief 57 §4.3 / §5.1) */

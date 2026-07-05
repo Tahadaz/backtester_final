@@ -19,6 +19,7 @@ import { asNumber, asRatio, asRecord, assumptionRangeLabel, fmtAssumptionValue, 
 import { firstAnnualMetric } from "../panels/comparables"
 import { CostOfCapitalBuildUp, costOfCapitalBuildUp } from "../panels/cost-of-capital"
 import { CoverageRatingPanel } from "../panels/coverage-rating"
+import { ChartLightbox } from "../shared/chart-lightbox"
 import { FundCard, StatTile } from "../shared/cards"
 import { DriverEvidenceChart, FcfBridge, GrowthDecompositionChart } from "../shared/charts"
 import { Scenario } from "../lib/types"
@@ -361,10 +362,14 @@ function PrevisionsSection({
       </FundCard>
 
       <FundCard title="Trajectoire de croissance" aside="Drivers">
-        <GrowthDecompositionChart projection={projection} />
+        <ChartLightbox title="Trajectoire de croissance - synthèse">
+          <GrowthDecompositionChart projection={projection} />
+        </ChartLightbox>
         <div className="driver-evidence-grid">
           {driverRows.slice(0, 4).map((row) => (
-            <DriverEvidenceChart key={row.key} driver={row.driver} label={row.label} format={row.format} />
+            <ChartLightbox key={row.key} title={`Trajectoire de croissance - ${row.label}`}>
+              <DriverEvidenceChart driver={row.driver} label={row.label} format={row.format} />
+            </ChartLightbox>
           ))}
         </div>
       </FundCard>
