@@ -2023,6 +2023,22 @@ class FundamentalCrossSectionScore(Base):
     )
 
 
+class FundamentalSfcBacktestSnapshot(Base):
+    """Latest persisted SFC portfolio backtest payload for one frozen config/parameter set."""
+    __tablename__ = "fundamental_sfc_backtest_snapshot"
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    config_hash = Column(String(64), nullable=False)
+    params_json = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False, default=dict)
+    result_json = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False, default=dict)
+    computed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_fundamental_sfc_backtest_snapshot_computed", "computed_at"),
+        Index("ix_fundamental_sfc_backtest_snapshot_config", "config_hash"),
+    )
+
+
 class MarketRefreshError(Base):
     """Per-symbol error log within a refresh run."""
     __tablename__ = "market_refresh_error"

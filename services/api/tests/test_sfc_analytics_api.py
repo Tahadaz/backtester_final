@@ -10,6 +10,7 @@ from sqlalchemy.pool import StaticPool
 
 from services.api.app import models
 from services.api.app.db import get_db
+from services.api.app.routers import analytics as analytics_router
 from services.api.app.routers.analytics import router
 from services.api.app.services.fundamental_cross_section import SFC_CONFIG_HASH, SFC_METHODOLOGY_VERSION
 
@@ -21,6 +22,8 @@ def _client():
         poolclass=StaticPool,
     )
     models.FundamentalCrossSectionScore.__table__.create(engine)
+    models.FundamentalSfcBacktestSnapshot.__table__.create(engine)
+    models.SignalEngineBatchJob.__table__.create(engine)
     SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
     def override_db():
@@ -73,6 +76,63 @@ def test_fundamental_cross_section_returns_latest_ranked_rows() -> None:
         assert payload["validation_label"] == "validé sur 2023–2026 (une seule période de marché)"
         assert [row["symbol"] for row in payload["rows"]] == ["AAA", "BBB"]
         assert payload["rows"][0]["pillars"]["val"] == 0.1
+    finally:
+        engine.dispose()
+
+
+def test_sfc_portfolio_backtest_returns_latest_snapshot() -> None:
+    client, SessionLocal, engine = _client()
+    try:
+        db = SessionLocal()
+        db.add(
+            models.FundamentalSfcBacktestSnapshot(
+                config_hash=SFC_CONFIG_HASH,
+                params_json={"rebalance": "monthly", "cost_bps": 33.0},
+                result_json={"headline_label": "validé sur 2023–2026 (une seule période de marché)", "equity_curve": []},
+                computed_at=dt.datetime(2026, 7, 5, tzinfo=dt.timezone.utc),
+            )
+        )
+        db.commit()
+
+        response = client.get("/analytics/sfc-portfolio-backtest")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["config_hash"] == SFC_CONFIG_HASH
+        assert payload["params"]["rebalance"] == "monthly"
+        assert payload["result"]["headline_label"] == "validé sur 2023–2026 (une seule période de marché)"
+    finally:
+        engine.dispose()
+
+
+def test_sfc_portfolio_backtest_run_enqueues_job_and_status(monkeypatch) -> None:
+    client, _SessionLocal, engine = _client()
+
+    class _Queue:
+        def enqueue(self, *args, **kwargs):
+            self.args = args
+            self.kwargs = kwargs
+            return type("Job", (), {"id": "rq-1"})()
+
+    queue = _Queue()
+    monkeypatch.setattr(analytics_router, "get_market_refresh_queue", lambda: queue, raising=False)
+    monkeypatch.setattr("services.api.app.queue.get_market_refresh_queue", lambda: queue)
+    try:
+        response = client.post(
+            "/analytics/sfc-portfolio-backtest/run",
+            json={"rebalance": "quarterly", "cost_bps": 75.0, "start_date": "2023-07-31"},
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["status"] == "queued"
+        assert payload["rq_job_id"] == "rq-1"
+        assert queue.args[0] == "services.worker.tasks.fundamental_cross_section.recompute_sfc_portfolio_backtest"
+        assert queue.kwargs["params"]["rebalance"] == "quarterly"
+
+        status = client.get("/analytics/sfc-portfolio-backtest/status").json()
+        assert status["job_type"] == "fundamental_sfc_backtest"
+        assert status["jobs"][0]["status"] == "queued"
     finally:
         engine.dispose()
 

@@ -21,6 +21,7 @@ from typing import Any, Optional
 import numpy as np
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..auth import rate_limit_trigger, require_admin
@@ -84,6 +85,15 @@ from ..services.fundamental_cross_section import (
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 SFC_VALIDATION_LABEL = "validé sur 2023–2026 (une seule période de marché)"
+SFC_BACKTEST_JOB_SYMBOL = "__SFC_PORTFOLIO__"
+SFC_BACKTEST_JOB_TYPE = "fundamental_sfc_backtest"
+
+
+class SfcPortfolioBacktestRunIn(BaseModel):
+    rebalance: str = Field(default="monthly", pattern="^(monthly|quarterly)$")
+    cost_bps: float = Field(default=33.0, ge=0.0, le=500.0)
+    start_date: Optional[dt.date] = None
+    end_date: Optional[dt.date] = None
 
 
 # ---------------------------------------------------------------------------
@@ -169,6 +179,109 @@ def get_fundamental_cross_section_symbol(
         "config_hash": SFC_CONFIG_HASH,
         "validation_label": SFC_VALIDATION_LABEL,
         "history": [_sfc_row_to_dict(row) for row in rows],
+    }
+
+
+@router.get("/sfc-portfolio-backtest")
+def get_sfc_portfolio_backtest(db: Session = Depends(get_db)) -> dict[str, Any]:
+    row = (
+        db.query(models.FundamentalSfcBacktestSnapshot)
+        .filter(models.FundamentalSfcBacktestSnapshot.config_hash == SFC_CONFIG_HASH)
+        .order_by(models.FundamentalSfcBacktestSnapshot.computed_at.desc(), models.FundamentalSfcBacktestSnapshot.id.desc())
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="No SFC portfolio backtest snapshot available")
+    return {
+        "config_hash": row.config_hash,
+        "params": row.params_json or {},
+        "result": row.result_json or {},
+        "computed_at": row.computed_at.isoformat() if row.computed_at else None,
+        "validation_label": SFC_VALIDATION_LABEL,
+    }
+
+
+@router.post("/sfc-portfolio-backtest/run")
+def run_sfc_portfolio_backtest(body: SfcPortfolioBacktestRunIn, db: Session = Depends(get_db)) -> dict[str, Any]:
+    from ..queue import get_market_refresh_queue
+
+    if body.start_date and body.end_date and body.start_date > body.end_date:
+        raise HTTPException(status_code=422, detail="start_date must be <= end_date")
+    params = {
+        "rebalance": body.rebalance,
+        "cost_bps": float(body.cost_bps),
+        "start_date": body.start_date.isoformat() if body.start_date else None,
+        "end_date": body.end_date.isoformat() if body.end_date else None,
+    }
+    job_row = models.SignalEngineBatchJob(
+        symbol=SFC_BACKTEST_JOB_SYMBOL,
+        horizon=body.rebalance,
+        variant="pmom_6_1",
+        job_type=SFC_BACKTEST_JOB_TYPE,
+        status="pending",
+        triggered_by="manual",
+        total_units=1,
+        completed_units=0,
+        failed_units=0,
+    )
+    db.add(job_row)
+    db.commit()
+    db.refresh(job_row)
+    try:
+        job = get_market_refresh_queue().enqueue(
+            "services.worker.tasks.fundamental_cross_section.recompute_sfc_portfolio_backtest",
+            params=params,
+            triggered_by="manual",
+            batch_id=str(job_row.id),
+            job_row_id=str(job_row.id),
+            job_timeout=7200,
+        )
+        job_row.rq_job_id = str(job.id)
+        job_row.status = "queued"
+        db.commit()
+    except Exception as exc:
+        job_row.status = "failed"
+        job_row.error_message = str(exc)
+        db.commit()
+        raise HTTPException(status_code=503, detail=f"Could not enqueue SFC portfolio backtest: {exc}") from exc
+    return {
+        "job_id": str(job_row.id),
+        "rq_job_id": job_row.rq_job_id,
+        "status": job_row.status,
+        "params": params,
+    }
+
+
+@router.get("/sfc-portfolio-backtest/status")
+def get_sfc_portfolio_backtest_status(db: Session = Depends(get_db)) -> dict[str, Any]:
+    rows = (
+        db.query(models.SignalEngineBatchJob)
+        .filter_by(symbol=SFC_BACKTEST_JOB_SYMBOL, variant="pmom_6_1", job_type=SFC_BACKTEST_JOB_TYPE)
+        .order_by(models.SignalEngineBatchJob.created_at.desc())
+        .limit(5)
+        .all()
+    )
+    return {
+        "symbol": SFC_BACKTEST_JOB_SYMBOL,
+        "variant": "pmom_6_1",
+        "job_type": SFC_BACKTEST_JOB_TYPE,
+        "jobs": [
+            {
+                "id": str(row.id),
+                "status": row.status,
+                "rq_job_id": row.rq_job_id,
+                "triggered_by": row.triggered_by,
+                "batch_id": row.batch_id,
+                "total_units": row.total_units,
+                "completed_units": row.completed_units,
+                "failed_units": row.failed_units,
+                "error_message": row.error_message,
+                "started_at": row.started_at.isoformat() if row.started_at else None,
+                "finished_at": row.finished_at.isoformat() if row.finished_at else None,
+                "created_at": row.created_at.isoformat(),
+            }
+            for row in rows
+        ],
     }
 
 def _report_to_out(report) -> SignalEvaluationReportOut:

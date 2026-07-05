@@ -73,3 +73,65 @@ def test_recompute_fundamental_cross_section_marks_scheduler_failure_and_raises(
     assert row.error_message == "tz-aware crash"
     assert row.meta_json["status"] == "failed"
     assert row.finished_at is not None
+
+
+class _FakeBacktestDB:
+    def __init__(self, job):
+        self.job = job
+        self.commits = 0
+        self.rollbacks = 0
+        self.closed = False
+
+    def get(self, _model, run_id):
+        if self.job is not None and self.job.id == run_id:
+            return self.job
+        return None
+
+    def commit(self):
+        self.commits += 1
+
+    def rollback(self):
+        self.rollbacks += 1
+
+    def close(self):
+        self.closed = True
+
+
+def test_recompute_sfc_portfolio_backtest_updates_batch_job(monkeypatch):
+    job_id = uuid.uuid4()
+    job = type(
+        "JobRow",
+        (),
+        {
+            "id": job_id,
+            "status": "pending",
+            "started_at": None,
+            "finished_at": None,
+            "completed_units": 0,
+            "failed_units": 0,
+            "error_message": None,
+        },
+    )()
+    db = _FakeBacktestDB(job)
+
+    monkeypatch.setattr(task_mod, "SessionLocal", lambda: db)
+    monkeypatch.setattr(
+        task_mod,
+        "recompute_and_persist_sfc_backtest",
+        lambda _db, params: {"snapshot_id": 7, "params": params},
+    )
+
+    result = task_mod.recompute_sfc_portfolio_backtest(
+        params={"rebalance": "monthly", "cost_bps": 33.0},
+        triggered_by="test",
+        batch_id=str(job_id),
+        job_row_id=str(job_id),
+    )
+
+    assert result["status"] == "succeeded"
+    assert result["snapshot_id"] == 7
+    assert job.status == "succeeded"
+    assert job.completed_units == 1
+    assert job.failed_units == 0
+    assert job.started_at is not None
+    assert job.finished_at is not None
