@@ -542,6 +542,99 @@ export const FundamentalCrossSectionHistoryResponseSchema = z.object({
 })
 export type FundamentalCrossSectionHistoryResponse = z.infer<typeof FundamentalCrossSectionHistoryResponseSchema>
 
+export const SfcBacktestSummaryRowSchema = z.object({
+  segment: z.string(),
+  label: z.string().optional(),
+  periods: z.number().default(0),
+  start_date: z.string().nullable().optional(),
+  end_date: z.string().nullable().optional(),
+  total_return: z.number().nullable().optional(),
+  cagr: z.number().nullable().optional(),
+  annualized_vol: z.number().nullable().optional(),
+  sharpe: z.number().nullable().optional(),
+  max_drawdown: z.number().nullable().optional(),
+  hit_rate: z.number().nullable().optional(),
+  avg_turnover: z.number().nullable().optional(),
+  mean_active_return: z.number().nullable().optional(),
+  tracking_error: z.number().nullable().optional(),
+  information_ratio: z.number().nullable().optional(),
+})
+export type SfcBacktestSummaryRow = z.infer<typeof SfcBacktestSummaryRowSchema>
+
+export const SfcBacktestEquityPointSchema = z.object({
+  date: z.string(),
+  strategy: z.number(),
+  universe_equal_weight: z.number().nullable().optional(),
+  masi: z.number().nullable().optional(),
+  segment: z.string(),
+})
+export type SfcBacktestEquityPoint = z.infer<typeof SfcBacktestEquityPointSchema>
+
+export const SfcBacktestRebalanceRowSchema = z.object({
+  date: z.string(),
+  period_end: z.string(),
+  segment: z.string(),
+  holdings: z.array(z.string()).default([]),
+  holdings_in: z.array(z.string()).default([]),
+  holdings_out: z.array(z.string()).default([]),
+  turnover: z.number().nullable().optional(),
+  strategy_return_net: z.number().nullable().optional(),
+  universe_return: z.number().nullable().optional(),
+  active_return: z.number().nullable().optional(),
+  cost_drag: z.number().nullable().optional(),
+  stale_price_count: z.number().default(0),
+})
+export type SfcBacktestRebalanceRow = z.infer<typeof SfcBacktestRebalanceRowSchema>
+
+export const SfcBacktestHoldingSchema = z.object({
+  symbol: z.string(),
+  name: z.string().nullable().optional(),
+  sector: z.string().nullable().optional(),
+  sfc: z.number().nullable().optional(),
+  pillars: z.record(z.string(), z.number().nullable()).default({}),
+  weight: z.number().nullable().optional(),
+  badge: z.string().default("held"),
+})
+export type SfcBacktestHolding = z.infer<typeof SfcBacktestHoldingSchema>
+
+export const SfcPortfolioBacktestResultSchema = z.object({
+  config: z.record(z.unknown()).default({}),
+  equity_curve: z.array(SfcBacktestEquityPointSchema).default([]),
+  rebalance_rows: z.array(SfcBacktestRebalanceRowSchema).default([]),
+  summary: z.array(SfcBacktestSummaryRowSchema).default([]),
+  headline_segment: z.string().default("proof"),
+  headline_label: z.string().default("validé sur 2023–2026 (une seule période de marché)"),
+  latest_holdings: z.array(SfcBacktestHoldingSchema).default([]),
+  significance: z.record(z.unknown()).default({}),
+  warnings: z.array(z.string()).default([]),
+})
+export type SfcPortfolioBacktestResult = z.infer<typeof SfcPortfolioBacktestResultSchema>
+
+export const SfcPortfolioBacktestResponseSchema = z.object({
+  config_hash: z.string(),
+  params: z.record(z.unknown()).default({}),
+  result: SfcPortfolioBacktestResultSchema,
+  computed_at: z.string().nullable().optional(),
+  validation_label: z.string(),
+})
+export type SfcPortfolioBacktestResponse = z.infer<typeof SfcPortfolioBacktestResponseSchema>
+
+export const SfcPortfolioBacktestStatusSchema = z.object({
+  job_type: z.string(),
+  jobs: z.array(z.object({
+    id: z.string(),
+    status: z.string(),
+    rq_job_id: z.string().nullable().optional(),
+    completed_units: z.number().nullable().optional(),
+    failed_units: z.number().nullable().optional(),
+    error_message: z.string().nullable().optional(),
+    created_at: z.string(),
+    started_at: z.string().nullable().optional(),
+    finished_at: z.string().nullable().optional(),
+  })).default([]),
+})
+export type SfcPortfolioBacktestStatus = z.infer<typeof SfcPortfolioBacktestStatusSchema>
+
 export const DashboardManualPositionSchema = z.object({
   symbol: z.string(),
   side: z.enum(["long", "short"]).default("long"),
@@ -1624,6 +1717,28 @@ export async function fetchFundamentalCrossSectionHistory(symbol: string, opts?:
   const qs = params.toString()
   const payload = await request<unknown>(`/analytics/fundamental-cross-section/${encodeURIComponent(symbol)}${qs ? `?${qs}` : ""}`)
   return FundamentalCrossSectionHistoryResponseSchema.parse(payload)
+}
+
+export async function fetchSfcPortfolioBacktest(): Promise<SfcPortfolioBacktestResponse> {
+  const payload = await request<unknown>("/analytics/sfc-portfolio-backtest")
+  return SfcPortfolioBacktestResponseSchema.parse(payload)
+}
+
+export async function runSfcPortfolioBacktest(body: {
+  rebalance: "monthly" | "quarterly"
+  cost_bps: number
+  start_date?: string | null
+  end_date?: string | null
+}): Promise<{ job_id: string; rq_job_id?: string | null; status: string; params: Record<string, unknown> }> {
+  return request("/analytics/sfc-portfolio-backtest/run", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+}
+
+export async function fetchSfcPortfolioBacktestStatus(): Promise<SfcPortfolioBacktestStatus> {
+  const payload = await request<unknown>("/analytics/sfc-portfolio-backtest/status")
+  return SfcPortfolioBacktestStatusSchema.parse(payload)
 }
 
 export async function fetchDashboardPortfolioPositions(): Promise<DashboardManualPosition[]> {
@@ -6149,6 +6264,7 @@ export const FundamentalEnsembleSchema = z.object({
   usable_model_count: z.number().default(0),
   excluded_model_count: z.number().default(0),
   model_weights: z.record(z.number()).default({}),
+  rate_sensitive_weight: z.number().default(0),
   warnings: z.array(z.string()).default([]),
   currency: z.string().nullable().optional(),
   model_dispersion_low: z.number().nullable().optional(),
@@ -6399,6 +6515,7 @@ export const FundamentalStockDetailSchema = z.object({
   valuations: z.array(FundamentalValuationResultSchema).default([]),
   ensemble: FundamentalEnsembleSchema.nullable().optional(),
   ensembles: z.record(FundamentalEnsembleSchema).default({}),
+  rate_sensitive_weight: z.number().default(0),
   assumptions: z.record(z.unknown()).default({}),
   assumption_provenance: z.record(z.record(z.string())).default({}),
   integrity: FundamentalIntegrityReportSchema.nullable().optional(),

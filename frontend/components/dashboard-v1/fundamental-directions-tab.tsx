@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
+import { SfcPortfolioBacktestPanel } from "./sfc-portfolio-backtest-panel"
 
 type SortDir = "asc" | "desc"
 type SortKey =
@@ -270,6 +271,8 @@ export function FundamentalDirectionsTab({
   }
 
   return (
+    <div className="space-y-3">
+    <SfcPortfolioBacktestPanel />
     <div className="dashboard-panel overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-bg2 px-4 py-3">
         <div>
@@ -488,6 +491,7 @@ export function FundamentalDirectionsTab({
           </TableBody>
         </Table>
       </div>
+    </div>
     </div>
   )
 }
