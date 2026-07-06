@@ -1998,6 +1998,7 @@ class FundamentalCrossSectionScore(Base):
     symbol = Column(String, nullable=False)
     as_of_date = Column(Date, nullable=False)
     sfc = Column(Float, nullable=True)
+    sfc_legacy = Column(Float, nullable=True)
     rank = Column(Integer, nullable=True)
     tercile = Column(String(16), nullable=False)
     pillar_val = Column(Float, nullable=True)

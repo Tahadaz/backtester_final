@@ -38,6 +38,7 @@ def test_persist_cross_section_scores_replaces_same_methodology_vintage() -> Non
                 {
                     "symbol": "AAA",
                     "sfc": 1.2,
+                    "sfc_legacy": 1.8,
                     "rank": 1,
                     "tercile": "top",
                     "pillar_val": 1.0,
@@ -56,6 +57,7 @@ def test_persist_cross_section_scores_replaces_same_methodology_vintage() -> Non
         rows = db.query(models.FundamentalCrossSectionScore).all()
         assert len(rows) == 1
         assert rows[0].sfc == 1.4
+        assert rows[0].sfc_legacy == 1.8
         assert rows[0].config_hash == SFC_CONFIG_HASH
         assert rows[0].methodology_version == SFC_METHODOLOGY_VERSION
         assert latest_sfc_as_of(db) == as_of

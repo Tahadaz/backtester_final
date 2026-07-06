@@ -90,7 +90,7 @@ SFC_BACKTEST_JOB_TYPE = "fundamental_sfc_backtest"
 
 
 class SfcPortfolioBacktestRunIn(BaseModel):
-    rebalance: str = Field(default="monthly", pattern="^(monthly|quarterly)$")
+    rebalance: str = Field(default="event", pattern="^(event|monthly|quarterly)$")
     cost_bps: float = Field(default=33.0, ge=0.0, le=500.0)
     start_date: Optional[dt.date] = None
     end_date: Optional[dt.date] = None
@@ -107,6 +107,7 @@ def _sfc_row_to_dict(row: models.FundamentalCrossSectionScore) -> dict[str, Any]
         "rank": row.rank,
         "tercile": row.tercile,
         "sfc": row.sfc,
+        "sfc_legacy": row.sfc_legacy,
         "pillars": {
             "val": row.pillar_val,
             "qual": row.pillar_qual,

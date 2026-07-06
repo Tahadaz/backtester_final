@@ -45,6 +45,7 @@ def _insert_score(db, symbol: str, as_of: dt.date, rank: int, tercile: str, sfc:
             symbol=symbol,
             as_of_date=as_of,
             sfc=sfc,
+            sfc_legacy=sfc + 0.5,
             rank=rank,
             tercile=tercile,
             pillar_val=0.1 * rank,
@@ -76,6 +77,7 @@ def test_fundamental_cross_section_returns_latest_ranked_rows() -> None:
         assert payload["validation_label"] == "validé sur 2023–2026 (une seule période de marché)"
         assert [row["symbol"] for row in payload["rows"]] == ["AAA", "BBB"]
         assert payload["rows"][0]["pillars"]["val"] == 0.1
+        assert payload["rows"][0]["sfc_legacy"] == 1.7
     finally:
         engine.dispose()
 

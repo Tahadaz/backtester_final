@@ -8,18 +8,22 @@ from typing import Any, Literal
 import numpy as np
 import pandas as pd
 
-from quant_core.significance import monte_carlo_luck_test, sharpe_ratio
+from ...significance import monte_carlo_luck_test, sharpe_ratio
+from .benchmark_weights import benchmark_weights_from_panel
+from .masi_float_shares import MASI_FLOAT_SHARES_SNAPSHOT_DATE
 
-RebalanceFrequency = Literal["monthly", "quarterly"]
+RebalanceFrequency = Literal["event", "monthly", "quarterly"]
+WeightingMode = Literal["benchmark_active", "equal_top_tercile"]
 
-SFC_PORTFOLIO_CONFIG_ID = "pmom_6_1"
+SFC_METHODOLOGY_VERSION = "sfc_core_v2_2026_07_06"
+SFC_PORTFOLIO_CONFIG_ID = "sfc_core_v2_2026_07_06__pmom_6_1"
 SFC_PROOF_SPLIT_DATE = dt.date(2023, 7, 31)
 SFC_STUDY_END_DATE = dt.date(2026, 7, 5)
 
 
 @dataclass(frozen=True)
 class SfcPortfolioBacktestConfig:
-    rebalance: RebalanceFrequency = "monthly"
+    rebalance: RebalanceFrequency = "event"
     cost_bps: float = 33.0
     start_date: dt.date | None = None
     end_date: dt.date | None = None
@@ -28,6 +32,10 @@ class SfcPortfolioBacktestConfig:
     study_end_date: dt.date = SFC_STUDY_END_DATE
     config_id: str = SFC_PORTFOLIO_CONFIG_ID
     config_hash: str | None = None
+    weighting_mode: WeightingMode = "benchmark_active"
+    active_weight_cap: float = 0.03
+    sector_cap: float = 0.20
+    adv_cap_multiplier: float | None = None
 
 
 def _date(value: Any) -> dt.date:
@@ -46,7 +54,12 @@ def _finite(value: Any) -> float | None:
     return out if math.isfinite(out) else None
 
 
-def segment_for_date(value: Any, *, split_date: dt.date = SFC_PROOF_SPLIT_DATE, study_end_date: dt.date = SFC_STUDY_END_DATE) -> str:
+def segment_for_date(
+    value: Any,
+    *,
+    split_date: dt.date = SFC_PROOF_SPLIT_DATE,
+    study_end_date: dt.date = SFC_STUDY_END_DATE,
+) -> str:
     date = _date(value)
     if date < split_date:
         return "selection"
@@ -56,7 +69,9 @@ def segment_for_date(value: Any, *, split_date: dt.date = SFC_PROOF_SPLIT_DATE, 
 
 
 def _periods_per_year(rebalance: RebalanceFrequency) -> int:
-    return 4 if rebalance == "quarterly" else 12
+    if rebalance in {"event", "quarterly"}:
+        return 4
+    return 12
 
 
 def _as_series(series: pd.Series | None) -> pd.Series | None:
@@ -90,15 +105,32 @@ def _target_rebalance_dates(panel: pd.DataFrame, config: SfcPortfolioBacktestCon
         dates = [d for d in dates if d <= config.end_date]
     if config.rebalance == "monthly":
         return dates
-    selected: list[dt.date] = []
-    seen: set[tuple[int, int]] = set()
+    if config.rebalance == "quarterly":
+        selected: list[dt.date] = []
+        seen: set[tuple[int, int]] = set()
+        for date in dates:
+            quarter = (date.month - 1) // 3 + 1
+            key = (date.year, quarter)
+            if key in seen:
+                continue
+            seen.add(key)
+            selected.append(date)
+        return selected
+    selected = []
+    previous: dt.date | None = None
     for date in dates:
-        quarter = (date.month - 1) // 3 + 1
-        key = (date.year, quarter)
-        if key in seen:
+        sub = panel[panel["as_of_date"] == date]
+        if sub.empty:
+            previous = date
             continue
-        seen.add(key)
-        selected.append(date)
+        max_avail = pd.to_datetime(sub.get("max_metric_availability_date"), errors="coerce").dt.date
+        if previous is None:
+            has_event = bool((max_avail == date).any())
+        else:
+            has_event = bool(((max_avail > previous) & (max_avail <= date)).any())
+        if has_event:
+            selected.append(date)
+        previous = date
     return selected
 
 
@@ -114,13 +146,184 @@ def _valid_score_rows(frame: pd.DataFrame) -> pd.DataFrame:
 
 
 def _top_tercile_holdings(sub: pd.DataFrame) -> pd.DataFrame:
-    ranked = _valid_score_rows(sub).sort_values(["sfc", "symbol"], ascending=[False, True])
+    ranked = _valid_score_rows(sub).sort_values(["sfc", "symbol"], ascending=[False, True]).copy()
     if ranked.empty:
         return ranked
     n_top = max(1, int(math.ceil(len(ranked) / 3.0)))
     top = ranked.head(n_top).copy()
     top["weight"] = 1.0 / float(n_top)
+    top["benchmark_weight"] = np.nan
+    top["active_weight"] = np.nan
     return top
+
+
+def _top_middle_bottom_sets(sub: pd.DataFrame) -> tuple[pd.DataFrame, set[str], set[str], set[str]]:
+    ranked = _valid_score_rows(sub).sort_values(["sfc", "symbol"], ascending=[False, True]).copy()
+    if ranked.empty:
+        return ranked, set(), set(), set()
+    n_bucket = max(1, int(math.ceil(len(ranked) / 3.0)))
+    top = set(ranked.head(n_bucket)["symbol"].astype(str).str.strip().str.upper())
+    bottom = set(ranked.tail(n_bucket)["symbol"].astype(str).str.strip().str.upper())
+    middle = set(ranked["symbol"].astype(str).str.strip().str.upper()) - top - bottom
+    ranked["tercile"] = ranked["symbol"].astype(str).str.strip().str.upper().map(
+        lambda symbol: "top" if symbol in top else "bottom" if symbol in bottom else "middle"
+    )
+    return ranked, top, middle, bottom
+
+
+def _iterative_active_distribution(
+    top_symbols: list[str],
+    benchmark_weights: dict[str, float],
+    total_overweight: float,
+    active_cap: float,
+) -> dict[str, float]:
+    if total_overweight <= 0 or not top_symbols:
+        return {symbol: 0.0 for symbol in top_symbols}
+    active = {symbol: 0.0 for symbol in top_symbols}
+    remaining = float(total_overweight)
+    eligible = list(top_symbols)
+    while remaining > 1e-12 and eligible:
+        total_benchmark = sum(max(benchmark_weights.get(symbol, 0.0), 0.0) for symbol in eligible)
+        proposal = (
+            {symbol: remaining / float(len(eligible)) for symbol in eligible}
+            if total_benchmark <= 0
+            else {
+                symbol: remaining * max(benchmark_weights.get(symbol, 0.0), 0.0) / total_benchmark
+                for symbol in eligible
+            }
+        )
+        spent = 0.0
+        next_eligible: list[str] = []
+        for symbol in eligible:
+            capacity = max(float(active_cap) - active[symbol], 0.0)
+            add = min(capacity, proposal.get(symbol, 0.0))
+            active[symbol] += add
+            spent += add
+            if active[symbol] + 1e-12 < float(active_cap):
+                next_eligible.append(symbol)
+        if spent <= 1e-12:
+            break
+        remaining = max(remaining - spent, 0.0)
+        eligible = next_eligible
+    return active
+
+
+def _normalize_weights(weights: dict[str, float]) -> dict[str, float]:
+    clean = {symbol: max(float(weight), 0.0) for symbol, weight in weights.items() if float(weight) > 0.0}
+    total = sum(clean.values())
+    if total <= 0:
+        return {}
+    return {symbol: weight / total for symbol, weight in clean.items()}
+
+
+def _apply_sector_cap(weights: dict[str, float], sector_map: dict[str, str | None], cap: float) -> dict[str, float]:
+    adjusted = dict(weights)
+    for _ in range(8):
+        sector_totals: dict[str, float] = {}
+        for symbol, weight in adjusted.items():
+            sector = sector_map.get(symbol) or "UNSPECIFIED"
+            sector_totals[sector] = sector_totals.get(sector, 0.0) + float(weight)
+        capped_sectors = {sector: total for sector, total in sector_totals.items() if total > cap + 1e-12}
+        if not capped_sectors:
+            break
+        reduced = dict(adjusted)
+        freed = 0.0
+        for sector, total in capped_sectors.items():
+            ratio = cap / total if total > 0 else 1.0
+            for symbol, weight in adjusted.items():
+                if (sector_map.get(symbol) or "UNSPECIFIED") != sector:
+                    continue
+                new_weight = weight * ratio
+                freed += weight - new_weight
+                reduced[symbol] = new_weight
+        uncapped = [symbol for symbol in reduced if (sector_map.get(symbol) or "UNSPECIFIED") not in capped_sectors]
+        uncapped_total = sum(reduced[symbol] for symbol in uncapped)
+        if freed > 0 and uncapped_total > 0:
+            scale = (uncapped_total + freed) / uncapped_total
+            for symbol in uncapped:
+                reduced[symbol] *= scale
+        adjusted = reduced
+    return adjusted
+
+
+def _apply_adv_caps(weights: dict[str, float], sub: pd.DataFrame, cfg: SfcPortfolioBacktestConfig) -> dict[str, float]:
+    if cfg.adv_cap_multiplier is None or not weights:
+        return dict(weights)
+    adv_col = "adv20" if "adv20" in sub.columns else "adv_20d" if "adv_20d" in sub.columns else None
+    if adv_col is None:
+        return dict(weights)
+    adv_by_symbol = {
+        str(row["symbol"]).strip().upper(): _finite(row.get(adv_col))
+        for _, row in sub.iterrows()
+    }
+    positive_adv = [value for value in adv_by_symbol.values() if value is not None and value > 0]
+    if not positive_adv:
+        return dict(weights)
+    median_adv = float(np.median(positive_adv))
+    capped = dict(weights)
+    freed = 0.0
+    uncapped_symbols: list[str] = []
+    for symbol, weight in weights.items():
+        adv = adv_by_symbol.get(symbol)
+        if adv is None or adv <= 0 or median_adv <= 0:
+            uncapped_symbols.append(symbol)
+            continue
+        cap = float(cfg.adv_cap_multiplier) * min(adv / median_adv, 1.0)
+        if cap > 0 and weight > cap:
+            capped[symbol] = cap
+            freed += weight - cap
+        else:
+            uncapped_symbols.append(symbol)
+    uncapped_total = sum(capped[symbol] for symbol in uncapped_symbols)
+    if freed > 0 and uncapped_total > 0:
+        scale = (uncapped_total + freed) / uncapped_total
+        for symbol in uncapped_symbols:
+            capped[symbol] *= scale
+    return capped
+
+
+def _benchmark_relative_holdings(
+    sub: pd.DataFrame,
+    cfg: SfcPortfolioBacktestConfig,
+) -> tuple[pd.DataFrame, dict[str, float]]:
+    ranked, top, middle, bottom = _top_middle_bottom_sets(sub)
+    if ranked.empty:
+        return ranked, {}
+    benchmark = benchmark_weights_from_panel(ranked)
+    if not benchmark:
+        return _top_tercile_holdings(sub), {}
+    weights = {symbol: benchmark.get(symbol, 0.0) for symbol in benchmark}
+    total_underweight = 0.0
+    for symbol in bottom:
+        if symbol in weights:
+            total_underweight += weights[symbol]
+            weights[symbol] = 0.0
+    for symbol, extra in _iterative_active_distribution(
+        sorted(symbol for symbol in top if symbol in weights),
+        benchmark,
+        total_underweight,
+        cfg.active_weight_cap,
+    ).items():
+        weights[symbol] = benchmark.get(symbol, 0.0) + extra
+    residual = max(1.0 - sum(weights.values()), 0.0)
+    middle_symbols = [symbol for symbol in sorted(middle) if symbol in weights]
+    middle_total = sum(benchmark.get(symbol, 0.0) for symbol in middle_symbols)
+    if residual > 0 and middle_total > 0:
+        for symbol in middle_symbols:
+            weights[symbol] += residual * benchmark.get(symbol, 0.0) / middle_total
+    sector_map = {
+        str(row["symbol"]).strip().upper(): row.get("sector")
+        for _, row in ranked.iterrows()
+    }
+    weights = _apply_sector_cap(weights, sector_map, float(cfg.sector_cap))
+    weights = _apply_adv_caps(weights, ranked, cfg)
+    weights = _normalize_weights(weights)
+    holdings = ranked[ranked["symbol"].astype(str).str.strip().str.upper().isin(weights)].copy()
+    holdings["benchmark_weight"] = holdings["symbol"].astype(str).str.strip().str.upper().map(benchmark).fillna(0.0)
+    holdings["weight"] = holdings["symbol"].astype(str).str.strip().str.upper().map(weights).fillna(0.0)
+    holdings["active_weight"] = holdings["weight"] - holdings["benchmark_weight"]
+    holdings = holdings[holdings["weight"] > 0].copy()
+    return holdings.sort_values(["weight", "sfc", "symbol"], ascending=[False, False, True]), benchmark
 
 
 def one_way_turnover(previous: dict[str, float], current: dict[str, float]) -> float:
@@ -176,6 +379,14 @@ def _benchmark_return(series: pd.Series | None, *, start: dt.date, end: dt.date)
     return end_px / start_px - 1.0
 
 
+def _financial_active_exposure(holdings: pd.DataFrame) -> dict[str, float]:
+    if holdings.empty or "active_weight" not in holdings.columns or "is_financial" not in holdings.columns:
+        return {"financials": 0.0, "non_financials": 0.0}
+    financials = float(holdings.loc[holdings["is_financial"].fillna(False), "active_weight"].sum())
+    total = float(holdings["active_weight"].sum())
+    return {"financials": financials, "non_financials": total - financials}
+
+
 def _max_drawdown(equity: list[float]) -> float | None:
     if not equity:
         return None
@@ -200,7 +411,6 @@ def _summary_stats(
     returns = [float(r["strategy_return_net"]) for r in period_rows if _finite(r.get("strategy_return_net")) is not None]
     active = [float(r["active_return"]) for r in period_rows if _finite(r.get("active_return")) is not None]
     tracking = float(np.std(active, ddof=1) * math.sqrt(periods_per_year)) if len(active) >= 2 else None
-    years = None
     cagr = None
     if len(curve_rows) >= 2:
         start = _date(curve_rows[0]["date"])
@@ -242,8 +452,8 @@ def run_sfc_portfolio_backtest(
     masi_series: pd.Series | None = None,
 ) -> dict[str, Any]:
     cfg = config or SfcPortfolioBacktestConfig()
-    if cfg.rebalance not in {"monthly", "quarterly"}:
-        raise ValueError("rebalance must be 'monthly' or 'quarterly'")
+    if cfg.rebalance not in {"event", "monthly", "quarterly"}:
+        raise ValueError("rebalance must be 'event', 'monthly', or 'quarterly'")
     if scored_panel.empty:
         return _empty_result(cfg, "empty_panel")
     panel = scored_panel.copy()
@@ -271,7 +481,11 @@ def run_sfc_portfolio_backtest(
 
     for start, end in zip(rebalance_dates[:-1], rebalance_dates[1:]):
         sub = panel[panel["as_of_date"] == start]
-        holdings = _top_tercile_holdings(sub)
+        benchmark_weights: dict[str, float] = {}
+        if cfg.weighting_mode == "equal_top_tercile":
+            holdings = _top_tercile_holdings(sub)
+        else:
+            holdings, benchmark_weights = _benchmark_relative_holdings(sub, cfg)
         current_weights = {str(r["symbol"]).strip().upper(): float(r["weight"]) for _, r in holdings.iterrows()}
         if not current_weights:
             continue
@@ -292,23 +506,26 @@ def run_sfc_portfolio_backtest(
         segment = segment_for_date(end, split_date=cfg.split_date, study_end_date=cfg.study_end_date)
         in_symbols = sorted(set(current_weights) - set(previous_weights))
         out_symbols = sorted(set(previous_weights) - set(current_weights))
-        row = {
-            "date": start.isoformat(),
-            "period_end": end.isoformat(),
-            "segment": segment,
-            "holdings": sorted(current_weights),
-            "holdings_in": in_symbols,
-            "holdings_out": out_symbols,
-            "turnover": turnover,
-            "strategy_return_gross": gross_ret,
-            "strategy_return_net": net_ret,
-            "universe_return": universe_ret,
-            "active_return": net_ret - universe_ret,
-            "cost_drag": cost,
-            "cost_bps": float(cfg.cost_bps),
-            "stale_price_count": int(stale_strategy + stale_universe),
-        }
-        rebalance_rows.append(row)
+        rebalance_rows.append(
+            {
+                "date": start.isoformat(),
+                "period_end": end.isoformat(),
+                "segment": segment,
+                "holdings": sorted(current_weights),
+                "holdings_in": in_symbols,
+                "holdings_out": out_symbols,
+                "turnover": turnover,
+                "strategy_return_gross": gross_ret,
+                "strategy_return_net": net_ret,
+                "universe_return": universe_ret,
+                "active_return": net_ret - universe_ret,
+                "cost_drag": cost,
+                "cost_bps": float(cfg.cost_bps),
+                "stale_price_count": int(stale_strategy + stale_universe),
+                "benchmark_weights": benchmark_weights,
+                "financials_vs_non_financials_active_exposure": _financial_active_exposure(holdings),
+            }
+        )
         equity_curve.append(
             {
                 "date": end.isoformat(),
@@ -323,29 +540,64 @@ def run_sfc_portfolio_backtest(
 
     periods_per_year = _periods_per_year(cfg.rebalance)
     active_returns = [float(r["active_return"]) for r in rebalance_rows]
-    block_mean = 3 if cfg.rebalance == "monthly" else 1
     significance = monte_carlo_luck_test(
         active_returns,
         metric="total_return",
         n_iter=1000,
         seed=42,
         periods_per_year=periods_per_year,
-        block_mean=block_mean,
+        block_mean=3 if cfg.rebalance == "monthly" else 1,
     )
     summary = [
         _summary_stats(rebalance_rows, equity_curve=equity_curve, segment=segment, periods_per_year=periods_per_year)
         for segment in ("proof", "selection", "live", "combined")
     ]
+    turnover_vs_monthly_baseline = None
+    if cfg.rebalance != "monthly":
+        monthly = run_sfc_portfolio_backtest(
+            panel,
+            price_by_symbol=price_by_symbol,
+            masi_series=masi_series,
+            config=SfcPortfolioBacktestConfig(
+                rebalance="monthly",
+                cost_bps=cfg.cost_bps,
+                start_date=cfg.start_date,
+                end_date=cfg.end_date,
+                initial_equity=cfg.initial_equity,
+                split_date=cfg.split_date,
+                study_end_date=cfg.study_end_date,
+                config_id=cfg.config_id,
+                config_hash=cfg.config_hash,
+                weighting_mode=cfg.weighting_mode,
+                active_weight_cap=cfg.active_weight_cap,
+                sector_cap=cfg.sector_cap,
+                adv_cap_multiplier=cfg.adv_cap_multiplier,
+            ),
+        )
+        turnover_vs_monthly_baseline = {
+            "monthly_avg_turnover": next(
+                (row.get("avg_turnover") for row in monthly.get("summary", []) if row.get("segment") == "combined"),
+                None,
+            ),
+            "selected_avg_turnover": next(
+                (row.get("avg_turnover") for row in summary if row.get("segment") == "combined"),
+                None,
+            ),
+        }
     return {
         "config": {
             "config_id": cfg.config_id,
             "config_hash": cfg.config_hash,
+            "methodology_version": SFC_METHODOLOGY_VERSION,
             "rebalance": cfg.rebalance,
             "cost_bps": float(cfg.cost_bps),
             "long_only": True,
             "kelly": False,
             "split_date": cfg.split_date.isoformat(),
             "study_end_date": cfg.study_end_date.isoformat(),
+            "weighting_mode": cfg.weighting_mode,
+            "active_weight_cap": float(cfg.active_weight_cap),
+            "sector_cap": float(cfg.sector_cap),
         },
         "equity_curve": equity_curve,
         "rebalance_rows": rebalance_rows,
@@ -354,7 +606,15 @@ def run_sfc_portfolio_backtest(
         "headline_label": "validé sur 2023–2026 (une seule période de marché)",
         "latest_holdings": latest_holdings,
         "significance": significance,
-        "warnings": [],
+        "turnover_vs_monthly_baseline": turnover_vs_monthly_baseline,
+        "warnings": [
+            (
+                "Float shares use the MASI all-share snapshot dated "
+                f"{MASI_FLOAT_SHARES_SNAPSHOT_DATE}; exact for live, approximate across backtest history."
+            ),
+            "Full-cap approximation of MASI benchmark weights may overweight mega-caps versus the published free-float index.",
+            "Latest snapshot shares are not PIT; this is a mild look-ahead in benchmark weights only.",
+        ],
     }
 
 
@@ -375,6 +635,8 @@ def _holding_rows(holdings: pd.DataFrame, *, in_symbols: list[str], out_symbols:
                     "pmom": _finite(row.get("pillar_pmom")),
                 },
                 "weight": _finite(row.get("weight")),
+                "benchmark_weight": _finite(row.get("benchmark_weight")),
+                "active_weight": _finite(row.get("active_weight")),
                 "badge": "in" if symbol in in_symbols else "held",
             }
         )
@@ -388,12 +650,16 @@ def _empty_result(cfg: SfcPortfolioBacktestConfig, warning: str) -> dict[str, An
         "config": {
             "config_id": cfg.config_id,
             "config_hash": cfg.config_hash,
+            "methodology_version": SFC_METHODOLOGY_VERSION,
             "rebalance": cfg.rebalance,
             "cost_bps": float(cfg.cost_bps),
             "long_only": True,
             "kelly": False,
             "split_date": cfg.split_date.isoformat(),
             "study_end_date": cfg.study_end_date.isoformat(),
+            "weighting_mode": cfg.weighting_mode,
+            "active_weight_cap": float(cfg.active_weight_cap),
+            "sector_cap": float(cfg.sector_cap),
         },
         "equity_curve": [],
         "rebalance_rows": [],
@@ -402,5 +668,6 @@ def _empty_result(cfg: SfcPortfolioBacktestConfig, warning: str) -> dict[str, An
         "headline_label": "validé sur 2023–2026 (une seule période de marché)",
         "latest_holdings": [],
         "significance": {},
+        "turnover_vs_monthly_baseline": None,
         "warnings": [warning],
     }

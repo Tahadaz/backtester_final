@@ -165,13 +165,16 @@ def test_composite_requires_at_least_two_pillars() -> None:
             "pillar_val": [1.0, 1.0],
             "pillar_qual": [np.nan, -1.0],
             "pillar_fmom": [np.nan, np.nan],
-            "pillar_pmom": [np.nan, np.nan],
+            "pillar_pmom": [2.0, 3.0],
         }
     )
     out = compute_sfc(frame)
     assert np.isnan(out.loc[0, "sfc"])
     assert out.loc[1, "sfc"] == pytest.approx(0.0)
-    assert out.loc[1, "coverage_ratio"] == pytest.approx(0.5)
+    assert out.loc[0, "sfc_legacy"] == pytest.approx(1.5)
+    assert out.loc[1, "sfc_legacy"] == pytest.approx(1.0)
+    assert out.loc[1, "coverage_ratio"] == pytest.approx(2.0 / 3.0)
+    assert out.loc[1, "pmom"] == pytest.approx(3.0)
 
 
 def test_known_top_rank_enters_top_tercile() -> None:

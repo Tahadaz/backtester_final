@@ -16,14 +16,16 @@ import pandas as pd
 import statsmodels.api as sm
 from sqlalchemy import create_engine, text
 
-from quant_core.factor_selection.direct import _hac_t_stat, _nw_maxlags
-from quant_core.fundamentals.cross_section.composite import compute_sfc
-from quant_core.fundamentals.cross_section.panel import PanelConfig, build_pit_panel, load_universe, publication_coverage_stats
-from quant_core.fundamentals.cross_section.pillars import PillarConfig, compute_pillar_scores
-from quant_core.significance import monte_carlo_luck_test
+from ...factor_selection.direct import _hac_t_stat, _nw_maxlags
+from .composite import compute_sfc
+from .panel import PanelConfig, build_pit_panel, load_universe, publication_coverage_stats
+from .pillars import PillarConfig, compute_pillar_scores
+from ...significance import monte_carlo_luck_test
 
-SIGNALS = ("pillar_val", "pillar_qual", "pillar_fmom", "pillar_pmom", "sfc")
+SFC_METHODOLOGY_VERSION = "sfc_core_v2_2026_07_06"
+SIGNALS = ("pillar_val", "pillar_qual", "pillar_fmom", "pillar_pmom", "sfc", "sfc_legacy")
 HORIZONS = ("3m", "6m", "12m")
+SFC_PROOF_SPLIT_DATE = dt.date(2023, 7, 31)
 
 
 def _spearman(left: pd.Series, right: pd.Series) -> float:
@@ -75,9 +77,15 @@ def _norm_pvalue(t_stat: float) -> float:
     return float(2.0 * (1.0 - (0.5 * (1.0 + math.erf(abs(t_stat) / math.sqrt(2.0))))))
 
 
-def compute_ic_table(frame: pd.DataFrame, *, split: str, variant_id: str) -> pd.DataFrame:
+def compute_ic_table(
+    frame: pd.DataFrame,
+    *,
+    split: str,
+    variant_id: str,
+    signals: tuple[str, ...] = SIGNALS,
+) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
-    for signal in SIGNALS:
+    for signal in signals:
         for horizon in HORIZONS:
             by_date = []
             for as_of, sub in frame.groupby("as_of_date"):
@@ -109,11 +117,12 @@ def compute_ic_table(frame: pd.DataFrame, *, split: str, variant_id: str) -> pd.
     return pd.DataFrame(rows)
 
 
-def chronological_split(frame: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, dt.date | None]:
-    dates = sorted(pd.to_datetime(frame["as_of_date"]).dt.date.unique())
-    if len(dates) < 2:
-        return frame.iloc[0:0].copy(), frame.copy(), None
-    split_date = dates[len(dates) // 2]
+def chronological_split(
+    frame: pd.DataFrame,
+    split_date: dt.date = SFC_PROOF_SPLIT_DATE,
+) -> tuple[pd.DataFrame, pd.DataFrame, dt.date | None]:
+    if frame.empty:
+        return frame.copy(), frame.copy(), split_date
     selection = frame[pd.to_datetime(frame["as_of_date"]).dt.date < split_date].copy()
     proof = frame[pd.to_datetime(frame["as_of_date"]).dt.date >= split_date].copy()
     return selection, proof, split_date
@@ -205,12 +214,14 @@ def run_study(
     )
     verdict = "PASS" if ic_pass and spread_pass else "FAIL"
     config = {
-        "methodology_version": "sfc_phase1_2026_07_05",
+        "methodology_version": SFC_METHODOLOGY_VERSION,
         "chosen_variant": chosen_variant,
         "variants_evaluated": [v[0] for v in variants],
         "selection_proof_split_date": split_date.isoformat() if split_date else None,
         "horizons": list(HORIZONS),
         "equal_pillar_weights": True,
+        "core_pillars": ["pillar_val", "pillar_qual", "pillar_fmom"],
+        "legacy_pillars": ["pillar_val", "pillar_qual", "pillar_fmom", "pillar_pmom"],
         "fdr_family_test_count": int(len(proof_ic)),
         "frozen_variant": frozen_variant,
     }

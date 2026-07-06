@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from core.quant_core.fundamentals.cross_section.composite import compute_sfc
 from core.quant_core.fundamentals.cross_section.panel import PanelConfig, build_pit_panel, load_universe, publication_coverage_stats
 from core.quant_core.fundamentals.cross_section.portfolio_backtest import (
+    SFC_METHODOLOGY_VERSION,
     SfcPortfolioBacktestConfig,
     run_sfc_portfolio_backtest,
 )
@@ -24,11 +25,11 @@ from ..json_sanitize import sanitize_json_compatible
 from ..market_data_loader import load_close_series_from_store
 
 
-SFC_METHODOLOGY_VERSION = "sfc_phase1_2026_07_05"
 SFC_CONFIG = {
     "methodology_version": SFC_METHODOLOGY_VERSION,
     "pmom_variant": "pmom_6_1",
-    "pillar_weights": {"val": 0.25, "qual": 0.25, "fmom": 0.25, "pmom": 0.25},
+    "core_pillar_weights": {"val": 1.0 / 3.0, "qual": 1.0 / 3.0, "fmom": 1.0 / 3.0},
+    "legacy_pillar_weights": {"val": 0.25, "qual": 0.25, "fmom": 0.25, "pmom": 0.25},
     "min_pillars": 2,
     "mad_clip": 3.0,
     "min_bucket": 8,
@@ -222,9 +223,9 @@ def _load_masi_close_series(db: Session) -> pd.Series | None:
 
 def _normalize_backtest_params(params: dict[str, Any] | None = None) -> dict[str, Any]:
     raw = dict(params or {})
-    rebalance = str(raw.get("rebalance") or "monthly").strip().lower()
-    if rebalance not in {"monthly", "quarterly"}:
-        raise ValueError("rebalance must be 'monthly' or 'quarterly'")
+    rebalance = str(raw.get("rebalance") or "event").strip().lower()
+    if rebalance not in {"event", "monthly", "quarterly"}:
+        raise ValueError("rebalance must be 'event', 'monthly', or 'quarterly'")
     cost_bps = float(raw.get("cost_bps", 33.0))
     if cost_bps < 0 or cost_bps > 500:
         raise ValueError("cost_bps must be between 0 and 500")
@@ -306,6 +307,7 @@ def persist_cross_section_scores(db: Session, frame: pd.DataFrame, *, as_of_date
                 symbol=str(row["symbol"]).strip().upper(),
                 as_of_date=as_of_date,
                 sfc=_finite(row.get("sfc")),
+                sfc_legacy=_finite(row.get("sfc_legacy")),
                 rank=int(row["rank"]) if pd.notna(row.get("rank")) else None,
                 tercile=str(row.get("tercile") or "uncovered"),
                 pillar_val=_finite(row.get("pillar_val")),
@@ -335,7 +337,7 @@ def recompute_and_persist_sfc(db: Session, *, as_of_date: dt.date | None = None)
     persisted = persist_cross_section_scores(db, frame, as_of_date=date)
     backtest = persist_sfc_portfolio_backtest_snapshot(
         db,
-        params={"rebalance": "monthly", "cost_bps": 33.0, "start_date": None, "end_date": None},
+        params={"rebalance": "event", "cost_bps": 33.0, "start_date": None, "end_date": None},
     )
     db.commit()
     return {**meta, "persisted": persisted, "backtest_snapshot_id": int(backtest.id)}
