@@ -219,7 +219,7 @@ Evaluation / held-out-by-original-design period start: `2023-07-31`
 
 - The effective evidence window remains one regime: the evaluation / held-out-by-original-design period begins on 2023-07-31.
 - The panel still relies heavily on fallback PIT availability lags; interpret the diagnostics with the same fallback-coverage caveat used in brief 61.
-- `sfc` is value-dominated in this sample if exclusion or robustness rows weaken materially once `pillar_val` is removed.
+- Leave-one-out confirms value-domination: core `sfc` 6m IC falls from 0.0647 to 0.0198 and becomes insignificant when `pillar_val` is excluded.
 - Financials remain a thin bucket, so financials-removed and size-split robustness rows are descriptive rather than decisive.
 - IC is not alpha; the construction ladder is included to show harvestability under long-only constraints, not to claim causal decomposition.
 

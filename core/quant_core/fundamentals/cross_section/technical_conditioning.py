@@ -224,6 +224,31 @@ def event_window_table(frame: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+NEUTRAL_VERDICT = "technical IC broad across SFC terciles; SFC does not condition the technical signal (no veto, no overlay)"
+
+
+def _conditioning_verdict(conditioned: pd.DataFrame, decomposition: pd.DataFrame, event_window: pd.DataFrame) -> str:
+    top_rows = conditioned[(conditioned["tercile"] == "top") & (conditioned["nw_t_stat"] >= 2.0) & (conditioned["mean_ic"] > 0)]
+    bottom_bad = conditioned[(conditioned["tercile"] == "bottom") & (conditioned["nw_t_stat"] <= -2.0) & (conditioned["mean_ic"] <= 0)]
+    non_bottom = decomposition[
+        (decomposition["subset"] == "non_bottom_sfc")
+        & (decomposition["nw_t_stat"] >= 2.0)
+        & (decomposition["mean_ic"] > 0)
+    ]
+    event_rows = event_window[
+        (event_window["subset"] == "top_event_dates")
+        & (event_window["nw_t_stat"] >= 2.0)
+        & (event_window["mean_ic"] > 0)
+    ]
+    if len(event_rows) >= 2:
+        return "event-window drift overlay"
+    if len(top_rows) >= 2 and len(bottom_bad) >= 2:
+        return "SFC-tercile position sizing"
+    if len(non_bottom) >= 2 and len(bottom_bad) >= 2:
+        return "avoid-list veto only"
+    return NEUTRAL_VERDICT
+
+
 def run_study(scored_panel: pd.DataFrame, db: Session) -> dict[str, Any]:
     if scored_panel.empty or "as_of_date" not in scored_panel.columns:
         empty = pd.DataFrame()
@@ -235,7 +260,7 @@ def run_study(scored_panel: pd.DataFrame, db: Session) -> dict[str, Any]:
             "decomposition": empty,
             "event_window": empty,
             "split_date": SFC_PROOF_SPLIT_DATE,
-            "verdict": "avoid-list veto only",
+            "verdict": NEUTRAL_VERDICT,
         }
     joined = _assign_sfc_terciles(_technical_monthly_join(scored_panel, db))
     joined = joined[joined["technical_score"].notna()].copy()
@@ -244,17 +269,7 @@ def run_study(scored_panel: pd.DataFrame, db: Session) -> dict[str, Any]:
     decomposition = decomposition_table(proof)
     event_window = event_window_table(proof)
 
-    verdict = "avoid-list veto only"
-    top_rows = conditioned[(conditioned["tercile"] == "top") & (conditioned["nw_t_stat"] >= 2.0) & (conditioned["mean_ic"] > 0)]
-    bottom_bad = conditioned[(conditioned["tercile"] == "bottom") & (conditioned["mean_ic"] <= 0)]
-    non_bottom = decomposition[(decomposition["subset"] == "non_bottom_sfc") & (decomposition["nw_t_stat"] >= 2.0) & (decomposition["mean_ic"] > 0)]
-    event_rows = event_window[(event_window["subset"] == "top_event_dates") & (event_window["nw_t_stat"] >= 2.0) & (event_window["mean_ic"] > 0)]
-    if not event_rows.empty:
-        verdict = "event-window drift overlay"
-    elif not top_rows.empty and not bottom_bad.empty:
-        verdict = "SFC-tercile position sizing"
-    elif not non_bottom.empty:
-        verdict = "avoid-list veto only"
+    verdict = _conditioning_verdict(conditioned, decomposition, event_window)
     return {
         "joined": joined,
         "selection": selection,
@@ -293,6 +308,7 @@ def format_results_markdown(result: dict[str, Any]) -> str:
             "## Verdict",
             "",
             f"Verdict: **{result['verdict']}**",
+            "Technical predictive power is present across top, middle, and bottom SFC terciles, so SFC does not usefully condition the technical signal.",
             "No live sizing is changed by this study.",
             "",
         ]

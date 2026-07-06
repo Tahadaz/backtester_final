@@ -21,7 +21,7 @@ VAL is the cross-sectional value pillar. QUAL is the quality pillar assembled fr
 
 ## Composite construction
 
-The production fundamental score is now `sfc = mean(VAL, QUAL, FMOM)` over available core pillars, requiring at least 2 of 3. `coverage_ratio` is therefore over the 3 core pillars. `sfc_legacy` is retained only for continuity and comparison as the prior 4-pillar mean. Equal weights remain a hard design choice; nothing is fitted. Current diagnostics should be read as value-dominated disclosure rather than as evidence for fitted reweighting.
+The production fundamental score is now `sfc = mean(VAL, QUAL, FMOM)` over available core pillars, requiring at least 2 of 3. `coverage_ratio` is therefore over the 3 core pillars. `sfc_legacy` is retained only for continuity and comparison as the prior 4-pillar mean. Leave-one-out in 70 shows QUAL and FMOM currently dilute in-sample IC at 6m, while removing VAL collapses the core IC from 0.0647 to 0.0198 and leaves it insignificant; QUAL and FMOM are still retained as economically motivated diversifiers because fitting pillar weights to a single roughly 3-year regime would overfit. Equal weights remain a hard design choice; nothing is fitted. Current diagnostics should be read as value-dominated disclosure rather than as evidence for fitted reweighting.
 
 ## Valuation context
 
@@ -37,7 +37,7 @@ D3 is the robustness check. It reruns VAL and core SFC at 6m and 12m under date 
 
 ## Portfolio interpretation
 
-Claim C stays bounded: the score ranks names, but IC is not the same as harvestable alpha. The construction ladder reports proof-period active return, tracking error, and information ratio under equal-weight top tercile, benchmark-active uncapped, and benchmark-active ±3%. The bounded desk construction row currently shows active return -0.00339235951293843, tracking error 0.05510744370570947, and IR -0.24623602800773434. That is the right place to discuss transfer-coefficient limits, not to backfill causal stories.
+Claim C stays bounded: the score ranks names, but IC is not the same as harvestable alpha. The construction ladder reports proof-period active return, tracking error, and information ratio under equal-weight top tercile, benchmark-active uncapped, and benchmark-active +/-3%. The predictive edge concentrates in small-cap, non-financial names: VAL 6m IC is 0.1926 in the small-cap half versus 0.0747 in the large-cap half, where it is statistically insignificant, and the financials-removed row is higher than the baseline. That concentration is the mechanism behind the negative benchmark-relative IR: the equal-weight top-tercile ladder harvests the small-cap value premium (IR 0.8427), while float-weighting toward a mega-cap-dominated benchmark cannot (uncapped IR -0.3728, +/-3% IR -0.2462); the +/-3% cap is therefore not the binding cause. The bounded desk construction row currently shows active return -0.0034, tracking error 0.0551, and IR -0.2462. That is the right place to discuss transfer-coefficient limits, not to backfill causal stories.
 
 ## Limitations
 
@@ -45,6 +45,6 @@ Claim C stays bounded: the score ranks names, but IC is not the same as harvesta
 - Adaptive-reuse honesty: the same market history is reused across design, diagnostics, and desk interpretation, so all claims stay bounded to evaluation / held-out-by-original-design evidence rather than stronger language.
 - 88% fallback-PIT: most panel rows still arrive via fallback availability lags, not observed publication dates.
 - Value-domination: current evidence is led by VAL; equal weights remain a robustness choice, not a fitted optimum.
+- Harvestability concentration: the predictive edge is concentrated in small-cap, non-financial names, which is harder to carry into benchmark-relative long-only implementations.
 - Thin financials: financial and insurer subsets are small, so financials-specific diagnostics are descriptive.
 - IC != alpha: predictive rank evidence does not guarantee long-only benchmark-relative harvestability.
-
