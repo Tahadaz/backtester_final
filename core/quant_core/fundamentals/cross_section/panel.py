@@ -7,13 +7,13 @@ from typing import Any, Callable, Iterable, Mapping
 
 import pandas as pd
 
-from quant_core.fundamentals.cgnc_mapping import FINANCIAL_ARCHETYPES, infer_statement_archetype
-from quant_core.fundamentals.domain import AnnualMetricRow, FundamentalSnapshot
-from quant_core.fundamentals.pit_ic_backtest import UNIVERSE_PATH, _is_live, _pit_close, normalize_price_index
+from ..cgnc_mapping import FINANCIAL_ARCHETYPES, infer_statement_archetype
+from ..domain import AnnualMetricRow, FundamentalSnapshot
+from ..pit_ic_backtest import UNIVERSE_PATH, _is_live, _pit_close, normalize_price_index
 
 PriceLoader = Callable[[str], pd.Series | None]
 
-HORIZON_BARS = {"3m": 63, "6m": 126, "12m": 252}
+HORIZON_BARS = {"1m": 21, "3m": 63, "6m": 126, "12m": 252}
 
 
 @dataclass(frozen=True)
@@ -173,9 +173,29 @@ def assert_metric_rows_no_lookahead(rows: Iterable[Any], as_of_date: dt.date, co
         raise AssertionError(f"LOOK-AHEAD VIOLATION for as_of={as_of_date}: {bad[:3]!r}")
 
 
+def _metric_resolution_key(row: dict[str, Any]) -> tuple[dt.date, int, int, int]:
+    """Deterministic, order-independent tie-break for competing metric rows.
+
+    Ranked by: availability date, then statement year, then whether the row is
+    traceable to a source document (a linked filing beats an untraceable
+    value), then the source_document_id itself as a final deterministic
+    tie-break (higher id = more recently registered document in our schema).
+    This makes resolution independent of DB row order / list iteration order,
+    which was previously the de facto tie-break (see duplicate_conflicts.md,
+    Workstream 1/2, 2026-07-06).
+    """
+    doc_id = row.get("source_document_id")
+    has_doc = 1 if doc_id else 0
+    doc_id_value = int(doc_id) if isinstance(doc_id, int) or (isinstance(doc_id, str) and doc_id.isdigit()) else -1
+    return (row["availability_date"], row["statement_year"], has_doc, doc_id_value)
+
+
 def _latest_metric_map(rows: list[dict[str, Any]], as_of_date: dt.date) -> tuple[dict[str, float], list[AnnualMetricRow], dt.date | None, dict[str, int]]:
     eligible = [r for r in rows if r["availability_date"] <= as_of_date]
-    latest: dict[str, tuple[dt.date, int, float]] = {}
+    # Sort explicitly by the deterministic resolution key so the winner never
+    # depends on the order `rows` arrived in (e.g. DB row order for ties).
+    eligible = sorted(eligible, key=_metric_resolution_key)
+    latest: dict[str, tuple[tuple[dt.date, int, int, int], float]] = {}
     history: list[AnnualMetricRow] = []
     max_avail: dt.date | None = None
     availability_counts: dict[str, int] = {}
@@ -196,11 +216,11 @@ def _latest_metric_map(rows: list[dict[str, Any]], as_of_date: dt.date) -> tuple
                 source_document_id=row.get("source_document_id"),
             )
         )
+        key = _metric_resolution_key(row)
         prev = latest.get(row["metric_name"])
-        key = (row["availability_date"], row["statement_year"])
-        if prev is None or key >= (prev[0], prev[1]):
-            latest[row["metric_name"]] = (row["availability_date"], row["statement_year"], val)
-    return {name: val for name, (_, _, val) in latest.items()}, history, max_avail, availability_counts
+        if prev is None or key >= prev[0]:
+            latest[row["metric_name"]] = (key, val)
+    return {name: val for name, (_, val) in latest.items()}, history, max_avail, availability_counts
 
 
 def _latest_consensus(rows: list[dict[str, Any]], as_of_date: dt.date) -> dict[str, float]:

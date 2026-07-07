@@ -31,6 +31,7 @@ from .routers import (
     strategy_backtest_runs,
     strategy_signals,
     trials,
+    value_signal,
     wfo_signals,
 )
 
@@ -67,6 +68,7 @@ def create_app() -> FastAPI:
     app.include_router(bloomberg_bridge.bridge_router)
     app.include_router(defaults.router, dependencies=[Depends(auth.require_api_key)])
     app.include_router(analytics.router, dependencies=[Depends(auth.require_api_key)])
+    app.include_router(value_signal.router, dependencies=[Depends(auth.require_api_key)])
     app.include_router(factor_signals.router, dependencies=[Depends(auth.require_api_key)])
     app.include_router(factor_selection.router, dependencies=[Depends(auth.require_api_key)])
     app.include_router(fundamentals.router, dependencies=[Depends(auth.require_api_key)])

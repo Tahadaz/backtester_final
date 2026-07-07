@@ -20,10 +20,11 @@ import { asNumber, asRecord, fmtCompactMad, fmtMoney, fmtNumber, fmtPct, recordN
 import { FundCard, RecChip } from "../shared/cards"
 import { FootballField } from "../shared/charts"
 import { VerdictChip, type VerdictTone } from "../shared/verdict-chip"
-import { DetailTab, Scenario } from "../lib/types"
+import { DetailTab, FundamentalHorizon, Scenario } from "../lib/types"
 import {
   comparableModelSummary,
   enabledRelativeValuationMetrics,
+  effectiveHorizonPrediction,
   rowAdv20,
   rowUpside,
   screenRecord,
@@ -147,23 +148,33 @@ export function SyntheseTab({
   detail,
   row,
   rows,
+  selectedHorizon,
   onNavigate,
 }: {
   detail: FundamentalStockDetail
   row: FundamentalUniverseRow | null
   rows: FundamentalUniverseRow[]
+  selectedHorizon: FundamentalHorizon
   onNavigate: (tab: DetailTab, anchor?: string) => void
 }) {
-  const scenarios = buildScenarios(detail)
+  const { horizon: activeHorizon, prediction: activePrediction } = effectiveHorizonPrediction(detail, row, selectedHorizon)
+  const horizonTarget = activeHorizon === "year" ? undefined : activePrediction?.forward_target ?? null
+  const scenarios = buildScenarios(detail, horizonTarget)
   const expected = scenarios.some((scenario) => scenario.price != null) ? scenarios.reduce((sum, scenario) => sum + (scenario.price ?? 0) * scenario.probability, 0) : null
   const recommendation = detail.recommendation ?? row?.recommendation ?? null
-  const fairValue = recommendation !== "NR" ? detail.ensemble?.fair_value_base ?? null : null
-  const upside = detail.ensemble?.upside_pct ?? rowUpside(row)
+  const currentPrice = detail.ensemble?.current_price ?? asNumber(detail.metrics.Current_Price)
+  const triangulationUsable = detail.triangulation != null
+    && detail.triangulation.verdict !== "insufficient_anchors"
+    && detail.triangulation.verdict !== "no_price"
+  const triangulatedTarget = triangulationUsable ? detail.triangulation?.band_mid ?? null : null
+  const fairValue = recommendation !== "NR" ? triangulatedTarget ?? detail.ensemble?.fair_value_base ?? null : null
+  const upside = fairValue != null && currentPrice != null && currentPrice > 0
+    ? fairValue / currentPrice - 1
+    : detail.ensemble?.upside_pct ?? rowUpside(row)
   const screens = screensFor(detail, row)
   const altman = screenRecord(screens, "altman_z")
   const piotroski = asRecord(detail.diagnostics?.piotroski_lite)
   const evaScreen = screenRecord(screens, "eva")
-  const currentPrice = detail.ensemble?.current_price ?? asNumber(detail.metrics.Current_Price)
   const rateSensitiveWeight = asNumber(detail.rate_sensitive_weight) ?? asNumber(detail.ensemble?.rate_sensitive_weight)
   const isMultiplesLed = rateSensitiveWeight != null && rateSensitiveWeight < 0.10
 
@@ -174,7 +185,7 @@ export function SyntheseTab({
 
   // --- Football field: same building blocks as Valorisation's summary block. ---
   const methods = valuationMethods(detail, detail.valuations, comparableSummary, null)
-  const footballTarget = detail.ensemble?.fair_value_base ?? null
+  const footballTarget = horizonTarget !== undefined ? horizonTarget : triangulatedTarget ?? detail.ensemble?.fair_value_base ?? null
   const footballModels = MODEL_ORDER.filter((model) => methods.some((method) => method.key === model))
 
   // --- Verdict strip ---

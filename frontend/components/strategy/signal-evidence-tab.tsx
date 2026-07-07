@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react"
 import type { ReactNode } from "react"
 import useSWR from "swr"
-import { Activity, BarChart3, CheckCircle2, Layers3, ListChecks } from "lucide-react"
+import { Activity, BarChart3, CheckCircle2, Eye, EyeOff, Layers3, ListChecks } from "lucide-react"
 import {
   fetchBestSignalBacktestChart,
   fetchBestSignalEvidence,
@@ -253,8 +253,63 @@ function DiagnosticSection({
   )
 }
 
+function ToggleSectionButton({
+  visible,
+  onToggle,
+  label,
+}: {
+  visible: boolean
+  onToggle: () => void
+  label: string
+}) {
+  const Icon = visible ? EyeOff : Eye
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={visible}
+      className={`inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-[11px] font-medium transition-colors ${
+        visible
+          ? "border-primary/60 bg-primary/10 text-primary"
+          : "border-line bg-background text-muted-foreground hover:bg-muted/40"
+      }`}
+    >
+      <Icon className="h-3.5 w-3.5" />
+      {label}
+    </button>
+  )
+}
+
+function SectionTogglesBar({
+  showSrOverlay,
+  onToggleSrOverlay,
+  showRiskDistribution,
+  onToggleRiskDistribution,
+}: {
+  showSrOverlay: boolean
+  onToggleSrOverlay: () => void
+  showRiskDistribution: boolean
+  onToggleRiskDistribution: () => void
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed border-line bg-muted/10 px-3 py-2">
+      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        Optional sections
+      </span>
+      <ToggleSectionButton visible={showSrOverlay} onToggle={onToggleSrOverlay} label="S/R execution overlay" />
+      <ToggleSectionButton
+        visible={showRiskDistribution}
+        onToggle={onToggleRiskDistribution}
+        label="Risk & Distribution"
+      />
+    </div>
+  )
+}
+
 function StitchedWfoEvidenceBacktest({ data, mcStats }: { data: SignalEvidence; mcStats?: McVarStats | null }) {
   const [range, setRange] = useState<EvidenceRangeKey>("all")
+  const [showSrOverlay, setShowSrOverlay] = useState(false)
+  const [showRiskDistribution, setShowRiskDistribution] = useState(false)
   const stitched = data.stitched_oos_backtest
   const visible = useMemo(() => {
     return buildSignalEvidenceRangeView(stitched, stitched ? evidenceRangeStart(stitched.dates, range) : null)
@@ -331,7 +386,13 @@ function StitchedWfoEvidenceBacktest({ data, mcStats }: { data: SignalEvidence; 
           </div>
         ) : null}
 
-        <SrOverlaySummary overlay={stitched.sr_overlay ?? data.sr_overlay} />
+        <SectionTogglesBar
+          showSrOverlay={showSrOverlay}
+          onToggleSrOverlay={() => setShowSrOverlay((prev) => !prev)}
+          showRiskDistribution={showRiskDistribution}
+          onToggleRiskDistribution={() => setShowRiskDistribution((prev) => !prev)}
+        />
+        {showSrOverlay ? <SrOverlaySummary overlay={stitched.sr_overlay ?? data.sr_overlay} /> : null}
 
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <StatCard
@@ -360,150 +421,93 @@ function StitchedWfoEvidenceBacktest({ data, mcStats }: { data: SignalEvidence; 
 
         {hasAction ? (
           <>
-            <DiagnosticSection title="Risk & Distribution">
-              <DiagnosticMetric
-                label="Max drawdown"
-                value={formatPercent(metrics.max_drawdown)}
-                detail="visible equity path"
-                tone="text-[oklch(0.52_0.20_25)]"
-              />
-              <DiagnosticMetric
-                label="Profit factor"
-                value={formatFiniteNumber(metrics.profit_factor_net, 2)}
-                detail="net wins / net losses"
-              />
-              <DiagnosticMetric
-                label="Avg win / loss"
-                value={`${formatPercent(metrics.avg_win_net)} / ${formatPercent(metrics.avg_loss_net)}`}
-                detail={`payoff ${formatFiniteNumber(metrics.payoff_ratio_net, 2)}`}
-              />
-              <DiagnosticMetric
-                label="Expectancy"
-                value={formatPercent(metrics.expected_return_net)}
-                detail={`median ${formatPercent(metrics.median_return_net)}`}
-                tone={metricTone(metrics.expected_return_net)}
-              />
-              {metrics.min_sample_pass ? (
-                <>
-                  <DiagnosticMetric
-                    label="Sortino"
-                    value={formatFiniteNumber(metrics.sortino, 2)}
-                    detail="daily path basis"
-                    tone={metricTone(metrics.sortino)}
-                  />
-                  <DiagnosticMetric
-                    label="Path Sharpe"
-                    value={formatFiniteNumber(metrics.sharpe_path, 2)}
-                    detail="daily path basis"
-                    tone={metricTone(metrics.sharpe_path)}
-                  />
-                  <DiagnosticMetric
-                    label="Tail returns"
-                    value={`${formatPercent(metrics.p05_return_net)} / ${formatPercent(metrics.p95_return_net)}`}
-                    detail="p05 / p95 net trade"
-                  />
-                  <DiagnosticMetric
-                    label="Ann. volatility"
-                    value={formatPercent(metrics.annualized_volatility)}
-                    detail={`downside ${formatPercent(metrics.downside_volatility)}`}
-                  />
-                  <DiagnosticMetric
-                    label="Hist VaR 95%"
-                    value={formatPercent(metrics.var95)}
-                    detail={metrics.var95 == null ? "minimum n=5 trades" : "5th pct net trade return"}
-                    tone={metricTone(metrics.var95)}
-                  />
-                  <DiagnosticMetric
-                    label="Hist CVaR 95%"
-                    value={formatPercent(metrics.cvar95)}
-                    detail={metrics.cvar95 == null ? "minimum n=5 trades" : "mean below VaR"}
-                    tone={metricTone(metrics.cvar95)}
-                  />
-                  <DiagnosticMetric
-                    label="MC VaR 95%"
-                    value={formatPercent(mcStats?.var95)}
-                    detail={mcStats?.var95 == null ? "MC unavailable" : "terminal return p05"}
-                    tone={metricTone(mcStats?.var95)}
-                  />
-                  <DiagnosticMetric
-                    label="MC CVaR 95%"
-                    value={formatPercent(mcStats?.cvar95)}
-                    detail={mcStats?.cvar95 == null ? "MC unavailable" : "terminal tail mean"}
-                    tone={metricTone(mcStats?.cvar95)}
-                  />
-                  <DiagnosticMetric
-                    label="Calmar"
-                    value={formatFiniteNumber(metrics.calmar, 2)}
-                    detail="daily path basis"
-                    tone={metricTone(metrics.calmar)}
-                  />
-                </>
-              ) : (
-                <div className="min-w-0 rounded-md border border-dashed border-line bg-background px-3 py-2 text-xs text-muted-foreground sm:col-span-2 xl:col-span-4">
-                  Distribution & tail metrics hidden - n&lt;30 (audit only)
-                </div>
-              )}
-            </DiagnosticSection>
+            {showRiskDistribution ? (
+              <DiagnosticSection title="Risk & Distribution">
+                <DiagnosticMetric
+                  label="Max drawdown"
+                  value={formatPercent(metrics.max_drawdown)}
+                  detail="visible equity path"
+                  tone="text-[oklch(0.52_0.20_25)]"
+                />
+                <DiagnosticMetric
+                  label="Profit factor"
+                  value={formatFiniteNumber(metrics.profit_factor_net, 2)}
+                  detail="net wins / net losses"
+                />
+                <DiagnosticMetric
+                  label="Avg win / loss"
+                  value={`${formatPercent(metrics.avg_win_net)} / ${formatPercent(metrics.avg_loss_net)}`}
+                  detail={`payoff ${formatFiniteNumber(metrics.payoff_ratio_net, 2)}`}
+                />
+                <DiagnosticMetric
+                  label="Expectancy"
+                  value={formatPercent(metrics.expected_return_net)}
+                  detail={`median ${formatPercent(metrics.median_return_net)}`}
+                  tone={metricTone(metrics.expected_return_net)}
+                />
+                {metrics.min_sample_pass ? (
+                  <>
+                    <DiagnosticMetric
+                      label="Sortino"
+                      value={formatFiniteNumber(metrics.sortino, 2)}
+                      detail="daily path basis"
+                      tone={metricTone(metrics.sortino)}
+                    />
+                    <DiagnosticMetric
+                      label="Path Sharpe"
+                      value={formatFiniteNumber(metrics.sharpe_path, 2)}
+                      detail="daily path basis"
+                      tone={metricTone(metrics.sharpe_path)}
+                    />
+                    <DiagnosticMetric
+                      label="Tail returns"
+                      value={`${formatPercent(metrics.p05_return_net)} / ${formatPercent(metrics.p95_return_net)}`}
+                      detail="p05 / p95 net trade"
+                    />
+                    <DiagnosticMetric
+                      label="Ann. volatility"
+                      value={formatPercent(metrics.annualized_volatility)}
+                      detail={`downside ${formatPercent(metrics.downside_volatility)}`}
+                    />
+                    <DiagnosticMetric
+                      label="Hist VaR 95%"
+                      value={formatPercent(metrics.var95)}
+                      detail={metrics.var95 == null ? "minimum n=5 trades" : "5th pct net trade return"}
+                      tone={metricTone(metrics.var95)}
+                    />
+                    <DiagnosticMetric
+                      label="Hist CVaR 95%"
+                      value={formatPercent(metrics.cvar95)}
+                      detail={metrics.cvar95 == null ? "minimum n=5 trades" : "mean below VaR"}
+                      tone={metricTone(metrics.cvar95)}
+                    />
+                    <DiagnosticMetric
+                      label="MC VaR 95%"
+                      value={formatPercent(mcStats?.var95)}
+                      detail={mcStats?.var95 == null ? "MC unavailable" : "terminal return p05"}
+                      tone={metricTone(mcStats?.var95)}
+                    />
+                    <DiagnosticMetric
+                      label="MC CVaR 95%"
+                      value={formatPercent(mcStats?.cvar95)}
+                      detail={mcStats?.cvar95 == null ? "MC unavailable" : "terminal tail mean"}
+                      tone={metricTone(mcStats?.cvar95)}
+                    />
+                    <DiagnosticMetric
+                      label="Calmar"
+                      value={formatFiniteNumber(metrics.calmar, 2)}
+                      detail="daily path basis"
+                      tone={metricTone(metrics.calmar)}
+                    />
+                  </>
+                ) : (
+                  <div className="min-w-0 rounded-md border border-dashed border-line bg-background px-3 py-2 text-xs text-muted-foreground sm:col-span-2 xl:col-span-4">
+                    Distribution & tail metrics hidden - n&lt;30 (audit only)
+                  </div>
+                )}
+              </DiagnosticSection>
+            ) : null}
 
-            <DiagnosticSection title="Market Exposure">
-              {metrics.min_sample_pass && metrics.alpha_reason === "ok" ? (
-                <>
-                  <DiagnosticMetric
-                    label={`Beta (vs ${metrics.benchmark_symbol ?? stitched.benchmark_symbol ?? "benchmark"})`}
-                    value={formatFiniteNumber(metrics.beta, 2)}
-                    detail="traded-book exposure"
-                  />
-                  <DiagnosticMetric
-                    label="Alpha (ann.)"
-                    value={formatPercent(metrics.alpha_annualized)}
-                    detail="x252 intercept"
-                    tone={metricTone(metrics.alpha_annualized)}
-                  />
-                  <DiagnosticMetric
-                    label="Fit R2"
-                    value={formatFiniteNumber(metrics.alpha_r2, 2)}
-                    detail={`${formatNumber(metrics.alpha_n_obs, 0)} paired days`}
-                  />
-                </>
-              ) : (
-                <div
-                  className="min-w-0 rounded-md border border-dashed border-line bg-background px-3 py-2 text-xs text-muted-foreground sm:col-span-2 xl:col-span-4"
-                  title="Effective-book beta regresses the traded equity path, including flat days, not the underlying stock beta."
-                >
-                  Market exposure hidden - {metrics.min_sample_pass ? metrics.alpha_reason ?? "unavailable" : "n<30 (audit only)"}
-                </div>
-              )}
-            </DiagnosticSection>
-
-            <DiagnosticSection title="Sample Quality">
-              <DiagnosticMetric
-                label="OOS trades"
-                value={formatNumber(metrics.n_trades, 0)}
-                detail={metrics.min_sample_pass ? "minimum sample passed" : "below n=30 evidence floor"}
-                tone={metrics.min_sample_pass ? "text-[oklch(0.48_0.14_160)]" : "text-[oklch(0.52_0.20_25)]"}
-              />
-              <DiagnosticMetric
-                label="Date window"
-                value={dateWindowLabel(metrics.sample_start, metrics.sample_end)}
-                detail={`${formatNumber(metrics.sample_days, 0)} bars in visible range`}
-              />
-              <DiagnosticMetric
-                label="Cooldown filter"
-                value={formatNumber(cooldownFilteredTrades, 0)}
-                detail={`cooldown ${formatNumber(cooldownBars, 0)} bars`}
-              />
-              <div className="min-w-0 rounded-md border border-line bg-background px-3 py-2">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Metric basis</div>
-                <div className="mt-1 flex flex-wrap items-center gap-2">
-                  <Badge variant="outline" className="h-5 rounded text-[10px]">
-                    {formatMetricBasis(metrics.metric_basis)}
-                  </Badge>
-                  <Badge variant={metrics.min_sample_pass ? "default" : "outline"} className="h-5 rounded text-[10px]">
-                    {metrics.min_sample_pass ? "n OK" : "audit only"}
-                  </Badge>
-                </div>
-              </div>
-            </DiagnosticSection>
           </>
         ) : null}
 
@@ -528,6 +532,38 @@ function StitchedWfoEvidenceBacktest({ data, mcStats }: { data: SignalEvidence; 
             maxHeight={560}
           />
         </div>
+
+        {hasAction ? (
+          <DiagnosticSection title="Sample Quality">
+            <DiagnosticMetric
+              label="OOS trades"
+              value={formatNumber(metrics.n_trades, 0)}
+              detail={metrics.min_sample_pass ? "minimum sample passed" : "below n=30 evidence floor"}
+              tone={metrics.min_sample_pass ? "text-[oklch(0.48_0.14_160)]" : "text-[oklch(0.52_0.20_25)]"}
+            />
+            <DiagnosticMetric
+              label="Date window"
+              value={dateWindowLabel(metrics.sample_start, metrics.sample_end)}
+              detail={`${formatNumber(metrics.sample_days, 0)} bars in visible range`}
+            />
+            <DiagnosticMetric
+              label="Cooldown filter"
+              value={formatNumber(cooldownFilteredTrades, 0)}
+              detail={`cooldown ${formatNumber(cooldownBars, 0)} bars`}
+            />
+            <div className="min-w-0 rounded-md border border-line bg-background px-3 py-2">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Metric basis</div>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className="h-5 rounded text-[10px]">
+                  {formatMetricBasis(metrics.metric_basis)}
+                </Badge>
+                <Badge variant={metrics.min_sample_pass ? "default" : "outline"} className="h-5 rounded text-[10px]">
+                  {metrics.min_sample_pass ? "n OK" : "audit only"}
+                </Badge>
+              </div>
+            </div>
+          </DiagnosticSection>
+        ) : null}
 
         <div>
           <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">

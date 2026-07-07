@@ -84,6 +84,7 @@ from ..services.fundamentals import (
     CORE_STATEMENT_METRIC_GROUPS,
     SUCCEEDED_IMPORT_STATUSES,
     VALUATION_SCENARIOS,
+    _table_exists,
     annual_by_year,
     annual_metric_rows_for_symbol,
     clean_assumption_override_values,
@@ -479,6 +480,81 @@ def _integrity_out(row: models.FundamentalIntegrityReport | None) -> IntegrityRe
         projected_statements=list(row.projected_statements_json or []),
         projection_checks=[_integrity_check_out(item) for item in list(row.projection_checks_json or []) if isinstance(item, dict)],
     )
+
+
+def _projection_payloads_by_period_type(
+    db: Session,
+    *,
+    import_id: uuid.UUID,
+    symbol: str,
+    scenario: str,
+) -> dict[str, dict[str, Any]]:
+    if not _table_exists(db, models.FundamentalProjection):
+        return {}
+    rows = (
+        db.query(models.FundamentalProjection)
+        .filter(
+            models.FundamentalProjection.import_id == import_id,
+            models.FundamentalProjection.symbol == symbol.upper(),
+            models.FundamentalProjection.scenario == scenario,
+        )
+        .order_by(
+            models.FundamentalProjection.period_type.asc(),
+            models.FundamentalProjection.fiscal_year.asc(),
+            models.FundamentalProjection.period_index.asc(),
+            models.FundamentalProjection.line_item.asc(),
+        )
+        .all()
+    )
+    grouped: dict[str, dict[str, Any]] = {}
+    statement_maps: dict[str, dict[tuple[int, int], dict[str, Any]]] = defaultdict(dict)
+    for row in rows:
+        period_type = str(row.period_type or "annual")
+        payload = grouped.setdefault(
+            period_type,
+            {
+                "statements": [],
+                "drivers": {},
+                "fcff": [],
+                "fcfe": [],
+                "dividends": [],
+                "book_values": [],
+                "growth_decomposition": {},
+                "warnings": [],
+            },
+        )
+        evidence = dict(row.evidence_json or {})
+        if str(row.line_item).startswith("driver:"):
+            driver_name = str(row.line_item).split(":", 1)[1]
+            payload["drivers"][driver_name] = {k: v for k, v in evidence.items() if k != "kind"}
+            continue
+        key = (int(row.fiscal_year), int(row.period_index or 0))
+        statement = statement_maps[period_type].setdefault(
+            key,
+            {
+                "fiscal_year": int(row.fiscal_year),
+                "periods_per_year": int(row.periods_per_year or 1),
+                "period_type": period_type,
+                "period_index": int(row.period_index or 0),
+                "period_label": str(row.period_label or "FY"),
+                "period_end_date": row.period_end_date.isoformat() if row.period_end_date else None,
+            },
+        )
+        statement[str(row.line_item)] = row.projected_value
+        warnings = evidence.get("warnings")
+        if isinstance(warnings, list):
+            for warning in warnings:
+                if isinstance(warning, str) and warning not in payload["warnings"]:
+                    payload["warnings"].append(warning)
+    for period_type, statements_by_key in statement_maps.items():
+        statements = [statements_by_key[key] for key in sorted(statements_by_key)]
+        payload = grouped[period_type]
+        payload["statements"] = statements
+        payload["fcff"] = [item.get("fcff") for item in statements if item.get("fcff") is not None]
+        payload["fcfe"] = [item.get("fcfe") for item in statements if item.get("fcfe") is not None]
+        payload["dividends"] = [item.get("dividends") for item in statements if item.get("dividends") is not None]
+        payload["book_values"] = [item.get("total_equity") for item in statements if item.get("total_equity") is not None]
+    return grouped
 
 
 def _signal_backtest_out(row: models.FundamentalSignalBacktest) -> FundamentalSignalBacktestOut:
@@ -2693,6 +2769,12 @@ def get_fundamental_stock_detail(symbol: str, db: Session = Depends(get_db), sce
         metric_overrides=[_metric_override_out(row) for row in metric_override_rows],
         period_metrics=[_period_metric_out(row) for row in period_rows],
         valuations=[_valuation_out(row, current_price_override=current_price) for row in valuations],
+        projections_by_period_type=_projection_payloads_by_period_type(
+            db,
+            import_id=import_row.id,
+            symbol=symbol,
+            scenario=selected_scenario,
+        ),
         ensemble=_ensemble_out(ensemble, current_price_override=current_price),
         ensembles=scenario_ensembles,
         rate_sensitive_weight=_rate_sensitive_weight_from_weights(ensemble_weights),

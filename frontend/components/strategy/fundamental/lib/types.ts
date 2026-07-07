@@ -5,7 +5,7 @@ import {
 export type Scenario = "bear" | "base" | "bull"
 
 
-export type DetailTab = "synthese" | "valuation" | "estimates" | "quality"
+export type DetailTab = "synthese" | "valuation" | "estimates" | "quality" | "strategie"
 
 
 export type FundamentalHorizon = "quarter" | "semester" | "year"
@@ -66,9 +66,6 @@ export type ComparablePeerFairValue = {
 }
 
 
-export type WeightMode = "ic" | "equal"
-
-
 export type ValuationSelectionSummary = {
   fairValue: number | null
   low: number | null
@@ -76,7 +73,6 @@ export type ValuationSelectionSummary = {
   upside: number | null
   includedCount: number
   usableCount: number
-  weightSource: "model weights" | "equal weights" | "ic fallback" | "user weights"
   effectiveWeights: Map<string, number>
 }
 

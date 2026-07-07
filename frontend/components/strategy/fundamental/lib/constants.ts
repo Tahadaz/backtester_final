@@ -18,6 +18,7 @@ export const FUND_TABS: Array<{ value: DetailTab; label: string }> = [
   { value: "valuation", label: "Valorisation" },
   { value: "estimates", label: "Estimations & Hypothèses" },
   { value: "quality", label: "Comparables & Qualité" },
+  { value: "strategie", label: "Stratégie de valeur" },
 ]
 
 export const FUND_TAB_PURPOSE: Record<DetailTab, string> = {
@@ -25,6 +26,7 @@ export const FUND_TAB_PURPOSE: Record<DetailTab, string> = {
   valuation: "Ce que valent les modèles par rapport au prix de marché, et comment la cible est construite.",
   estimates: "D'où viennent les prévisions, et les hypothèses que vous pouvez ajuster.",
   quality: "Le titre face à ses pairs, et la solidité de ses fondamentaux.",
+  strategie: "L'état actuel et la performance backtestée de la stratégie systématique B/M + CF/P (recherche, pas un historique live).",
 }
 
 

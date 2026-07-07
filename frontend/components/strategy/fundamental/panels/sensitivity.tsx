@@ -38,7 +38,7 @@ function sensitivityGridFromResponse(sensitivity: FundamentalSensitivity | undef
 
 function diagnosticModelGrids(sensitivity: FundamentalSensitivity | undefined): SensitivityGridView[] {
   return Object.entries(asRecord(sensitivity?.model_grids))
-    .map(([model, value]) => {
+    .map(([model, value]): SensitivityGridView | null => {
       const grid = sensitivityGridFromUnknown(value)
       return grid ? { ...grid, model: grid.model ?? model } : null
     })

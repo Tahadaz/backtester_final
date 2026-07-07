@@ -22,11 +22,11 @@ import { CoverageRatingPanel } from "../panels/coverage-rating"
 import { ChartLightbox } from "../shared/chart-lightbox"
 import { FundCard, StatTile } from "../shared/cards"
 import { DriverEvidenceChart, FcfBridge, GrowthDecompositionChart } from "../shared/charts"
-import { Scenario } from "../lib/types"
+import { FundamentalHorizon, Scenario } from "../lib/types"
 import { driverProjectedValue, editableAssumptionDraft, fairValueForValuationRow, historicalSeriesFromDriver, projectedValue, projectedYears, projectionDriverRows, projectionFromDetail, projectionStatementRows } from "../lib/view-models"
 
-function ModellingMapPanel({ detail }: { detail: FundamentalStockDetail }) {
-  const projection = projectionFromDetail(detail)
+function ModellingMapPanel({ detail, selectedHorizon }: { detail: FundamentalStockDetail; selectedHorizon: FundamentalHorizon }) {
+  const projection = projectionFromDetail(detail, selectedHorizon)
   const build = costOfCapitalBuildUp(detail)
   const projectionChecks = detail.integrity?.projection_checks ?? []
   const alertChecks = projectionChecks.filter((check) => check.status === "warn" || check.status === "fail")
@@ -322,12 +322,14 @@ function PrevisionsSection({
   detail,
   methodology,
   onScrollToEditor,
+  selectedHorizon,
 }: {
   detail: FundamentalStockDetail
   methodology?: FundamentalMethodology
   onScrollToEditor: () => void
+  selectedHorizon: FundamentalHorizon
 }) {
-  const projection = projectionFromDetail(detail)
+  const projection = projectionFromDetail(detail, selectedHorizon)
 
   if (!projection) {
     return (
@@ -813,10 +815,10 @@ function HypothesesSection({
 }
 
 
-function ModelisationSection({ detail, row }: { detail: FundamentalStockDetail; row: FundamentalUniverseRow | null }) {
+function ModelisationSection({ detail, row, selectedHorizon }: { detail: FundamentalStockDetail; row: FundamentalUniverseRow | null; selectedHorizon: FundamentalHorizon }) {
   return (
     <div className="fund-gap">
-      <ModellingMapPanel detail={detail} />
+      <ModellingMapPanel detail={detail} selectedHorizon={selectedHorizon} />
       <CoverageRatingPanel detail={detail} row={row} />
     </div>
   )
@@ -872,6 +874,7 @@ export function EstimatesAssumptionsTab({
   onSaveDesk,
   isSaving,
   isDeskSaving,
+  selectedHorizon,
 }: {
   detail: FundamentalStockDetail
   row: FundamentalUniverseRow | null
@@ -883,6 +886,7 @@ export function EstimatesAssumptionsTab({
   onSaveDesk: () => void
   isSaving: boolean
   isDeskSaving: boolean
+  selectedHorizon: FundamentalHorizon
 }) {
   const draftPayload = editableAssumptionDraft(methodology, draft)
   const draftCount = Object.keys(draftPayload).length
@@ -896,7 +900,7 @@ export function EstimatesAssumptionsTab({
   return (
     <div className="fund-gap flex flex-col">
       <div className="fund-section-label">Prévisions</div>
-      <PrevisionsSection detail={detail} methodology={methodology} onScrollToEditor={scrollToEditor} />
+      <PrevisionsSection detail={detail} methodology={methodology} onScrollToEditor={scrollToEditor} selectedHorizon={selectedHorizon} />
 
       <div className="fund-section-label">Hypothèses (éditeur unique)</div>
       <HypothesesSection
@@ -912,7 +916,7 @@ export function EstimatesAssumptionsTab({
       />
 
       <div className="fund-section-label">Carte de modélisation</div>
-      <ModelisationSection detail={detail} row={row} />
+      <ModelisationSection detail={detail} row={row} selectedHorizon={selectedHorizon} />
 
       {draftCount > 0 ? (
         <DraftBar

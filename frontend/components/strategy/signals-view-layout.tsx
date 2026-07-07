@@ -346,10 +346,6 @@ export function SignalsViewLayout({
               <Settings className="h-3.5 w-3.5" />
               WFO
             </TabsTrigger>
-            <TabsTrigger value="backtest" disabled={!selectedSymbol} className="h-9 flex-none rounded-none border-0 border-b-2 border-transparent bg-transparent px-3.5 text-xs shadow-none data-[state=active]:border-primary data-[state=active]:bg-card data-[state=active]:shadow-none">
-              <Gauge className="h-3.5 w-3.5" />
-              Backtest MC
-            </TabsTrigger>
             <TabsTrigger value="portfolio" className="h-9 flex-none rounded-none border-0 border-b-2 border-transparent bg-transparent px-3.5 text-xs shadow-none data-[state=active]:border-primary data-[state=active]:bg-card data-[state=active]:shadow-none">
               <BarChart2 className="h-3.5 w-3.5" />
               Portefeuille

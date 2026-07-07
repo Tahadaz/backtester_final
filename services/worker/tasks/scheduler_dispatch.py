@@ -112,6 +112,8 @@ def dispatch_schedule(schedule_id: str, *, trigger_source: str = "scheduled") ->
             result = _dispatch_fundamental_refresh(db, trigger_source=trigger_source, batch_id=str(run.id))
         elif spec.kind == "fundamental_beta_refresh":
             result = _dispatch_fundamental_beta_refresh(db, trigger_source=trigger_source, batch_id=str(run.id))
+        elif spec.kind == "value_strategy_refresh":
+            result = _dispatch_value_strategy_refresh(trigger_source=trigger_source, batch_id=str(run.id))
         elif spec.kind == "fundamental_cross_section":
             result = _dispatch_fundamental_cross_section(trigger_source=trigger_source, batch_id=str(run.id))
         elif spec.kind == "signal_engine_dispatch":
@@ -348,6 +350,46 @@ def _dispatch_fundamental_cross_section(*, trigger_source: str, batch_id: str) -
         "market_region": "masi",
         "source": "sfc",
     }
+
+
+def _dispatch_value_strategy_refresh(*, trigger_source: str, batch_id: str) -> dict[str, Any]:
+    from services.api.app import models as api_models
+    from services.api.app.services.value_strategy_snapshot import (
+        VALUE_STRATEGY_JOB_HORIZON,
+        VALUE_STRATEGY_JOB_SYMBOL,
+        VALUE_STRATEGY_JOB_TYPE,
+    )
+
+    db: Session = SessionLocal()
+    try:
+        job_row = api_models.SignalEngineBatchJob(
+            symbol=VALUE_STRATEGY_JOB_SYMBOL,
+            horizon=VALUE_STRATEGY_JOB_HORIZON,
+            variant="six_vintage",
+            job_type=VALUE_STRATEGY_JOB_TYPE,
+            status="pending",
+            triggered_by=trigger_source,
+            batch_id=batch_id,
+            total_units=1,
+            completed_units=0,
+            failed_units=0,
+        )
+        db.add(job_row)
+        db.commit()
+        db.refresh(job_row)
+        job = _queue(settings.MARKET_REFRESH_QUEUE_NAME).enqueue(
+            "services.worker.tasks.value_strategy.recompute_value_strategy",
+            triggered_by=trigger_source,
+            batch_id=batch_id,
+            job_row_id=str(job_row.id),
+            job_timeout=1800,
+        )
+        job_row.rq_job_id = str(job.id)
+        job_row.status = "queued"
+        db.commit()
+        return {"enqueued_jobs": 1, "rq_job_id": str(job.id), "job_row_id": str(job_row.id), "source": "value_strategy"}
+    finally:
+        db.close()
 
 
 def _dispatch_stale_signal_engine(

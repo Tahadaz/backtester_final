@@ -15,7 +15,7 @@ import { CostOfCapitalBuildUp } from "../panels/cost-of-capital"
 import { ModelSensitivityPanel } from "../panels/sensitivity"
 import { ModelValueGrid, StatTile, StatementEvidenceCard } from "../shared/cards"
 import { DriverEvidenceChart, FcfBridge } from "../shared/charts"
-import { DcfAvailableViewModel, DcfMode, DcfViewModel, ProjectionView } from "../lib/types"
+import { DcfAvailableViewModel, DcfMode, DcfViewModel, FundamentalHorizon, ProjectionView } from "../lib/types"
 import { currentPriceForValuationRow, dcfVerdict, fairValueForValuationRow, historicalSeriesFromDriver, instantiatedFormula, outputItems, projectionFromDetail, statementEvidence, technicalInputItems, upsideForFairValue, valuationAssumptionItems, valuationFormulaMeta } from "../lib/view-models"
 
 function terminalBasisLine(dcf: DcfAvailableViewModel): string {
@@ -189,6 +189,7 @@ export function DcfMethodView({
   effectiveWeight,
   sensitivity,
   dcfMode,
+  selectedHorizon,
 }: {
   row: FundamentalValuationResult
   detail: FundamentalStockDetail
@@ -196,11 +197,12 @@ export function DcfMethodView({
   effectiveWeight: number | null
   sensitivity?: FundamentalSensitivity
   dcfMode: DcfMode
+  selectedHorizon: FundamentalHorizon
 }) {
   const meta = valuationFormulaMeta(row.model)
   const dcf = buildDcfViewModel(row, detail, dcfMode) as DcfViewModel
-  const projection = projectionFromDetail(detail)
-  const statementGroups = statementEvidence(detail, row.model)
+  const projection = projectionFromDetail(detail, selectedHorizon)
+  const statementGroups = statementEvidence(detail, row.model, selectedHorizon)
   const assumptions = valuationAssumptionItems(row, detail)
   const inputs = technicalInputItems(row)
   const outputs = outputItems(row)

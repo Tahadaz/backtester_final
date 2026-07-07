@@ -1,4 +1,4 @@
-﻿# ---- Python ----
+# ---- Python ----
 __pycache__/
 *.py[cod]
 *.pyd
@@ -79,6 +79,9 @@ frontend/dev-server-*.log
 frontend-next-start*
 
 # ---- Local scratch / agent output ----
+.codex/worktrees/
+research-out/
+frontend/.playwright-cli/
 _patch_*/
 _commit*.patch
 _execute_run*.diff

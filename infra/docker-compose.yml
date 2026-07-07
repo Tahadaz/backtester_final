@@ -50,6 +50,7 @@ x-worker-base: &worker_base
     - ../services/api:/repo/services/api
     - ../services/worker:/repo/services/worker
     - ../core:/repo/core
+    - ../data:/repo/data
   command: python -m services.worker.worker
   restart: unless-stopped
 
@@ -243,6 +244,7 @@ services:
       - ../services/worker:/repo/services/worker
       - ../core:/repo/core
       - ../frontend:/repo/frontend
+      - ../data:/repo/data
       - type: bind
         source: ${FAMA_FRENCH_HOST_DIR:-C:/Users/taha/Downloads/fama french}
         target: /bvc/fama-french
@@ -430,6 +432,7 @@ services:
       - ../services/api:/repo/services/api
       - ../services/worker:/repo/services/worker   # ← add
       - ../core:/repo/core
+      - ../data:/repo/data
     healthcheck:
       test:
         [

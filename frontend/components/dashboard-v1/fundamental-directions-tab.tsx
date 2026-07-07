@@ -2,66 +2,34 @@
 
 import Link from "next/link"
 import { useMemo, useState } from "react"
-import { ArrowRight, ChevronDown, ChevronUp, ChevronsUpDown, Columns3 } from "lucide-react"
-import type { FundamentalCrossSectionRow } from "@/lib/api"
+import { ArrowRight, ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react"
+import type { FundamentalCrossSectionRow, ValueSignalRow } from "@/lib/api"
 import type { DashboardFundamentals, DashboardStock } from "@/lib/dashboard-types"
-import {
-  DEFAULT_DASHBOARD_FUNDAMENTAL_COLUMNS,
-  FUNDAMENTAL_COLUMNS,
-  type DashboardFundamentalColumn,
-} from "@/lib/dashboard-preferences"
-import { formatCurrency, formatNumber, formatPercent } from "@/lib/format"
-import { SignalBadge } from "./signal-badge"
+import type { DashboardFundamentalColumn } from "@/lib/dashboard-preferences"
+import { formatCurrency, formatNumber } from "@/lib/format"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
-import { SfcPortfolioBacktestPanel } from "./sfc-portfolio-backtest-panel"
+
+// Note: the legacy SFC composite panel/table columns and the DashboardFundamentals
+// value/quality/coverage/confidence columns were removed here on 2026-07-07 per direct
+// product feedback -- this table is now the canonical B/M + CF/P value-signal ranking only.
+// The six-vintage strategy backtest panel moved to the Signal page's fundamental view
+// ("Stratégie de valeur" tab, frontend/components/strategy/fundamental/tabs/strategie-tab.tsx)
+// rather than living inside this stock-ranking table.
 
 type SortDir = "asc" | "desc"
-type SortKey =
-  | "symbol"
-  | "sfc_rank"
-  | "sfc_score"
-  | "sfc_coverage"
-  | "price"
-  | "var1j"
-  | "direction"
-  | "value"
-  | "quality"
-  | "upside"
-  | "fair_value"
-  | "pe"
-  | "dividend_yield"
-  | "coverage"
-  | "source"
+type SortKey = "symbol" | "bm_rank" | "cfp_rank" | "price" | "var1j"
 
 interface FundamentalDirectionsTabProps {
   stocks: DashboardStock[]
+  // Retained for call-site compatibility with v1/page.tsx (unused by this simplified table).
   columns?: DashboardFundamentalColumn[]
   onColumnsChange?: (columns: DashboardFundamentalColumn[]) => void
   sfcRowsBySymbol?: Record<string, FundamentalCrossSectionRow | undefined>
   sfcAsOf?: string | null
   sfcValidationLabel?: string | null
-}
-
-const COLUMN_LABELS: Record<DashboardFundamentalColumn, string> = {
-  value: "Value",
-  quality: "Quality",
-  upside: "Upside",
-  fair_value: "Fair value",
-  pe: "P/E",
-  dividend_yield: "Div. yield",
-  coverage: "Coverage",
-  source: "Source",
+  valueSignalBySymbol?: Record<string, ValueSignalRow | undefined>
 }
 
 function finite(value: number | null | undefined): number | null {
@@ -93,90 +61,14 @@ function formatVarPct(value: number | null): string {
   return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`
 }
 
-function upsideToSignalScore(value: number | null | undefined): number | null {
-  const upside = finite(value)
-  return upside == null ? null : Math.max(-100, Math.min(100, upside * 250))
-}
-
-export function fundamentalSignalScore(fundamentals: DashboardFundamentals | null | undefined): number | null {
-  if (!fundamentals) return null
-  return upsideToSignalScore(fundamentals.upside_pct)
-}
-
-export function fundamentalDirectionForStock(stock: DashboardStock): "long" | "short" | "none" | "missing" {
-  const score = fundamentalSignalScore(stock.fundamentals)
-  if (score == null) return "missing"
-  if (score > 15) return "long"
-  if (score < -15) return "short"
-  return "none"
-}
-
-function fundamentalSignalLabel(fundamentals: DashboardFundamentals | null | undefined): string {
-  const score = fundamentalSignalScore(fundamentals)
-  if (score == null) return "Indisponible"
-  if (score > 50) return "Achat fort"
-  if (score > 15) return "Achat"
-  if (score >= -15) return "Neutre"
-  if (score >= -50) return "Vente"
-  return "Vente forte"
-}
-
-function confidenceTone(value: string | null | undefined) {
-  if (value === "high") return "border-emerald-400/40 bg-emerald-500/10 text-emerald-700"
-  if (value === "medium") return "border-sky-400/40 bg-sky-500/10 text-sky-700"
-  if (value === "low") return "border-amber-400/40 bg-amber-500/10 text-amber-800"
-  return "text-muted-foreground"
-}
-
-function sourceLabel(value: string | null | undefined) {
-  if (value === "yfinance") return "yfinance"
-  if (value === "workbook") return "Workbook"
-  return "--"
-}
-
-function sfcDirectionLabel(row: FundamentalCrossSectionRow | null | undefined, fundamentals: DashboardFundamentals | null | undefined): string {
-  if (row?.tercile === "top") return "Favoriser"
-  if (row?.tercile === "bottom") return "À éviter"
-  if (row?.tercile === "middle") return "Neutre"
-  if (row) return "Non classé"
-  return fundamentalSignalLabel(fundamentals)
-}
-
-function tercileTone(tercile: string | null | undefined) {
-  if (tercile === "top") return "border-emerald-400/40 bg-emerald-500/10 text-emerald-700"
-  if (tercile === "bottom") return "border-rose-400/40 bg-rose-500/10 text-rose-700"
-  if (tercile === "middle") return "border-sky-400/40 bg-sky-500/10 text-sky-700"
+function valueBadgeTone(eligible: boolean | undefined): string {
+  if (eligible) return "border-emerald-400/40 bg-emerald-500/10 text-emerald-700"
   return "border-border bg-muted text-muted-foreground"
 }
 
-function pillarTitle(row: FundamentalCrossSectionRow | null | undefined): string {
-  if (!row) return "Score composite indisponible"
-  return Object.entries(row.pillars)
-    .map(([key, value]) => `${key.toUpperCase()}: ${value == null ? "--" : value.toFixed(2)}`)
-    .join(" | ")
-}
-
-function sfcSortValue(row: FundamentalCrossSectionRow | null | undefined, key: SortKey): number | null {
-  if (!row) return null
-  if (key === "sfc_rank") return row.rank == null ? null : -row.rank
-  if (key === "sfc_score") return finite(row.sfc)
-  if (key === "sfc_coverage") return finite(row.coverage_ratio)
-  return null
-}
-
-function columnValue(fundamentals: DashboardFundamentals | null | undefined, key: SortKey): number | string | null {
-  if (key === "symbol") return null
-  if (!fundamentals) return null
-  if (key === "direction") return fundamentalSignalScore(fundamentals)
-  if (key === "value") return finite(fundamentals.value_score)
-  if (key === "quality") return finite(fundamentals.quality_score)
-  if (key === "upside") return finite(fundamentals.upside_pct)
-  if (key === "fair_value") return finite(fundamentals.fair_value)
-  if (key === "pe") return finite(fundamentals.pe)
-  if (key === "dividend_yield") return finite(fundamentals.dividend_yield)
-  if (key === "coverage") return finite(fundamentals.coverage_pct)
-  if (key === "source") return sourceLabel(fundamentals.data_source)
-  return null
+function formatPercentile(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "--"
+  return `${Math.round(value * 100)}e`
 }
 
 function compareValues(left: number | string | null, right: number | string | null, dir: SortDir) {
@@ -191,21 +83,13 @@ function compareValues(left: number | string | null, right: number | string | nu
   return dir === "asc" ? comparison : -comparison
 }
 
-function formatColumnValue(fundamentals: DashboardFundamentals | null | undefined, key: DashboardFundamentalColumn) {
-  if (!fundamentals) return "--"
-  if (key === "upside" || key === "dividend_yield") return formatPercent(columnValue(fundamentals, key) as number | null)
-  if (key === "fair_value") return formatCurrency(fundamentals.fair_value)
-  if (key === "coverage") {
-    const value = finite(fundamentals.coverage_pct)
-    return value == null ? "--" : `${value.toFixed(0)}%`
-  }
-  if (key === "source") return sourceLabel(fundamentals.data_source)
-  return formatNumber(columnValue(fundamentals, key) as number | null, key === "pe" ? 2 : 1)
-}
-
 function asOfLabel(value: string | null | undefined) {
   if (!value) return "--"
   return value.slice(0, 10)
+}
+
+function fairValueHref(symbol: string): string {
+  return `/signals?mode=fundamental&symbol=${encodeURIComponent(symbol)}&fund_tab=valuation`
 }
 
 function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
@@ -215,39 +99,31 @@ function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
 
 export function FundamentalDirectionsTab({
   stocks,
-  columns = DEFAULT_DASHBOARD_FUNDAMENTAL_COLUMNS,
-  onColumnsChange,
-  sfcRowsBySymbol = {},
-  sfcAsOf,
-  sfcValidationLabel,
+  valueSignalBySymbol = {},
 }: FundamentalDirectionsTabProps) {
-  const [sortKey, setSortKey] = useState<SortKey>("sfc_rank")
+  const [sortKey, setSortKey] = useState<SortKey>("bm_rank")
   const [sortDir, setSortDir] = useState<SortDir>("desc")
-  const visibleColumns = useMemo(
-    () => columns.filter((column) => FUNDAMENTAL_COLUMNS.includes(column)),
-    [columns],
-  )
 
   const sorted = useMemo(() => {
     const sortValueFor = (stock: DashboardStock): number | string | null => {
       if (sortKey === "symbol") return stock.symbol
       if (sortKey === "price") return priceForDisplay(stock)
       if (sortKey === "var1j") return oneDayVarPct(stock)
-      if (sortKey === "sfc_rank" || sortKey === "sfc_score" || sortKey === "sfc_coverage") {
-        return sfcSortValue(sfcRowsBySymbol[stock.symbol.toUpperCase()], sortKey)
+      if (sortKey === "bm_rank") {
+        const rank = valueSignalBySymbol[stock.symbol.toUpperCase()]?.bm_rank
+        return rank == null ? null : -rank
       }
-      return columnValue(stock.fundamentals, sortKey)
+      if (sortKey === "cfp_rank") {
+        const rank = valueSignalBySymbol[stock.symbol.toUpperCase()]?.cfp_rank
+        return rank == null ? null : -rank
+      }
+      return null
     }
     return [...stocks].sort((left, right) => {
       const primary = compareValues(sortValueFor(left), sortValueFor(right), sortDir)
       return primary !== 0 ? primary : left.symbol.localeCompare(right.symbol)
     })
-  }, [sfcRowsBySymbol, stocks, sortDir, sortKey])
-
-  const covered = useMemo(
-    () => stocks.filter((stock) => sfcRowsBySymbol[stock.symbol.toUpperCase()]?.sfc != null).length,
-    [sfcRowsBySymbol, stocks],
-  )
+  }, [valueSignalBySymbol, stocks, sortDir, sortKey])
 
   function onSort(nextKey: SortKey) {
     if (sortKey === nextKey) {
@@ -255,15 +131,7 @@ export function FundamentalDirectionsTab({
       return
     }
     setSortKey(nextKey)
-    setSortDir(nextKey === "sfc_rank" ? "desc" : "desc")
-  }
-
-  function toggleColumn(column: DashboardFundamentalColumn, checked: boolean) {
-    if (!onColumnsChange) return
-    const next = checked
-      ? [...visibleColumns, column]
-      : visibleColumns.filter((item) => item !== column)
-    onColumnsChange(next.length ? next : DEFAULT_DASHBOARD_FUNDAMENTAL_COLUMNS)
+    setSortDir("desc")
   }
 
   if (stocks.length === 0) {
@@ -271,80 +139,58 @@ export function FundamentalDirectionsTab({
   }
 
   return (
-    <div className="space-y-3">
-    <SfcPortfolioBacktestPanel />
     <div className="dashboard-panel overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-bg2 px-4 py-3">
         <div>
-          <h3 className="dashboard-section-title">Directions fondamentales</h3>
-          <div className="dashboard-meta">
-            {sorted.length} lignes - {covered} scores SFC{ sfcAsOf ? ` - ${asOfLabel(sfcAsOf)}` : "" }{sfcValidationLabel ? ` - ${sfcValidationLabel}` : ""}
-          </div>
+          <h3 className="dashboard-section-title">Classement par action — Valeur structurelle (B/M) &amp; Valeur cash-flow (CF/P)</h3>
+          <div className="dashboard-meta">{sorted.length} lignes</div>
         </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="h-8 gap-1.5 rounded-md text-[12px]">
-              <Columns3 className="h-3.5 w-3.5" />
-              Colonnes
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-52">
-            <DropdownMenuLabel>Fondamental</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {FUNDAMENTAL_COLUMNS.map((column) => (
-              <DropdownMenuCheckboxItem
-                key={column}
-                checked={visibleColumns.includes(column)}
-                onCheckedChange={(checked) => toggleColumn(column, checked === true)}
-              >
-                {COLUMN_LABELS[column]}
-              </DropdownMenuCheckboxItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
       </div>
 
       <div className="grid gap-2 bg-background p-2 md:hidden">
         {sorted.map((stock) => {
-          const fundamentals = stock.fundamentals ?? null
-          const sfc = sfcRowsBySymbol[stock.symbol.toUpperCase()]
-          const href = `/signals?mode=fundamental&symbol=${encodeURIComponent(stock.symbol)}`
+          const valueRow = valueSignalBySymbol[stock.symbol.toUpperCase()]
+          const var1j = oneDayVarPct(stock)
           return (
             <article key={`fund-mobile-${stock.symbol}`} className="rounded-lg border border-border bg-card px-3 py-3 shadow-xs">
               <div className="flex min-w-0 items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <Link href={href} className="dashboard-mono text-[14px] font-bold hover:underline">{stock.symbol}</Link>
+                  <Link href={fairValueHref(stock.symbol)} className="dashboard-mono text-[14px] font-bold hover:underline">{stock.symbol}</Link>
                   <div className="truncate text-[12px] text-muted-foreground">{stock.display_name ?? "-"}</div>
-                  {(() => {
-                    const var1j = oneDayVarPct(stock)
-                    return (
-                      <div className="mt-1 flex items-center gap-2 text-[12px]">
-                        <span className="dashboard-mono font-semibold">{formatNumber(priceForDisplay(stock), 2)}</span>
-                        <span className={cn("dashboard-mono", var1j != null ? (var1j >= 0 ? "dashboard-text-positive" : "dashboard-text-negative") : "text-muted-foreground")}>
-                          {formatVarPct(var1j)}
-                        </span>
-                      </div>
-                    )
-                  })()}
+                  <div className="mt-1 flex items-center gap-2 text-[12px]">
+                    <span className="dashboard-mono font-semibold">{formatNumber(priceForDisplay(stock), 2)}</span>
+                    <span className={cn("dashboard-mono", var1j != null ? (var1j >= 0 ? "dashboard-text-positive" : "dashboard-text-negative") : "text-muted-foreground")}>
+                      {formatVarPct(var1j)}
+                    </span>
+                  </div>
                 </div>
-                <SignalBadge label={sfcDirectionLabel(sfc, fundamentals)} />
               </div>
-              <div className="mt-3 grid grid-cols-3 gap-2 border-t border-border pt-2">
+              <div className="mt-3 grid grid-cols-2 gap-2 border-t border-border pt-2">
                 <div>
-                  <div className="text-[9px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Rang</div>
-                  <div className="dashboard-mono mt-0.5 text-[13px] font-semibold">{sfc?.rank ?? "--"}</div>
+                  <div className="text-[9px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Rang B/M</div>
+                  <div className="mt-0.5">
+                    {valueRow?.eligible_bm ? (
+                      <Badge variant="outline" className={cn("dashboard-mono text-[10px]", valueBadgeTone(true))}>{formatPercentile(valueRow.bm_percentile)}</Badge>
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground">Exclu</span>
+                    )}
+                  </div>
                 </div>
-                <div className="text-center">
-                  <div className="text-[9px] font-bold uppercase tracking-[0.08em] text-muted-foreground">SFC</div>
-                  <div className="dashboard-mono mt-0.5 text-[13px] font-semibold">{formatNumber(sfc?.sfc, 2)}</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-[9px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Couverture</div>
-                  <div className="dashboard-mono mt-0.5 text-[13px] font-semibold">{sfc?.coverage_ratio == null ? "--" : `${(sfc.coverage_ratio * 100).toFixed(0)}%`}</div>
+                <div>
+                  <div className="text-[9px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Rang CF/P</div>
+                  <div className="mt-0.5">
+                    {valueRow == null ? "--" : !valueRow.cfp_applicable ? (
+                      <span className="text-[10px] text-muted-foreground">N/A</span>
+                    ) : valueRow.eligible_cfp ? (
+                      <Badge variant="outline" className={cn("dashboard-mono text-[10px]", valueBadgeTone(true))}>{formatPercentile(valueRow.cfp_percentile)}</Badge>
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground">Exclu</span>
+                    )}
+                  </div>
                 </div>
               </div>
-              <Link href={href} className="mt-3 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-border bg-bg2 text-[12px] font-semibold text-foreground">
-                Voir detail
+              <Link href={fairValueHref(stock.symbol)} className="mt-3 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-border bg-bg2 text-[12px] font-semibold text-foreground">
+                Voir la valorisation
                 <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             </article>
@@ -353,7 +199,7 @@ export function FundamentalDirectionsTab({
       </div>
 
       <div className="hidden overflow-x-auto md:block">
-        <Table className="min-w-[1120px] text-[12px]">
+        <Table className="text-[12px]">
           <TableHeader>
             <TableRow className="border-b border-border bg-bg2 hover:bg-bg2">
               <TableHead className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
@@ -375,43 +221,26 @@ export function FundamentalDirectionsTab({
                   <SortIcon active={sortKey === "var1j"} dir={sortDir} />
                 </button>
               </TableHead>
-              <TableHead className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                <button type="button" className="inline-flex items-center gap-1" onClick={() => onSort("direction")}>
-                  Direction
-                  <SortIcon active={sortKey === "direction"} dir={sortDir} />
+              <TableHead className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                <button type="button" className="inline-flex items-center gap-1" onClick={() => onSort("bm_rank")}>
+                  Rang B/M (par action)
+                  <SortIcon active={sortKey === "bm_rank"} dir={sortDir} />
                 </button>
               </TableHead>
               <TableHead className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                <button type="button" className="inline-flex items-center gap-1" onClick={() => onSort("sfc_rank")}>
-                  Rang SFC
-                  <SortIcon active={sortKey === "sfc_rank"} dir={sortDir} />
+                <button type="button" className="inline-flex items-center gap-1" onClick={() => onSort("cfp_rank")}>
+                  Rang CF/P (par action)
+                  <SortIcon active={sortKey === "cfp_rank"} dir={sortDir} />
                 </button>
               </TableHead>
-              <TableHead className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                <button type="button" className="inline-flex items-center gap-1" onClick={() => onSort("sfc_score")}>
-                  SFC
-                  <SortIcon active={sortKey === "sfc_score"} dir={sortDir} />
-                </button>
-              </TableHead>
-              <TableHead className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Piliers</TableHead>
-              {visibleColumns.map((column) => (
-                <TableHead key={column} className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                  <button type="button" className="inline-flex items-center gap-1" onClick={() => onSort(column)}>
-                    {COLUMN_LABELS[column]}
-                    <SortIcon active={sortKey === column} dir={sortDir} />
-                  </button>
-                </TableHead>
-              ))}
-              <TableHead className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Confidence</TableHead>
-              <TableHead className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">As of</TableHead>
-              <TableHead className="h-auto w-10 px-2 py-2" />
+              <TableHead className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Valeur cible</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {sorted.map((stock) => {
-              const fundamentals = stock.fundamentals ?? null
-              const sfc = sfcRowsBySymbol[stock.symbol.toUpperCase()]
-              const href = `/signals?mode=fundamental&symbol=${encodeURIComponent(stock.symbol)}`
+              const valueRow = valueSignalBySymbol[stock.symbol.toUpperCase()]
+              const var1j = oneDayVarPct(stock)
+              const href = fairValueHref(stock.symbol)
               return (
                 <TableRow key={stock.symbol} className="border-b border-border/70 hover:bg-bg2">
                   <TableCell className="px-3 py-2.5 align-middle">
@@ -426,64 +255,51 @@ export function FundamentalDirectionsTab({
                   <TableCell className="dashboard-mono px-3 py-2.5 text-right text-[11px] font-semibold">
                     {formatNumber(priceForDisplay(stock), 2)}
                   </TableCell>
-                  {(() => {
-                    const var1j = oneDayVarPct(stock)
-                    return (
-                      <TableCell
-                        className={cn(
-                          "dashboard-mono px-3 py-2.5 text-right text-[11px]",
-                          var1j != null ? (var1j >= 0 ? "dashboard-text-positive" : "dashboard-text-negative") : undefined,
-                        )}
-                      >
-                        {formatVarPct(var1j)}
-                      </TableCell>
-                    )
-                  })()}
-                  <TableCell className="px-3 py-2.5">
-                    <SignalBadge label={sfcDirectionLabel(sfc, fundamentals)} />
+                  <TableCell
+                    className={cn(
+                      "dashboard-mono px-3 py-2.5 text-right text-[11px]",
+                      var1j != null ? (var1j >= 0 ? "dashboard-text-positive" : "dashboard-text-negative") : undefined,
+                    )}
+                  >
+                    {formatVarPct(var1j)}
                   </TableCell>
-                  <TableCell className="dashboard-mono px-3 py-2.5 text-right text-[11px] font-semibold">
-                    {sfc?.rank ?? "--"}
+                  <TableCell className="px-3 py-2.5 text-right">
+                    {valueRow?.eligible_bm ? (
+                      <Badge variant="outline" className={cn("dashboard-mono text-[10px]", valueBadgeTone(true))}>
+                        {formatPercentile(valueRow.bm_percentile)}
+                      </Badge>
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground" title={valueRow?.exclusion_reasons?.join(" ") ?? "Signal indisponible"}>
+                        Exclu
+                      </span>
+                    )}
                   </TableCell>
-                  <TableCell className="dashboard-mono px-3 py-2.5 text-right text-[11px] font-semibold">
-                    {formatNumber(sfc?.sfc, 2)}
+                  <TableCell className="px-3 py-2.5 text-right">
+                    {valueRow == null ? (
+                      "--"
+                    ) : !valueRow.cfp_applicable ? (
+                      <span className="text-[10px] text-muted-foreground" title="Non applicable : secteur bancaire/assurance exclu par la politique canonique CF/P.">
+                        N/A
+                      </span>
+                    ) : valueRow.eligible_cfp ? (
+                      <Badge variant="outline" className={cn("dashboard-mono text-[10px]", valueBadgeTone(true))}>
+                        {formatPercentile(valueRow.cfp_percentile)}
+                      </Badge>
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground" title={valueRow.exclusion_reasons.join(" ")}>
+                        Exclu
+                      </span>
+                    )}
                   </TableCell>
-                  <TableCell className="px-3 py-2.5">
-                    <div className="flex flex-wrap gap-1" title={pillarTitle(sfc)}>
-                      {(["val", "qual", "fmom", "pmom"] as const).map((pillar) => (
-                        <Badge key={pillar} variant="outline" className="dashboard-mono text-[9px]">
-                          {pillar.toUpperCase()} {formatNumber(sfc?.pillars[pillar], 1)}
-                        </Badge>
-                      ))}
-                    </div>
-                  </TableCell>
-                  {visibleColumns.map((column) => (
-                    <TableCell
-                      key={`${stock.symbol}-${column}`}
-                      className={cn(
-                        "dashboard-mono px-3 py-2.5 text-right text-[11px]",
-                        (column === "upside" || column === "dividend_yield") && (columnValue(fundamentals, column) as number | null) != null
-                          ? ((columnValue(fundamentals, column) as number) >= 0 ? "dashboard-text-positive" : "dashboard-text-negative")
-                          : undefined,
-                      )}
+                  <TableCell className="px-3 py-2.5 text-right">
+                    <Link
+                      href={href}
+                      className="dashboard-mono inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline"
+                      title="Cliquer pour voir comment cette valeur cible est construite (modèles, hypothèses)"
                     >
-                      {formatColumnValue(fundamentals, column)}
-                    </TableCell>
-                  ))}
-                  <TableCell className="px-3 py-2.5">
-                    <Badge variant="outline" className={cn("text-[10px]", sfc ? tercileTone(sfc.tercile) : confidenceTone(fundamentals?.confidence))}>
-                      {sfc?.tercile ?? fundamentals?.confidence ?? "--"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="dashboard-mono px-3 py-2.5 text-right text-[11px] text-muted-foreground">
-                    {asOfLabel(fundamentals?.as_of)}
-                  </TableCell>
-                  <TableCell className="px-2 py-2.5 align-middle">
-                    <Button asChild variant="ghost" size="icon" className="h-7 w-7 rounded-md">
-                      <Link href={href} aria-label={`Voir fundamentals ${stock.symbol}`}>
-                        <ArrowRight className="h-3.5 w-3.5" />
-                      </Link>
-                    </Button>
+                      {formatCurrency(stock.fundamentals?.fair_value ?? null)}
+                      <ArrowRight className="h-3 w-3" />
+                    </Link>
                   </TableCell>
                 </TableRow>
               )
@@ -491,7 +307,6 @@ export function FundamentalDirectionsTab({
           </TableBody>
         </Table>
       </div>
-    </div>
     </div>
   )
 }

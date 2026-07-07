@@ -9,7 +9,7 @@ import { buildFinancialStatementTable } from "@/lib/fundamental-statement-utils.
 import { ASSUMPTION_FIELDS, DEFAULT_VALUATION_FORMULA, ESTIMATION_ASSUMPTION_KEYS, EXTREME_VALUATION_FAIR_VALUE_MULTIPLE, FUNDAMENTAL_HORIZONS, FUNDAMENTAL_LIQUIDITY_ADV20_THRESHOLD, FUND_TABS, JUSTIFIED_MULTIPLE_RATIOS, JUSTIFIED_MULTIPLE_RATIO_DEFAULT_MASK, JUSTIFIED_MULTIPLE_RATIO_MASK_KEY, MODEL_FORMULA_META, MODEL_LABELS, MODEL_ORDER, RELATIVE_MULTIPLE_RATIOS, RELATIVE_MULTIPLE_RATIO_DEFAULT_MASK, RELATIVE_MULTIPLE_RATIO_MASK_KEY, SCENARIOS, SEVERE_FCF_WARNING_PREFIXES, SEVERE_VALUATION_WARNINGS, STATEMENT_TITLES, VALUATION_COMPARABLE_METRICS, VALUATION_EXCLUSIONS_STORAGE_KEY } from "../lib/constants"
 import { asNumber, asPositiveNumber, asRatio, asRecord, boundedMask, comparableMetricLabel, confidenceLabel, fmtMoney, fmtNumber, fmtPct, fmtRatio, formatStatementValue, valueLabel } from "../lib/formatters"
 import { comparablePeerFairValueSummary, evToEbitdaFairValue, medianValue } from "../panels/comparables"
-import { ComparableModelSummary, ComparableView, DcfMode, DetailTab, FinancialStatementTable, FundamentalHorizon, ModelValueItem, MultipleRatioDefinition, ProjectionView, Scenario, SeriesPoint, SortKey, StatementEvidenceGroup, ValuationFormulaMeta, ValuationMethodRange, ValuationSelectionSummary, WeightMode } from "../lib/types"
+import { ComparableModelSummary, ComparableView, DcfMode, DetailTab, FinancialStatementTable, FundamentalHorizon, ModelValueItem, MultipleRatioDefinition, ProjectionView, Scenario, SeriesPoint, SortKey, StatementEvidenceGroup, ValuationFormulaMeta, ValuationMethodRange, ValuationSelectionSummary } from "../lib/types"
 
 export function detailRatioMask(
   detail: FundamentalStockDetail,
@@ -160,6 +160,13 @@ export function effectiveHorizonPrediction(
 }
 
 
+export function periodTypeForHorizon(horizon: FundamentalHorizon): "annual" | "semiannual" | "quarterly" {
+  if (horizon === "quarter") return "quarterly"
+  if (horizon === "semester") return "semiannual"
+  return "annual"
+}
+
+
 function rowConfidence(row: FundamentalUniverseRow | null | undefined): string | null {
   if (!row) return null
   const ensemble = confidenceLabel(row.ensemble?.confidence_score)
@@ -213,11 +220,6 @@ export function tabFromQuery(value: string | null): DetailTab {
   if (token === "assumptions" || token === "financials") return "estimates"
   if (token === "comparables" || token === "qualite") return "quality"
   return "synthese"
-}
-
-
-export function weightModeFromQuery(_value: string | null): WeightMode {
-  return "equal"
 }
 
 
@@ -502,13 +504,11 @@ export function buildValuationSelectionSummary({
   excludedModelIds,
   comparableSummary,
   currentPrice,
-  weightMode = "ic",
 }: {
   rows: FundamentalValuationResult[]
   excludedModelIds: Set<string>
   comparableSummary: ComparableModelSummary | null
   currentPrice: number | null
-  weightMode?: WeightMode
 }): ValuationSelectionSummary {
   const includedRows = rows.filter((row) => row.family !== "diagnostic" && !excludedModelIds.has(row.model))
   const usable = includedRows
@@ -522,29 +522,12 @@ export function buildValuationSelectionSummary({
         fairValue,
         low: fairValue * (1 - spread),
         high: fairValue * (1 + spread),
-        rawWeight: asNumber(row.weight),
       }
     })
     .filter((item): item is NonNullable<typeof item> => item != null)
 
-  const hasModelWeights = usable.some((item) => item.rawWeight != null && item.rawWeight > 0)
-  let weightSource: ValuationSelectionSummary["weightSource"]
-  let getEffectiveWeight: (item: { rawWeight: number | null }) => number
-  if (weightMode === "equal") {
-    weightSource = "equal weights"
-    getEffectiveWeight = () => 1
-  } else if (hasModelWeights) {
-    weightSource = "model weights"
-    getEffectiveWeight = (item) => Math.max(0, item.rawWeight ?? 0)
-  } else {
-    weightSource = "ic fallback"
-    getEffectiveWeight = () => 1
-  }
-
-  const weighted = usable
-    .map((item) => ({ ...item, effectiveWeight: getEffectiveWeight(item) }))
-    .filter((item) => item.effectiveWeight > 0)
-  const denominator = weighted.reduce((acc, item) => acc + item.effectiveWeight, 0)
+  const weighted = usable.map((item) => ({ ...item, effectiveWeight: 1 }))
+  const denominator = weighted.length
   const effectiveWeights = new Map<string, number>()
 
   if (denominator <= 0) {
@@ -555,7 +538,6 @@ export function buildValuationSelectionSummary({
       upside: null,
       includedCount: includedRows.length,
       usableCount: 0,
-      weightSource,
       effectiveWeights,
     }
   }
@@ -575,7 +557,6 @@ export function buildValuationSelectionSummary({
     upside: upsideForFairValue(fairValue, currentPrice),
     includedCount: includedRows.length,
     usableCount: weighted.length,
-    weightSource,
     effectiveWeights,
   }
 }
@@ -607,6 +588,11 @@ export function valuationMethods(
         row,
       }
     })
+  const triangulation = detail.triangulation
+  const triangulationUsable = triangulation != null
+    && triangulation.verdict !== "insufficient_anchors"
+    && triangulation.verdict !== "no_price"
+    && triangulation.band_mid != null
   if (selectionSummary?.fairValue != null) {
     modelRows.push({
       key: "ensemble",
@@ -616,6 +602,17 @@ export function valuationMethods(
       high: selectionSummary.high ?? selectionSummary.fairValue * 1.07,
       weight: 1,
       confidence: selectionSummary.usableCount >= 4 ? "high" : selectionSummary.usableCount >= 2 ? "medium" : "low",
+      row: null,
+    })
+  } else if (triangulationUsable) {
+    modelRows.push({
+      key: "ensemble",
+      method: "Cible triangulee",
+      low: triangulation.band_low ?? triangulation.band_mid! * 0.93,
+      mid: triangulation.band_mid!,
+      high: triangulation.band_high ?? triangulation.band_mid! * 1.07,
+      weight: 1,
+      confidence: confidenceLabel(detail.ensemble?.confidence_score) ?? "medium",
       row: null,
     })
   } else if (detail.ensemble?.fair_value_base != null) {
@@ -639,7 +636,36 @@ export function valuationFormulaMeta(model: string): ValuationFormulaMeta {
 }
 
 
-export function projectionFromDetail(detail: FundamentalStockDetail): ProjectionView | null {
+function normalizeProjectionView(value: unknown): ProjectionView | null {
+  const projection = asRecord(value)
+  const projectedStatements = Array.isArray(projection.statements)
+    ? projection.statements.map((item) => asRecord(item)).filter((item) => Object.keys(item).length > 0)
+    : []
+  if (!projectedStatements.length) return null
+  const drivers = Object.fromEntries(
+    Object.entries(asRecord(projection.drivers)).map(([key, value]) => [key, asRecord(value)]),
+  )
+  const numberList = (value: unknown): number[] => Array.isArray(value) ? value.map(asNumber).filter((item): item is number => item != null) : []
+  const warnings = Array.isArray(projection.warnings)
+    ? projection.warnings.filter((item): item is string => typeof item === "string")
+    : []
+  return {
+    statements: projectedStatements,
+    drivers,
+    fcff: numberList(projection.fcff),
+    fcfe: numberList(projection.fcfe),
+    dividends: numberList(projection.dividends),
+    bookValues: numberList(projection.book_values),
+    growthDecomposition: asRecord(projection.growth_decomposition),
+    warnings,
+  }
+}
+
+
+export function projectionFromDetail(detail: FundamentalStockDetail, horizon: FundamentalHorizon = "year"): ProjectionView | null {
+  const periodProjection = normalizeProjectionView(asRecord(detail.projections_by_period_type)[periodTypeForHorizon(horizon)])
+  if (periodProjection) return periodProjection
+
   const valuationProjection = detail.valuations
     .map((row) => asRecord(asRecord(row.outputs).projection))
     .find((projection) => Object.keys(projection).length > 0)
@@ -853,11 +879,12 @@ function latestStatementValue(
 }
 
 
-export function statementEvidence(detail: FundamentalStockDetail, model: string): StatementEvidenceGroup[] {
+export function statementEvidence(detail: FundamentalStockDetail, model: string, horizon: FundamentalHorizon = "year"): StatementEvidenceGroup[] {
   const meta = valuationFormulaMeta(model)
+  const periodType = periodTypeForHorizon(horizon)
   return (["income", "balance", "cashflow"] as const).map((tab) => {
     const allowed = new Set(meta.statementKeys[tab])
-    const table = buildFinancialStatementTable(detail, tab, "annual") as FinancialStatementTable
+    const table = buildFinancialStatementTable(detail, tab, periodType) as FinancialStatementTable
     const items = table.rows
       .filter((row) => allowed.has(row.key))
       .map((row) => {

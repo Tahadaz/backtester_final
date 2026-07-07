@@ -340,6 +340,7 @@ class FundamentalStockDetailOut(BaseModel):
     metric_overrides: list[FundamentalMetricOverrideOut] = Field(default_factory=list)
     period_metrics: list[PeriodMetricOut] = Field(default_factory=list)
     valuations: list[ValuationResultOut] = Field(default_factory=list)
+    projections_by_period_type: dict[str, dict[str, Any]] = Field(default_factory=dict)
     ensemble: EnsembleOut | None = None
     ensembles: dict[str, EnsembleOut] = Field(default_factory=dict)
     rate_sensitive_weight: float = 0.0

@@ -3,4 +3,4 @@ Description=Backtester idle heartbeat (prevents Oracle VM idle reclaim)
 
 [Service]
 Type=oneshot
-ExecStart=/opt/bt/infra/scripts/idle_heartbeat.sh
+ExecStart=/usr/bin/env bash /opt/bt/infra/scripts/idle_heartbeat.sh

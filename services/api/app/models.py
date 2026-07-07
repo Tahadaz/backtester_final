@@ -2040,6 +2040,26 @@ class FundamentalSfcBacktestSnapshot(Base):
     )
 
 
+class FundamentalValueStrategySnapshot(Base):
+    """Latest persisted six-vintage B/M + CF/P live-like strategy payload for one frozen
+    config/parameter set. Computed by core.quant_core.fundamentals.cross_section.live_like_strategy
+    (2026-07-06 research: canonical B/M and CF/P, repaired PIT-safe data, RESEARCH STRATEGY —
+    PROMISING). This is the production entrypoint for that research code -- see
+    services/api/app/services/value_strategy_snapshot.py."""
+    __tablename__ = "fundamental_value_strategy_snapshot"
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    config_hash = Column(String(64), nullable=False)
+    params_json = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False, default=dict)
+    result_json = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False, default=dict)
+    computed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_fundamental_value_strategy_snapshot_computed", "computed_at"),
+        Index("ix_fundamental_value_strategy_snapshot_config", "config_hash"),
+    )
+
+
 class MarketRefreshError(Base):
     """Per-symbol error log within a refresh run."""
     __tablename__ = "market_refresh_error"

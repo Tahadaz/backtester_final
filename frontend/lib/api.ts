@@ -619,6 +619,121 @@ export const SfcPortfolioBacktestResponseSchema = z.object({
 })
 export type SfcPortfolioBacktestResponse = z.infer<typeof SfcPortfolioBacktestResponseSchema>
 
+// Canonical B/M + CF/P value signal (2026-07-06 research, production entrypoint).
+// This is a separate, validated signal from the legacy SFC composite above -- see
+// research-out/data-quality-forensic-repair/2026-07-06/bm_canonical_definition.md and
+// cfp_canonical_definition.md. Do not merge these fields into FundamentalCrossSectionRow.
+export const ValueSignalRowSchema = z.object({
+  symbol: z.string(),
+  as_of_date: z.string(),
+  bm_raw: z.number().nullable().optional(),
+  bm_percentile: z.number().nullable().optional(),
+  bm_rank: z.number().nullable().optional(),
+  cfp_raw: z.number().nullable().optional(),
+  cfp_percentile: z.number().nullable().optional(),
+  cfp_rank: z.number().nullable().optional(),
+  cfp_applicable: z.boolean(),
+  eligible_bm: z.boolean(),
+  eligible_cfp: z.boolean(),
+  eligible_universe: z.boolean(),
+  exclusion_reasons: z.array(z.string()).default([]),
+  sector: z.string().nullable().optional(),
+  is_financial: z.boolean(),
+  methodology_version: z.string(),
+})
+export type ValueSignalRow = z.infer<typeof ValueSignalRowSchema>
+
+export const ValueSignalResponseSchema = z.object({
+  as_of_date: z.string(),
+  methodology_version: z.string(),
+  eligible_bm_count: z.number().default(0),
+  eligible_cfp_count: z.number().default(0),
+  total_rows: z.number().default(0),
+  rows: z.array(ValueSignalRowSchema).default([]),
+})
+export type ValueSignalResponse = z.infer<typeof ValueSignalResponseSchema>
+
+export const ValueStrategyHoldingSchema = z.object({
+  symbol: z.string(),
+  target_weight: z.number(),
+  sector: z.string().nullable().optional(),
+})
+export type ValueStrategyHolding = z.infer<typeof ValueStrategyHoldingSchema>
+
+export const ValueStrategyUniverseSummarySchema = z.object({
+  total_names: z.number(),
+  eligible_bm_count: z.number(),
+  excluded_count: z.number(),
+  excluded_symbols: z.record(z.string(), z.string()).default({}),
+})
+export type ValueStrategyUniverseSummary = z.infer<typeof ValueStrategyUniverseSummarySchema>
+
+export const ValueStrategyFreshnessSchema = z.object({
+  state: z.enum(["fresh", "aging", "stale", "failed_refresh", "no_snapshot"]),
+  age_days: z.number().nullable().optional(),
+  last_successful_computed_at: z.string().nullable().optional(),
+})
+export type ValueStrategyFreshness = z.infer<typeof ValueStrategyFreshnessSchema>
+
+export const ValueStrategyEquityCurvePointSchema = z.object({
+  date: z.string(),
+  equity: z.number(),
+  net_return: z.number(),
+  turnover: z.number(),
+  masi: z.number().nullable().optional(),
+  masi20: z.number().nullable().optional(),
+})
+export type ValueStrategyEquityCurvePoint = z.infer<typeof ValueStrategyEquityCurvePointSchema>
+
+export const ValueStrategyTradeLedgerRowSchema = z.object({
+  date: z.string(),
+  action: z.enum(["BUY", "SELL"]),
+  symbol: z.string(),
+  vintage_formed: z.string(),
+  weight: z.number(),
+})
+export type ValueStrategyTradeLedgerRow = z.infer<typeof ValueStrategyTradeLedgerRowSchema>
+
+export const ValueStrategySnapshotResponseSchema = z.object({
+  research_status: z.string(),
+  recommended_architecture: z.string(),
+  model_version: z.string().default("Fundamental Value Strategy v1.0"),
+  as_of_date: z.string().nullable().optional(),
+  data_cutoff: z.string().nullable().optional(),
+  universe_summary: ValueStrategyUniverseSummarySchema.nullable().optional(),
+  current_holdings: z.array(ValueStrategyHoldingSchema).default([]),
+  strategy_metrics: z.record(z.string(), z.record(z.string(), z.unknown())).default({}),
+  equity_curve: z.array(ValueStrategyEquityCurvePointSchema).default([]),
+  trade_ledger: z.array(ValueStrategyTradeLedgerRowSchema).default([]),
+  caveats: z.array(z.string()).default([]),
+  config_hash: z.string(),
+  computed_at: z.string().nullable().optional(),
+  freshness: ValueStrategyFreshnessSchema,
+})
+export type ValueStrategySnapshotResponse = z.infer<typeof ValueStrategySnapshotResponseSchema>
+
+export const ValueStrategyRecomputeResponseSchema = z.object({
+  job_id: z.string(),
+  rq_job_id: z.string().nullable().optional(),
+  status: z.string(),
+})
+export type ValueStrategyRecomputeResponse = z.infer<typeof ValueStrategyRecomputeResponseSchema>
+
+export const ValueStrategyStatusResponseSchema = z.object({
+  job_type: z.string(),
+  jobs: z.array(z.object({
+    id: z.string(),
+    status: z.string(),
+    rq_job_id: z.string().nullable().optional(),
+    triggered_by: z.string().nullable().optional(),
+    error_message: z.string().nullable().optional(),
+    created_at: z.string(),
+    started_at: z.string().nullable().optional(),
+    finished_at: z.string().nullable().optional(),
+  })).default([]),
+})
+export type ValueStrategyStatusResponse = z.infer<typeof ValueStrategyStatusResponseSchema>
+
 export const SfcPortfolioBacktestStatusSchema = z.object({
   job_type: z.string(),
   jobs: z.array(z.object({
@@ -1739,6 +1854,33 @@ export async function runSfcPortfolioBacktest(body: {
 export async function fetchSfcPortfolioBacktestStatus(): Promise<SfcPortfolioBacktestStatus> {
   const payload = await request<unknown>("/analytics/sfc-portfolio-backtest/status")
   return SfcPortfolioBacktestStatusSchema.parse(payload)
+}
+
+export async function fetchValueSignal(asOf?: string): Promise<ValueSignalResponse> {
+  const qs = asOf ? `?as_of=${encodeURIComponent(asOf)}` : ""
+  const payload = await request<unknown>(`/value-signal${qs}`)
+  return ValueSignalResponseSchema.parse(payload)
+}
+
+export async function fetchValueSignalSymbol(symbol: string, asOf?: string): Promise<ValueSignalRow> {
+  const qs = asOf ? `?as_of=${encodeURIComponent(asOf)}` : ""
+  const payload = await request<unknown>(`/value-signal/${encodeURIComponent(symbol)}${qs}`)
+  return ValueSignalRowSchema.parse(payload)
+}
+
+export async function fetchValueStrategySnapshot(): Promise<ValueStrategySnapshotResponse> {
+  const payload = await request<unknown>("/value-strategy/snapshot")
+  return ValueStrategySnapshotResponseSchema.parse(payload)
+}
+
+export async function triggerValueStrategyRecompute(): Promise<ValueStrategyRecomputeResponse> {
+  const payload = await request<unknown>("/value-strategy/recompute", { method: "POST" })
+  return ValueStrategyRecomputeResponseSchema.parse(payload)
+}
+
+export async function fetchValueStrategyRecomputeStatus(): Promise<ValueStrategyStatusResponse> {
+  const payload = await request<unknown>("/value-strategy/recompute/status")
+  return ValueStrategyStatusResponseSchema.parse(payload)
 }
 
 export async function fetchDashboardPortfolioPositions(): Promise<DashboardManualPosition[]> {
@@ -6515,6 +6657,7 @@ export const FundamentalStockDetailSchema = z.object({
   metric_overrides: z.array(FundamentalMetricOverrideSchema).default([]),
   period_metrics: z.array(FundamentalPeriodMetricSchema).default([]),
   valuations: z.array(FundamentalValuationResultSchema).default([]),
+  projections_by_period_type: z.record(z.record(z.unknown())).default({}),
   ensemble: FundamentalEnsembleSchema.nullable().optional(),
   ensembles: z.record(FundamentalEnsembleSchema).default({}),
   rate_sensitive_weight: z.number().default(0),

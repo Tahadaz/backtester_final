@@ -21,14 +21,16 @@ import { cn } from "@/lib/utils"
 import { FUND_TABS, FUND_TAB_PURPOSE } from "./lib/constants"
 import { asNumber } from "./lib/formatters"
 import { useOptionalSelectedComparableView } from "./panels/comparables"
+import { IpoValuationCard } from "./panels/ipo-valuation-card"
 import { ResearchTicket } from "./research-ticket"
-import { ComparableModelSummary, DetailTab, FundamentalHorizon, Scenario, SignalFundamentalViewProps, ValuationSelectionSummary, WeightMode } from "./lib/types"
+import { ComparableModelSummary, DetailTab, FundamentalHorizon, Scenario, SignalFundamentalViewProps, ValuationSelectionSummary } from "./lib/types"
 import { EstimatesAssumptionsTab } from "./tabs/estimates-tab"
 import { ComparablesQualityTab } from "./tabs/quality-tab"
+import { StrategieValeurTab } from "./tabs/strategie-tab"
 import { SyntheseTab } from "./tabs/synthese-tab"
 import { ValuationTab } from "./tabs/valuation-tab"
 import { UniverseScreen } from "./universe-screen"
-import { applyRatioDraftToValuationRows, buildValuationSelectionSummary, comparableModelSummary, editableAssumptionDraft, emptyComparableModelSummary, enabledRelativeValuationMetricsForDraft, horizonFromQuery, isLiquidFundamentalRow, isMasiFundamentalRow, parseExcludedModelIds, readValuationExclusionsBySymbol, scenarioFromQuery, sortValuationRows, tabFromQuery, valuationSymbolKey, weightModeFromQuery, writeValuationExclusionsBySymbol } from "./lib/view-models"
+import { applyRatioDraftToValuationRows, buildValuationSelectionSummary, comparableModelSummary, editableAssumptionDraft, emptyComparableModelSummary, enabledRelativeValuationMetricsForDraft, horizonFromQuery, isLiquidFundamentalRow, isMasiFundamentalRow, parseExcludedModelIds, readValuationExclusionsBySymbol, scenarioFromQuery, sortValuationRows, tabFromQuery, valuationSymbolKey, writeValuationExclusionsBySymbol } from "./lib/view-models"
 
 export function SignalFundamentalView({
   selectedSymbol,
@@ -41,11 +43,10 @@ export function SignalFundamentalView({
   const scenario = scenarioFromQuery(scenarioParam)
   const apiScenario = scenarioParam ? scenario : "base"
   const activeTab = tabFromQuery(searchParams.get("fund_tab"))
+  const ipoActive = searchParams.get("fund_ipo") === "1"
   const selectedHorizon = horizonFromQuery(searchParams.get("fund_horizon"))
   const selectedComparableBenchmarkId = searchParams.get("fund_benchmark") || "sector"
   const excludedValuationModelsParam = searchParams.get("fund_excluded_models")
-  const weightModeParam = searchParams.get("fund_weight_mode")
-  const weightMode = weightModeFromQuery(weightModeParam)
   const selectedSymbolKey = valuationSymbolKey(selectedSymbol)
   const [valuationExclusionsBySymbol, setValuationExclusionsBySymbol] = useState<Record<string, string>>(() => readValuationExclusionsBySymbol())
   const hydratedExclusionSymbolsRef = useRef(new Set<string>())
@@ -120,7 +121,8 @@ export function SignalFundamentalView({
 
   const selectedRow = useMemo(() => rows.find((row) => row.symbol === selectedSymbol) ?? null, [rows, selectedSymbol])
   const selectedSymbolHiddenByLiquidity = Boolean(
-    selectedSymbol &&
+    !ipoActive &&
+      selectedSymbol &&
       liquidityFilter &&
       rows.some((row) => row.symbol === selectedSymbol) &&
       !visibleUniverseRows.some((row) => row.symbol === selectedSymbol),
@@ -132,7 +134,7 @@ export function SignalFundamentalView({
     isLoading: isDetailLoading,
     isValidating: isDetailValidating,
     mutate: mutateDetail,
-  } = useSWR<FundamentalStockDetail>(selectedSymbol ? ["fundamental-detail", selectedSymbol, apiScenario] : null, () => getFundamentalStockDetail(selectedSymbol as string, apiScenario), {
+  } = useSWR<FundamentalStockDetail>(selectedSymbol && !ipoActive ? ["fundamental-detail", selectedSymbol, apiScenario] : null, () => getFundamentalStockDetail(selectedSymbol as string, apiScenario), {
     keepPreviousData: true,
     revalidateOnFocus: false,
     dedupingInterval: 60_000,
@@ -147,7 +149,7 @@ export function SignalFundamentalView({
     isLoading: isSensitivityLoading,
     mutate: mutateSensitivity,
   } = useSWR<FundamentalSensitivity>(
-    selectedSymbol && activeTab === "valuation" && sensitivityScenario ? ["fundamental-sensitivity", selectedSymbol, sensitivityScenario] : null,
+    selectedSymbol && activeTab === "valuation" && sensitivityScenario && !ipoActive ? ["fundamental-sensitivity", selectedSymbol, sensitivityScenario] : null,
     () => getFundamentalSensitivity(selectedSymbol as string, sensitivityScenario as Scenario),
     {
       keepPreviousData: true,
@@ -181,7 +183,6 @@ export function SignalFundamentalView({
         excludedModelIds: excludedValuationModelIds,
         comparableSummary: valuationComparableSummary,
         currentPrice: selectedCurrentPrice,
-        weightMode,
       })
       : {
         fairValue: null,
@@ -190,10 +191,9 @@ export function SignalFundamentalView({
         upside: null,
         includedCount: 0,
         usableCount: 0,
-        weightSource: "ic fallback",
         effectiveWeights: new Map(),
       },
-    [detail, excludedValuationModelIds, selectedCurrentPrice, valuationComparableSummary, visibleValuations, weightMode],
+    [detail, excludedValuationModelIds, selectedCurrentPrice, valuationComparableSummary, visibleValuations],
   )
   useEffect(() => {
     setAssumptionDraft({})
@@ -217,10 +217,6 @@ export function SignalFundamentalView({
       target.classList.add("fund-anchor-highlight")
       window.setTimeout(() => target.classList.remove("fund-anchor-highlight"), 1400)
     }, 60)
-  }
-
-  function setWeightMode(next: WeightMode) {
-    updateSearchParams({ fund_weight_mode: next === "ic" ? null : next })
   }
 
   function setFundamentalHorizon(next: FundamentalHorizon) {
@@ -254,8 +250,10 @@ export function SignalFundamentalView({
     const nextExcludedModels = nextSymbolKey ? valuationExclusionsBySymbol[nextSymbolKey] ?? null : null
     onSelectSymbol(symbol)
     // fund_tab is intentionally left alone here so the active tab survives symbol switches (brief 57 §3.2).
-    updateSearchParams({ scenario: null, fund_excluded_models: nextExcludedModels })
+    updateSearchParams({ scenario: null, fund_excluded_models: nextExcludedModels, fund_ipo: null })
   }
+
+  const onSelectIpo = useCallback(() => updateSearchParams({ fund_ipo: "1" }), [updateSearchParams])
 
   useEffect(() => {
     function handleFullscreenChange() {
@@ -346,6 +344,8 @@ export function SignalFundamentalView({
           onSelect={handleSelectSymbol}
           onLiquidityFilterChange={setLiquidityFilter}
           ratingAssumptions={ratingAssumptions}
+          ipoActive={ipoActive}
+          onSelectIpo={onSelectIpo}
         />
       </ResizablePanel>
 
@@ -367,7 +367,22 @@ export function SignalFundamentalView({
             </div>
           ) : null}
 
-          {!selectedSymbol ? (
+          {ipoActive ? (
+            <div className="signal-fund-detail-shell">
+              <button
+                type="button"
+                className="signal-fund-fullscreen-toggle"
+                onClick={() => void toggleDetailFullscreen()}
+                title={isDetailFullscreen ? "Quitter le plein écran" : "Plein écran"}
+                aria-label={isDetailFullscreen ? "Quitter le plein écran" : "Plein écran"}
+              >
+                {isDetailFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+              </button>
+              <div className="signal-fund-body">
+                <IpoValuationCard />
+              </div>
+            </div>
+          ) : !selectedSymbol ? (
             <div className="signal-fund-empty">
               <Landmark className="h-10 w-10 opacity-[0.15]" />
               Selectionnez un titre pour afficher la recherche fondamentale.
@@ -417,7 +432,7 @@ export function SignalFundamentalView({
                     <>
                       {saveError ? <div className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">{saveError}</div> : null}
                       {activeTab === "synthese" ? (
-                        <SyntheseTab detail={detail} row={selectedRow} rows={rows} onNavigate={handleSyntheseNavigate} />
+                        <SyntheseTab detail={detail} row={selectedRow} rows={rows} selectedHorizon={selectedHorizon} onNavigate={handleSyntheseNavigate} />
                       ) : null}
                       {activeTab === "valuation" ? (
                         <div id="valorisation-section">
@@ -441,8 +456,7 @@ export function SignalFundamentalView({
                             comparableSummary={valuationComparableSummary}
                             isComparableSummaryLoading={isValuationComparableLoading}
                             selectionSummary={valuationSelectionSummary}
-                            weightMode={weightMode}
-                            onWeightModeChange={setWeightMode}
+                            selectedHorizon={selectedHorizon}
                             onNavigate={handleSyntheseNavigate}
                           />
                         </div>
@@ -459,6 +473,7 @@ export function SignalFundamentalView({
                           onSaveDesk={() => void saveDeskAssumptions()}
                           isSaving={isSaving}
                           isDeskSaving={isDeskSaving}
+                          selectedHorizon={selectedHorizon}
                         />
                       ) : null}
                       {activeTab === "quality" ? (
@@ -470,6 +485,7 @@ export function SignalFundamentalView({
                           onSelectedComparatorIdChange={setSelectedComparableBenchmarkId}
                         />
                       ) : null}
+                      {activeTab === "strategie" ? <StrategieValeurTab /> : null}
                     </>
                   )}
                 </div>

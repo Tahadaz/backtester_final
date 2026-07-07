@@ -23,6 +23,8 @@ export function UniverseScreen({
   onSelect,
   onLiquidityFilterChange,
   ratingAssumptions,
+  ipoActive,
+  onSelectIpo,
 }: {
   rows: FundamentalUniverseRow[]
   totalRows: number
@@ -32,6 +34,8 @@ export function UniverseScreen({
   onSelect: (symbol: string) => void
   onLiquidityFilterChange: (enabled: boolean) => void
   ratingAssumptions?: Record<string, unknown> | null
+  ipoActive?: boolean
+  onSelectIpo?: () => void
 }) {
   const [query, setQuery] = useState("")
   const [sortKey, setSortKey] = useState<SortKey>("upside")
@@ -136,6 +140,20 @@ export function UniverseScreen({
           </select>
         </div>
       </div>
+
+      {onSelectIpo ? (
+        <button
+          type="button"
+          onClick={onSelectIpo}
+          className={cn(
+            "mx-2 mb-2 flex flex-col gap-0.5 rounded-md border border-line px-2.5 py-2 text-left transition-colors hover:bg-accent",
+            ipoActive && "signal-fund-row-active border-primary",
+          )}
+        >
+          <span className={cn("text-xs font-bold", ipoActive && "text-primary")}>T2S · IPO — Marché primaire</span>
+          <span className="text-[10px] text-muted-foreground">Première cotation 27/07/2026</span>
+        </button>
+      ) : null}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <table className="claude-table signal-fund-universe-table">

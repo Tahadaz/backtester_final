@@ -19,6 +19,9 @@ import {
   fetchDashboardDailyBlotter,
   fetchDashboardLiveRefresh,
   fetchFundamentalCrossSection,
+  fetchValueSignal,
+  type ValueSignalResponse,
+  type ValueSignalRow,
   fetchDashboardNamedPortfolioSummary,
   fetchDashboardPortfolioLoadState,
   fetchDashboardPortfolioPositions,
@@ -853,6 +856,16 @@ export default function DashboardV1Page() {
     return Object.fromEntries(entries)
   }, [sfcData])
 
+  const { data: valueSignalData } = useSWR<ValueSignalResponse>(
+    dashboardMode === "fundamental_directions" ? "value-signal" : null,
+    () => fetchValueSignal(),
+    { revalidateOnFocus: false, dedupingInterval: 300_000 },
+  )
+  const valueSignalBySymbol = useMemo<Record<string, ValueSignalRow | undefined>>(() => {
+    const entries = (valueSignalData?.rows ?? []).map((row) => [row.symbol.toUpperCase(), row] as const)
+    return Object.fromEntries(entries)
+  }, [valueSignalData])
+
   const filteredStocks = useMemo(() => {
     const modeFiltered = dashboardMode === "trade_opportunities"
       ? stocksBeforeEdge.filter((stock) => bestActionableSignal(stock) !== null)
@@ -1502,6 +1515,7 @@ export default function DashboardV1Page() {
             sfcRowsBySymbol={sfcRowsBySymbol}
             sfcAsOf={sfcData?.as_of_date ?? null}
             sfcValidationLabel={sfcData?.validation_label ?? "validé sur 2023–2026 (une seule période de marché)"}
+            valueSignalBySymbol={valueSignalBySymbol}
           />
         ) : viewMode === "masi" ? (
           view === "portfolio" ? (
@@ -1599,6 +1613,7 @@ export default function DashboardV1Page() {
             sfcRowsBySymbol={sfcRowsBySymbol}
             sfcAsOf={sfcData?.as_of_date ?? null}
             sfcValidationLabel={sfcData?.validation_label ?? "validé sur 2023–2026 (une seule période de marché)"}
+            valueSignalBySymbol={valueSignalBySymbol}
             onOpenEdge={setSelectedStock}
             performancePeriod={performancePeriod}
             onPerformancePeriodChange={setPerformancePeriod}
@@ -2788,6 +2803,7 @@ function CompletView({
   sfcRowsBySymbol,
   sfcAsOf,
   sfcValidationLabel,
+  valueSignalBySymbol,
   onOpenEdge,
   performancePeriod,
   onPerformancePeriodChange,
@@ -2813,6 +2829,7 @@ function CompletView({
   sfcRowsBySymbol: Record<string, FundamentalCrossSectionRow | undefined>
   sfcAsOf: string | null
   sfcValidationLabel: string | null
+  valueSignalBySymbol: Record<string, ValueSignalRow | undefined>
   onOpenEdge: (stock: DashboardStock) => void
   performancePeriod: PerformancePeriod
   onPerformancePeriodChange: (value: PerformancePeriod) => void
@@ -2862,6 +2879,7 @@ function CompletView({
           sfcRowsBySymbol={sfcRowsBySymbol}
           sfcAsOf={sfcAsOf}
           sfcValidationLabel={sfcValidationLabel}
+          valueSignalBySymbol={valueSignalBySymbol}
         />
       ) : (
         <StockTable

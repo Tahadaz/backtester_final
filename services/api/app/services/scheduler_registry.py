@@ -18,6 +18,7 @@ ScheduleKind = Literal[
     "fundamental_beta_refresh",
     "fundamental_cross_section",
     "fundamental_refresh",
+    "value_strategy_refresh",
     "wfo_dispatch",
     "signal_engine_dispatch",
     "signal_backtest_dispatch",
@@ -106,6 +107,15 @@ SCHEDULE_SPECS: tuple[ScheduleSpec, ...] = (
         cron="30 20 * * sat",
         timezone="UTC",
         description="Recompute the publication-date PIT SFC cross-section after the weekly fundamentals window.",
+    ),
+    ScheduleSpec(
+        id="weekly_value_strategy_refresh",
+        label="Weekly value strategy snapshot",
+        kind="value_strategy_refresh",
+        queue="market_refresh",
+        cron="45 20 * * sat",
+        timezone="UTC",
+        description="Recompute the canonical B/M+CF/P six-vintage strategy snapshot after the weekly fundamentals/SFC window.",
     ),
     ScheduleSpec(
         id="weekly_wfo_dispatch",

@@ -8,7 +8,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from quant_core.fundamentals.scoring import _accrual_quality, _dupont, _piotroski_lite
+from ..scoring import _accrual_quality, _dupont, _piotroski_lite
 
 
 @dataclass(frozen=True)

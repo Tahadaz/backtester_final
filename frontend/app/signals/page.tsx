@@ -31,7 +31,7 @@ const validViews = new Set<SignalsPageView>([
   "expanded_factor_x_ta_combo",
 ])
 type SignalsTab = "technique" | "evidence" | "indicateurs" | "wfo" | "backtest" | "portfolio"
-const validTabs = new Set<SignalsTab>(["technique", "evidence", "indicateurs", "wfo", "backtest", "portfolio"])
+const validTabs = new Set<SignalsTab>(["technique", "evidence", "indicateurs", "wfo", "portfolio"])
 const sourceAliases: Record<string, "auto" | "signal_engine" | "wfo"> = {
   auto: "auto",
   best: "auto",

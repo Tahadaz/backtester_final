@@ -37,6 +37,8 @@ The engine is **MAD-tuned** (default risk-free 3.5%, equity risk premium 5.5%, c
 | 27 | [Codex brief: materialised comps view (P2 quick win)](27-codex-comps-artifact.md) | `compute_comps_table` materialises peer cohort + 5-row stats footer; rides on envelope, no new DB. |
 | 28 | [Codex brief: pillar-score history & trend (P2)](28-codex-pillar-history.md) | `fundamental_pillar_score_history` table; pure `classify_pillar_trend` (on_track / watch / behind / insufficient_data). |
 | 29 | [Codex brief: tear-sheet / IC-memo / morning-note export (P2)](29-codex-tearsheet-export.md) | Three Jinja-rendered HTML artefacts under existing auth; optional PDF via soft-import WeasyPrint. |
+| 59 | [Cross-sectional fundamental composite — methodology & rationale](59-cross-sectional-composite-methodology.md) | **Strategy reframe.** Why absolute valuation is an anchor, not a signal; the SFC composite (value/quality/fundamental momentum/price momentum), PIT rules, validation gates, sources. |
+| 60 | [Codex brief: SFC implementation](60-codex-cross-sectional-composite-implementation.md) | Phased implementation of brief 59: PIT IC study (gate) → persistence → dashboard → blotter. |
 | — | [Review vs plugin skills](REVIEW_vs_plugin_skills.md) | The audit that motivated briefs 21–29. Read before brief 21. |
 
 ## Public surface (entry points)

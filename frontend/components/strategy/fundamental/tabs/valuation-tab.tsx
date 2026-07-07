@@ -23,9 +23,9 @@ import { ModelStoryPanel } from "../panels/model-story"
 import { ModelSensitivityPanel, SensitivityHeatmap } from "../panels/sensitivity"
 import { FundCard, ModelValueGrid, StatTile, StatementEvidenceCard } from "../shared/cards"
 import { FootballField } from "../shared/charts"
-import { ComparableModelSummary, ModelStory, MultipleRatioDefinition, Scenario, ValuationSelectionSummary, WeightMode } from "../lib/types"
+import { ComparableModelSummary, FundamentalHorizon, ModelStory, MultipleRatioDefinition, Scenario, ValuationSelectionSummary } from "../lib/types"
 import { DecisionStrip } from "../tabs/estimates-tab"
-import { currentPriceForValuationRow, dcfModeForModel, detailRatioMask, enabledRatioKeys, fairValueForValuationRow, instantiatedFormula, outputItems, serializeExcludedModelIds, sortValuationRows, statementEvidence, technicalInputItems, upsideForFairValue, valuationAssumptionItems, valuationFormulaMeta, valuationMethods } from "../lib/view-models"
+import { currentPriceForValuationRow, dcfModeForModel, detailRatioMask, effectiveHorizonPrediction, enabledRatioKeys, fairValueForValuationRow, instantiatedFormula, outputItems, serializeExcludedModelIds, sortValuationRows, statementEvidence, technicalInputItems, upsideForFairValue, valuationAssumptionItems, valuationFormulaMeta, valuationMethods } from "../lib/view-models"
 
 function ComparableValuationTiles({
   detail,
@@ -189,6 +189,7 @@ function ValuationMethodCard({
   onAssumptionDraftChange,
   onSaveAssumptions,
   isSaving,
+  selectedHorizon,
 }: {
   row: FundamentalValuationResult
   detail: FundamentalStockDetail
@@ -205,6 +206,7 @@ function ValuationMethodCard({
   onAssumptionDraftChange: (draft: Record<string, number>) => void
   onSaveAssumptions: () => void
   isSaving: boolean
+  selectedHorizon: FundamentalHorizon
 }) {
   const dcfMode = dcfModeForModel(row.model)
   if (dcfMode) {
@@ -216,12 +218,13 @@ function ValuationMethodCard({
         effectiveWeight={effectiveWeight}
         sensitivity={sensitivity}
         dcfMode={dcfMode}
+        selectedHorizon={selectedHorizon}
       />
     )
   }
 
   const meta = valuationFormulaMeta(row.model)
-  const statementGroups = statementEvidence(detail, row.model)
+  const statementGroups = statementEvidence(detail, row.model, selectedHorizon)
   const assumptions = valuationAssumptionItems(row, detail)
   const inputs = technicalInputItems(row)
   const outputs = outputItems(row)
@@ -375,6 +378,7 @@ function ValuationModelControls({
   comparableSummary,
   isComparableSummaryLoading,
   originalTarget,
+  originalTargetSource,
   showWorkingTarget,
   currency,
 }: {
@@ -388,6 +392,7 @@ function ValuationModelControls({
   comparableSummary: ComparableModelSummary
   isComparableSummaryLoading: boolean
   originalTarget: number | null
+  originalTargetSource: "triangulation" | "ensemble"
   showWorkingTarget: boolean
   currency: string
 }) {
@@ -400,7 +405,7 @@ function ValuationModelControls({
         <div>
           <span className="valuation-mini-title">Sélection de modèles — cible de travail</span>
           <p className="mt-1 text-[11px] text-muted-foreground">
-            La recommandation officielle reste basée sur l'ensemble validé par le backend ; cette section sert à analyser une cible alternative.
+            La recommandation officielle reste basée sur la bande triangulée (intrinsèque / marché / broker) validée par le backend ; cette section sert à analyser une cible alternative modèle par modèle.
           </p>
         </div>
         <div className="valuation-model-actions">
@@ -413,7 +418,7 @@ function ValuationModelControls({
         <StatTile
           label="Cible officielle"
           value={originalTarget != null ? `${fmtMoney(originalTarget, 1)} ${currency}` : "-"}
-          sub="Ensemble validé par le backend"
+          sub={originalTargetSource === "triangulation" ? "Bande triangulée (médiane des ancrages)" : "Ensemble validé par le backend (repli — bande indisponible)"}
         />
         {showWorkingTarget ? (
           <>
@@ -437,16 +442,7 @@ function ValuationModelControls({
         <StatTile
           label="Modèles inclus / utilisables"
           value={`${selectionSummary.includedCount} / ${selectionSummary.usableCount}`}
-          sub={`sur ${controllableRows.length} modèles`}
-        />
-        <StatTile
-          label="Pondération"
-          value={
-            selectionSummary.weightSource === "model weights" ? "IC"
-            : selectionSummary.weightSource === "ic fallback" ? "IC (repli égale)"
-            : selectionSummary.weightSource === "user weights" ? "Manuelle"
-            : "Égale"
-          }
+          sub={`sur ${controllableRows.length} modèles — pondération égale`}
         />
       </div>
 
@@ -500,8 +496,7 @@ export function ValuationTab({
   onAssumptionDraftChange,
   onSaveAssumptions,
   isSaving,
-  weightMode,
-  onWeightModeChange,
+  selectedHorizon,
   onNavigate,
 }: {
   detail: FundamentalStockDetail
@@ -523,15 +518,20 @@ export function ValuationTab({
   onAssumptionDraftChange: (draft: Record<string, number>) => void
   onSaveAssumptions: () => void
   isSaving: boolean
-  weightMode: WeightMode
-  onWeightModeChange: (mode: WeightMode) => void
+  selectedHorizon: FundamentalHorizon
   onNavigate: (tab: DetailTab, anchor?: string) => void
 }) {
   const [activeModel, setActiveModel] = useState<string | null>(null)
   const current = detail.ensemble?.current_price ?? asNumber(detail.metrics.Current_Price)
   const currency = detail.ensemble?.currency ?? "MAD"
-  const officialTarget = detail.ensemble?.fair_value_base ?? null
-  const showWorkingTarget = excludedModelIds.size > 0 || weightMode !== "ic"
+  const triangulationUsable = detail.triangulation != null
+    && detail.triangulation.verdict !== "insufficient_anchors"
+    && detail.triangulation.verdict !== "no_price"
+  const officialTarget = (triangulationUsable ? detail.triangulation?.band_mid : null) ?? detail.ensemble?.fair_value_base ?? null
+  const officialTargetSource = triangulationUsable && detail.triangulation?.band_mid != null ? "triangulation" : "ensemble"
+  const { horizon: activeHorizon, prediction: activePrediction } = effectiveHorizonPrediction(detail, row, selectedHorizon)
+  const displayTarget = activeHorizon === "year" ? officialTarget : activePrediction?.forward_target ?? officialTarget
+  const showWorkingTarget = excludedModelIds.size > 0
   const methods = useMemo(
     () => valuationMethods(
       detail,
@@ -573,14 +573,6 @@ export function ValuationTab({
             </button>
           ))}
         </div>
-        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted-foreground">
-          Pondération <GlossaryTerm id="ic-weighting" iconOnly />
-        </span>
-        <div className="seg compact">
-          <button type="button" className={weightMode === "ic" ? "active" : ""} disabled title="IC indisponible comme pondération active: spread dégénéré sur la validation. SFC validé sur 2023–2026 (une seule période de marché).">IC</button>
-          <button type="button" className={weightMode === "equal" ? "active" : ""} onClick={() => onWeightModeChange("equal")}>Égale</button>
-        </div>
-        <span className="text-[11px] text-muted-foreground">SFC validé sur 2023–2026 (une seule période de marché)</span>
         <span className="ml-auto text-[11px] text-muted-foreground">
           <GlossaryTerm id="wacc">WACC</GlossaryTerm>{" "}
           <span className="font-mono text-foreground">{fmtPct(asNumber(detail.assumptions.wacc), 1, false)}</span>
@@ -604,7 +596,7 @@ export function ValuationTab({
       <div data-capture="valuation-models">
         <FundCard
           title="Football field — fourchette de valorisation par méthode"
-          aside={`Cours ${fmtMoney(current, 1)} — Cible officielle ${fmtMoney(officialTarget, 1)}${showWorkingTarget && selectionSummary.fairValue != null ? ` — Cible de travail (sélection locale) ${fmtMoney(selectionSummary.fairValue, 1)}` : ""}`}
+          aside={`Cours ${fmtMoney(current, 1)} — Cible ${activeHorizon === "year" ? "12M" : activeHorizon} ${fmtMoney(displayTarget, 1)}${showWorkingTarget && selectionSummary.fairValue != null ? ` — Cible de travail (sélection locale) ${fmtMoney(selectionSummary.fairValue, 1)}` : ""}`}
         >
           <ValuationModelControls
             rows={visibleValuations}
@@ -616,11 +608,12 @@ export function ValuationTab({
             selectionSummary={selectionSummary}
             comparableSummary={comparableSummary}
             isComparableSummaryLoading={isComparableSummaryLoading}
-            originalTarget={officialTarget}
+            originalTarget={displayTarget}
+            originalTargetSource={officialTargetSource}
             showWorkingTarget={showWorkingTarget}
             currency={currency}
           />
-          <FootballField methods={methods} currentPrice={current} targetPrice={officialTarget} />
+          <FootballField methods={methods} currentPrice={current} targetPrice={displayTarget} />
         </FundCard>
       </div>
 
@@ -713,6 +706,7 @@ export function ValuationTab({
                 onAssumptionDraftChange={onAssumptionDraftChange}
                 onSaveAssumptions={onSaveAssumptions}
                 isSaving={isSaving}
+                selectedHorizon={selectedHorizon}
               />
             ) : (
               <div className="fund-empty-small">Aucun modèle disponible.</div>
