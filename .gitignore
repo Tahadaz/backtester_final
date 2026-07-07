@@ -57,6 +57,7 @@ artifacts/
 !core/quant_core/artifacts/**
 *.csv
 !research-out/**/*.csv
+!core/tests/fixtures/*.csv
 # Re-ignore heavy data dumps inside research-out (>1 MB each)
 research-out/**/panel*.csv
 research-out/**/predictions_by_fold.csv

@@ -1,0 +1,36 @@
+ticker,name,bkgr_target,bkgr_upside_pct,bkgr_rating
+ADH,Addoha,42.3,28.2,Acheter
+GAZ,Afriquia Gaz,4626,21.7,Acheter
+AKT,Akdital,1868,58.9,Acheter
+ADI,Alliances,599,41.9,Acheter
+ARD,Aradei Capital,525,22.0,Acheter
+ATL,AtlantaSanad,175,34.6,Acheter
+ATW,Attijariwafa Bank,910,30.2,Acheter
+ATH,Auto Hall,91,29.6,Acheter
+BCP,BCP,405,68.8,Acheter
+BCI,BMCI,846,41.9,Acheter
+CDM,CDM,1420,39.9,Acheter
+CIH,CIH,507,40.4,Acheter
+CMA,Ciments du Maroc,2150,28.7,Acheter
+CMG,CMGP Group,394,9.4,Accumuler
+COL,Colorado,104,27.1,Acheter
+CSR,Cosumar,220,19.2,Accumuler
+DWY,Disway,881,10.8,Accumuler
+HPS,HPS,774,23.8,Acheter
+IAM,Itissalat Al-Maghrib,130,39.6,Acheter
+JET,Jet Contractors,2984,33.3,Acheter
+LBV,Label Vie,4414,14.4,Accumuler
+LHM,Holcim Maroc,2428,30.6,Acheter
+MNG,Managem,12135,-26.9,Conserver
+CMT,Miniere Touissit,4499,-7.2,Conserver
+MUT,Mutandis SCA,255,13.3,Accumuler
+RDS,Residences Dar Saada,151,-10.7,Vendre
+SMI,SMI,10454,14.9,Accumuler
+MSA,Marsa Maroc (SODEP),1012,18.9,Accumuler
+SID,Sonasid,2845,37.7,Acheter
+SOT,Sothema,399,5.4,Conserver
+TQM,TAQA Morocco,2977,65.4,Acheter
+TGC,TGCC S.A,1016,33.7,Acheter
+TMA,TotalEnergies Marketing Maroc,1748,12.7,Accumuler
+VCN,Vicenne,498,25.6,Acheter
+WAA,Wafa Assurance,5404,-6.8,Conserver
