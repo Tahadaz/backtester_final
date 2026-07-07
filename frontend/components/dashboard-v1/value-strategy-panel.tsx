@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import useSWR from "swr"
 import { AlertTriangle, RefreshCw } from "lucide-react"
 import { PlotlyChart } from "@/components/run/plotly-chart"
@@ -164,6 +164,13 @@ export function ValueStrategyPanel() {
       setTriggering(false)
     }
   }
+
+  useEffect(() => {
+    if (data?.freshness?.state === "no_snapshot" && !triggering && !isLoading) {
+      handleRecompute()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.freshness?.state, isLoading])
 
   if (isLoading) {
     return (

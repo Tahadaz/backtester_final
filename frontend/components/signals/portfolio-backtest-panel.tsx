@@ -378,7 +378,7 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
   const [universeError, setUniverseError] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [universeQuery, setUniverseQuery] = useState("")
-  const [activeKinds, setActiveKinds] = useState<Set<string>>(new Set())
+  const [deselectedKinds, setDeselectedKinds] = useState<Set<string>>(new Set())
 
   // Accounting ledger state
   const [ledgerSymbolFilter, setLedgerSymbolFilter] = useState<string>("__all__")
@@ -446,7 +446,6 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
         })
         setUniverse(deduped)
         setSelected(new Set(deduped.map((r) => r.symbol)))
-        setActiveKinds(new Set(deduped.map((r) => kindOf.get(r.symbol) ?? "Other")))
         setDateRange(res.date_range)
         // Pre-fill date inputs with available range if not set
         if (!startDate && res.date_range.min) setStartDate(res.date_range.min)
@@ -499,6 +498,12 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
     return Array.from(counts.entries()).sort((a, b) => b[1] - a[1])
   }, [universe, kindOf])
 
+  const activeKinds = useMemo(() => {
+    const all = new Set(universe.map((r) => kindOf.get(r.symbol) ?? "Other"))
+    for (const d of deselectedKinds) all.delete(d)
+    return all
+  }, [universe, kindOf, deselectedKinds])
+
   const kindFilteredUniverse = useMemo(
     () => universe.filter((r) => activeKinds.has(kindOf.get(r.symbol) ?? "Other")),
     [universe, activeKinds, kindOf],
@@ -527,10 +532,12 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
   }
 
   function toggleKind(kind: string) {
-    setActiveKinds((prev) => {
+    setDeselectedKinds((prev) => {
       const next = new Set(prev)
       if (next.has(kind)) {
         next.delete(kind)
+      } else {
+        next.add(kind)
         // Hide this kind's symbols from selection too — re-enabling only re-shows them.
         setSelected((prevSel) => {
           const nextSel = new Set(prevSel)
@@ -539,8 +546,6 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
           }
           return nextSel
         })
-      } else {
-        next.add(kind)
       }
       return next
     })
@@ -548,7 +553,13 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
 
   function selectMasiOnly() {
     const masiKind = "MASI stocks"
-    setActiveKinds(new Set([masiKind]))
+    setDeselectedKinds((prev) => {
+      const next = new Set(prev)
+      for (const [kind] of kindsPresent) {
+        if (kind !== masiKind) next.add(kind)
+      }
+      return next
+    })
     setSelected((prev) => {
       const next = new Set<string>()
       for (const symbol of prev) {
@@ -607,6 +618,14 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
       setLoading(false)
     }
   }
+
+  // Auto-run when universe is fully loaded for the first time
+  useEffect(() => {
+    if (!universeLoading && universe.length > 0 && selected.size > 0 && !result && !loading && !error) {
+      handleRun()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [universeLoading, universe.length])
 
   const m = result?.metrics ?? {}
   const equityPlot = result

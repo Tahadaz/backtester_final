@@ -6,6 +6,7 @@ import {
   type FundamentalUniverseRow,
 } from "@/lib/api"
 import { Input } from "@/components/ui/input"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import { FUNDAMENTAL_LIQUIDITY_ADV20_THRESHOLD } from "./lib/constants"
@@ -155,54 +156,55 @@ export function UniverseScreen({
         </button>
       ) : null}
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <table className="claude-table signal-fund-universe-table">
-          <thead>
-            <tr>
-              <th>Titre</th>
-              <th className="r">Rec.</th>
-              <th className="r">V/Q</th>
-              <th className="r">Upside</th>
-              <th>Rev</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <LoadingRows />
-            ) : filteredRows.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="py-8 text-center text-sm text-muted-foreground">
-                  {liquidityFilter ? `Aucun titre avec ADV20 >= ${thresholdLabel}.` : "No fundamental rows."}
-                </td>
-              </tr>
-            ) : (
-              filteredRows.map((row) => {
-                const active = row.symbol === selectedSymbol
-                return (
-                  <tr key={row.symbol} className={cn("cursor-pointer", active && "signal-fund-row-active")} onClick={() => onSelect(row.symbol)}>
-                    <td>
-                      <div className="fund-symbol-cell">
-                        <div className="min-w-0">
-                          <div className={cn("font-mono text-[11px] font-bold", active && "text-primary")}>{row.symbol}</div>
-                          <div className="truncate text-[9px] text-muted-foreground">{row.sector ?? row.display_name ?? "-"}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="r">
+      <ScrollArea className="min-h-0 flex-1 signals-scrollbar">
+        <div className="space-y-1 p-1.5">
+          {isLoading ? (
+            <div className="space-y-1">
+              {[...Array(12)].map((_, index) => (
+                <div key={index} className="h-[45px] w-full rounded-md animate-pulse bg-muted" />
+              ))}
+            </div>
+          ) : filteredRows.length === 0 ? (
+            <div className="p-4 text-center text-xs text-muted-foreground">
+              {liquidityFilter ? `Aucun titre avec ADV20 >= ${thresholdLabel}.` : "No fundamental rows."}
+            </div>
+          ) : (
+            filteredRows.map((row) => {
+              const active = row.symbol === selectedSymbol
+              return (
+                <button
+                  key={row.symbol}
+                  type="button"
+                  onClick={() => onSelect(row.symbol)}
+                  className={cn(
+                    "grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md border border-transparent px-2.5 py-2 text-left transition-colors hover:border-line hover:bg-bg3",
+                    active && "border-primary/30 bg-primary/10 text-foreground",
+                  )}
+                >
+                  <span className="min-w-0">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className={cn("font-mono text-xs font-bold", active && "text-primary")}>{row.symbol}</span>
+                      <span className="text-[10px]">{revisionArrow(row.revision_direction)}</span>
+                    </span>
+                    <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+                      {row.sector ?? row.display_name ?? "-"}
+                    </span>
+                  </span>
+                  <span className="flex min-w-0 flex-col items-end gap-1">
+                    <span className="flex items-center gap-1.5">
                       <RecChip value={row.recommendation} assumptions={ratingAssumptions} />
-                    </td>
-                    <td className="r">
-                      <ScorePair valueScore={row.value_score} qualityScore={row.quality_score} />
-                    </td>
-                    <td className={cn("r font-mono text-[11px] font-bold", (rowUpside(row) ?? 0) >= 0 ? "t-pos" : "t-neg")}>{fmtPct(rowUpside(row))}</td>
-                    <td className="text-center text-[10px]">{revisionArrow(row.revision_direction)}</td>
-                  </tr>
-                )
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+                      <span className={cn("font-mono text-[11px] font-bold min-w-[32px] text-right", (rowUpside(row) ?? 0) >= 0 ? "t-pos" : "t-neg")}>
+                        {fmtPct(rowUpside(row))}
+                      </span>
+                    </span>
+                    <ScorePair valueScore={row.value_score} qualityScore={row.quality_score} />
+                  </span>
+                </button>
+              )
+            })
+          )}
+        </div>
+      </ScrollArea>
 
       <div className="fund-univ-footer">
         <span>
