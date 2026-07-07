@@ -1,0 +1,17 @@
+{
+  "methodology_version": "established_characteristic_study_v1_2026_07_06",
+  "continued_from": "research-out\\fundamental-methodology-bakeoff\\20260706-142824",
+  "primary_horizon": "6m",
+  "horizons": [
+    "1m",
+    "3m",
+    "6m",
+    "12m"
+  ],
+  "cost_bps": 33.0,
+  "beta_lookback": 252,
+  "beta_min_obs": 126,
+  "reversal_lookback": 21,
+  "portfolio_rule": "equal-weight top tercile minus bottom tercile, net of same cost rule as prior bakeoff",
+  "multiple_testing": "BH-FDR at 10% within each horizon across all tested characteristics"
+}

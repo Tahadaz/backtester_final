@@ -1,0 +1,6 @@
+sample,signal,definition,horizon,cost_bps,periods,top_bottom_spread,gross_top_bottom_spread,net_sharpe,max_drawdown,turnover
+native,classical_characteristics,"A composite: z(B/M) + z(profitability approximation) - z(asset growth), >=2 components",6m,33.0,44,0.10943523438141733,0.11020992860248863,0.8620954640843473,-0.5277765263983552,0.11737791228352766
+native,intrinsic_valuation,"B systematic PIT valuation gap from valuation engine base scenario, fixed default assumptions",6m,33.0,11,0.0891419889656213,0.09215144412088913,0.711202463966584,-0.16497627343217725,0.45597805382846185
+native,fundamental_momentum,C accounting change/improvement composite; no analyst revisions due lack of true revision history,6m,33.0,44,-0.04352217528605584,-0.042241426421934784,-0.29604471344944955,-0.9924954316518713,0.19405285820015952
+native,residual_value,"D cheapness residual from log(P/B) explained by ROE, revenue growth, and size",6m,33.0,31,0.08918256245388374,0.08971188138180014,0.8780275552450262,-0.5442420601108244,0.08019983756309142
+native,sfc_custom_v2,Legacy benchmark current SFC core score,6m,33.0,35,0.12745402196919492,0.12829551886360488,1.4247691603442392,-0.34977804708542803,0.1274995294560512

@@ -54,6 +54,11 @@ artifacts/
 !core/quant_core/artifacts/
 !core/quant_core/artifacts/**
 *.csv
+!research-out/**/*.csv
+# Re-ignore heavy data dumps inside research-out (>1 MB each)
+research-out/**/panel*.csv
+research-out/**/predictions_by_fold.csv
+research-out/**/*_conflicts.csv
 *.xlsx
 *.xls
 *.parquet
@@ -66,7 +71,9 @@ market_data_export*.xlsx
 openapi.json
 schema_dump.sql
 run*.json
+!research-out/**/run*.json
 leaderboard*.json
+!research-out/**/leaderboard*.json
 artifacts*.json
 body.json
 body.txt
@@ -80,7 +87,7 @@ frontend-next-start*
 
 # ---- Local scratch / agent output ----
 .codex/worktrees/
-research-out/
+# research-out/ is tracked — fundamental data must deploy with the app
 frontend/.playwright-cli/
 _patch_*/
 _commit*.patch

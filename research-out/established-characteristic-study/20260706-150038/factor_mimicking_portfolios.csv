@@ -1,0 +1,6 @@
+sample,signal,definition,horizon,cost_bps,periods,top_bottom_spread,gross_top_bottom_spread,net_sharpe,max_drawdown,turnover,factor_portfolio
+factor_mimic,small_size,SMB_small_minus_big,6m,33.0,56,0.1557151738000089,0.15606606665715178,1.079390045759926,-0.6192344117223444,0.05316558441558442,SMB_small_minus_big
+factor_mimic,book_to_market,HML_high_minus_low_bm,6m,33.0,44,0.10342879693918663,0.103881174127216,0.7590861771004164,-0.8643864551752456,0.06854199818626695,HML_high_minus_low_bm
+factor_mimic,operating_profitability_approx,RMW_robust_minus_weak_op_prof,6m,33.0,44,-0.0908446908676907,-0.0902107997587996,-1.0743992493652454,-0.9925397556835913,0.09604410740774379,RMW_robust_minus_weak_op_prof
+factor_mimic,conservative_investment,CMA_conservative_minus_aggressive,6m,33.0,44,0.07717862704000533,0.07807406761941595,0.90419803412263,-0.352569023057531,0.13567281506221127,CMA_conservative_minus_aggressive
+factor_mimic,momentum_12_1,MOM_winner_minus_loser_12_1,6m,33.0,57,0.1436050802523182,0.14602783991066134,0.5966821980203585,-0.9151917455580408,0.367084796718664,MOM_winner_minus_loser_12_1

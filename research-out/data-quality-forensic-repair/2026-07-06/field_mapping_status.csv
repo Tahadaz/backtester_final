@@ -1,0 +1,12 @@
+canonical_field,alias_key,aliases,classification,notes
+book_equity,book_equity,"Total_Equity;Shareholders_Equity;Clean_Capitaux_propres;Capitaux_propres;Common_Equity",B_acceptable_proxy,"consolidated-vs-standalone preference not independently re-verified"
+assets,assets,"Total_Assets;Total_Actif;Actif_Total;Clean_Total_Assets",A_canonical,
+revenue,revenue,"Revenue;Chiffre_daffaires;Clean_Chiffre_daffaires",A_canonical,
+operating_income,operating_income,"Operating_Income;EBIT;Resultat_Exploitation;Clean_Resultat_Exploitation",C_sector_specific_caveat,"EBIT and Resultat_Exploitation not strictly identical line items"
+net_income,net_income,"NetIncome;Net_Income;Clean_Resultat_net;Resultat_net;RNPG;Resultat_net_part_du_groupe",D_inconsistent_across_issuers,"mixes consolidated total and group-share (RNPG) net income with no preference rule; not repaired this session"
+cash_flow_ops,cash_flow_ops,"Operating_Cash_Flow;Cash_Flow_Operations;CFO",B_acceptable_proxy,"excluded for financial sector this session, see cfp_canonical_definition.md"
+debt,debt,"Total_Debt;Debt_Total;Dettes_de_financement",A_canonical,
+cash,cash,"Cash_and_Equivalents;Cash;Tresorerie_Actif",A_canonical,
+market_cap,direct,"MarketCap_Calc;Market_Cap;close*Shares_Outstanding",E_was_broken_now_repaired,"SAH workbook rows unreliable (~29.3x), REB fixed via document remap"
+ebitda,direct,"EBITDA",E_was_broken_now_repaired,"150 symbol-years EV-construction bug repaired"
+enterprise_value,direct,"EnterpriseValue",E_was_broken_now_repaired,"2168 of 2273 flagged rows repaired; 105 unresolved (no market cap available)"

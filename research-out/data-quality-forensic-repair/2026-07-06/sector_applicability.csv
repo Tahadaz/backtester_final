@@ -1,0 +1,11 @@
+metric,all_sectors,non_financial_only,financial_specific_needed,status,notes
+book_to_market,yes,,,implemented,"negative book equity excluded, all sectors otherwise"
+cashflow_price,,yes,not_attempted,implemented_partial,"bank/insurance excluded; leasing/financing gap open (narrower is_financial definition used)"
+ebitda_ev_yield,,yes,not_attempted,not_implemented,"computed uniformly including banks; known gap"
+enterprise_value,,yes,not_attempted,not_implemented,"same as ebitda_ev_yield"
+leverage,,yes,not_attempted,not_implemented,"bank/insurer leverage structurally different; computed uniformly"
+operating_profitability,,yes,partial_in_bakeoff_only,not_implemented_in_characteristic_study,"methodology_bakeoff.py branches on is_financial for its own profitability_raw; characteristic_study.py's operating_profitability_raw does not"
+gross_profitability,,yes,not_attempted,not_implemented,"computed uniformly"
+accrual_quality,,yes,not_attempted,not_implemented,"computed uniformly"
+roe,yes,,,valid_as_is,
+roa,yes,,,valid_as_is,

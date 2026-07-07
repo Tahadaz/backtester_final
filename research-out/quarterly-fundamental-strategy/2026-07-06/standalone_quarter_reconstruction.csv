@@ -1,0 +1,5 @@
+metric_name,n_symbol_years_with_all_4_quarters,median_sum_q1_q4_over_fy,mean_ratio,classification
+Revenue,29,1.0,0.979,standalone_confirmed_no_reconstruction_needed
+NetIncome,29,1.0,0.988,standalone_confirmed_no_reconstruction_needed
+EBITDA,4,1.001,1.001,standalone_confirmed_thin_sample
+Operating_Cash_Flow,0,,,no_complete_symbol_year_available_cannot_verify_or_reconstruct

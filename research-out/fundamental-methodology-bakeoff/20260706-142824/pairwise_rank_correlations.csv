@@ -1,0 +1,7 @@
+left,right,periods,mean_rank_corr
+classical_characteristics,intrinsic_valuation,12,0.19691866549545775
+classical_characteristics,fundamental_momentum,12,0.09932666309964566
+classical_characteristics,residual_value,12,0.18422042683907033
+intrinsic_valuation,fundamental_momentum,12,-0.2885283914668317
+intrinsic_valuation,residual_value,12,0.05178053803473737
+fundamental_momentum,residual_value,12,0.044320902006886466

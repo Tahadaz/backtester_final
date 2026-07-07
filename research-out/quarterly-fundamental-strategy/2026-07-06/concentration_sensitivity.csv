@@ -1,0 +1,4 @@
+universe,n_periods,sharpe,mean_monthly_return,cumulative_return
+full_trusted_universe,51,1.62,0.0263,2.2
+excluding_ADH_ADI_JET,51,1.45,0.0192,0.99
+excluding_full_RE_BTP_cluster_ADH_ADI_JET_ARD_RDS,51,1.36,0.017,0.84

@@ -1,0 +1,6 @@
+symbol,refresh_events_with_quarterly,refresh_events_annual_only,incremental_refresh_from_quarterly
+BCP,+1,baseline,+1 event only; see quarterly_bm_comparison.md for full 71-symbol breakdown
+IAM,+1,baseline,+1 event only; see quarterly_bm_comparison.md for full 71-symbol breakdown
+JET,+1,baseline,+1 event only; see quarterly_bm_comparison.md for full 71-symbol breakdown
+LHM,+1,baseline,+1 event only; see quarterly_bm_comparison.md for full 71-symbol breakdown
+MSA,+1,baseline,+1 event only; see quarterly_bm_comparison.md for full 71-symbol breakdown

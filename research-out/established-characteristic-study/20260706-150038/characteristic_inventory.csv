@@ -1,0 +1,24 @@
+signal,raw,group,formula,expected_direction,literature,implementation,required_fields,applicability
+earnings_yield,earnings_yield_raw,value,Net income / market cap; negative earnings retained,higher,Basu earnings yield / value,approx exact using PIT net income,"NetIncome, MarketCap",all where defined
+book_to_market,book_to_market_raw,value,Book equity / market cap,higher,Rosenberg-Reid-Lanstein; Fama-French HML characteristic,exact where book equity exists,"Book equity, MarketCap",all where defined
+dividend_yield,dividend_yield_raw,value,Dividends / market cap; fallback stored Dividend_Yield,higher,classic dividend yield,approx exact; dividend timing annual PIT,"Dividendes, MarketCap",all where defined
+cashflow_price,cashflow_price_raw,value,Operating cash flow / market cap,higher,Lakonishok-Shleifer-Vishny cash-flow yield,exact where CFO exists,"Operating_Cash_Flow, MarketCap",all where defined
+sales_price,sales_price_raw,value,Revenue / market cap,higher,classic sales-to-price value,exact where revenue exists,"Revenue, MarketCap",all where defined
+ebitda_ev_yield,ebitda_ev_yield_raw,value,EBITDA / enterprise value,higher,practitioner EV/EBITDA value,exact where EBITDA and EV exist,"EBITDA, EnterpriseValue",all where defined
+small_size,size_log_mcap,risk_size,-log(MarketCap),higher means smaller,Banz size effect,exact market-cap proxy,MarketCap,all where defined
+size_log_mcap,size_log_mcap,risk_size,log(MarketCap),diagnostic/control,size control,exact market-cap proxy,MarketCap,all where defined
+operating_profitability_approx,operating_profitability_raw,profitability_quality,Operating income / book equity; ROE fallback for financials,higher,Fama-French operating profitability analogue,"approximation, not exact RMW","Operating income, book equity",all where defined
+gross_profitability,gross_profitability_raw,profitability_quality,Gross profit / total assets,higher,Novy-Marx gross profitability,exact where gross profit exists,"Gross_Profit, Total_Assets",all where defined
+roe_standalone,roe_raw,profitability_quality,Net income / book equity or stored ROE,higher,ROE quality/profitability,exact/derived,"NetIncome, book equity",all where defined
+roa_standalone,roa_raw,profitability_quality,Net income / total assets or stored ROA,higher,ROA profitability,exact/derived,"NetIncome, assets",all where defined
+accrual_quality,accruals_raw,profitability_quality,-(Net income - CFO) / assets,higher means lower accruals,Sloan accruals,approximation using earnings less CFO,"NetIncome, CFO, assets",all where defined
+piotroski_lite,piotroski_lite_raw,profitability_quality,Existing PIT Piotroski-lite score,higher,Piotroski F-score,approximation; not exact original F-score,multiple accounting fields,all where defined
+conservative_investment,investment_raw,investment,-asset growth,higher means lower investment,Fama-French CMA characteristic,exact for non-financials where assets history exists,"Total assets t,t-1",all where defined
+low_leverage,leverage_raw,distress,-debt/assets,higher means lower leverage,leverage/distress anomaly,simple established leverage proxy,"Debt, assets",all where defined
+momentum_12_1,momentum_12_1_raw,market_behavior,prior 252 trading-day return skipping 21 days,higher,Jegadeesh-Titman momentum,exact price momentum,daily prices,all where defined
+momentum_6_1,momentum_6_1_raw,market_behavior,prior 126 trading-day return skipping 21 days,higher,medium-term momentum variant,exact price momentum,daily prices,all where defined
+short_reversal,short_reversal_raw,market_behavior,-prior 21 trading-day return,higher means recent loser,short-term reversal,exact price reversal,daily prices,all where defined
+beta_high,beta_raw,risk_size,market beta over 252 days,higher beta hypothesis,CAPM beta,historical market-model estimate,daily prices,all where defined
+beta_low,beta_raw,risk_size,-market beta over 252 days,low beta hypothesis,low-beta anomaly,historical market-model estimate,daily prices,all where defined
+low_total_volatility,total_vol_raw,risk_size,-annualized realized volatility,higher means lower vol,low-volatility anomaly,historical realized vol,daily prices,all where defined
+low_idio_volatility,idio_vol_raw,risk_size,-market-model residual volatility,higher means lower idio vol,Ang-Hodrick-Xing-Zhang idiosyncratic volatility,historical market-model residual vol,daily prices,all where defined

@@ -1,0 +1,24 @@
+sample,signal,definition,observations,dates,symbols,avg_names_per_date,financial_obs,nonfinancial_obs,sectors
+native,earnings_yield,Net income / market cap; negative earnings retained,2761,63,70,43.82539682539682,566,2195,19
+native,book_to_market,Book equity / market cap,2622,63,67,41.61904761904762,566,2056,19
+native,dividend_yield,Dividends / market cap; fallback stored Dividend_Yield,2558,63,66,40.6031746031746,566,1992,19
+native,cashflow_price,Operating cash flow / market cap,2061,51,55,40.411764705882355,0,2061,18
+native,sales_price,Revenue / market cap,2761,63,70,43.82539682539682,566,2195,19
+native,ebitda_ev_yield,EBITDA / enterprise value,2559,77,69,33.23376623376623,537,2022,19
+native,small_size,-log(MarketCap),2785,63,70,44.20634920634921,566,2219,19
+native,size_log_mcap,log(MarketCap),2785,63,70,44.20634920634921,566,2219,19
+native,operating_profitability_approx,Operating income / book equity; ROE fallback for financials,2754,77,68,35.76623376623377,566,2188,19
+native,gross_profitability,Gross profit / total assets,2010,51,54,39.411764705882355,41,1969,17
+native,roe_standalone,Net income / book equity or stored ROE,2881,77,71,37.41558441558441,566,2315,19
+native,roa_standalone,Net income / total assets or stored ROA,2881,77,71,37.41558441558441,566,2315,19
+native,accrual_quality,-(Net income - CFO) / assets,2646,51,69,51.88235294117647,566,2080,19
+native,piotroski_lite,Existing PIT Piotroski-lite score,2987,77,71,38.79220779220779,566,2421,19
+native,conservative_investment,-asset growth,2820,75,71,37.6,566,2254,19
+native,low_leverage,-debt/assets,2881,77,71,37.41558441558441,566,2315,19
+native,momentum_12_1,prior 252 trading-day return skipping 21 days,2132,64,68,33.3125,429,1703,19
+native,momentum_6_1,prior 126 trading-day return skipping 21 days,2493,70,69,35.614285714285714,486,2007,19
+native,short_reversal,-prior 21 trading-day return,2839,76,71,37.35526315789474,534,2305,19
+native,beta_high,market beta over 252 days,2561,71,69,36.070422535211264,497,2064,19
+native,beta_low,-market beta over 252 days,2561,71,69,36.070422535211264,497,2064,19
+native,low_total_volatility,-annualized realized volatility,2561,71,69,36.070422535211264,497,2064,19
+native,low_idio_volatility,-market-model residual volatility,2561,71,69,36.070422535211264,497,2064,19

@@ -1,0 +1,5 @@
+sample,signal,definition,horizon,cost_bps,periods,top_bottom_spread,gross_top_bottom_spread,net_sharpe,max_drawdown,turnover
+native_stress,classical_characteristics,"A composite: z(B/M) + z(profitability approximation) - z(asset growth), >=2 components",6m,75.0,44,0.1084492599182357,0.11020992860248863,0.855461691375058,-0.5305988912140505,0.11737791228352766
+native_stress,intrinsic_valuation,"B systematic PIT valuation gap from valuation engine base scenario, fixed default assumptions",6m,75.0,11,0.0853117733134622,0.09215144412088913,0.680361844102659,-0.1705222185050005,0.45597805382846185
+native_stress,fundamental_momentum,C accounting change/improvement composite; no analyst revisions due lack of true revision history,6m,75.0,44,-0.04515221929493717,-0.042241426421934784,-0.30837597521280774,-0.9926616921697053,0.19405285820015952
+native_stress,residual_value,"D cheapness residual from log(P/B) explained by ROE, revenue growth, and size",6m,75.0,31,0.08850888381835378,0.08971188138180014,0.8726673112135763,-0.5476193967488561,0.08019983756309142

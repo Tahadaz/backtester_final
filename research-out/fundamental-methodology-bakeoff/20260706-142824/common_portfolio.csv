@@ -1,0 +1,5 @@
+sample,signal,definition,horizon,cost_bps,periods,top_bottom_spread,gross_top_bottom_spread,net_sharpe,max_drawdown,turnover
+common,classical_characteristics,"A composite: z(B/M) + z(profitability approximation) - z(asset growth), >=2 components",6m,33.0,10,0.0782272984761577,0.08098188400583865,1.373579211116759,-0.07905152951013394,0.4173614438910576
+common,intrinsic_valuation,"B systematic PIT valuation gap from valuation engine base scenario, fixed default assumptions",6m,33.0,10,0.057679046128349454,0.06046883405404605,0.8508922243220319,-0.11856913746528697,0.4226951402570598
+common,fundamental_momentum,C accounting change/improvement composite; no analyst revisions due lack of true revision history,6m,33.0,10,-0.007829233721138053,-0.005393961673371577,-0.08033711072878004,-0.4344454942709254,0.36898061329795073
+common,residual_value,"D cheapness residual from log(P/B) explained by ROE, revenue growth, and size",6m,33.0,10,0.042592698635506986,0.04425779099876807,0.5051105965168242,-0.25905010812311424,0.25228672170622635
