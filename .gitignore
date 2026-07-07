@@ -42,6 +42,8 @@ data/
 # Whitelist: source code directories literally named "data"
 !frontend/app/data/
 !frontend/components/data/
+!services/api/app/data/
+!core/quant_core/fundamentals/data/
 # Whitelist: static JSON datasets shipped with the dashboard (used by GH Pages build)
 !frontend/public/data/
 !frontend/public/data/**

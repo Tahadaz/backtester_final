@@ -1,0 +1,763 @@
+{
+  "version": "brief38-curated-2026-06-06",
+  "notes": [
+    "Figures are hand-extracted from official BVC-hosted filings. Values are stored in MAD unless the source value is a ratio.",
+    "Derived liabilities, BVPS, ROE, and P/B are recomputed by the remediation engine; stored ratio fields are not trusted."
+  ],
+  "symbols": {
+    "LHM": {
+      "2025": {
+        "cause": "extraction_dropped_leading_digits_on_equity_and_assets",
+        "stockanalysis_url": "https://stockanalysis.com/quote/cbse/LHM/financials/",
+        "official_document": {
+          "url": "https://media.casablanca-bourse.com/sites/default/files/2026-04/lafargeholcim_maroc_2025.pdf",
+          "title": "LafargeHolcim Maroc - Resultats financiers 2025 et CP RFA 2025"
+        },
+        "corrections": {
+          "Total_Assets": {
+            "value": 19994546000,
+            "source": "official_filing",
+            "page": 1,
+            "line": "60-61",
+            "label": "TOTAL ACTIF",
+            "source_value": "19 994 546",
+            "unit": "kMAD"
+          },
+          "Total_Liabilities_And_Equity": {
+            "value": 19994546000,
+            "source": "official_filing",
+            "page": 1,
+            "line": "139-140",
+            "label": "Total Passif",
+            "source_value": "19 994 546",
+            "unit": "kMAD"
+          },
+          "Total_Equity": {
+            "value": 12156299000,
+            "source": "official_filing",
+            "page": 1,
+            "line": "84-86",
+            "label": "Capitaux propres de l'ensemble consolidé",
+            "source_value": "12 156 299",
+            "unit": "kMAD"
+          },
+          "Equity_Group": {
+            "value": 12156299000,
+            "source": "official_filing",
+            "page": 1,
+            "line": "79-82",
+            "label": "Capitaux propres attribuables aux actionnaires ordinaires de la société mère",
+            "source_value": "12 156 299",
+            "unit": "kMAD"
+          },
+          "Resultat_net": {
+            "value": 2165873000,
+            "source": "official_filing",
+            "page": 1,
+            "line": "216-221",
+            "label": "Résultat net des activités poursuivies",
+            "source_value": "2 165 873",
+            "unit": "kMAD"
+          },
+          "Resultat_net_part_du_groupe": {
+            "value": 2165873000,
+            "source": "official_filing",
+            "page": 1,
+            "line": "224-226",
+            "label": "Résultat net - Part du Groupe",
+            "source_value": "2 165 873",
+            "unit": "kMAD"
+          }
+        }
+      }
+    },
+    "COL": {
+      "2025": {
+        "cause": "extraction_selected_wrong_source_document_and_scaled_rows",
+        "stockanalysis_url": "https://stockanalysis.com/quote/cbse/COL/financials/",
+        "official_document": {
+          "url": "https://media.casablanca-bourse.com/sites/default/files/2026-04/colorado_rfa_2025.pdf",
+          "title": "Colorado : Rapport financier annuel 2025"
+        },
+        "corrections": {
+          "Total_Assets": {
+            "value": 583425099.53,
+            "source": "official_filing",
+            "page": 11,
+            "line": "181-184",
+            "label": "TOTAL GENERAL I+II+III",
+            "source_value": "583 425 099,53",
+            "unit": "MAD"
+          },
+          "Total_Liabilities_And_Equity": {
+            "value": 583425099.53,
+            "source": "official_filing",
+            "page": 12,
+            "line": "94-95",
+            "label": "TOTAL GENERAL I+II+III",
+            "source_value": "583 425 099,53",
+            "unit": "MAD"
+          },
+          "Total_Equity": {
+            "value": 359119876.03,
+            "source": "official_filing",
+            "page": 12,
+            "line": "31-33",
+            "label": "Total des capitaux propres (A)",
+            "source_value": "359 119 876,03",
+            "unit": "MAD"
+          },
+          "Equity_Group": {
+            "value": 359119876.03,
+            "source": "official_filing",
+            "page": 12,
+            "line": "31-33",
+            "label": "Total des capitaux propres (A)",
+            "source_value": "359 119 876,03",
+            "unit": "MAD"
+          },
+          "Resultat_net": {
+            "value": 65479341.98,
+            "source": "official_filing",
+            "page": 15,
+            "line": "70-75",
+            "label": "RESULTAT NET DE L'EXERCICE",
+            "source_value": "65 479 341,98",
+            "unit": "MAD"
+          },
+          "Resultat_net_part_du_groupe": {
+            "value": 65479341.98,
+            "source": "official_filing",
+            "page": 15,
+            "line": "70-75",
+            "label": "RESULTAT NET DE L'EXERCICE",
+            "source_value": "65 479 341,98",
+            "unit": "MAD"
+          },
+          "Revenue": {
+            "value": 611402242.34,
+            "source": "official_filing",
+            "page": 34,
+            "line": "8-11",
+            "label": "Chiffre d'affaires hors taxes",
+            "source_value": "611 402 242,34",
+            "unit": "MAD"
+          }
+        }
+      }
+    },
+    "STR": {
+      "2025": {
+        "cause": "official_filing_exposes_net_income_but_not_clean_assets_or_equity_tieout",
+        "force_status": "data_unverified",
+        "force_reason": "official_document_missing_balance_sheet_tieout_lines_for_current_snapshot",
+        "stockanalysis_url": "https://stockanalysis.com/quote/cbse/STR/financials/",
+        "official_document": {
+          "url": "https://media.casablanca-bourse.com/sites/default/files/2026-05/stroc_2025_0.pdf",
+          "title": "Stroc Industrie - Resultats financiers 2025 et CP RFA 2025"
+        },
+        "corrections": {
+          "Resultat_net": {
+            "value": 500000,
+            "source": "official_filing",
+            "page": 3,
+            "line": "25-28",
+            "label": "Le résultat net est bénéficiaire à 0,5 millions de dirhams",
+            "source_value": "0,5 millions de dirhams",
+            "unit": "MAD"
+          },
+          "Resultat_net_part_du_groupe": {
+            "value": 500000,
+            "source": "official_filing",
+            "page": 3,
+            "line": "25-28",
+            "label": "Le résultat net est bénéficiaire à 0,5 millions de dirhams",
+            "source_value": "0,5 millions de dirhams",
+            "unit": "MAD"
+          }
+        }
+      }
+    },
+    "BCP": {
+      "2025": {
+        "cause": "stored_roe_used_consolidated_equity_instead_of_group_basis",
+        "classification": "bank",
+        "stockanalysis_url": "https://stockanalysis.com/quote/cbse/BCP/financials/",
+        "official_document": {
+          "url": "https://media.casablanca-bourse.com/sites/default/files/2026-03/bcp_2025_0.pdf",
+          "title": "BCP - Resultats financiers 2025"
+        },
+        "corrections": {
+          "Total_Assets": {
+            "value": 571244210000,
+            "source": "official_filing",
+            "page": 11,
+            "line": "172-174",
+            "label": "TOTAL ACTIF IFRS",
+            "source_value": "571 244 210",
+            "unit": "kMAD"
+          },
+          "Total_Liabilities_And_Equity": {
+            "value": 571244210000,
+            "source": "official_filing",
+            "page": 11,
+            "line": "87-88",
+            "label": "TOTAL PASSIF IFRS",
+            "source_value": "571 244 210",
+            "unit": "kMAD"
+          },
+          "Total_Equity": {
+            "value": 57956029000,
+            "source": "official_filing",
+            "page": 11,
+            "line": "53-55",
+            "label": "Capitaux propres",
+            "source_value": "57 956 029",
+            "unit": "kMAD"
+          },
+          "Equity_Group": {
+            "value": 41452033000,
+            "source": "official_filing",
+            "page": 12,
+            "line": "158-165",
+            "label": "Capitaux propres part Groupe",
+            "source_value": "41 452 033",
+            "unit": "kMAD"
+          },
+          "Resultat_net": {
+            "value": 5621085000,
+            "source": "official_filing",
+            "page": 12,
+            "line": "266-267",
+            "label": "Résultat net",
+            "source_value": "5 621 085",
+            "unit": "kMAD"
+          },
+          "Resultat_net_part_du_groupe": {
+            "value": 4503361000,
+            "source": "official_filing",
+            "page": 11,
+            "line": "276-278",
+            "label": "RÉSULTAT NET-PART DU GROUPE",
+            "source_value": "4 503 361",
+            "unit": "kMAD"
+          }
+        }
+      }
+    },
+    "CDM": {
+      "2025": {
+        "cause": "missing_group_basis_bank_fields",
+        "classification": "bank",
+        "stockanalysis_url": "https://stockanalysis.com/quote/cbse/CDM/financials/",
+        "official_document": {
+          "url": "https://media.casablanca-bourse.com/sites/default/files/2026-02/cdm_2025.pdf",
+          "title": "Credit du Maroc - Resultats financiers 2025"
+        },
+        "corrections": {
+          "Total_Assets": {
+            "value": 83728097000,
+            "source": "official_filing",
+            "page": 11,
+            "line": "91-93",
+            "label": "TOTAL",
+            "source_value": "83 728 097",
+            "unit": "kMAD"
+          },
+          "Total_Liabilities_And_Equity": {
+            "value": 83728097000,
+            "source": "official_filing",
+            "page": 11,
+            "line": "190-192",
+            "label": "TOTAL",
+            "source_value": "83 728 097",
+            "unit": "kMAD"
+          },
+          "Total_Equity": {
+            "value": 8203010000,
+            "source": "official_filing",
+            "page": 11,
+            "line": "157-159",
+            "label": "Capitaux propres",
+            "source_value": "8 203 010",
+            "unit": "kMAD"
+          },
+          "Equity_Group": {
+            "value": 8203010000,
+            "source": "official_filing",
+            "page": 11,
+            "line": "157-169",
+            "label": "Capitaux propres / Part du groupe",
+            "source_value": "8 203 010",
+            "unit": "kMAD"
+          },
+          "Resultat_net": {
+            "value": 863551000,
+            "source": "official_filing",
+            "page": 11,
+            "line": "181-183",
+            "label": "Résultat net de l'exercice",
+            "source_value": "863 551",
+            "unit": "kMAD"
+          },
+          "Resultat_net_part_du_groupe": {
+            "value": 863551000,
+            "source": "official_filing",
+            "page": 11,
+            "line": "184-186",
+            "label": "Part du groupe",
+            "source_value": "863 551",
+            "unit": "kMAD"
+          }
+        }
+      }
+    },
+    "CMT": {
+      "2025": {
+        "cause": "missing_minority_and_group_basis_fields",
+        "stockanalysis_url": "https://stockanalysis.com/quote/cbse/CMT/financials/",
+        "official_document": {
+          "url": "https://media.casablanca-bourse.com/sites/default/files/2026-05/cmt_2025.pdf",
+          "title": "CMT - Resultats financiers 2025 et CP RFA 2025"
+        },
+        "corrections": {
+          "Total_Assets": {
+            "value": 1921575223,
+            "source": "official_filing",
+            "page": 8,
+            "line": "40-42",
+            "label": "TOTAL ACTIF",
+            "source_value": "1 921 575 223",
+            "unit": "MAD"
+          },
+          "Total_Liabilities_And_Equity": {
+            "value": 1921575223,
+            "source": "official_filing",
+            "page": 8,
+            "line": "87-89",
+            "label": "TOTAL PASSIF",
+            "source_value": "1 921 575 223",
+            "unit": "MAD"
+          },
+          "Total_Equity": {
+            "value": 901026895,
+            "source": "official_filing",
+            "page": 8,
+            "line": "66-68",
+            "label": "Total des capitaux propres",
+            "source_value": "901 026 895",
+            "unit": "MAD"
+          },
+          "Equity_Group": {
+            "value": 901142608,
+            "source": "official_filing",
+            "page": 8,
+            "line": "316-321",
+            "label": "Capitaux propres groupe / Total capitaux propres part groupe - Consolidé",
+            "source_value": "901 142 608",
+            "unit": "MAD"
+          },
+          "Resultat_net": {
+            "value": 196458983,
+            "source": "official_filing",
+            "page": 8,
+            "line": "307-310",
+            "label": "Total des capitaux propres",
+            "source_value": "196 458 983",
+            "unit": "MAD"
+          },
+          "Resultat_net_part_du_groupe": {
+            "value": 196465103,
+            "source": "official_filing",
+            "page": 8,
+            "line": "144-146",
+            "label": "Résultat net (Part du groupe)",
+            "source_value": "196 465 103",
+            "unit": "MAD"
+          }
+        }
+      }
+    },
+    "JET": {
+      "2025": {
+        "cause": "official_document_does_not_expose_clean_group_equity_closing_line_in_text_extraction",
+        "force_status": "data_unverified",
+        "force_reason": "missing_current_group_equity_basis",
+        "stockanalysis_url": "https://stockanalysis.com/quote/cbse/JET/financials/",
+        "official_document": {
+          "url": "https://media.casablanca-bourse.com/sites/default/files/2026-05/jet_contractors_2025.pdf",
+          "title": "Jet Contractors - Resultats financiers 2025 et CP RFA 2025"
+        },
+        "corrections": {
+          "Total_Assets": {
+            "value": 5646901866.67,
+            "source": "official_filing",
+            "page": 1,
+            "line": "256-260",
+            "label": "TOTAL ACTIF ( I + II + III)",
+            "source_value": "5 646 901 866,67",
+            "unit": "MAD"
+          },
+          "Total_Equity": {
+            "value": 1357617241.89,
+            "source": "official_filing",
+            "page": 1,
+            "line": "701-704",
+            "label": "total de capitaux propres et assimilés consolidés",
+            "source_value": "1 357 617 241,89",
+            "unit": "MAD"
+          },
+          "Resultat_net": {
+            "value": 224734728.04,
+            "source": "official_filing",
+            "page": 2,
+            "line": "976-979",
+            "label": "XIII RESULTAT NET Total ( XI - XII )",
+            "source_value": "224 734 728,04",
+            "unit": "MAD"
+          },
+          "Resultat_net_part_du_groupe": {
+            "value": 222347771.39,
+            "source": "official_filing",
+            "page": 2,
+            "line": "986-989",
+            "label": "Résultat Part du Groupe",
+            "source_value": "222 347 771,39",
+            "unit": "MAD"
+          }
+        }
+      }
+    },
+    "LBV": {
+      "2025": {
+        "cause": "official_text_extract_lacks_total_assets_line_for_complete_t1",
+        "force_status": "data_unverified",
+        "force_reason": "missing_official_total_assets_tieout",
+        "stockanalysis_url": "https://stockanalysis.com/quote/cbse/LBV/financials/",
+        "official_document": {
+          "url": "https://media.casablanca-bourse.com/sites/default/files/2026-02/label_vie_2025.pdf",
+          "title": "LabelVie - Resultats financiers 2025"
+        },
+        "corrections": {
+          "Total_Equity": {
+            "value": 3670153999.9,
+            "source": "official_filing",
+            "page": 3,
+            "line": "255-258",
+            "label": "TOTAL DES CAPITAUX PROPRES (A)",
+            "source_value": "3 670 153 999,90",
+            "unit": "MAD"
+          },
+          "Equity_Group": {
+            "value": 3565836834.75,
+            "source": "derived",
+            "page": 3,
+            "line": "255-262",
+            "label": "Total equity less interets minoritaires",
+            "source_value": "3 670 153 999,90 - 104 317 165,15",
+            "unit": "MAD"
+          },
+          "Resultat_net": {
+            "value": 593657993.13,
+            "source": "official_filing",
+            "page": 3,
+            "line": "551-553",
+            "label": "RESULTAT NET (XI - XII)",
+            "source_value": "593 657 993,13",
+            "unit": "MAD"
+          },
+          "Resultat_net_part_du_groupe": {
+            "value": 578790600.36,
+            "source": "official_filing",
+            "page": 3,
+            "line": "560-562",
+            "label": "RESULTAT NET PART DU GROUPE",
+            "source_value": "578 790 600,36",
+            "unit": "MAD"
+          }
+        }
+      }
+    },
+    "M2M": {
+      "2025": {
+        "cause": "official_text_extract_lacks_total_assets_line_for_complete_t1",
+        "force_status": "data_unverified",
+        "force_reason": "missing_official_total_assets_tieout",
+        "stockanalysis_url": "https://stockanalysis.com/quote/cbse/M2M/financials/",
+        "official_document": {
+          "url": "https://media.casablanca-bourse.com/sites/default/files/2026-04/m2m_group_2025.pdf",
+          "title": "M2M Group - Resultats financiers 2025 et CP RFA 2025"
+        },
+        "corrections": {
+          "Total_Equity": {
+            "value": 232359000,
+            "source": "official_filing",
+            "page": 5,
+            "line": "367-371",
+            "label": "capitaux propres consolidés",
+            "source_value": "232.359 KMAD",
+            "unit": "kMAD"
+          },
+          "Equity_Group": {
+            "value": 157811867,
+            "source": "official_filing",
+            "page": 4,
+            "line": "48-50",
+            "label": "Capitaux propres (Part du groupe)",
+            "source_value": "157 811 867",
+            "unit": "MAD"
+          },
+          "Resultat_net": {
+            "value": 6545000,
+            "source": "official_filing",
+            "page": 5,
+            "line": "367-371",
+            "label": "bénéfice net consolidé",
+            "source_value": "6.545 KMAD",
+            "unit": "kMAD"
+          },
+          "Resultat_net_part_du_groupe": {
+            "value": 5305374,
+            "source": "official_filing",
+            "page": 4,
+            "line": "185-187",
+            "label": "Résultat net (Part du groupe)",
+            "source_value": "5 305 374",
+            "unit": "MAD"
+          }
+        }
+      }
+    },
+    "MDP": {
+      "2025": {
+        "cause": "standalone_filing_has_no_group_statement",
+        "force_status": "data_unverified",
+        "force_reason": "missing_group_basis_statement",
+        "stockanalysis_url": "https://stockanalysis.com/quote/cbse/MDP/financials/",
+        "official_document": {
+          "url": "https://media.casablanca-bourse.com/sites/default/files/2026-05/med_paper_2025.pdf",
+          "title": "Med Paper - Resultats financiers 2025 et CP RFA 2025"
+        },
+        "corrections": {
+          "Total_Equity": {
+            "value": 41145968.11,
+            "source": "official_filing",
+            "page": 2,
+            "line": "53-55",
+            "label": "Total des capitaux propres (A)",
+            "source_value": "41.145.968,11",
+            "unit": "MAD"
+          },
+          "Resultat_net": {
+            "value": 6713105.5,
+            "source": "official_filing",
+            "page": 4,
+            "line": "90-94",
+            "label": "RESULTAT NET (XI-XII)",
+            "source_value": "6.713.105,50",
+            "unit": "MAD"
+          }
+        }
+      }
+    },
+    "MSA": {
+      "2025": {
+        "cause": "missing_minority_and_group_basis_fields",
+        "stockanalysis_url": "https://stockanalysis.com/quote/cbse/MSA/financials/",
+        "official_document": {
+          "url": "https://media.casablanca-bourse.com/sites/default/files/2026-04/marsa_2025.pdf",
+          "title": "Marsa Maroc - Resultats financiers 2025 et CP RFA 2025"
+        },
+        "corrections": {
+          "Total_Assets": {
+            "value": 9332718000,
+            "source": "official_filing",
+            "page": 3,
+            "line": "40-42",
+            "label": "Total actif",
+            "source_value": "9 332 718",
+            "unit": "kMAD"
+          },
+          "Total_Liabilities_And_Equity": {
+            "value": 9332718000,
+            "source": "official_filing",
+            "page": 3,
+            "line": "222-224",
+            "label": "Total Passif",
+            "source_value": "9 332 718",
+            "unit": "kMAD"
+          },
+          "Total_Equity": {
+            "value": 4599248000,
+            "source": "official_filing",
+            "page": 3,
+            "line": "197-199",
+            "label": "Capitaux propres de l'ensemble consolidé",
+            "source_value": "4 599 248",
+            "unit": "kMAD"
+          },
+          "Equity_Group": {
+            "value": 4048149000,
+            "source": "derived",
+            "page": 3,
+            "line": "191-199",
+            "label": "Total equity less interets minoritaires",
+            "source_value": "4 599 248 - 551 099",
+            "unit": "kMAD"
+          },
+          "Resultat_net": {
+            "value": 1808302000,
+            "source": "official_filing",
+            "page": 4,
+            "line": "33-35",
+            "label": "bénéfice net consolidé",
+            "source_value": "1.808.302 KMAD",
+            "unit": "kMAD"
+          },
+          "Resultat_net_part_du_groupe": {
+            "value": 1588764000,
+            "source": "official_filing",
+            "page": 3,
+            "line": "109-111",
+            "label": "Résultat net part du groupe",
+            "source_value": "1 588 764",
+            "unit": "kMAD"
+          }
+        }
+      }
+    },
+    "SAH": {
+      "2025": {
+        "cause": "missing_insurer_group_basis_fields",
+        "classification": "insurance",
+        "stockanalysis_url": "https://stockanalysis.com/quote/cbse/SAH/financials/",
+        "official_document": {
+          "url": "https://media.casablanca-bourse.com/sites/default/files/2026-04/sanlam_rfa_2025.pdf",
+          "title": "Sanlam Maroc : Rapport financier annuel 2025"
+        },
+        "corrections": {
+          "Total_Assets": {
+            "value": 24385015000,
+            "source": "official_filing",
+            "page": 9,
+            "line": "100-103",
+            "label": "TOTAL ACTIF",
+            "source_value": "24.385.015",
+            "unit": "kMAD"
+          },
+          "Total_Liabilities_And_Equity": {
+            "value": 24385015000,
+            "source": "official_filing",
+            "page": 9,
+            "line": "199-201",
+            "label": "TOTAL PASSIF",
+            "source_value": "24.385.015",
+            "unit": "kMAD"
+          },
+          "Total_Equity": {
+            "value": 6062792000,
+            "source": "official_filing",
+            "page": 9,
+            "line": "108-110",
+            "label": "CAPITAUX PROPRES",
+            "source_value": "6.062.792",
+            "unit": "kMAD"
+          },
+          "Equity_Group": {
+            "value": 6062749000,
+            "source": "official_filing",
+            "page": 9,
+            "line": "112-115",
+            "label": "CAPITAUX PROPRES - PART DU GROUPE",
+            "source_value": "6.062.749",
+            "unit": "kMAD"
+          },
+          "Resultat_net": {
+            "value": 676524000,
+            "source": "official_filing",
+            "page": 9,
+            "line": "132-134",
+            "label": "Résultat net-part du groupe",
+            "source_value": "676.524",
+            "unit": "kMAD"
+          },
+          "Resultat_net_part_du_groupe": {
+            "value": 676523000,
+            "source": "official_filing",
+            "page": 9,
+            "line": "262-264",
+            "label": "RÉSULTAT NET (PART DU GROUPE)",
+            "source_value": "676.523",
+            "unit": "kMAD"
+          }
+        }
+      }
+    },
+    "TQM": {
+      "2025": {
+        "cause": "missing_minority_and_group_basis_fields",
+        "stockanalysis_url": "https://stockanalysis.com/quote/cbse/TQM/financials/",
+        "official_document": {
+          "url": "https://media.casablanca-bourse.com/sites/default/files/2026-03/taqa_morocco_2025.pdf",
+          "title": "Taqa Morocco - Resultats financiers 2025"
+        },
+        "corrections": {
+          "Total_Assets": {
+            "value": 20299976000,
+            "source": "official_filing",
+            "page": 3,
+            "line": "95-97",
+            "label": "TOTAL ACTIF",
+            "source_value": "20 299 976",
+            "unit": "kMAD"
+          },
+          "Total_Liabilities_And_Equity": {
+            "value": 20299976000,
+            "source": "official_filing",
+            "page": 3,
+            "line": "49-51",
+            "label": "TOTAL PASSIF",
+            "source_value": "20 299 976",
+            "unit": "kMAD"
+          },
+          "Total_Equity": {
+            "value": 7498609000,
+            "source": "official_filing",
+            "page": 3,
+            "line": "23-25",
+            "label": "CAPITAUX PROPRES CONSOLIDÉS",
+            "source_value": "7 498 609",
+            "unit": "kMAD"
+          },
+          "Equity_Group": {
+            "value": 6772744000,
+            "source": "official_filing",
+            "page": 3,
+            "line": "17-19",
+            "label": "Capitaux propres Part du Groupe",
+            "source_value": "6 772 744",
+            "unit": "kMAD"
+          },
+          "Resultat_net": {
+            "value": 1274835000,
+            "source": "official_filing",
+            "page": 8,
+            "line": "6-7",
+            "label": "bénéfice net consolidé",
+            "source_value": "1 274 835",
+            "unit": "kMAD"
+          },
+          "Resultat_net_part_du_groupe": {
+            "value": 980722000,
+            "source": "official_filing",
+            "page": 3,
+            "line": "14-16",
+            "label": "Résultat net Part du Groupe",
+            "source_value": "980 722",
+            "unit": "kMAD"
+          }
+        }
+      }
+    }
+  }
+}
