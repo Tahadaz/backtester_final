@@ -167,7 +167,7 @@ function dateWindowLabel(start: string | null | undefined, end: string | null | 
 function SrOverlaySummary({ overlay }: { overlay?: SrOverlay | null }) {
   if (!overlay) return null
   const decision = overlay.decision ?? overlay.status
-  const ready = (overlay.status === "ready" || decision === "actionable") && overlay.overlay_metrics
+  const ready = (overlay.status === "ready" || overlay.status === "actionable" || overlay.status === "research_only" || decision === "actionable" || decision === "research_only") && overlay.overlay_metrics
   const bestLabel = overlay.best_variant_id?.replace(/^sr:/, "").replaceAll("__", " / ").replaceAll(":", " ")
   const rejected = !ready && overlay.decision && overlay.decision !== "actionable"
   return (
@@ -183,8 +183,8 @@ function SrOverlaySummary({ overlay }: { overlay?: SrOverlay | null }) {
           {ready
             ? `${overlay.viable_count} viable / ${overlay.tested_count} tested`
             : rejected
-              ? overlay.reason ?? decision
-              : overlay.reason ?? "unavailable"}
+              ? (overlay.reason === "baseline_has_no_positions" ? "Sans positions directionnelles" : overlay.reason ?? decision)
+              : (overlay.reason === "baseline_has_no_positions" ? "Sans positions directionnelles" : overlay.reason ?? "unavailable")}
         </Badge>
       </div>
       {ready ? (

@@ -266,7 +266,7 @@ function SrOverlayStrip({ row }: { row: SignalBacktestResult }) {
   if (row.source !== "wfo") return null
   const overlay = row.sr_overlay
   if (!overlay) return null
-  const ready = overlay.status === "ready" && overlay.overlay_metrics
+  const ready = (overlay.status === "ready" || overlay.status === "actionable" || overlay.status === "research_only") && overlay.overlay_metrics
   const bestLabel = overlay.best_variant_id?.replace(/^sr:/, "").replaceAll("__", " / ").replaceAll(":", " ")
 
   return (

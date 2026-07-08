@@ -340,6 +340,13 @@ function returnTone(value: number | null | undefined): string {
   return value >= 0 ? "text-[oklch(0.50_0.13_165)]" : "text-[oklch(0.52_0.20_25)]"
 }
 
+function formatSrReason(reason: string): string {
+  if (reason === "baseline_has_no_positions") return "Sans positions directionnelles"
+  if (reason === "source_not_wfo") return "Source non WFO"
+  if (reason === "not_requested") return "Non demande"
+  return reason
+}
+
 function SrOverlayStatusCard({
   overlay,
   error,
@@ -347,7 +354,8 @@ function SrOverlayStatusCard({
   overlay: SrOverlay | null
   error: string | null
 }) {
-  const reason = error ?? overlay?.reason ?? overlay?.status ?? "unavailable"
+  const rawReason = error ?? overlay?.reason ?? overlay?.status ?? "unavailable"
+  const reason = formatSrReason(rawReason)
   return (
     <Card>
       <CardHeader className="pb-2 pt-3 px-4">
@@ -495,7 +503,7 @@ function SrOverlayDetailPanel({
     )
   }
 
-  const ready = overlay?.status === "ready" && overlay.overlay_metrics
+  const ready = (overlay?.status === "actionable" || overlay?.status === "research_only") && overlay.overlay_metrics
   if (!ready) return <SrOverlayStatusCard overlay={overlay} error={error} />
 
   const bestVariant =
@@ -820,9 +828,10 @@ export function WfoEvidenceTab({
 
   const global = data?.global_signal ?? null
   const srReturnPct = srOverlay?.overlay_metrics?.total_return
-  const srReady = srOverlay?.status === "ready" && srOverlay.overlay_metrics
+  const srReady = (srOverlay?.status === "actionable" || srOverlay?.status === "research_only") && srOverlay.overlay_metrics
+  const rawStatus = srOverlayLoading ? "loading" : srOverlayError ? "error" : srReady ? "ready" : srOverlay?.reason ?? srOverlay?.status ?? "unavailable"
   const srCategorySummary: CategoryButtonSummary = {
-    status: srOverlayLoading ? "loading" : srOverlayError ? "error" : srReady ? "ready" : srOverlay?.reason ?? srOverlay?.status ?? "unavailable",
+    status: formatSrReason(rawStatus),
     score_pct: srReturnPct == null ? null : srReturnPct * 100,
     signal_label: srReady ? "Overlay ready" : srOverlayError ?? srOverlay?.reason ?? "Unavailable",
     representatives: [],
