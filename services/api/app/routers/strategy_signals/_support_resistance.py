@@ -72,7 +72,8 @@ from core.quant_core.signal_engine.oos_eval import compute_signal_array
 from core.quant_core.signal_engine.variant_detail import _compute_indicator
 from core.quant_core.signal_engine.indicator_series import compute_atr_series
 from core.quant_core.significance import sharpe_ratio
-from core.quant_core.horizons import canonical_horizon, LEGACY_HORIZON_ALIASES
+from core.quant_core.horizons import canonical_horizon, LEGACY_HORIZON_ALIASES, HORIZON_SPECS
+from core.quant_core.signal_engine.sr_wfo import line_touch_stats, run_sr_wfo
 from core.quant_core.risk import monte_carlo_equity_paths
 from core.quant_core.strategy_plan.execution_policy import build_execution_horizon_policy
 from core.quant_core.strategy_plan.levels import (
@@ -99,6 +100,8 @@ from ._shared import (
     _SR_VARIANTS_CACHE_TTL,
     _SR_VARIANT_BACKTEST_CACHE,
     _SR_VARIANT_BACKTEST_CACHE_TTL,
+    _SR_WFO_CACHE,
+    _SR_WFO_CACHE_TTL,
     _require_canonical_signal_horizon,
     _sr_variants_cache_key,
     _truncate_for_horizon,
@@ -3978,5 +3981,257 @@ def _sr_overlay_for_position_series(
         "invalid_pair_count": invalid_pair_count,
         "unavailable_count": unavailable_count,
     }
+
+
+# ---------------------------------------------------------------------------
+# Walk-forward evaluation (WFO) endpoint
+# ---------------------------------------------------------------------------
+
+
+def _sr_wfo_bar_date(index: pd.DatetimeIndex, bar_index: int | None) -> str | None:
+    if bar_index is None:
+        return None
+    try:
+        pos = int(bar_index)
+    except Exception:
+        return None
+    if pos < 0 or pos >= len(index):
+        return None
+    return str(index[pos])[:10]
+
+
+def _sr_wfo_attach_dates(payload: dict[str, Any], index: pd.DatetimeIndex) -> dict[str, Any]:
+    windows = payload.get("windows")
+    if not isinstance(windows, list):
+        return payload
+    for window in windows:
+        if not isinstance(window, dict):
+            continue
+        window["train_start_date"] = _sr_wfo_bar_date(index, window.get("train_start"))
+        window["train_end_date"] = _sr_wfo_bar_date(index, window.get("train_end"))
+        window["test_start_date"] = _sr_wfo_bar_date(index, window.get("test_start"))
+        window["test_end_date"] = _sr_wfo_bar_date(index, window.get("test_end"))
+        trades = window.get("test_trades")
+        if isinstance(trades, list):
+            for trade in trades:
+                if not isinstance(trade, dict):
+                    continue
+                trade["entry_date"] = _sr_wfo_bar_date(index, trade.get("entry_bar"))
+                trade["exit_date"] = _sr_wfo_bar_date(index, trade.get("exit_bar"))
+    return payload
+
+
+def _sr_get_or_compute_wfo(
+    db: Session,
+    *,
+    symbol: str,
+    horizon: str,
+    timeframe: str,
+    cost_bps: float,
+    cooldown_bars: int,
+) -> dict[str, Any]:
+    context = _sr_prepare_context(
+        db,
+        symbol=symbol,
+        horizon=horizon,
+        timeframe=timeframe,
+        cost_bps=cost_bps,
+        cooldown_bars=cooldown_bars,
+    )
+    cache_key = _sr_variants_cache_key(
+        symbol,
+        horizon,
+        timeframe,
+        context["as_of"],
+        cost_bps,
+        cooldown_bars,
+    )
+    now = time.monotonic()
+    cached = _SR_WFO_CACHE.get(cache_key)
+    if cached and (now - cached[0]) < _SR_WFO_CACHE_TTL:
+        return cached[1]
+
+    close = context["close"]
+    high = context["high"]
+    low = context["low"]
+    ohlcv = context["ohlcv"]
+    open_ = ohlcv["Open"].values.astype("float64") if "Open" in ohlcv.columns else None
+
+    methods = _sr_build_base_methods(context)
+    finalized = finalize_support_resistance_methods(context["current_close"], methods)
+    eligible_methods = [
+        m
+        for m in finalized["methods"]
+        if str(m.get("id")) != "score_inversion"
+    ]
+    support_options = [
+        option
+        for method in eligible_methods
+        for option in _sr_method_line_options(dict(method), "support")
+    ]
+    resistance_options = [
+        option
+        for method in eligible_methods
+        for option in _sr_method_line_options(dict(method), "resistance")
+    ]
+
+    candidate_method_ids = {
+        str(option.get("method_id"))
+        for option in [*support_options, *resistance_options]
+        if str(option.get("method_id") or "")
+    }
+    methods_by_id = {
+        method_id: dict(method)
+        for method_id, method in ((str(m.get("id")), m) for m in finalized["methods"])
+        if method_id in candidate_method_ids
+    }
+
+    if high is None or low is None:
+        response = {
+            "family": "support_resistance_wfo",
+            "symbol": symbol,
+            "horizon": horizon,
+            "timeframe": timeframe,
+            "as_of": context["as_of"],
+            "wfo": {
+                "status": "insufficient_history",
+                "windows": [],
+                "procedure_oos": {},
+                "baselines": {},
+                "stability": {},
+                "live_recommendation": {},
+                "decision": "no_edge",
+                "explanation": "Donnees High/Low indisponibles pour cette instrument.",
+                "params_echo": {},
+            },
+            "line_touch_stats": {"support": {}, "resistance": {}},
+        }
+        payload = {"response": response, "context": context}
+        _SR_WFO_CACHE[cache_key] = (now, payload)
+        return payload
+
+    method_series = _sr_compute_method_series(context, methods_by_id)
+
+    pair_series: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+    pair_meta: dict[str, dict[str, Any]] = {}
+    for support_option in support_options:
+        sid = str(support_option.get("method_id"))
+        support_line_id = normalize_line_id(support_option.get("line_id"))
+        support_series = _sr_get_component_series(method_series, sid, support_line_id, "support")
+        if not isinstance(support_series, np.ndarray) or len(support_series) != len(close):
+            continue
+        for resistance_option in resistance_options:
+            rid = str(resistance_option.get("method_id"))
+            resistance_line_id = normalize_line_id(resistance_option.get("line_id"))
+            resistance_series = _sr_get_component_series(method_series, rid, resistance_line_id, "resistance")
+            if not isinstance(resistance_series, np.ndarray) or len(resistance_series) != len(close):
+                continue
+            pair_id = _sr_variant_id(sid, rid, support_line_id, resistance_line_id)
+            pair_series[pair_id] = (support_series, resistance_series)
+            pair_meta[pair_id] = {
+                "support_method_id": sid,
+                "support_line_id": support_line_id,
+                "support_label": str(support_option.get("method_label") or sid),
+                "support_line_label": str(support_option.get("line_label") or support_line_id),
+                "resistance_method_id": rid,
+                "resistance_line_id": resistance_line_id,
+                "resistance_label": str(resistance_option.get("method_label") or rid),
+                "resistance_line_label": str(resistance_option.get("line_label") or resistance_line_id),
+            }
+
+    hp = HORIZON_PARAMS.get(horizon, HORIZON_PARAMS["monthly"])
+    if pair_series:
+        wfo_result = run_sr_wfo(
+            close=close,
+            high=high,
+            low=low,
+            open_=open_,
+            pair_series=pair_series,
+            pair_meta=pair_meta,
+            train=int(hp["train"]),
+            test=int(hp["test"]),
+            step=int(hp["step"]),
+            cost_bps=float(cost_bps),
+            cooldown_bars=int(cooldown_bars),
+            min_train_trades=3,
+            bootstrap_iter=1000,
+            seed=42,
+        )
+    else:
+        wfo_result = {
+            "status": "insufficient_history",
+            "windows": [],
+            "procedure_oos": {},
+            "baselines": {},
+            "stability": {},
+            "live_recommendation": {},
+            "decision": "no_edge",
+            "explanation": "Aucune paire support/resistance disponible.",
+            "params_echo": {},
+        }
+    wfo_result = _sr_wfo_attach_dates(wfo_result, ohlcv.index)
+
+    forward_bars = HORIZON_SPECS.get(horizon, HORIZON_SPECS["monthly"]).reference_forward_days
+    touch_stats: dict[str, dict[str, Any]] = {"support": {}, "resistance": {}}
+    for support_option in support_options:
+        sid = str(support_option.get("method_id"))
+        support_line_id = normalize_line_id(support_option.get("line_id"))
+        series = _sr_get_component_series(method_series, sid, support_line_id, "support")
+        if not isinstance(series, np.ndarray) or len(series) != len(close):
+            continue
+        component_id = _sr_component_id(sid, support_line_id)
+        touch_stats["support"][component_id] = line_touch_stats(
+            close=close,
+            high=high,
+            low=low,
+            level_series=series,
+            side="support",
+            forward_bars=int(forward_bars),
+        )
+    for resistance_option in resistance_options:
+        rid = str(resistance_option.get("method_id"))
+        resistance_line_id = normalize_line_id(resistance_option.get("line_id"))
+        series = _sr_get_component_series(method_series, rid, resistance_line_id, "resistance")
+        if not isinstance(series, np.ndarray) or len(series) != len(close):
+            continue
+        component_id = _sr_component_id(rid, resistance_line_id)
+        touch_stats["resistance"][component_id] = line_touch_stats(
+            close=close,
+            high=high,
+            low=low,
+            level_series=series,
+            side="resistance",
+            forward_bars=int(forward_bars),
+        )
+
+    response = {
+        "family": "support_resistance_wfo",
+        "symbol": symbol,
+        "horizon": horizon,
+        "timeframe": timeframe,
+        "as_of": context["as_of"],
+        "current_close": round_number(context["current_close"], 6),
+        "wfo": wfo_result,
+        "line_touch_stats": touch_stats,
+    }
+    payload = {"response": response, "context": context}
+    _SR_WFO_CACHE[cache_key] = (now, payload)
+    return payload
+
+
+@router.post("/signal/support-resistance/wfo")
+def signal_support_resistance_wfo(
+    body: SupportResistanceRequest,
+    db: Session = Depends(get_db),
+):
+    payload = _sr_get_or_compute_wfo(
+        db,
+        symbol=body.symbol,
+        horizon=body.horizon,
+        timeframe=body.timeframe,
+        cost_bps=body.cost_bps,
+        cooldown_bars=body.cooldown_bars,
+    )
+    return payload["response"]
 
 

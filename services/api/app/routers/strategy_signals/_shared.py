@@ -134,6 +134,8 @@ _SR_VARIANTS_CACHE: dict[tuple, tuple[float, dict[str, Any]]] = {}
 _SR_VARIANTS_CACHE_TTL = 240.0
 _SR_VARIANT_BACKTEST_CACHE: dict[tuple, tuple[float, dict[str, Any]]] = {}
 _SR_VARIANT_BACKTEST_CACHE_TTL = 240.0
+_SR_WFO_CACHE: dict[tuple, tuple[float, dict[str, Any]]] = {}
+_SR_WFO_CACHE_TTL = _SR_VARIANTS_CACHE_TTL
 
 
 def _sr_variants_cache_key(

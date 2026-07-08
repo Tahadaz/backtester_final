@@ -375,6 +375,29 @@ def test_sr_variant_detail_and_backtest_endpoints_return_stable_payload(monkeypa
     assert "price_indicator_signal" in backtest_payload["plots"]
 
 
+def test_sr_wfo_endpoint_returns_insufficient_history_for_short_fixture(monkeypatch) -> None:
+    app = _app()
+    _install_common_mocks(monkeypatch)
+    strategy_signals._SR_WFO_CACHE.clear()
+
+    client = TestClient(app)
+    response = client.post(
+        "/strategy/signal/support-resistance/wfo",
+        json={"symbol": "AAA", "horizon": "medium", "timeframe": "1D"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["symbol"] == "AAA"
+    assert payload["family"] == "support_resistance_wfo"
+    # the 160-bar fixture is shorter than the monthly train+test requirement,
+    # so the WFO procedure must degrade gracefully rather than error out.
+    assert payload["wfo"]["status"] == "insufficient_history"
+    assert payload["wfo"]["windows"] == []
+    assert payload["wfo"]["decision"] == "no_edge"
+    assert "line_touch_stats" in payload
+
+
 def test_sr_overlay_enters_on_support_and_exits_on_resistance() -> None:
     close = np.array([100.0, 101.0, 104.0, 103.0], dtype=float)
     high = np.array([101.0, 102.0, 106.0, 104.0], dtype=float)

@@ -24,6 +24,7 @@ from ._shared import _get_or_compute, _safe_float
 from ._shared import _score_to_label
 from ._engine import _get_all_representative_indicators, _get_top_representative_indicator
 from ._support_resistance import _sr_get_or_compute_variants
+from ._support_resistance import _sr_get_or_compute_wfo
 
 # Re-export all names that tests monkeypatch on this module.
 # Each name must exist here so getattr(strategy_signals, name) succeeds before the patch;
@@ -54,7 +55,13 @@ from ._evidence import (
 from ._backtest import build_stored_best_backtest_chart_payload
 
 # Cache objects accessed directly by tests (e.g. strategy_signals._SR_VARIANTS_CACHE.clear())
-from ._shared import _BACKTEST_CACHE, _SR_INVERSION_CACHE, _SR_VARIANTS_CACHE, _SR_VARIANT_BACKTEST_CACHE
+from ._shared import (
+    _BACKTEST_CACHE,
+    _SR_INVERSION_CACHE,
+    _SR_VARIANTS_CACHE,
+    _SR_VARIANT_BACKTEST_CACHE,
+    _SR_WFO_CACHE,
+)
 
 __all__ = [
     "router",
@@ -64,6 +71,7 @@ __all__ = [
     "_get_all_representative_indicators",
     "_get_top_representative_indicator",
     "_sr_get_or_compute_variants",
+    "_sr_get_or_compute_wfo",
     "load_ohlcv_for_symbol",
     "compute_score_inversion_levels",
     "compute_variant_detail",
@@ -79,6 +87,7 @@ __all__ = [
     "_SR_INVERSION_CACHE",
     "_SR_VARIANTS_CACHE",
     "_SR_VARIANT_BACKTEST_CACHE",
+    "_SR_WFO_CACHE",
 ]
 
 # ---------------------------------------------------------------------------
