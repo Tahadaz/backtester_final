@@ -21,7 +21,9 @@ import { cn } from "@/lib/utils"
 import { FUND_TABS, FUND_TAB_PURPOSE } from "./lib/constants"
 import { asNumber } from "./lib/formatters"
 import { useOptionalSelectedComparableView } from "./panels/comparables"
+import { IpoProfileForm } from "./panels/ipo-profile-form"
 import { IpoValuationCard } from "./panels/ipo-valuation-card"
+import { deleteCustomIpoProfile, getIpoProfile, listAllIpoProfiles, saveCustomIpoProfile, T2S_PROFILE_ID, type IpoProfile } from "./lib/ipo-store"
 import { ResearchTicket } from "./research-ticket"
 import { ComparableModelSummary, DetailTab, FundamentalHorizon, Scenario, SignalFundamentalViewProps, ValuationSelectionSummary } from "./lib/types"
 import { EstimatesAssumptionsTab } from "./tabs/estimates-tab"
@@ -43,7 +45,9 @@ export function SignalFundamentalView({
   const scenario = scenarioFromQuery(scenarioParam)
   const apiScenario = scenarioParam ? scenario : "base"
   const activeTab = tabFromQuery(searchParams.get("fund_tab"))
-  const ipoActive = searchParams.get("fund_ipo") === "1"
+  const activeIpoId = searchParams.get("fund_ipo")
+  const [showIpoForm, setShowIpoForm] = useState(false)
+  const [ipoRegistryVersion, setIpoRegistryVersion] = useState(0)
   const selectedHorizon = horizonFromQuery(searchParams.get("fund_horizon"))
   const selectedComparableBenchmarkId = searchParams.get("fund_benchmark") || "sector"
   const excludedValuationModelsParam = searchParams.get("fund_excluded_models")
@@ -121,7 +125,8 @@ export function SignalFundamentalView({
 
   const selectedRow = useMemo(() => rows.find((row) => row.symbol === selectedSymbol) ?? null, [rows, selectedSymbol])
   const selectedSymbolHiddenByLiquidity = Boolean(
-    !ipoActive &&
+    !activeIpoId &&
+      !showIpoForm &&
       selectedSymbol &&
       liquidityFilter &&
       rows.some((row) => row.symbol === selectedSymbol) &&
@@ -134,7 +139,7 @@ export function SignalFundamentalView({
     isLoading: isDetailLoading,
     isValidating: isDetailValidating,
     mutate: mutateDetail,
-  } = useSWR<FundamentalStockDetail>(selectedSymbol && !ipoActive ? ["fundamental-detail", selectedSymbol, apiScenario] : null, () => getFundamentalStockDetail(selectedSymbol as string, apiScenario), {
+  } = useSWR<FundamentalStockDetail>(selectedSymbol && !activeIpoId ? ["fundamental-detail", selectedSymbol, apiScenario] : null, () => getFundamentalStockDetail(selectedSymbol as string, apiScenario), {
     keepPreviousData: true,
     revalidateOnFocus: false,
     dedupingInterval: 60_000,
@@ -149,7 +154,7 @@ export function SignalFundamentalView({
     isLoading: isSensitivityLoading,
     mutate: mutateSensitivity,
   } = useSWR<FundamentalSensitivity>(
-    selectedSymbol && activeTab === "valuation" && sensitivityScenario && !ipoActive ? ["fundamental-sensitivity", selectedSymbol, sensitivityScenario] : null,
+    selectedSymbol && activeTab === "valuation" && sensitivityScenario && !activeIpoId ? ["fundamental-sensitivity", selectedSymbol, sensitivityScenario] : null,
     () => getFundamentalSensitivity(selectedSymbol as string, sensitivityScenario as Scenario),
     {
       keepPreviousData: true,
@@ -253,7 +258,36 @@ export function SignalFundamentalView({
     updateSearchParams({ scenario: null, fund_excluded_models: nextExcludedModels, fund_ipo: null })
   }
 
-  const onSelectIpo = useCallback(() => updateSearchParams({ fund_ipo: "1" }), [updateSearchParams])
+  const ipoProfiles = useMemo(() => listAllIpoProfiles().map((p) => p.meta), [ipoRegistryVersion])
+  const activeIpoProfile = useMemo(() => (activeIpoId ? getIpoProfile(activeIpoId) : null), [activeIpoId, ipoRegistryVersion])
+
+  const onSelectIpo = useCallback((id: string) => updateSearchParams({ fund_ipo: id }), [updateSearchParams])
+  const onAddIpo = useCallback(() => setShowIpoForm(true), [])
+
+  const handleSaveIpoProfile = useCallback((p: IpoProfile) => {
+    if (p.meta.id === T2S_PROFILE_ID) return
+    saveCustomIpoProfile(p)
+    setIpoRegistryVersion((v) => v + 1)
+  }, [])
+
+  const handleDeleteIpoProfile = useCallback(
+    (id: string) => {
+      deleteCustomIpoProfile(id)
+      setIpoRegistryVersion((v) => v + 1)
+      updateSearchParams({ fund_ipo: null })
+    },
+    [updateSearchParams],
+  )
+
+  const handleSubmitIpoProfile = useCallback(
+    (p: IpoProfile) => {
+      saveCustomIpoProfile(p)
+      setIpoRegistryVersion((v) => v + 1)
+      setShowIpoForm(false)
+      updateSearchParams({ fund_ipo: p.meta.id })
+    },
+    [updateSearchParams],
+  )
 
   useEffect(() => {
     function handleFullscreenChange() {
@@ -344,8 +378,10 @@ export function SignalFundamentalView({
           onSelect={handleSelectSymbol}
           onLiquidityFilterChange={setLiquidityFilter}
           ratingAssumptions={ratingAssumptions}
-          ipoActive={ipoActive}
+          ipoProfiles={ipoProfiles}
+          activeIpoId={activeIpoId}
           onSelectIpo={onSelectIpo}
+          onAddIpo={onAddIpo}
         />
       </ResizablePanel>
 
@@ -367,7 +403,11 @@ export function SignalFundamentalView({
             </div>
           ) : null}
 
-          {ipoActive ? (
+          {showIpoForm ? (
+            <div className="signal-fund-detail-shell">
+              <IpoProfileForm onSubmit={handleSubmitIpoProfile} onCancel={() => setShowIpoForm(false)} />
+            </div>
+          ) : activeIpoProfile ? (
             <div className="signal-fund-detail-shell">
               <button
                 type="button"
@@ -379,7 +419,13 @@ export function SignalFundamentalView({
                 {isDetailFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
               </button>
               <div className="signal-fund-body">
-                <IpoValuationCard />
+                <IpoValuationCard
+                  key={activeIpoProfile.meta.id}
+                  profile={activeIpoProfile}
+                  onSaveProfile={handleSaveIpoProfile}
+                  onDeleteProfile={activeIpoProfile.meta.isBuiltin ? undefined : () => handleDeleteIpoProfile(activeIpoProfile.meta.id)}
+                  onBack={() => updateSearchParams({ fund_ipo: null })}
+                />
               </div>
             </div>
           ) : !selectedSymbol ? (

@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import { FUNDAMENTAL_LIQUIDITY_ADV20_THRESHOLD } from "./lib/constants"
 import { fmtCompactMad, fmtPct } from "./lib/formatters"
+import type { IpoProfileMeta } from "./lib/ipo-store"
 import { LoadingRows, RecChip, ScorePair, revisionArrow } from "./shared/cards"
 import { Recommendation, RecommendationFilter, SortKey } from "./lib/types"
 import { rowUpside, sortValue } from "./lib/view-models"
@@ -24,8 +25,10 @@ export function UniverseScreen({
   onSelect,
   onLiquidityFilterChange,
   ratingAssumptions,
-  ipoActive,
+  ipoProfiles,
+  activeIpoId,
   onSelectIpo,
+  onAddIpo,
 }: {
   rows: FundamentalUniverseRow[]
   totalRows: number
@@ -35,8 +38,10 @@ export function UniverseScreen({
   onSelect: (symbol: string) => void
   onLiquidityFilterChange: (enabled: boolean) => void
   ratingAssumptions?: Record<string, unknown> | null
-  ipoActive?: boolean
-  onSelectIpo?: () => void
+  ipoProfiles?: IpoProfileMeta[]
+  activeIpoId?: string | null
+  onSelectIpo?: (id: string) => void
+  onAddIpo?: () => void
 }) {
   const [query, setQuery] = useState("")
   const [sortKey, setSortKey] = useState<SortKey>("upside")
@@ -142,18 +147,37 @@ export function UniverseScreen({
         </div>
       </div>
 
-      {onSelectIpo ? (
-        <button
-          type="button"
-          onClick={onSelectIpo}
-          className={cn(
-            "mx-2 mb-2 flex flex-col gap-0.5 rounded-md border border-line px-2.5 py-2 text-left transition-colors hover:bg-accent",
-            ipoActive && "signal-fund-row-active border-primary",
-          )}
-        >
-          <span className={cn("text-xs font-bold", ipoActive && "text-primary")}>T2S · IPO — Marché primaire</span>
-          <span className="text-[10px] text-muted-foreground">Première cotation 27/07/2026</span>
-        </button>
+      {ipoProfiles && ipoProfiles.length > 0 ? (
+        <div className="mx-2 mb-2 flex flex-col gap-1">
+          {ipoProfiles.map((profile) => (
+            <button
+              key={profile.id}
+              type="button"
+              onClick={() => onSelectIpo?.(profile.id)}
+              className={cn(
+                "flex flex-col gap-0.5 rounded-md border border-line px-2.5 py-2 text-left transition-colors hover:bg-accent",
+                profile.id === activeIpoId && "signal-fund-row-active border-primary",
+              )}
+            >
+              <span className={cn("flex items-center gap-1.5 text-xs font-bold", profile.id === activeIpoId && "text-primary")}>
+                {profile.ticker} · IPO — Marché primaire
+                {!profile.isBuiltin ? (
+                  <span className="rounded bg-muted px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">perso</span>
+                ) : null}
+              </span>
+              <span className="text-[10px] text-muted-foreground">Première cotation {profile.firstQuote}</span>
+            </button>
+          ))}
+          {onAddIpo ? (
+            <button
+              type="button"
+              onClick={onAddIpo}
+              className="rounded-md border border-dashed border-line px-2.5 py-1.5 text-left text-[11px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+            >
+              + Ajouter une IPO
+            </button>
+          ) : null}
+        </div>
       ) : null}
 
       <ScrollArea className="min-h-0 flex-1 signals-scrollbar">

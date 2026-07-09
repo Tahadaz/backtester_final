@@ -656,7 +656,7 @@ def run_wfo_for_symbol_horizon(
             result=fields,
             data_as_of=data_as_of,
             folds_json=wfo.get("windows"),
-            config_json=wfo.get("params_echo"),
+            config_json=_sr_summary_config(wfo),
             fragility_json=wfo.get("stability"),
         )
     except Exception as exc:
@@ -907,7 +907,7 @@ def refresh_wfo_for_symbol_horizon(
                 result=fields,
                 data_as_of=data_as_of,
                 folds_json=wfo.get("windows"),
-                config_json=wfo.get("params_echo"),
+                config_json=_sr_summary_config(wfo),
                 fragility_json=wfo.get("stability"),
             )
         except Exception as exc:
@@ -1028,6 +1028,24 @@ def _sr_wfo_to_summary_fields(wfo: dict) -> SimpleNamespace:
         robustness_grade=robustness_grade,
         compute_seconds=None,  # caller fills in with its own timing
     )
+
+
+def _sr_summary_config(wfo: dict) -> dict:
+    """Build the config_json for an S/R summary row: the WFO params echo plus the
+    live-recommended support/resistance price levels + methods, so the dashboard
+    S/R column can show the actual numbers (not just a quality label)."""
+    live = wfo.get("live_recommendation") or {}
+    meta = live.get("pair_meta") or {}
+    cfg = dict(wfo.get("params_echo") or {})
+    cfg["live_recommendation"] = {
+        "support_level": live.get("support_level"),
+        "resistance_level": live.get("resistance_level"),
+        "support_method": meta.get("support_method_id"),
+        "resistance_method": meta.get("resistance_method_id"),
+        "support_label": meta.get("support_label"),
+        "resistance_label": meta.get("resistance_label"),
+    }
+    return cfg
 
 
 def _upsert_summary(

@@ -279,10 +279,37 @@ function formatEdgeScore(value: number | null | undefined) {
   return value.toFixed(0)
 }
 
+function srLevels(row: WfoCategorySummary | null | undefined): {
+  support: number | null
+  resistance: number | null
+  supportMethod: string | null
+  resistanceMethod: string | null
+} {
+  const empty = { support: null, resistance: null, supportMethod: null, resistanceMethod: null }
+  const cfg = row?.config as Record<string, unknown> | null | undefined
+  const live = cfg?.live_recommendation as Record<string, unknown> | undefined
+  if (!live) return empty
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null)
+  const str = (v: unknown) => (typeof v === "string" && v ? v : null)
+  return {
+    support: num(live.support_level),
+    resistance: num(live.resistance_level),
+    supportMethod: str(live.support_method),
+    resistanceMethod: str(live.resistance_method),
+  }
+}
+
+function fmtSrPrice(v: number | null): string {
+  if (v == null || !Number.isFinite(v)) return "--"
+  return v.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
 function srWfoTitle(row: WfoCategorySummary | null | undefined) {
   if (!row) return "S/R WFO unavailable."
   const folds = row.total_folds != null ? `${row.profitable_folds ?? 0}/${row.total_folds} profitable folds` : "no folds"
-  return `S/R WFO status: ${row.status}. ${folds}. Mean OOS Sharpe ${row.mean_oos_sharpe != null ? row.mean_oos_sharpe.toFixed(2) : "--"}.`
+  const { support, resistance, supportMethod, resistanceMethod } = srLevels(row)
+  const levels = `Support ${fmtSrPrice(support)}${supportMethod ? ` (${supportMethod})` : ""} · Résistance ${fmtSrPrice(resistance)}${resistanceMethod ? ` (${resistanceMethod})` : ""}`
+  return `${levels}. S/R WFO status: ${row.status}. ${folds}. Mean OOS Sharpe ${row.mean_oos_sharpe != null ? row.mean_oos_sharpe.toFixed(2) : "--"}.`
 }
 
 function SrWfoCell({
@@ -305,9 +332,15 @@ function SrWfoCell({
   if (!row || row.status !== "succeeded") {
     return <span className="dashboard-mono text-[10px] text-muted-foreground" title="No S/R WFO signal available yet.">--</span>
   }
+  const { support, resistance } = srLevels(row)
   return (
     <div className="space-y-0.5 text-right" title={srWfoTitle(row)}>
       <SignalBadge label={row.signal_label ?? "Indisponible"} />
+      <div className="dashboard-mono text-[11px] font-semibold leading-4">
+        <span className="text-emerald-600 dark:text-emerald-400">S {fmtSrPrice(support)}</span>
+        <span className="text-muted-foreground"> · </span>
+        <span className="text-red-600 dark:text-red-400">R {fmtSrPrice(resistance)}</span>
+      </div>
       {showConfidence ? (
         <div className="dashboard-mono text-[10px] text-muted-foreground">
           WFE {row.wfe_pct != null ? `${row.wfe_pct.toFixed(0)}%` : "--"} · Grade {row.robustness_grade ?? "--"}

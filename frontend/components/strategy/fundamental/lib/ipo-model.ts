@@ -270,3 +270,59 @@ export function buildScenarioInputs(scenario: IpoScenarioKey): IpoDcfInputs {
 }
 
 export const IPO_MODEL_ROUND2 = round2
+
+// ---- Quick-start expander for manually-added (non-prospectus) IPOs ----
+//
+// A user adding a custom IPO shouldn't have to hand-fill five years of
+// per-year ratios up front. This expands a handful of flat assumptions into
+// a full explicit-year IpoDcfInputs; every year is then independently
+// editable afterwards in the same trajectory table used for T2S.
+
+export type IpoQuickStartInputs = {
+  lastActualYear: number // e.g. 2025 - the anchor year the forecast is built on
+  revenueBase: number // MMAD, last actual FY revenue
+  forecastYears?: number // default 5
+  flatRevenueGrowth: number // decimal, applied flat across all forecast years
+  flatEbeMargin: number // decimal
+  flatTaxPctRev: number // decimal, positive
+  flatBfrPctRev: number // decimal, positive
+  flatCapexPctRev: number // decimal, positive
+  wacc: number
+  terminalGrowth: number
+  netDebt: number // MMAD
+  shares: number // million shares
+  offerPrice: number // MAD / share
+}
+
+export function defaultForecastYearLabels(lastActualYear: number, forecastYears: number): string[] {
+  const labels: string[] = []
+  for (let i = 1; i <= forecastYears; i++) {
+    const year = lastActualYear + i
+    labels.push(i <= 1 ? `${year}e` : `${year}p`)
+  }
+  return labels
+}
+
+export function buildQuickStartInputs(q: IpoQuickStartInputs): IpoDcfInputs {
+  const forecastYears = q.forecastYears ?? 5
+  const years = defaultForecastYearLabels(q.lastActualYear, forecastYears)
+  return {
+    revenueBase: q.revenueBase,
+    years,
+    revenueGrowth: years.map(() => q.flatRevenueGrowth),
+    ebeMargin: years.map(() => q.flatEbeMargin),
+    taxPctRev: years.map(() => q.flatTaxPctRev),
+    bfrPctRev: years.map(() => q.flatBfrPctRev),
+    capexPctRev: years.map(() => q.flatCapexPctRev),
+    wacc: q.wacc,
+    terminalGrowth: q.terminalGrowth,
+    terminalEbeMargin: q.flatEbeMargin,
+    terminalTaxPctRev: q.flatTaxPctRev,
+    terminalBfrPctRev: q.flatBfrPctRev,
+    terminalCapexPctRev: q.flatCapexPctRev,
+    netDebt: q.netDebt,
+    shares: q.shares,
+    offerPrice: q.offerPrice,
+    midYear: true,
+  }
+}
