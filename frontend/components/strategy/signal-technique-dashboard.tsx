@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { Activity, BarChart3, ExternalLink, TrendingUp } from "lucide-react"
+import { Activity, BarChart3, ExternalLink, Layers, TrendingUp } from "lucide-react"
 import { useWfoSummary } from "@/hooks/use-wfo-summary"
 import {
   fetchBestSignalBacktestChart,
@@ -245,6 +245,11 @@ function signalClass(label: string | null | undefined): string {
 function scoreText(score: number | null | undefined): string {
   if (score == null || !Number.isFinite(score)) return "--"
   return `${score >= 0 ? "+" : ""}${score.toFixed(1)}%`
+}
+
+function fmtSrPrice(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) return "--"
+  return value.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 function factorRule(condition: Record<string, unknown>): string {
@@ -579,6 +584,64 @@ function IndicatorResultsColumn({
           </div>
         )
       })}
+      {(() => {
+        const srCategory = wfoData?.categories?.support_resistance
+        const srScore = srCategory?.score_pct ?? null
+        const config = asRecord(srCategory?.config)
+        const liveRecommendation = asRecord(config?.live_recommendation)
+        const pairMeta = asRecord(liveRecommendation?.pair_meta)
+        const supportLevel = asNumber(liveRecommendation?.support_level)
+        const resistanceLevel = asNumber(liveRecommendation?.resistance_level)
+        const hasPair = srCategory?.status === "succeeded" && liveRecommendation != null && pairMeta != null
+
+        return (
+          <div className="overflow-hidden rounded-md border border-line bg-card shadow-sm">
+            <div className="border-b border-line bg-bg3 px-3 py-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <Layers className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span className="truncate text-xs font-bold">S/R</span>
+                </div>
+                <span className={cn("font-mono text-xs font-semibold", signalScoreTone(srScore))}>
+                  {scoreText(srScore)}
+                </span>
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                <Badge variant="outline" className="h-5 text-[9px]">
+                  WFO {srCategory?.status ?? "pending"}
+                </Badge>
+                <CompactSignalBadge label={srCategory?.signal_label ?? null} />
+              </div>
+            </div>
+            <div className="px-3 py-2.5">
+              {hasPair ? (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">Support</span>
+                    <div className="text-right">
+                      <div className="font-mono text-xs font-semibold">{fmtSrPrice(supportLevel)}</div>
+                      <div className="truncate text-[10px] text-muted-foreground">
+                        {asString(pairMeta?.support_label) || "--"} {asString(pairMeta?.support_line_label)}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-semibold text-red-600 dark:text-red-400">Resistance</span>
+                    <div className="text-right">
+                      <div className="font-mono text-xs font-semibold">{fmtSrPrice(resistanceLevel)}</div>
+                      <div className="truncate text-[10px] text-muted-foreground">
+                        {asString(pairMeta?.resistance_label) || "--"} {asString(pairMeta?.resistance_line_label)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-xs text-muted-foreground">Aucune paire S/R disponible.</div>
+              )}
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
