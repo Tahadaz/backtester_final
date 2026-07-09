@@ -78,7 +78,12 @@ def refresh_dashboard_snapshot(horizon: str | None = None) -> dict[str, bool]:
         horizon: specific horizon to refresh, or None to refresh all three.
 
     Returns:
-        dict mapping horizon -> wrote (True if CAS succeeded, False if skipped).
+        dict mapping horizon -> succeeded. True means the horizon completed
+        without error — either a fresh row was written, or the write was
+        correctly skipped because the persisted row is already current. False
+        means an exception was raised while building/persisting that horizon.
+        (A skip is a healthy no-op, not a failure, so callers gating on
+        ``all(result.values())`` do not treat an unchanged horizon as an error.)
     """
     from services.api.app.db import _ensure_session_factory
     from services.api.app.services.dashboard_builder import (
@@ -102,7 +107,8 @@ def refresh_dashboard_snapshot(horizon: str | None = None) -> dict[str, bool]:
                 logger.info("dashboard_snapshot: wrote %s (as_of=%s)", h, as_of)
             else:
                 logger.info("dashboard_snapshot: skipped %s — existing row is fresher", h)
-            results[h] = wrote
+            # A skip (already-current row) is a healthy no-op, not a failure.
+            results[h] = True
         except Exception:
             logger.exception("dashboard_snapshot: failed for horizon=%s", h)
             db.rollback()
