@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 
 HORIZONS = ("weekly", "monthly", "quarterly")
 SCHEDULER_HEARTBEAT_KEY = "ops:scheduler:heartbeat"
+MARKET_REFRESH_JOB_TIMEOUT_SECONDS = 7200
 DASHBOARD_SNAPSHOT_JOB_TIMEOUT_SECONDS = 3600
 BEST_SIGNAL_EVIDENCE_SNAPSHOT_JOB_TIMEOUT_SECONDS = 7200
 FUNDAMENTAL_REFRESH_JOB_TIMEOUT_SECONDS = 14400
@@ -205,6 +206,7 @@ def _dispatch_market_refresh(db: Session) -> dict[str, Any]:
         "1D",
         None,
         False,
+        job_timeout=MARKET_REFRESH_JOB_TIMEOUT_SECONDS,
     )
     run.rq_job_id = str(job.id)
     db.commit()
