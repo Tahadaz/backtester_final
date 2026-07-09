@@ -511,6 +511,8 @@ export default function DashboardV1Page() {
   const [view, setView] = useState<DashboardView>(DEFAULT_DASHBOARD_PREFERENCES.view)
   const [showFilters, setShowFilters] = useState(DEFAULT_DASHBOARD_PREFERENCES.showFilters)
   const [showTopActionableSignals, setShowTopActionableSignals] = useState(DEFAULT_DASHBOARD_PREFERENCES.showTopActionableSignals)
+  const [showSupportResistance, setShowSupportResistance] = useState(DEFAULT_DASHBOARD_PREFERENCES.showSupportResistance)
+  const [showSrConfidence, setShowSrConfidence] = useState(DEFAULT_DASHBOARD_PREFERENCES.showSrConfidence)
   const [liquidityFilter, setLiquidityFilter] = useState(DEFAULT_DASHBOARD_PREFERENCES.liquidityFilter)
   const [dashboardMode, setDashboardMode] = useState<DashboardDisplayMode>(DEFAULT_DASHBOARD_PREFERENCES.dashboardMode)
   const [technicalDirectionMode, setTechnicalDirectionMode] = useState<DashboardTechnicalDirectionMode>(DEFAULT_DASHBOARD_PREFERENCES.technicalDirectionMode)
@@ -551,6 +553,8 @@ export default function DashboardV1Page() {
     () => ({
       showTopActionableSignals,
       showFilters,
+      showSupportResistance,
+      showSrConfidence,
       viewMode,
       assetTab,
       regionTab,
@@ -567,6 +571,8 @@ export default function DashboardV1Page() {
     [
       showTopActionableSignals,
       showFilters,
+      showSupportResistance,
+      showSrConfidence,
       viewMode,
       assetTab,
       regionTab,
@@ -585,6 +591,8 @@ export default function DashboardV1Page() {
   const applyDashboardPreferences = useCallback((next: DashboardPreferences) => {
     setShowTopActionableSignals(next.showTopActionableSignals)
     setShowFilters(next.showFilters)
+    setShowSupportResistance(next.showSupportResistance)
+    setShowSrConfidence(next.showSrConfidence)
     setViewMode(next.viewMode)
     setAssetTab(next.assetTab)
     setRegionTab(next.regionTab)
@@ -1397,6 +1405,18 @@ export default function DashboardV1Page() {
                 <Switch checked={liquidityFilter} onCheckedChange={setLiquidityFilter} />
                 <span>Liquidité</span>
               </div>
+              <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
+                <Switch checked={showSupportResistance} onCheckedChange={setShowSupportResistance} />
+                <span>Support / Resistance</span>
+              </div>
+              <div className={cn("flex items-center gap-2 text-[12px] text-muted-foreground", !showSupportResistance && "opacity-50")}>
+                <Switch
+                  checked={showSrConfidence}
+                  onCheckedChange={setShowSrConfidence}
+                  disabled={!showSupportResistance}
+                />
+                <span>Confidence</span>
+              </div>
               {isTechnicalDashboardMode ? (
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">Colonnes</span>
@@ -1583,6 +1603,8 @@ export default function DashboardV1Page() {
               edgeMode={edgeMode}
               edgeSource={edgeSource}
               edgeMap={edgeMap}
+              showSupportResistance={showSupportResistance}
+              showSrConfidence={showSrConfidence}
               selectedSymbols={dashboardMode === "trade_opportunities" ? selectedBasketSet : undefined}
               onToggleSelected={dashboardMode === "trade_opportunities" ? toggleBasketSymbol : undefined}
               onOpenEdge={setSelectedStock}
@@ -1607,6 +1629,8 @@ export default function DashboardV1Page() {
             edgeMode={edgeMode}
             edgeSource={edgeSource}
             edgeMap={edgeMap}
+            showSupportResistance={showSupportResistance}
+            showSrConfidence={showSrConfidence}
             visibleFamilies={visibleFamilies}
             fundamentalColumns={fundamentalColumns}
             onFundamentalColumnsChange={setFundamentalColumns}
@@ -2797,6 +2821,8 @@ function CompletView({
   edgeMode,
   edgeSource,
   edgeMap,
+  showSupportResistance,
+  showSrConfidence,
   visibleFamilies,
   fundamentalColumns,
   onFundamentalColumnsChange,
@@ -2823,6 +2849,8 @@ function CompletView({
   edgeMode: "gross" | "net"
   edgeSource: "signal_engine" | "wfo"
   edgeMap: Record<string, import("@/lib/api").EdgeMetrics | null | undefined>
+  showSupportResistance: boolean
+  showSrConfidence: boolean
   visibleFamilies: Partial<Record<FamilyColumn, boolean>>
   fundamentalColumns: FundamentalColumn[]
   onFundamentalColumnsChange: (columns: FundamentalColumn[]) => void
@@ -2894,6 +2922,8 @@ function CompletView({
           edgeMode={edgeMode}
           edgeSource={edgeSource}
           edgeMap={edgeMap}
+          showSupportResistance={showSupportResistance}
+          showSrConfidence={showSrConfidence}
           visibleFamilies={visibleFamilies}
           onOpenEdge={onOpenEdge}
           performancePeriod={performancePeriod}

@@ -2,8 +2,9 @@
 
 import Link from "next/link"
 import { Fragment, useEffect, useMemo, useState } from "react"
+import useSWR from "swr"
 import { ArrowRight, BarChart3, BookOpen, ChevronDown, ChevronUp, ChevronsUpDown, Star } from "lucide-react"
-import type { EdgeMetrics } from "@/lib/api"
+import { fetchWfoSummary, type EdgeMetrics, type WfoCategorySummary } from "@/lib/api"
 import type {
   DashboardBestSignal,
   DashboardBestTechnicalSignal,
@@ -38,6 +39,7 @@ type SortKey =
   | (typeof FAMILY_ORDER)[number]
 type FamilyKey = (typeof FAMILY_ORDER)[number]
 type PerformancePeriod = "one_day" | "wtd" | "mtd" | "ytd" | "open_to_now"
+const SR_WFO_COST_BPS = 33
 
 interface StockTableProps {
   stocks: DashboardStock[]
@@ -53,6 +55,8 @@ interface StockTableProps {
   edgeMode?: "gross" | "net"
   edgeSource?: "signal_engine" | "wfo"
   edgeMap?: Record<string, EdgeMetrics | null | undefined>
+  showSupportResistance?: boolean
+  showSrConfidence?: boolean
   visibleFamilies?: Partial<Record<FamilyKey, boolean>>
   selectedSymbols?: ReadonlySet<string>
   onToggleSelected?: (symbol: string) => void
@@ -275,6 +279,44 @@ function formatEdgeScore(value: number | null | undefined) {
   return value.toFixed(0)
 }
 
+function srWfoTitle(row: WfoCategorySummary | null | undefined) {
+  if (!row) return "S/R WFO unavailable."
+  const folds = row.total_folds != null ? `${row.profitable_folds ?? 0}/${row.total_folds} profitable folds` : "no folds"
+  return `S/R WFO status: ${row.status}. ${folds}. Mean OOS Sharpe ${row.mean_oos_sharpe != null ? row.mean_oos_sharpe.toFixed(2) : "--"}.`
+}
+
+function SrWfoCell({
+  row,
+  loading,
+  error,
+  showConfidence,
+}: {
+  row: WfoCategorySummary | null | undefined
+  loading: boolean
+  error: unknown
+  showConfidence: boolean
+}) {
+  if (loading && !row) {
+    return <span className="dashboard-mono text-[10px] text-muted-foreground">S/R...</span>
+  }
+  if (error && !row) {
+    return <span className="text-[10px] text-destructive" title={error instanceof Error ? error.message : String(error)}>Erreur S/R</span>
+  }
+  if (!row || row.status !== "succeeded") {
+    return <span className="dashboard-mono text-[10px] text-muted-foreground" title="No S/R WFO signal available yet.">--</span>
+  }
+  return (
+    <div className="space-y-0.5 text-right" title={srWfoTitle(row)}>
+      <SignalBadge label={row.signal_label ?? "Indisponible"} />
+      {showConfidence ? (
+        <div className="dashboard-mono text-[10px] text-muted-foreground">
+          WFE {row.wfe_pct != null ? `${row.wfe_pct.toFixed(0)}%` : "--"} · Grade {row.robustness_grade ?? "--"}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function EdgeBadge({ triage }: { triage: EdgeTriage }) {
   if (triage === "insufficient")
     return <span className="text-[11px] font-semibold text-muted-foreground">&lt;30 OOS</span>
@@ -376,6 +418,8 @@ export function StockTable({
   hideDetails = false,
   edgeEnabled = true,
   visibleFamilies,
+  showSupportResistance = false,
+  showSrConfidence = true,
   selectedSymbols,
   onToggleSelected,
   performancePeriod = "one_day",
@@ -389,6 +433,29 @@ export function StockTable({
   const shownFamilies = useMemo(
     () => FAMILY_ORDER.filter((family) => visibleFamilies?.[family] !== false),
     [visibleFamilies],
+  )
+  const srSymbols = useMemo(
+    () => Array.from(new Set(stocks.map((stock) => stock.symbol.toUpperCase()).filter(Boolean))),
+    [stocks],
+  )
+  const { data: srWfoBySymbol, error: srWfoError, isLoading: srWfoLoading } = useSWR(
+    showSupportResistance && srSymbols.length
+      ? `dashboard-sr-wfo-${horizon}-${srSymbols.join(",")}`
+      : null,
+    async () => {
+      const entries = await Promise.all(
+        srSymbols.map(async (symbol) => {
+          try {
+            const res = await fetchWfoSummary(symbol, horizon, "expanded")
+            return [symbol, res.categories?.support_resistance ?? null] as const
+          } catch {
+            return [symbol, null] as const
+          }
+        }),
+      )
+      return Object.fromEntries(entries) as Record<string, WfoCategorySummary | null>
+    },
+    { revalidateOnFocus: false, dedupingInterval: 300_000, errorRetryCount: 1, keepPreviousData: true },
   )
 
   useEffect(() => {
@@ -488,15 +555,16 @@ export function StockTable({
   }
 
   const tableMinWidthClass = !isTechnicalMode
-    ? "min-w-[980px]"
+    ? showSupportResistance ? "min-w-[1080px]" : "min-w-[980px]"
     : shownFamilies.length === 0
-      ? "min-w-[940px]"
+      ? showSupportResistance ? "min-w-[1040px]" : "min-w-[940px]"
       : shownFamilies.length < FAMILY_ORDER.length
-        ? "min-w-[1040px]"
-        : "min-w-[1160px]"
+        ? showSupportResistance ? "min-w-[1140px]" : "min-w-[1040px]"
+        : showSupportResistance ? "min-w-[1260px]" : "min-w-[1160px]"
   const tableColumnCount =
     (onToggleSelected ? 1 : 0)
     + 5
+    + (showSupportResistance ? 1 : 0)
     + (isTechnicalMode && !hideDetails ? shownFamilies.length : 0)
     + 3
     + (!isTechnicalMode && edgeEnabled ? 2 : 0)
@@ -542,6 +610,7 @@ export function StockTable({
           const evidenceHref = evidenceHrefForStock(stock)
           const selected = selectedSymbols?.has(stock.symbol) ?? false
           const chartOpen = expandedSymbol === stock.symbol
+          const srRow = srWfoBySymbol?.[stock.symbol.toUpperCase()]
 
           return (
             <article key={`mobile-${stock.symbol}`} className="rounded-lg border border-border bg-card px-3 py-3 shadow-xs">
@@ -577,6 +646,20 @@ export function StockTable({
                   </>
                 )}
               </div>
+
+              {showSupportResistance ? (
+                <div className="mt-3 border-t border-border pt-2">
+                  <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
+                    S/R
+                  </div>
+                  <SrWfoCell
+                    row={srRow}
+                    loading={srWfoLoading}
+                    error={srWfoError}
+                    showConfidence={showSrConfidence}
+                  />
+                </div>
+              ) : null}
 
               <div className="mt-3 grid grid-cols-3 gap-2 border-t border-border pt-2">
                 <div className="min-w-0">
@@ -669,6 +752,11 @@ export function StockTable({
                 <SortIcon columnKey="price" />
               </button>
             </TableHead>
+            {showSupportResistance ? (
+              <TableHead className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                S/R
+              </TableHead>
+            ) : null}
             <TableHead className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
               <span className="inline-flex items-center justify-end gap-1">
                 <button type="button" className="inline-flex items-center gap-1" onClick={() => onSort("performance")}>
@@ -815,6 +903,7 @@ export function StockTable({
             })
             const selected = selectedSymbols?.has(stock.symbol) ?? false
             const chartOpen = expandedSymbol === stock.symbol
+            const srRow = srWfoBySymbol?.[stock.symbol.toUpperCase()]
 
             return (
               <Fragment key={stock.symbol}>
@@ -845,6 +934,16 @@ export function StockTable({
                   <div>{formatNumber(priceForDisplay(stock))}</div>
                   <div className="text-[9px] text-muted-foreground">{stock.live_quote?.is_fresh ? "Live" : "Close"}</div>
                 </TableCell>
+                {showSupportResistance ? (
+                  <TableCell className="px-3 py-2.5 text-right align-middle">
+                    <SrWfoCell
+                      row={srRow}
+                      loading={srWfoLoading}
+                      error={srWfoError}
+                      showConfidence={showSrConfidence}
+                    />
+                  </TableCell>
+                ) : null}
                 <TableCell className={cn("dashboard-mono px-3 py-2.5 text-right text-[11px] font-semibold", varToneClass(selectedPerformancePct(stock, performancePeriod)))}>
                   {formatVarPct(selectedPerformancePct(stock, performancePeriod))}
                 </TableCell>

@@ -267,8 +267,8 @@ def get_wfo_summary(
         if row.category not in categories:
             categories[row.category] = _row_to_summary(row)
 
-    # Ensure all 4 categories are present (pending placeholders for missing ones)
-    for cat in ("tendance", "momentum", "oscillation", "volume"):
+    # Ensure all 5 categories are present (pending placeholders for missing ones)
+    for cat in ("tendance", "momentum", "oscillation", "volume", "support_resistance"):
         if cat not in categories:
             categories[cat] = WfoCategorySummaryOut(category=cat, status="pending")
 

@@ -10,6 +10,7 @@ import logging
 import math
 import time
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -36,7 +37,12 @@ from core.quant_core.signal_engine.domain import (
     signal_type_label,
 )
 from core.quant_core.signal_engine.modes import resolve_signal_mode, signal_mode_read_names, signal_mode_storage_name
-from core.quant_core.signal_engine.wfo_signal import WfoCategoryResult, run_wfo_category_signal
+from core.quant_core.signal_engine.wfo_signal import (
+    WfoCategoryResult,
+    compute_composite_score,
+    compute_robustness_grade,
+    run_wfo_category_signal,
+)
 from core.quant_core.signal_engine.variant_detail import compute_variant_signal_array
 from core.quant_core.signal_engine.wfo_global import compute_global_wfo_signal
 
@@ -628,6 +634,39 @@ def run_wfo_for_symbol_horizon(
 
         db.commit()
 
+    # --- Support/Resistance WFO ---
+    try:
+        from services.api.app.routers.strategy_signals._support_resistance import _sr_get_or_compute_wfo
+
+        t_sr = time.monotonic()
+        sr_payload = _sr_get_or_compute_wfo(
+            db=db,
+            symbol=symbol,
+            horizon=horizon,
+            timeframe="1D",
+            cost_bps=20.0,
+            cooldown_bars=0,
+        )
+        wfo = sr_payload["response"]["wfo"] if "response" in sr_payload else sr_payload["wfo"]
+        fields = _sr_wfo_to_summary_fields(wfo)
+        fields.compute_seconds = round(time.monotonic() - t_sr, 2)
+        _upsert_summary(
+            db, symbol, category="support_resistance", horizon=horizon, variant=variant,
+            status="succeeded",
+            result=fields,
+            data_as_of=data_as_of,
+            folds_json=wfo.get("windows"),
+            config_json=wfo.get("params_echo"),
+            fragility_json=wfo.get("stability"),
+        )
+    except Exception as exc:
+        logger.exception("WFO S/R failed: %s/%s/%s", symbol, horizon, variant)
+        _upsert_summary(
+            db, symbol, category="support_resistance", horizon=horizon, variant=variant,
+            status="failed", error_message=str(exc),
+        )
+    db.commit()
+
     # --- Global consensus ---
     support, resistance, support_method, resistance_method, atr = _get_sr_levels(
         close, high, low, volume, horizon
@@ -846,6 +885,39 @@ def refresh_wfo_for_symbol_horizon(
                 db.commit()
                 failed += 1
 
+    # --- Support/Resistance WFO ---
+        try:
+            from services.api.app.routers.strategy_signals._support_resistance import _sr_get_or_compute_wfo
+
+            t_sr = time.monotonic()
+            sr_payload = _sr_get_or_compute_wfo(
+                db=db,
+                symbol=symbol,
+                horizon=horizon,
+                timeframe="1D",
+                cost_bps=20.0,
+                cooldown_bars=0,
+            )
+            wfo = sr_payload["response"]["wfo"] if "response" in sr_payload else sr_payload["wfo"]
+            fields = _sr_wfo_to_summary_fields(wfo)
+            fields.compute_seconds = round(time.monotonic() - t_sr, 2)
+            _upsert_summary(
+                db, symbol, category="support_resistance", horizon=horizon, variant=variant,
+                status="succeeded",
+                result=fields,
+                data_as_of=data_as_of,
+                folds_json=wfo.get("windows"),
+                config_json=wfo.get("params_echo"),
+                fragility_json=wfo.get("stability"),
+            )
+        except Exception as exc:
+            logger.exception("WFO S/R failed: %s/%s/%s", symbol, horizon, variant)
+            _upsert_summary(
+                db, symbol, category="support_resistance", horizon=horizon, variant=variant,
+                status="failed", error_message=str(exc),
+            )
+        db.commit()
+
         support, resistance, support_method, resistance_method, atr = _get_sr_levels(
             close, high, low, volume, horizon
         )
@@ -893,6 +965,70 @@ def refresh_wfo_for_symbol_horizon(
 # ---------------------------------------------------------------------------
 # DB helpers
 # ---------------------------------------------------------------------------
+
+def _sr_wfo_to_summary_fields(wfo: dict) -> SimpleNamespace:
+    """Map the S/R WFO compute output onto the shared WfoSignalSummary structured-column shape."""
+
+    def clamp01(x):
+        return max(0.0, min(1.0, x))
+
+    status = wfo.get("status")  # "ok" | "insufficient_history"
+    decision = wfo.get("decision")  # "actionable" | "weak" | "no_edge" (only meaningful if status == "ok")
+    procedure_oos = wfo.get("procedure_oos") or {}
+    baselines = wfo.get("baselines") or {}
+    stability = wfo.get("stability") or {}
+    windows = wfo.get("windows") or []
+
+    in_sample_sharpe = float((baselines.get("in_sample_best") or {}).get("sharpe") or 0.0)
+    oos_sharpe = float(procedure_oos.get("sharpe") or 0.0)
+    wfe = clamp01(oos_sharpe / in_sample_sharpe) if in_sample_sharpe > 0 else 0.0
+    robustness_ratio = clamp01(float(stability.get("selection_stability") or 0.0))
+    mean_oos_sharpe = oos_sharpe
+    if windows:
+        worst_fold_drawdown = max(
+            float((w.get("test_metrics") or {}).get("max_drawdown") or 0.0) for w in windows
+        )
+    else:
+        worst_fold_drawdown = float(procedure_oos.get("max_drawdown") or 0.0)
+    total_oos_pnl = float(procedure_oos.get("total_return") or 0.0)
+    total_folds = len(windows)
+    profitable_folds = sum(
+        1 for w in windows if float((w.get("test_metrics") or {}).get("total_return") or 0.0) > 0.0
+    )
+    hit_rate = procedure_oos.get("hit_rate")
+    n_trades = procedure_oos.get("n_trades") or 0
+    score_pct = None
+    if status == "ok" and hit_rate is not None and n_trades > 0:
+        score_pct = max(-100.0, min(100.0, (float(hit_rate) - 0.5) * 200.0))
+
+    if status != "ok":
+        signal_label = "Indisponible (historique insuffisant)"
+    else:
+        signal_label = {
+            "actionable": "Actionnable (S/R)",
+            "weak": "Faible (S/R)",
+            "no_edge": "Neutre (S/R)",
+        }.get(decision, "Neutre (S/R)")
+
+    composite_score = compute_composite_score(wfe, robustness_ratio, mean_oos_sharpe, worst_fold_drawdown)
+    robustness_grade = compute_robustness_grade(wfe, robustness_ratio)
+
+    return SimpleNamespace(
+        score_pct=score_pct,
+        signal_label=signal_label,
+        representatives=[],  # WfoRepresentativeOut schema doesn't fit a discrete pair-selection result; leave empty
+        wfe_pct=round(wfe * 100, 2),
+        robustness_ratio=robustness_ratio,
+        total_folds=total_folds,
+        profitable_folds=profitable_folds,
+        mean_oos_sharpe=mean_oos_sharpe,
+        total_oos_pnl=total_oos_pnl,
+        worst_fold_drawdown=worst_fold_drawdown,
+        composite_score=composite_score,
+        robustness_grade=robustness_grade,
+        compute_seconds=None,  # caller fills in with its own timing
+    )
+
 
 def _upsert_summary(
     db: Session,

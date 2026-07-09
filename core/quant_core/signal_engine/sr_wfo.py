@@ -49,14 +49,14 @@ def _max_drawdown(returns: np.ndarray) -> float:
     return float(np.nanmax(drawdown)) if drawdown.size else 0.0
 
 
-def _sharpe(returns: np.ndarray) -> float:
+def _sharpe(returns: np.ndarray, *, periods_per_year: float = 252.0) -> float:
     if returns.size < 2:
         return 0.0
     std = float(np.std(returns, ddof=1))
     if std <= 0.0 or not np.isfinite(std):
         return 0.0
     mean = float(np.mean(returns))
-    value = mean / std * np.sqrt(252.0)
+    value = mean / std * np.sqrt(float(periods_per_year))
     return float(value) if np.isfinite(value) else 0.0
 
 
@@ -72,10 +72,10 @@ def _total_return(returns: np.ndarray) -> float:
     return float(np.prod(1.0 + returns.astype("float64")) - 1.0)
 
 
-def _cagr(total_return: float, n_bars: int) -> float:
+def _cagr(total_return: float, n_bars: int, *, periods_per_year: float = 252.0) -> float:
     if total_return <= -1.0:
         return -1.0
-    years = max(int(n_bars), 1) / 252.0
+    years = max(int(n_bars), 1) / float(periods_per_year)
     return float((1.0 + total_return) ** (1.0 / years) - 1.0)
 
 
@@ -315,10 +315,17 @@ def _bootstrap_mean_positive_pvalue(returns: np.ndarray, *, seed: int, n_iter: i
     return p_nonpositive
 
 
-def _stitched_metrics(returns: np.ndarray, trades: list[dict[str, Any]], *, seed: int, bootstrap_iter: int) -> dict[str, Any]:
+def _stitched_metrics(
+    returns: np.ndarray,
+    trades: list[dict[str, Any]],
+    *,
+    seed: int,
+    bootstrap_iter: int,
+    periods_per_year: float = 252.0,
+) -> dict[str, Any]:
     total_return = _total_return(returns)
-    cagr = _cagr(total_return, returns.size)
-    sharpe = _sharpe(returns)
+    cagr = _cagr(total_return, returns.size, periods_per_year=periods_per_year)
+    sharpe = _sharpe(returns, periods_per_year=periods_per_year)
     max_drawdown = _max_drawdown(returns)
     n_trades = len(trades)
     wins = sum(1 for t in trades if float(t.get("pnl_return") or 0.0) > 0.0)
@@ -360,6 +367,7 @@ def run_sr_wfo(
     min_train_trades: int = 3,
     bootstrap_iter: int = 1000,
     seed: int = 42,
+    periods_per_year: float = 252.0,
 ) -> dict[str, Any]:
     params_echo = {
         "train": int(train),
@@ -370,6 +378,7 @@ def run_sr_wfo(
         "min_train_trades": int(min_train_trades),
         "bootstrap_iter": int(bootstrap_iter),
         "seed": int(seed),
+        "periods_per_year": float(periods_per_year),
     }
     n_bars = int(len(close))
     windows_plan = sr_window_plan(train=train, test=test, step=step, n_bars=n_bars)
@@ -488,7 +497,7 @@ def run_sr_wfo(
                 "selected_pair_meta": dict(pair_meta.get(selected_pair_id, {})) if selected_pair_id else None,
                 "train_objective": float(train_objective) if train_objective is not None else None,
                 "test_metrics": {
-                    "sharpe": _sharpe(test_returns),
+                    "sharpe": _sharpe(test_returns, periods_per_year=periods_per_year),
                     "total_return": _total_return(test_returns),
                     "max_drawdown": _max_drawdown(test_returns),
                     "n_trades": len(test_trades),
@@ -499,7 +508,13 @@ def run_sr_wfo(
         stitched_offset += test_returns.size
 
     stitched_returns = np.concatenate(stitched_returns_parts) if stitched_returns_parts else np.zeros(0, dtype="float64")
-    procedure_oos = _stitched_metrics(stitched_returns, stitched_trades, seed=seed, bootstrap_iter=bootstrap_iter)
+    procedure_oos = _stitched_metrics(
+        stitched_returns,
+        stitched_trades,
+        seed=seed,
+        bootstrap_iter=bootstrap_iter,
+        periods_per_year=periods_per_year,
+    )
 
     # 5a. buy & hold baseline over the same stitched test spans
     bh_parts: list[np.ndarray] = []
@@ -514,8 +529,8 @@ def run_sr_wfo(
     bh_stitched = np.concatenate(bh_parts) if bh_parts else np.zeros(0, dtype="float64")
     buy_hold = {
         "total_return": _total_return(bh_stitched),
-        "cagr": _cagr(_total_return(bh_stitched), bh_stitched.size),
-        "sharpe": _sharpe(bh_stitched),
+        "cagr": _cagr(_total_return(bh_stitched), bh_stitched.size, periods_per_year=periods_per_year),
+        "sharpe": _sharpe(bh_stitched, periods_per_year=periods_per_year),
         "max_drawdown": _max_drawdown(bh_stitched),
         "n_bars": int(bh_stitched.size),
     }
@@ -556,8 +571,8 @@ def run_sr_wfo(
         "pair_id": in_sample_best_pair_id,
         "pair_meta": dict(pair_meta.get(in_sample_best_pair_id, {})) if in_sample_best_pair_id else None,
         "total_return": _total_return(isb_stitched),
-        "cagr": _cagr(_total_return(isb_stitched), isb_stitched.size),
-        "sharpe": _sharpe(isb_stitched),
+        "cagr": _cagr(_total_return(isb_stitched), isb_stitched.size, periods_per_year=periods_per_year),
+        "sharpe": _sharpe(isb_stitched, periods_per_year=periods_per_year),
         "max_drawdown": _max_drawdown(isb_stitched),
         "n_trades": len(isb_trades),
     }
@@ -605,6 +620,22 @@ def run_sr_wfo(
         live_recommendation["pair_id"] = live_pair_id
         live_recommendation["pair_meta"] = dict(pair_meta.get(live_pair_id, {}))
         live_recommendation["train_objective"] = float(live_objective)
+        confidence_denominator = int(n_selectable_windows)
+        confidence_numerator = int(pair_win_counts.get(live_pair_id, 0))
+        live_recommendation["confidence"] = {
+            "rate": (
+                float(confidence_numerator / confidence_denominator)
+                if confidence_denominator > 0
+                else None
+            ),
+            "basis": "exact_pair_stability",
+            "numerator": confidence_numerator,
+            "denominator": confidence_denominator,
+            "explanation": (
+                "Current live S/R pair recurrence across selectable historical "
+                "walk-forward training windows."
+            ),
+        }
 
     # 8. decision gate
     bootstrap_pvalue = procedure_oos.get("bootstrap_pvalue")

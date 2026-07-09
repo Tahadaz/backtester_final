@@ -58,7 +58,8 @@ class SupportResistanceMethodDetailRequest(SupportResistanceRequest):
         ...,
         pattern=(
             r"^(ma_anchor|score_inversion|swing_levels|pivot_points|fibonacci_pivot|"
-            r"camarilla|woodie|dm|quantile_extrema_atr|fibonacci_retracement)$"
+            r"camarilla|woodie|dm|quantile_extrema_atr|fibonacci_retracement|"
+            r"ict_liquidity|ict_order_block|ict_fvg|prior_period_levels)$"
         ),
     )
 

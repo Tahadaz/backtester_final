@@ -181,9 +181,9 @@ _INDICATOR_ARCHETYPES = {
 }
 
 
-def _truncate_for_horizon(ohlcv, horizon: str):
+def _truncate_for_horizon(ohlcv, horizon: str, *, periods_per_year: float = 252.0):
     """Keep only the last N years of OHLCV data for the given horizon."""
-    max_bars = HORIZON_PARAMS[horizon]["max_years"] * 252
+    max_bars = int(round(HORIZON_PARAMS[horizon]["max_years"] * periods_per_year))
     if len(ohlcv) > max_bars:
         return ohlcv.iloc[-max_bars:]
     return ohlcv

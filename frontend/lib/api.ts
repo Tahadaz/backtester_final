@@ -3575,6 +3575,151 @@ export const SupportResistanceMethodDetailResponseSchema = z.object({
 })
 export type SupportResistanceMethodDetailResponse = z.infer<typeof SupportResistanceMethodDetailResponseSchema>
 
+export const SrWfoPairMetaSchema = z.object({
+  support_method_id: z.string().nullable().optional(),
+  support_line_id: z.string().nullable().optional(),
+  support_label: z.string().nullable().optional(),
+  support_line_label: z.string().nullable().optional(),
+  resistance_method_id: z.string().nullable().optional(),
+  resistance_line_id: z.string().nullable().optional(),
+  resistance_label: z.string().nullable().optional(),
+  resistance_line_label: z.string().nullable().optional(),
+}).passthrough()
+export type SrWfoPairMeta = z.infer<typeof SrWfoPairMetaSchema>
+
+export const SrWfoTestMetricsSchema = z.object({
+  sharpe: z.number().nullable().optional(),
+  total_return: z.number().nullable().optional(),
+  max_drawdown: z.number().nullable().optional(),
+  n_trades: z.number().default(0),
+}).passthrough()
+
+export const SrWfoTradeSchema = z.object({
+  entry_bar: z.number().nullable().optional(),
+  exit_bar: z.number().nullable().optional(),
+  entry_price: z.number().nullable().optional(),
+  exit_price: z.number().nullable().optional(),
+  pnl_return: z.number().nullable().optional(),
+  bars_held: z.number().nullable().optional(),
+  exit_reason: z.string().nullable().optional(),
+  entry_date: z.string().nullable().optional(),
+  exit_date: z.string().nullable().optional(),
+}).passthrough()
+
+export const SrWfoWindowSchema = z.object({
+  window_index: z.number(),
+  train_start: z.number().nullable().optional(),
+  train_end: z.number().nullable().optional(),
+  test_start: z.number().nullable().optional(),
+  test_end: z.number().nullable().optional(),
+  train_start_date: z.string().nullable().optional(),
+  train_end_date: z.string().nullable().optional(),
+  test_start_date: z.string().nullable().optional(),
+  test_end_date: z.string().nullable().optional(),
+  selected_pair_id: z.string().nullable().optional(),
+  selected_pair_meta: SrWfoPairMetaSchema.nullable().optional(),
+  train_objective: z.number().nullable().optional(),
+  test_metrics: SrWfoTestMetricsSchema.default({}),
+  test_trades: z.array(SrWfoTradeSchema).default([]),
+}).passthrough()
+
+export const SrWfoProcedureOosSchema = z.object({
+  total_return: z.number().nullable().optional(),
+  cagr: z.number().nullable().optional(),
+  sharpe: z.number().nullable().optional(),
+  max_drawdown: z.number().nullable().optional(),
+  n_trades: z.number().default(0),
+  hit_rate: z.number().nullable().optional(),
+  wilson_lb: z.number().nullable().optional(),
+  wilson_ub: z.number().nullable().optional(),
+  bootstrap_pvalue: z.number().nullable().optional(),
+  n_bars: z.number().nullable().optional(),
+}).passthrough()
+
+export const SrWfoBaselineMetricsSchema = z.object({
+  total_return: z.number().nullable().optional(),
+  cagr: z.number().nullable().optional(),
+  sharpe: z.number().nullable().optional(),
+  max_drawdown: z.number().nullable().optional(),
+  n_bars: z.number().nullable().optional(),
+}).passthrough()
+
+export const SrWfoInSampleBestSchema = z.object({
+  pair_id: z.string().nullable().optional(),
+  pair_meta: SrWfoPairMetaSchema.nullable().optional(),
+  total_return: z.number().nullable().optional(),
+  cagr: z.number().nullable().optional(),
+  sharpe: z.number().nullable().optional(),
+  max_drawdown: z.number().nullable().optional(),
+  n_trades: z.number().default(0),
+}).passthrough()
+
+export const SrWfoStabilitySchema = z.object({
+  pair_win_counts: z.record(z.string(), z.number()).default({}),
+  support_win_counts: z.record(z.string(), z.number()).default({}),
+  resistance_win_counts: z.record(z.string(), z.number()).default({}),
+  modal_pair_id: z.string().nullable().optional(),
+  modal_pair_wins: z.number().default(0),
+  n_selectable_windows: z.number().default(0),
+  selection_stability: z.number().nullable().optional(),
+}).passthrough()
+
+export const SrWfoLiveRecommendationSchema = z.object({
+  pair_id: z.string().nullable().optional(),
+  pair_meta: SrWfoPairMetaSchema.nullable().optional(),
+  train_objective: z.number().nullable().optional(),
+  support_level: z.number().nullable().optional(),
+  resistance_level: z.number().nullable().optional(),
+  confidence: z.object({
+    rate: z.number().nullable().optional(),
+    basis: z.string(),
+    numerator: z.number().default(0),
+    denominator: z.number().default(0),
+    explanation: z.string().nullable().optional(),
+  }).nullable().optional(),
+  note: z.string().nullable().optional(),
+}).passthrough()
+
+export const SrWfoSchema = z.object({
+  version: z.string().nullable().optional(),
+  status: z.enum(["ok", "insufficient_history"]).default("ok"),
+  decision: z.string().nullable().optional(),
+  explanation: z.string().default(""),
+  windows: z.array(SrWfoWindowSchema).default([]),
+  procedure_oos: SrWfoProcedureOosSchema.nullable().optional(),
+  baselines: z.object({
+    buy_hold: SrWfoBaselineMetricsSchema.nullable().optional(),
+    in_sample_best: SrWfoInSampleBestSchema.nullable().optional(),
+  }).nullable().optional(),
+  stability: SrWfoStabilitySchema.nullable().optional(),
+  live_recommendation: SrWfoLiveRecommendationSchema.nullable().optional(),
+  params_echo: z.record(z.unknown()).nullable().optional(),
+}).passthrough()
+export type SrWfo = z.infer<typeof SrWfoSchema>
+
+export const SrWfoLineTouchStatSchema = z.object({
+  n_touches: z.number().default(0),
+  n_bounces: z.number().default(0),
+  bounce_rate: z.number().nullable().optional(),
+  wilson_ci_lower: z.number().nullable().optional(),
+  wilson_ci_upper: z.number().nullable().optional(),
+}).passthrough()
+
+export const SrWfoResponseSchema = z.object({
+  family: z.literal("support_resistance_wfo"),
+  symbol: z.string(),
+  horizon: z.string(),
+  timeframe: z.string(),
+  as_of: z.string(),
+  current_close: z.number().nullable().optional(),
+  wfo: SrWfoSchema,
+  line_touch_stats: z.object({
+    support: z.record(z.string(), SrWfoLineTouchStatSchema).default({}),
+    resistance: z.record(z.string(), SrWfoLineTouchStatSchema).default({}),
+  }).default({ support: {}, resistance: {} }),
+}).passthrough()
+export type SrWfoResponse = z.infer<typeof SrWfoResponseSchema>
+
 export const IndicatorLiveBarSchema = z.object({
   date: z.string(),
   open: z.number().nullable().optional(),
@@ -3695,6 +3840,28 @@ export async function fetchSupportResistanceMethodDetail(body: {
   })
   return SupportResistanceMethodDetailResponseSchema.parse(raw)
 }
+
+export async function fetchSrWfo(body: {
+  symbol: string
+  horizon: string
+  timeframe?: string
+  cost_bps?: number
+  cooldown_bars?: number
+}): Promise<SrWfoResponse> {
+  const payload: Record<string, unknown> = {
+    symbol: body.symbol,
+    horizon: canonicalSignalHorizon(body.horizon),
+    timeframe: body.timeframe ?? "1D",
+  }
+  if (body.cost_bps != null) payload.cost_bps = body.cost_bps
+  if (body.cooldown_bars != null) payload.cooldown_bars = body.cooldown_bars
+  const raw = await request<unknown>("/strategy/signal/support-resistance/wfo", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+  return SrWfoResponseSchema.parse(raw)
+}
+
 
 export async function fetchIndicatorSeries(body: {
   symbol: string

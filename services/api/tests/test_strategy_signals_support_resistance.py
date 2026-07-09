@@ -455,3 +455,152 @@ def test_sr_overlay_mirrors_short_when_allowed() -> None:
     assert result["trades"][0]["close_price"] == 96.0
     assert result["trades"][0]["exit_reason"] == "support"
     assert result["metrics"]["total_return"] > 0.06
+
+
+def test_sr_ict_methods_are_built_and_have_finite_or_nan_series(monkeypatch) -> None:
+    from services.api.app.routers.strategy_signals import _support_resistance as sr_mod
+
+    _install_common_mocks(monkeypatch)
+    monkeypatch.setattr(sr_mod, "load_ohlcv_for_symbol", lambda *args, **kwargs: _ohlcv())
+    monkeypatch.setattr(sr_mod, "_get_or_compute", strategy_signals._get_or_compute)
+    monkeypatch.setattr(sr_mod, "detect_swing_levels", strategy_signals.detect_swing_levels)
+    monkeypatch.setattr(sr_mod, "compute_pivot_points", strategy_signals.compute_pivot_points)
+    monkeypatch.setattr(sr_mod, "compute_levels_support_resistance", strategy_signals.compute_levels_support_resistance)
+
+    context = sr_mod._sr_prepare_context(
+        None,
+        symbol="AAA",
+        horizon="monthly",
+        timeframe="1D",
+        cost_bps=10.0,
+        cooldown_bars=0,
+    )
+    methods = sr_mod._sr_build_base_methods(context)
+    method_ids = {m["id"] for m in methods}
+    expected_ict_ids = {"ict_liquidity", "ict_order_block", "ict_fvg", "prior_period_levels"}
+    assert expected_ict_ids.issubset(method_ids)
+
+    methods_by_id = {m["id"]: m for m in methods}
+    series = sr_mod._sr_compute_method_series(context, methods_by_id)
+    n = len(context["close"])
+    for method_id in expected_ict_ids:
+        assert method_id in series
+        support_series = series[method_id]["support"]
+        resistance_series = series[method_id]["resistance"]
+        assert isinstance(support_series, np.ndarray)
+        assert isinstance(resistance_series, np.ndarray)
+        assert len(support_series) == n
+        assert len(resistance_series) == n
+        # every stored value must be finite (NaN is the "no level" sentinel, never inf/garbage)
+        finite_or_nan_support = np.isnan(support_series) | np.isfinite(support_series)
+        finite_or_nan_resistance = np.isnan(resistance_series) | np.isfinite(resistance_series)
+        assert np.all(finite_or_nan_support)
+        assert np.all(finite_or_nan_resistance)
+
+
+def test_sr_ict_methods_ids_accepted_by_method_detail_endpoint(monkeypatch) -> None:
+    app = _app()
+    _install_common_mocks(monkeypatch)
+    strategy_signals._SR_INVERSION_CACHE.clear()
+    client = TestClient(app)
+    for method_id in ("ict_liquidity", "ict_order_block", "ict_fvg", "prior_period_levels"):
+        response = client.post(
+            "/strategy/signal/support-resistance/method-detail",
+            json={"symbol": "AAA", "horizon": "medium", "timeframe": "1D", "method_id": method_id},
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["method_id"] == method_id
+
+
+def test_sr_wfo_endpoint_completes_with_ict_methods_eligible(monkeypatch) -> None:
+    app = _app()
+    _install_common_mocks(monkeypatch)
+    strategy_signals._SR_WFO_CACHE.clear()
+
+    client = TestClient(app)
+    response = client.post(
+        "/strategy/signal/support-resistance/wfo",
+        json={"symbol": "AAA", "horizon": "medium", "timeframe": "1D"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["symbol"] == "AAA"
+    assert payload["family"] == "support_resistance_wfo"
+    assert payload["wfo"]["status"] in {"ok", "insufficient_history"}
+
+
+def _ohlcv_hourly(n_bars: int = 2000) -> pd.DataFrame:
+    # 1-hour bars spanning ~83 calendar days -> far denser than daily bars,
+    # so periods_per_year computed empirically must be well above 252.
+    dates = pd.date_range("2024-01-01", periods=n_bars, freq="1h")
+    close = 100.0 + 10.0 * np.sin(np.linspace(0.0, 40.0 * np.pi, n_bars))
+    return pd.DataFrame(
+        {
+            "Open": close,
+            "High": close + 1.0,
+            "Low": close - 1.0,
+            "Close": close,
+            "Volume": np.full(n_bars, 100_000.0),
+        },
+        index=dates,
+    )
+
+
+def test_periods_per_year_computed_empirically_for_hourly_timeframe(monkeypatch) -> None:
+    from services.api.app.routers.strategy_signals import _support_resistance as sr_mod
+
+    _install_common_mocks(monkeypatch)
+    monkeypatch.setattr(sr_mod, "load_ohlcv_for_symbol", lambda *args, **kwargs: _ohlcv_hourly())
+
+    context = sr_mod._sr_prepare_context(
+        None,
+        symbol="AAA",
+        horizon="weekly",
+        timeframe="1H",
+        cost_bps=10.0,
+        cooldown_bars=0,
+    )
+    assert context["periods_per_year"] > 500.0
+    # non-daily timeframe must also scale the lookback policy's bar-count fields
+    # up relative to the unscaled daily calibration (more bars/year -> a given
+    # calendar-time horizon needs proportionally more bars).
+    from core.quant_core.strategy_plan.execution_policy import build_execution_horizon_policy
+
+    unscaled = build_execution_horizon_policy("weekly", timeframe="1H")
+    assert context["policy"].structural_lookback > unscaled.structural_lookback
+
+
+def test_periods_per_year_stays_252_for_daily_timeframe_regression(monkeypatch) -> None:
+    from services.api.app.routers.strategy_signals import _support_resistance as sr_mod
+
+    _install_common_mocks(monkeypatch)
+    monkeypatch.setattr(sr_mod, "load_ohlcv_for_symbol", lambda *args, **kwargs: _ohlcv())
+
+    context = sr_mod._sr_prepare_context(
+        None,
+        symbol="AAA",
+        horizon="weekly",
+        timeframe="1D",
+        cost_bps=10.0,
+        cooldown_bars=0,
+    )
+    assert context["periods_per_year"] == 252.0
+
+
+def test_sr_wfo_compute_path_completes_for_hourly_timeframe(monkeypatch) -> None:
+    from services.api.app.routers.strategy_signals import _support_resistance as sr_mod
+
+    _install_common_mocks(monkeypatch)
+    monkeypatch.setattr(sr_mod, "load_ohlcv_for_symbol", lambda *args, **kwargs: _ohlcv_hourly())
+    sr_mod._SR_WFO_CACHE.clear()
+
+    payload = sr_mod._sr_get_or_compute_wfo(
+        None,
+        symbol="AAA",
+        horizon="weekly",
+        timeframe="1H",
+        cost_bps=10.0,
+        cooldown_bars=0,
+    )
+    assert payload["response"]["wfo"]["status"] in {"ok", "insufficient_history"}
+    assert payload["context"]["periods_per_year"] > 500.0

@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import time
 import uuid
-from dataclasses import asdict
+from dataclasses import asdict, replace as _dataclass_replace
 from datetime import date
 from typing import Any
 
@@ -74,8 +74,17 @@ from core.quant_core.signal_engine.indicator_series import compute_atr_series
 from core.quant_core.significance import sharpe_ratio
 from core.quant_core.horizons import canonical_horizon, LEGACY_HORIZON_ALIASES, HORIZON_SPECS
 from core.quant_core.signal_engine.sr_wfo import line_touch_stats, run_sr_wfo
+from core.quant_core.signal_engine.sr_ict import (
+    detect_fair_value_gaps,
+    detect_liquidity_pools,
+    detect_order_blocks,
+    prior_period_extremes,
+)
 from core.quant_core.risk import monte_carlo_equity_paths
-from core.quant_core.strategy_plan.execution_policy import build_execution_horizon_policy
+from core.quant_core.strategy_plan.execution_policy import (
+    ExecutionHorizonPolicy,
+    build_execution_horizon_policy,
+)
 from core.quant_core.strategy_plan.levels import (
     compute_atr,
     compute_pivot_points,
@@ -535,6 +544,50 @@ def signal_support_resistance(body: SupportResistanceRequest, db: Session = Depe
     )
 
 
+def _sr_compute_periods_per_year(ohlcv: pd.DataFrame, timeframe: str) -> float:
+    """Estimate bars/year for annualization; exact 252.0 for daily (byte-identical to legacy).
+
+    For non-daily timeframes, derive it empirically from the actual bar density
+    of the loaded history rather than assuming a fixed daily calendar, since an
+    hourly (or any intraday) series has a materially different bars-per-year
+    ratio that a hardcoded 252 would silently mis-annualize.
+    """
+    if str(timeframe).upper() == "1D":
+        return 252.0
+    try:
+        index = pd.DatetimeIndex(ohlcv.index)
+        if len(index) < 2:
+            return 252.0
+        span_days = (index.max() - index.min()).days
+        periods_per_year = len(index) / max(span_days / 365.25, 1e-6)
+    except Exception:
+        return 252.0
+    return max(float(periods_per_year), 12.0)
+
+
+def _sr_scale_policy_for_timeframe(
+    policy: ExecutionHorizonPolicy, periods_per_year: float
+) -> ExecutionHorizonPolicy:
+    """Return a LOCAL, S/R-only scaled copy of `policy` for non-daily timeframes.
+
+    `build_execution_horizon_policy` calibrates its bar-count fields assuming
+    1 bar == 1 trading day; fed unchanged to e.g. hourly bars, a "monthly"
+    lookback of ~63 bars would only span a few trading hours instead of ~3
+    months. Scaling by periods_per_year/252 keeps each field's approximate
+    CALENDAR-TIME span consistent across timeframes. Only bar-count fields are
+    scaled; `max_level_distance_atr` is an ATR-ratio (not a bar count) and
+    `max_levels` is a level-count cap, so both are left unchanged.
+    """
+    scale = float(periods_per_year) / 252.0
+    return _dataclass_replace(
+        policy,
+        holding_bars=max(2, round(policy.holding_bars * scale)),
+        structural_lookback=max(20, round(policy.structural_lookback * scale)),
+        swing_left_bars=max(2, round(policy.swing_left_bars * scale)),
+        swing_right_bars=max(2, round(policy.swing_right_bars * scale)),
+    )
+
+
 def _sr_prepare_context(
     db: Session,
     *,
@@ -550,7 +603,8 @@ def _sr_prepare_context(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
-    ohlcv = _truncate_for_horizon(ohlcv, horizon)
+    periods_per_year = _sr_compute_periods_per_year(ohlcv, timeframe)
+    ohlcv = _truncate_for_horizon(ohlcv, horizon, periods_per_year=periods_per_year)
     ohlcv = _clean_ohlcv(ohlcv)
     if ohlcv.empty or len(ohlcv) < 2:
         raise HTTPException(status_code=422, detail=f"Insufficient data for {symbol}.")
@@ -575,6 +629,11 @@ def _sr_prepare_context(
 
     trend_score_pct = float(sum(trend_scores) / len(trend_scores)) if trend_scores else None
     trend_label = signal_type_label("trend", trend_score_pct) if trend_score_pct is not None else "Indisponible"
+
+    policy = build_execution_horizon_policy(horizon, timeframe=timeframe)
+    if str(timeframe).upper() != "1D":
+        policy = _sr_scale_policy_for_timeframe(policy, periods_per_year)
+
     return {
         "symbol": symbol,
         "horizon": horizon,
@@ -590,7 +649,8 @@ def _sr_prepare_context(
         "trend_score_pct": trend_score_pct,
         "trend_label": trend_label,
         "ma_anchor_payload": compute_representative_ma_anchor(family_snapshots),
-        "policy": build_execution_horizon_policy(horizon, timeframe=timeframe),
+        "policy": policy,
+        "periods_per_year": float(periods_per_year),
         "cost_bps": float(cost_bps),
         "cooldown_bars": int(cooldown_bars),
     }
@@ -847,6 +907,247 @@ def _sr_build_base_methods(context: dict[str, Any]) -> list[dict[str, Any]]:
             }
         )
     methods.append(fib_method)
+
+    if high is not None and low is not None and len(close) >= 10:
+        liquidity = detect_liquidity_pools(
+            high,
+            low,
+            close,
+            left_bars=policy.swing_left_bars,
+            right_bars=policy.swing_right_bars,
+            atr_tol_mult=0.5,
+            lookback=policy.structural_lookback,
+            max_levels=policy.max_levels,
+        )
+        methods.append(
+            {
+                "id": "ict_liquidity",
+                "label": "Liquidité ICT (BSL/SSL)",
+                "support": liquidity.get("nearest_support"),
+                "resistance": liquidity.get("nearest_resistance"),
+                "status": (
+                    "available"
+                    if liquidity.get("nearest_support") is not None or liquidity.get("nearest_resistance") is not None
+                    else "unavailable"
+                ),
+                "selected_for_support": False,
+                "selected_for_resistance": False,
+                "explanation": (
+                    "Pools de liquidite (equal highs / equal lows) identifies par regroupement "
+                    "de pivots fractals a moins de 0.5xATR les uns des autres: sell-side "
+                    "liquidity (supports) sous le marche, buy-side liquidity (resistances) au-dessus."
+                ),
+                "inputs": {
+                    "lookback": policy.structural_lookback,
+                    "left_bars": policy.swing_left_bars,
+                    "right_bars": policy.swing_right_bars,
+                    "atr_tol_mult": 0.5,
+                    "max_levels": policy.max_levels,
+                    "supports": liquidity.get("supports") or [],
+                    "resistances": liquidity.get("resistances") or [],
+                    "support_lines": {
+                        f"S{idx}": round_number(entry.get("price"), 6)
+                        for idx, entry in enumerate(liquidity.get("supports") or [], start=1)
+                        if isinstance(entry, dict)
+                        and round_number(entry.get("price"), 6) is not None
+                        and float(round_number(entry.get("price"), 6)) <= current_close
+                    },
+                    "resistance_lines": {
+                        f"R{idx}": round_number(entry.get("price"), 6)
+                        for idx, entry in enumerate(liquidity.get("resistances") or [], start=1)
+                        if isinstance(entry, dict)
+                        and round_number(entry.get("price"), 6) is not None
+                        and float(round_number(entry.get("price"), 6)) >= current_close
+                    },
+                },
+            }
+        )
+    else:
+        methods.append(
+            {
+                "id": "ict_liquidity",
+                "label": "Liquidité ICT (BSL/SSL)",
+                "support": None,
+                "resistance": None,
+                "status": "unavailable",
+                "selected_for_support": False,
+                "selected_for_resistance": False,
+                "explanation": "High/Low insuffisants pour detecter les pools de liquidite.",
+                "inputs": {},
+            }
+        )
+
+    if high is not None and low is not None and len(close) >= 5:
+        open_values = ohlcv["Open"].values.astype("float64") if "Open" in ohlcv.columns else close
+        order_blocks = detect_order_blocks(
+            open_values,
+            high,
+            low,
+            close,
+            displacement_atr_mult=1.5,
+            lookback=policy.structural_lookback,
+            max_levels=policy.max_levels,
+        )
+        methods.append(
+            {
+                "id": "ict_order_block",
+                "label": "Order blocks ICT",
+                "support": order_blocks.get("nearest_support"),
+                "resistance": order_blocks.get("nearest_resistance"),
+                "status": (
+                    "available"
+                    if order_blocks.get("nearest_support") is not None or order_blocks.get("nearest_resistance") is not None
+                    else "unavailable"
+                ),
+                "selected_for_support": False,
+                "selected_for_resistance": False,
+                "explanation": (
+                    "Derniere bougie de cloture opposee avant un mouvement de displacement "
+                    "(>= 1.5xATR avec rupture de structure): bougie baissiere -> order block "
+                    "haussier (support), bougie haussiere -> order block baissier (resistance)."
+                ),
+                "inputs": {
+                    "lookback": policy.structural_lookback,
+                    "displacement_atr_mult": 1.5,
+                    "max_levels": policy.max_levels,
+                    "supports": order_blocks.get("supports") or [],
+                    "resistances": order_blocks.get("resistances") or [],
+                    "support_lines": {
+                        f"S{idx}": round_number(entry.get("price"), 6)
+                        for idx, entry in enumerate(order_blocks.get("supports") or [], start=1)
+                        if isinstance(entry, dict)
+                        and round_number(entry.get("price"), 6) is not None
+                        and float(round_number(entry.get("price"), 6)) <= current_close
+                    },
+                    "resistance_lines": {
+                        f"R{idx}": round_number(entry.get("price"), 6)
+                        for idx, entry in enumerate(order_blocks.get("resistances") or [], start=1)
+                        if isinstance(entry, dict)
+                        and round_number(entry.get("price"), 6) is not None
+                        and float(round_number(entry.get("price"), 6)) >= current_close
+                    },
+                },
+            }
+        )
+    else:
+        methods.append(
+            {
+                "id": "ict_order_block",
+                "label": "Order blocks ICT",
+                "support": None,
+                "resistance": None,
+                "status": "unavailable",
+                "selected_for_support": False,
+                "selected_for_resistance": False,
+                "explanation": "High/Low insuffisants pour detecter les order blocks.",
+                "inputs": {},
+            }
+        )
+
+    if high is not None and low is not None and len(close) >= 4:
+        fvg = detect_fair_value_gaps(
+            high,
+            low,
+            close,
+            min_gap_atr_mult=0.25,
+            lookback=policy.structural_lookback,
+            max_levels=policy.max_levels,
+        )
+        methods.append(
+            {
+                "id": "ict_fvg",
+                "label": "Fair value gaps ICT",
+                "support": fvg.get("nearest_support"),
+                "resistance": fvg.get("nearest_resistance"),
+                "status": (
+                    "available"
+                    if fvg.get("nearest_support") is not None or fvg.get("nearest_resistance") is not None
+                    else "unavailable"
+                ),
+                "selected_for_support": False,
+                "selected_for_resistance": False,
+                "explanation": (
+                    "Ecarts de prix (gaps) a 3 bougies non combles (>= 0.25xATR): gap "
+                    "haussier -> support au point median, gap baissier -> resistance au "
+                    "point median."
+                ),
+                "inputs": {
+                    "lookback": policy.structural_lookback,
+                    "min_gap_atr_mult": 0.25,
+                    "max_levels": policy.max_levels,
+                    "supports": fvg.get("supports") or [],
+                    "resistances": fvg.get("resistances") or [],
+                    "support_lines": {
+                        f"S{idx}": round_number(entry.get("price"), 6)
+                        for idx, entry in enumerate(fvg.get("supports") or [], start=1)
+                        if isinstance(entry, dict)
+                        and round_number(entry.get("price"), 6) is not None
+                        and float(round_number(entry.get("price"), 6)) <= current_close
+                    },
+                    "resistance_lines": {
+                        f"R{idx}": round_number(entry.get("price"), 6)
+                        for idx, entry in enumerate(fvg.get("resistances") or [], start=1)
+                        if isinstance(entry, dict)
+                        and round_number(entry.get("price"), 6) is not None
+                        and float(round_number(entry.get("price"), 6)) >= current_close
+                    },
+                },
+            }
+        )
+    else:
+        methods.append(
+            {
+                "id": "ict_fvg",
+                "label": "Fair value gaps ICT",
+                "support": None,
+                "resistance": None,
+                "status": "unavailable",
+                "selected_for_support": False,
+                "selected_for_resistance": False,
+                "explanation": "High/Low insuffisants pour detecter les fair value gaps.",
+                "inputs": {},
+            }
+        )
+
+    prior_period_method: dict[str, Any] = {
+        "id": "prior_period_levels",
+        "label": "Extremes periode precedente",
+        "support": None,
+        "resistance": None,
+        "status": "unavailable",
+        "selected_for_support": False,
+        "selected_for_resistance": False,
+        "explanation": "Historique insuffisant pour calculer les extremes de la periode precedente.",
+        "inputs": {},
+    }
+    if high is not None and low is not None and len(close) >= 5 and isinstance(ohlcv.index, pd.DatetimeIndex):
+        period = "W" if str(context.get("horizon")) == "weekly" else "M"
+        prior = prior_period_extremes(ohlcv.index, high, low, period=period)
+        latest = prior.get("latest") if isinstance(prior.get("latest"), dict) else {}
+        prior_high = round_number(latest.get("prior_high"), 6)
+        prior_low = round_number(latest.get("prior_low"), 6)
+        support_lines = {"S1": prior_low} if prior_low is not None and float(prior_low) <= current_close else {}
+        resistance_lines = {"R1": prior_high} if prior_high is not None and float(prior_high) >= current_close else {}
+        prior_period_method.update(
+            {
+                "support": prior_low if support_lines else None,
+                "resistance": prior_high if resistance_lines else None,
+                "status": "available" if support_lines or resistance_lines else "unavailable",
+                "explanation": (
+                    f"Plus haut/plus bas de la {'semaine' if period == 'W' else 'mois'} civile "
+                    "precedente entierement clôturee, utilisee comme resistance/support naturel."
+                ),
+                "inputs": {
+                    "period": period,
+                    "prior_high": prior_high,
+                    "prior_low": prior_low,
+                    "support_lines": support_lines,
+                    "resistance_lines": resistance_lines,
+                },
+            }
+        )
+    methods.append(prior_period_method)
+
     return [_sr_enrich_method_lines(method, current_close) for method in methods]
 
 
@@ -1124,6 +1425,25 @@ def _sr_build_method_chart(
             _sr_add_line(lines, str(label), value)
         _sr_add_line(lines, "Support fib", method.get("support"))
         _sr_add_line(lines, "Resistance fib", method.get("resistance"))
+    elif method_id in {"ict_liquidity", "ict_order_block", "ict_fvg"}:
+        tail_len = min(int(policy.structural_lookback), len(ohlcv))
+        inputs = method.get("inputs", {})
+        _sr_add_line(lines, "Support ICT", method.get("support"))
+        _sr_add_line(lines, "Resistance ICT", method.get("resistance"))
+        supports = inputs.get("supports")
+        resistances = inputs.get("resistances")
+        if isinstance(supports, list):
+            for idx, entry in enumerate(supports[:3], start=1):
+                if isinstance(entry, dict):
+                    _sr_add_line(lines, f"ICT S{idx}", entry.get("price"))
+        if isinstance(resistances, list):
+            for idx, entry in enumerate(resistances[:3], start=1):
+                if isinstance(entry, dict):
+                    _sr_add_line(lines, f"ICT R{idx}", entry.get("price"))
+    elif method_id == "prior_period_levels":
+        tail_len = min(180, len(ohlcv))
+        _sr_add_line(lines, "Support periode precedente", method.get("support"))
+        _sr_add_line(lines, "Resistance periode precedente", method.get("resistance"))
     else:
         return None
 
@@ -1398,6 +1718,10 @@ _SR_VARIANT_METHOD_ORDER = (
     "dm",
     "quantile_extrema_atr",
     "fibonacci_retracement",
+    "ict_liquidity",
+    "ict_order_block",
+    "ict_fvg",
+    "prior_period_levels",
 )
 
 
@@ -2023,6 +2347,16 @@ def _sr_compute_method_series(
     quantile_lookback = max(140, int(policy.structural_lookback))
     swing_padding = max(int(policy.swing_left_bars), int(policy.swing_right_bars)) + 8
     swing_lookback = int(policy.structural_lookback) + swing_padding
+    open_values = ohlcv["Open"].values.astype("float64") if "Open" in ohlcv.columns else close
+
+    prior_period_series: dict[str, np.ndarray] | None = None
+    if "prior_period_levels" in output and isinstance(ohlcv.index, pd.DatetimeIndex):
+        pp_period = "W" if str(context.get("horizon")) == "weekly" else "M"
+        pp_result = prior_period_extremes(ohlcv.index, high, low, period=pp_period)
+        prior_period_series = {
+            "prior_high": pp_result.get("prior_high"),
+            "prior_low": pp_result.get("prior_low"),
+        }
 
     for bar_index in range(1, n):
         prev_close = float(close[bar_index - 1]) if np.isfinite(close[bar_index - 1]) else None
@@ -2160,6 +2494,110 @@ def _sr_compute_method_series(
                 _sr_store_line_series_value(output, "fibonacci_retracement", "support", line, bar_index, value, n)
             for line, value in fib_resistance_lines.items():
                 _sr_store_line_series_value(output, "fibonacci_retracement", "resistance", line, bar_index, value, n)
+
+        if "ict_liquidity" in output and bar_index >= 4:
+            start = max(0, bar_index - swing_lookback)
+            liquidity = detect_liquidity_pools(
+                high[start:bar_index],
+                low[start:bar_index],
+                close[start:bar_index],
+                left_bars=policy.swing_left_bars,
+                right_bars=policy.swing_right_bars,
+                atr_tol_mult=0.5,
+                lookback=min(policy.structural_lookback, bar_index - start),
+                max_levels=policy.max_levels,
+            )
+            support = _sr_level_or_none(liquidity.get("nearest_support"))
+            resistance = _sr_level_or_none(liquidity.get("nearest_resistance"))
+            if support is not None and support <= prev_close:
+                output["ict_liquidity"]["support"][bar_index] = support
+            if resistance is not None and resistance >= prev_close:
+                output["ict_liquidity"]["resistance"][bar_index] = resistance
+            for idx, entry in enumerate(liquidity.get("supports") or [], start=1):
+                if not isinstance(entry, dict):
+                    continue
+                line_support = _sr_level_or_none(entry.get("price"))
+                if line_support is not None and line_support <= prev_close:
+                    _sr_store_line_series_value(output, "ict_liquidity", "support", f"S{idx}", bar_index, line_support, n)
+            for idx, entry in enumerate(liquidity.get("resistances") or [], start=1):
+                if not isinstance(entry, dict):
+                    continue
+                line_resistance = _sr_level_or_none(entry.get("price"))
+                if line_resistance is not None and line_resistance >= prev_close:
+                    _sr_store_line_series_value(output, "ict_liquidity", "resistance", f"R{idx}", bar_index, line_resistance, n)
+
+        if "ict_order_block" in output and bar_index >= 5:
+            start = max(0, bar_index - swing_lookback)
+            order_blocks = detect_order_blocks(
+                open_values[start:bar_index],
+                high[start:bar_index],
+                low[start:bar_index],
+                close[start:bar_index],
+                displacement_atr_mult=1.5,
+                lookback=min(policy.structural_lookback, bar_index - start),
+                max_levels=policy.max_levels,
+            )
+            support = _sr_level_or_none(order_blocks.get("nearest_support"))
+            resistance = _sr_level_or_none(order_blocks.get("nearest_resistance"))
+            if support is not None and support <= prev_close:
+                output["ict_order_block"]["support"][bar_index] = support
+            if resistance is not None and resistance >= prev_close:
+                output["ict_order_block"]["resistance"][bar_index] = resistance
+            for idx, entry in enumerate(order_blocks.get("supports") or [], start=1):
+                if not isinstance(entry, dict):
+                    continue
+                line_support = _sr_level_or_none(entry.get("price"))
+                if line_support is not None and line_support <= prev_close:
+                    _sr_store_line_series_value(output, "ict_order_block", "support", f"S{idx}", bar_index, line_support, n)
+            for idx, entry in enumerate(order_blocks.get("resistances") or [], start=1):
+                if not isinstance(entry, dict):
+                    continue
+                line_resistance = _sr_level_or_none(entry.get("price"))
+                if line_resistance is not None and line_resistance >= prev_close:
+                    _sr_store_line_series_value(output, "ict_order_block", "resistance", f"R{idx}", bar_index, line_resistance, n)
+
+        if "ict_fvg" in output and bar_index >= 4:
+            start = max(0, bar_index - quantile_lookback)
+            fvg = detect_fair_value_gaps(
+                high[start:bar_index],
+                low[start:bar_index],
+                close[start:bar_index],
+                min_gap_atr_mult=0.25,
+                lookback=min(quantile_lookback, bar_index - start),
+                max_levels=policy.max_levels,
+            )
+            support = _sr_level_or_none(fvg.get("nearest_support"))
+            resistance = _sr_level_or_none(fvg.get("nearest_resistance"))
+            if support is not None and support <= prev_close:
+                output["ict_fvg"]["support"][bar_index] = support
+            if resistance is not None and resistance >= prev_close:
+                output["ict_fvg"]["resistance"][bar_index] = resistance
+            for idx, entry in enumerate(fvg.get("supports") or [], start=1):
+                if not isinstance(entry, dict):
+                    continue
+                line_support = _sr_level_or_none(entry.get("price"))
+                if line_support is not None and line_support <= prev_close:
+                    _sr_store_line_series_value(output, "ict_fvg", "support", f"S{idx}", bar_index, line_support, n)
+            for idx, entry in enumerate(fvg.get("resistances") or [], start=1):
+                if not isinstance(entry, dict):
+                    continue
+                line_resistance = _sr_level_or_none(entry.get("price"))
+                if line_resistance is not None and line_resistance >= prev_close:
+                    _sr_store_line_series_value(output, "ict_fvg", "resistance", f"R{idx}", bar_index, line_resistance, n)
+
+        if "prior_period_levels" in output and prior_period_series is not None:
+            # prior_period_series[bar_index] already only reflects the most recently
+            # COMPLETED period strictly before bar_index's own period (see
+            # prior_period_extremes docstring) — it never touches bar_index's own
+            # bar, so indexing it directly at bar_index is causally safe.
+            prior_low = _sr_level_or_none(prior_period_series["prior_low"][bar_index])
+            prior_high = _sr_level_or_none(prior_period_series["prior_high"][bar_index])
+            if prior_low is not None and prior_low <= prev_close:
+                output["prior_period_levels"]["support"][bar_index] = prior_low
+                _sr_store_line_series_value(output, "prior_period_levels", "support", "S1", bar_index, prior_low, n)
+            if prior_high is not None and prior_high >= prev_close:
+                output["prior_period_levels"]["resistance"][bar_index] = prior_high
+                _sr_store_line_series_value(output, "prior_period_levels", "resistance", "R1", bar_index, prior_high, n)
 
     return output
 
@@ -4021,6 +4459,34 @@ def _sr_wfo_attach_dates(payload: dict[str, Any], index: pd.DatetimeIndex) -> di
     return payload
 
 
+def _sr_wfo_series_level(series: np.ndarray | None, bar_index: int) -> float | None:
+    if not isinstance(series, np.ndarray) or len(series) == 0:
+        return None
+    pos = min(max(int(bar_index), 0), len(series) - 1)
+    value = _finite_live_number(series[pos])
+    return round_number(value, 6) if value is not None else None
+
+
+def _sr_wfo_attach_live_levels(
+    wfo_result: dict[str, Any],
+    pair_series: dict[str, tuple[np.ndarray, np.ndarray]],
+    *,
+    bar_index: int,
+) -> dict[str, Any]:
+    live = wfo_result.get("live_recommendation")
+    if not isinstance(live, dict):
+        return wfo_result
+    pair_id = live.get("pair_id")
+    if not pair_id or pair_id not in pair_series:
+        live["support_level"] = None
+        live["resistance_level"] = None
+        return wfo_result
+    support_series, resistance_series = pair_series[str(pair_id)]
+    live["support_level"] = _sr_wfo_series_level(support_series, bar_index)
+    live["resistance_level"] = _sr_wfo_series_level(resistance_series, bar_index)
+    return wfo_result
+
+
 def _sr_get_or_compute_wfo(
     db: Session,
     *,
@@ -4140,6 +4606,21 @@ def _sr_get_or_compute_wfo(
             }
 
     hp = HORIZON_PARAMS.get(horizon, HORIZON_PARAMS["monthly"])
+    periods_per_year = float(context.get("periods_per_year") or _sr_compute_periods_per_year(ohlcv, timeframe))
+    if timeframe.upper() != "1D":
+        # First-pass heuristic: HORIZON_PARAMS train/test/step bar counts are
+        # calibrated assuming 1 bar == 1 trading day. Scaling by
+        # periods_per_year/252 keeps each horizon's approximate CALENDAR-TIME
+        # span consistent across timeframes (e.g. hourly bars) instead of a
+        # "monthly" window collapsing to a few weeks of intraday data.
+        scale = periods_per_year / 252.0
+        train = max(30, round(hp["train"] * scale))
+        test = max(5, round(hp["test"] * scale))
+        step = max(5, round(hp["step"] * scale))
+    else:
+        train = int(hp["train"])
+        test = int(hp["test"])
+        step = int(hp["step"])
     if pair_series:
         wfo_result = run_sr_wfo(
             close=close,
@@ -4148,14 +4629,15 @@ def _sr_get_or_compute_wfo(
             open_=open_,
             pair_series=pair_series,
             pair_meta=pair_meta,
-            train=int(hp["train"]),
-            test=int(hp["test"]),
-            step=int(hp["step"]),
+            train=train,
+            test=test,
+            step=step,
             cost_bps=float(cost_bps),
             cooldown_bars=int(cooldown_bars),
             min_train_trades=3,
             bootstrap_iter=1000,
             seed=42,
+            periods_per_year=periods_per_year,
         )
     else:
         wfo_result = {
@@ -4169,6 +4651,7 @@ def _sr_get_or_compute_wfo(
             "explanation": "Aucune paire support/resistance disponible.",
             "params_echo": {},
         }
+    wfo_result = _sr_wfo_attach_live_levels(wfo_result, pair_series, bar_index=len(close) - 1)
     wfo_result = _sr_wfo_attach_dates(wfo_result, ohlcv.index)
 
     forward_bars = HORIZON_SPECS.get(horizon, HORIZON_SPECS["monthly"]).reference_forward_days

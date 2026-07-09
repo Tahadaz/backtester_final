@@ -20,6 +20,8 @@ export type DashboardVisibleFamilies = Record<DashboardFamilyColumn, boolean>
 export interface DashboardPreferences {
   showTopActionableSignals: boolean
   showFilters: boolean
+  showSupportResistance: boolean
+  showSrConfidence: boolean
   viewMode: DashboardViewMode
   assetTab: DashboardAssetTab
   regionTab: DashboardRegionTab
@@ -52,6 +54,8 @@ export const DEFAULT_DASHBOARD_FUNDAMENTAL_COLUMNS: DashboardFundamentalColumn[]
 export const DEFAULT_DASHBOARD_PREFERENCES: DashboardPreferences = {
   showTopActionableSignals: true,
   showFilters: true,
+  showSupportResistance: true,
+  showSrConfidence: true,
   viewMode: "masi",
   assetTab: "all",
   regionTab: "all",
@@ -127,6 +131,11 @@ export function sanitizeDashboardPreferences(raw: unknown): DashboardPreferences
       DEFAULT_DASHBOARD_PREFERENCES.showTopActionableSignals,
     ),
     showFilters: booleanValue(value.showFilters, DEFAULT_DASHBOARD_PREFERENCES.showFilters),
+    showSupportResistance: booleanValue(
+      value.showSupportResistance,
+      DEFAULT_DASHBOARD_PREFERENCES.showSupportResistance,
+    ),
+    showSrConfidence: booleanValue(value.showSrConfidence, DEFAULT_DASHBOARD_PREFERENCES.showSrConfidence),
     viewMode: enumValue(value.viewMode, VIEW_MODES, DEFAULT_DASHBOARD_PREFERENCES.viewMode),
     assetTab: enumValue(value.assetTab, ASSET_TABS, DEFAULT_DASHBOARD_PREFERENCES.assetTab),
     regionTab: enumValue(value.regionTab, REGION_TABS, DEFAULT_DASHBOARD_PREFERENCES.regionTab),

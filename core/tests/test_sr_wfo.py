@@ -95,6 +95,11 @@ def test_oscillator_selects_pair_a_and_shows_positive_edge(oscillator):
     # pair B never accumulates trades over the full continuous history
     stability = result["stability"]
     assert stability["pair_win_counts"].get("B", 0) == 0
+    confidence = result["live_recommendation"]["confidence"]
+    assert confidence["basis"] == "exact_pair_stability"
+    assert confidence["denominator"] == stability["n_selectable_windows"]
+    assert confidence["numerator"] == stability["pair_win_counts"][result["live_recommendation"]["pair_id"]]
+    assert confidence["rate"] == pytest.approx(confidence["numerator"] / confidence["denominator"])
 
 
 # ---------------------------------------------------------------------------
@@ -395,6 +400,74 @@ def test_forced_liquidation_at_slice_end():
 # ---------------------------------------------------------------------------
 # 8. line_touch_stats
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# 9. periods_per_year annualization
+# ---------------------------------------------------------------------------
+
+
+def test_periods_per_year_defaults_to_252(oscillator):
+    close, high, low, open_, pair_series, pair_meta = oscillator
+    result = run_sr_wfo(
+        close=close,
+        high=high,
+        low=low,
+        open_=open_,
+        pair_series=pair_series,
+        pair_meta=pair_meta,
+        train=HORIZON_WEEKLY["train"],
+        test=HORIZON_WEEKLY["test"],
+        step=HORIZON_WEEKLY["step"],
+        cost_bps=33.0,
+        cooldown_bars=1,
+        min_train_trades=3,
+        bootstrap_iter=200,
+        seed=7,
+    )
+    assert result["params_echo"]["periods_per_year"] == pytest.approx(252.0)
+
+
+def test_periods_per_year_scales_sharpe_and_cagr_as_expected(oscillator):
+    close, high, low, open_, pair_series, pair_meta = oscillator
+    kwargs = dict(
+        close=close,
+        high=high,
+        low=low,
+        open_=open_,
+        pair_series=pair_series,
+        pair_meta=pair_meta,
+        train=HORIZON_WEEKLY["train"],
+        test=HORIZON_WEEKLY["test"],
+        step=HORIZON_WEEKLY["step"],
+        cost_bps=33.0,
+        cooldown_bars=1,
+        min_train_trades=3,
+        bootstrap_iter=200,
+        seed=7,
+    )
+    result_daily = run_sr_wfo(**kwargs, periods_per_year=252.0)
+    hourly_ppy = 252.0 * 6.0
+    result_hourly = run_sr_wfo(**kwargs, periods_per_year=hourly_ppy)
+
+    assert result_daily["procedure_oos"]["n_bars"] == result_hourly["procedure_oos"]["n_bars"]
+
+    ratio = hourly_ppy / 252.0
+    sharpe_daily = result_daily["procedure_oos"]["sharpe"]
+    sharpe_hourly = result_hourly["procedure_oos"]["sharpe"]
+    # _sharpe = mean/std * sqrt(periods_per_year) -> scales by sqrt(ratio)
+    assert sharpe_hourly == pytest.approx(sharpe_daily * np.sqrt(ratio), rel=1e-9)
+
+    total_return = result_daily["procedure_oos"]["total_return"]
+    n_bars = result_daily["procedure_oos"]["n_bars"]
+    cagr_daily = result_daily["procedure_oos"]["cagr"]
+    cagr_hourly = result_hourly["procedure_oos"]["cagr"]
+    expected_cagr_daily = (1.0 + total_return) ** (1.0 / (n_bars / 252.0)) - 1.0
+    expected_cagr_hourly = (1.0 + total_return) ** (1.0 / (n_bars / hourly_ppy)) - 1.0
+    assert cagr_daily == pytest.approx(expected_cagr_daily, rel=1e-9)
+    assert cagr_hourly == pytest.approx(expected_cagr_hourly, rel=1e-9)
+    # more periods/year -> fewer implied "years" for the same n_bars -> larger CAGR magnitude
+    assert cagr_hourly > cagr_daily
 
 
 def test_line_touch_stats_exact_counts():

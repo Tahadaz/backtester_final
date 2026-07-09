@@ -89,6 +89,9 @@ frontend/dev-server-*.log
 frontend-next-start*
 
 # ---- Local scratch / agent output ----
+scratch/
+old_support_resistance.py
+older_support_resistance.py
 .codex/worktrees/
 # research-out/ is tracked — fundamental data must deploy with the app
 frontend/.playwright-cli/

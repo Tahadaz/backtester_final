@@ -61,6 +61,11 @@ export const SIGNAL_BADGE_COLORS: Record<string, string> = {
   Achat: GREEN,
   Vente: RED,
   "Vente forte": RED_STRONG,
+
+  "Actionnable (S/R)": GREEN_STRONG,
+  "Faible (S/R)": GREEN,
+  "Neutre (S/R)": GREY,
+  "Indisponible (historique insuffisant)": GREY,
 }
 
 export const SIGNAL_BADGE_FALLBACK = GREY
