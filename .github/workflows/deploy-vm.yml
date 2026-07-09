@@ -60,9 +60,27 @@ jobs:
                 sys.exit(1)
             PY
 
-            # Rebuild best-evidence snapshots so the signal-evidence tab serves fresh data
-            # immediately after deploy rather than waiting until the next Monday refresh.
-            # Non-blocking: exits 0 on partial result so a slow universe doesn't halt the deploy.
+            # Prune old images
+            docker image prune -f
+
+      # Rebuild best-evidence snapshots so the signal-evidence tab serves fresh
+      # data immediately after deploy rather than waiting until the next Monday
+      # refresh. This is best-effort: it recomputes the S/R overlay across the
+      # whole universe and can run long, so it is a separate continue-on-error
+      # step with a generous command_timeout. A timeout or partial result must
+      # never fail the deploy — the containers are already up and healthy, and
+      # the weekly batch refreshes any symbols not reached here.
+      - name: Refresh best-evidence snapshots (best-effort)
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.ORACLE_HOST }}
+          username: deploy
+          key: ${{ secrets.ORACLE_SSH_KEY }}
+          command_timeout: 30m
+          script: |
+            set -euo pipefail
+            cd /opt/bt
             IMAGE_TAG=${{ github.event.workflow_run.head_sha }} \
               docker compose --env-file /etc/bt/env \
               -f infra/docker-compose.prod.yml \
@@ -74,9 +92,6 @@ jobs:
             print(result)
             sys.exit(0 if result.get("status") in {"succeeded", "partial"} else 1)
             PY
-
-            # Prune old images
-            docker image prune -f
 
       - name: Smoke test on Oracle VM
         uses: appleboy/ssh-action@v1
