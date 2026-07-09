@@ -885,39 +885,10 @@ def refresh_wfo_for_symbol_horizon(
                 db.commit()
                 failed += 1
 
-    # --- Support/Resistance WFO ---
-        try:
-            from services.api.app.routers.strategy_signals._support_resistance import _sr_get_or_compute_wfo
-
-            t_sr = time.monotonic()
-            sr_payload = _sr_get_or_compute_wfo(
-                db=db,
-                symbol=symbol,
-                horizon=horizon,
-                timeframe="1D",
-                cost_bps=20.0,
-                cooldown_bars=0,
-            )
-            wfo = sr_payload["response"]["wfo"] if "response" in sr_payload else sr_payload["wfo"]
-            fields = _sr_wfo_to_summary_fields(wfo)
-            fields.compute_seconds = round(time.monotonic() - t_sr, 2)
-            _upsert_summary(
-                db, symbol, category="support_resistance", horizon=horizon, variant=variant,
-                status="succeeded",
-                result=fields,
-                data_as_of=data_as_of,
-                folds_json=wfo.get("windows"),
-                config_json=_sr_summary_config(wfo),
-                fragility_json=wfo.get("stability"),
-            )
-        except Exception as exc:
-            logger.exception("WFO S/R failed: %s/%s/%s", symbol, horizon, variant)
-            _upsert_summary(
-                db, symbol, category="support_resistance", horizon=horizon, variant=variant,
-                status="failed", error_message=str(exc),
-            )
-        db.commit()
-
+        # NOTE: the full S/R WFO recompute lives in run_wfo_for_symbol_horizon.
+        # This lightweight representatives-refresh path intentionally does NOT
+        # recompute it; the global-consensus block below still reads cheap
+        # swing/pivot diagnostic levels via _get_sr_levels.
         support, resistance, support_method, resistance_method, atr = _get_sr_levels(
             close, high, low, volume, horizon
         )
