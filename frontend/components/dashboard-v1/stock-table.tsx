@@ -2,9 +2,8 @@
 
 import Link from "next/link"
 import { Fragment, useEffect, useMemo, useState } from "react"
-import useSWR from "swr"
 import { ArrowRight, BarChart3, BookOpen, ChevronDown, ChevronUp, ChevronsUpDown, Star } from "lucide-react"
-import { fetchWfoSummary, type EdgeMetrics, type WfoCategorySummary } from "@/lib/api"
+import type { EdgeMetrics } from "@/lib/api"
 import type {
   DashboardBestSignal,
   DashboardBestTechnicalSignal,
@@ -13,6 +12,7 @@ import type {
   DashboardStock,
   DashboardTechnicalDirectionMode,
   Horizon,
+  WfoSupportResistanceSummary,
 } from "@/lib/dashboard-types"
 import { FAMILY_ORDER } from "@/lib/dashboard-constants"
 import { formatPercent } from "@/lib/format"
@@ -279,23 +279,20 @@ function formatEdgeScore(value: number | null | undefined) {
   return value.toFixed(0)
 }
 
-function srLevels(row: WfoCategorySummary | null | undefined): {
+function srLevels(row: WfoSupportResistanceSummary | null | undefined): {
   support: number | null
   resistance: number | null
   supportMethod: string | null
   resistanceMethod: string | null
 } {
   const empty = { support: null, resistance: null, supportMethod: null, resistanceMethod: null }
-  const cfg = row?.config as Record<string, unknown> | null | undefined
-  const live = cfg?.live_recommendation as Record<string, unknown> | undefined
+  const live = row?.live_recommendation
   if (!live) return empty
-  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null)
-  const str = (v: unknown) => (typeof v === "string" && v ? v : null)
   return {
-    support: num(live.support_level),
-    resistance: num(live.resistance_level),
-    supportMethod: str(live.support_method),
-    resistanceMethod: str(live.resistance_method),
+    support: live.support_level ?? null,
+    resistance: live.resistance_level ?? null,
+    supportMethod: live.support_method ?? null,
+    resistanceMethod: live.resistance_method ?? null,
   }
 }
 
@@ -304,12 +301,11 @@ function fmtSrPrice(v: number | null): string {
   return v.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-function srWfoTitle(row: WfoCategorySummary | null | undefined) {
+function srWfoTitle(row: WfoSupportResistanceSummary | null | undefined) {
   if (!row) return "S/R WFO unavailable."
-  const folds = row.total_folds != null ? `${row.profitable_folds ?? 0}/${row.total_folds} profitable folds` : "no folds"
   const { support, resistance, supportMethod, resistanceMethod } = srLevels(row)
   const levels = `Support ${fmtSrPrice(support)}${supportMethod ? ` (${supportMethod})` : ""} · Résistance ${fmtSrPrice(resistance)}${resistanceMethod ? ` (${resistanceMethod})` : ""}`
-  return `${levels}. S/R WFO status: ${row.status}. ${folds}. Mean OOS Sharpe ${row.mean_oos_sharpe != null ? row.mean_oos_sharpe.toFixed(2) : "--"}.`
+  return `${levels}. S/R WFO status: ${row.status}.`
 }
 
 function SrWfoCell({
@@ -318,7 +314,7 @@ function SrWfoCell({
   error,
   showConfidence,
 }: {
-  row: WfoCategorySummary | null | undefined
+  row: WfoSupportResistanceSummary | null | undefined
   loading: boolean
   error: unknown
   showConfidence: boolean
@@ -335,7 +331,6 @@ function SrWfoCell({
   const { support, resistance } = srLevels(row)
   return (
     <div className="space-y-0.5 text-right" title={srWfoTitle(row)}>
-      <SignalBadge label={row.signal_label ?? "Indisponible"} />
       <div className="dashboard-mono text-[11px] font-semibold leading-4">
         <span className="text-emerald-600 dark:text-emerald-400">S {fmtSrPrice(support)}</span>
         <span className="text-muted-foreground"> · </span>
@@ -343,7 +338,7 @@ function SrWfoCell({
       </div>
       {showConfidence ? (
         <div className="dashboard-mono text-[10px] text-muted-foreground">
-          WFE {row.wfe_pct != null ? `${row.wfe_pct.toFixed(0)}%` : "--"} · Grade {row.robustness_grade ?? "--"}
+          {row.label ?? "--"}
         </div>
       ) : null}
     </div>
@@ -466,29 +461,6 @@ export function StockTable({
   const shownFamilies = useMemo(
     () => FAMILY_ORDER.filter((family) => visibleFamilies?.[family] !== false),
     [visibleFamilies],
-  )
-  const srSymbols = useMemo(
-    () => Array.from(new Set(stocks.map((stock) => stock.symbol.toUpperCase()).filter(Boolean))),
-    [stocks],
-  )
-  const { data: srWfoBySymbol, error: srWfoError, isLoading: srWfoLoading } = useSWR(
-    showSupportResistance && srSymbols.length
-      ? `dashboard-sr-wfo-${horizon}-${srSymbols.join(",")}`
-      : null,
-    async () => {
-      const entries = await Promise.all(
-        srSymbols.map(async (symbol) => {
-          try {
-            const res = await fetchWfoSummary(symbol, horizon, "expanded")
-            return [symbol, res.categories?.support_resistance ?? null] as const
-          } catch {
-            return [symbol, null] as const
-          }
-        }),
-      )
-      return Object.fromEntries(entries) as Record<string, WfoCategorySummary | null>
-    },
-    { revalidateOnFocus: false, dedupingInterval: 300_000, errorRetryCount: 1, keepPreviousData: true },
   )
 
   useEffect(() => {
@@ -643,7 +615,7 @@ export function StockTable({
           const evidenceHref = evidenceHrefForStock(stock)
           const selected = selectedSymbols?.has(stock.symbol) ?? false
           const chartOpen = expandedSymbol === stock.symbol
-          const srRow = srWfoBySymbol?.[stock.symbol.toUpperCase()]
+          const srRow = stock.scores.wfo?.support_resistance ?? null
 
           return (
             <article key={`mobile-${stock.symbol}`} className="rounded-lg border border-border bg-card px-3 py-3 shadow-xs">
@@ -687,8 +659,8 @@ export function StockTable({
                   </div>
                   <SrWfoCell
                     row={srRow}
-                    loading={srWfoLoading}
-                    error={srWfoError}
+                    loading={false}
+                    error={null}
                     showConfidence={showSrConfidence}
                   />
                 </div>
@@ -936,7 +908,7 @@ export function StockTable({
             })
             const selected = selectedSymbols?.has(stock.symbol) ?? false
             const chartOpen = expandedSymbol === stock.symbol
-            const srRow = srWfoBySymbol?.[stock.symbol.toUpperCase()]
+            const srRow = stock.scores.wfo?.support_resistance ?? null
 
             return (
               <Fragment key={stock.symbol}>
@@ -971,8 +943,8 @@ export function StockTable({
                   <TableCell className="px-3 py-2.5 text-right align-middle">
                     <SrWfoCell
                       row={srRow}
-                      loading={srWfoLoading}
-                      error={srWfoError}
+                      loading={false}
+                      error={null}
                       showConfidence={showSrConfidence}
                     />
                   </TableCell>

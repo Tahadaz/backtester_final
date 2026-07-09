@@ -1016,6 +1016,13 @@ def _sr_summary_config(wfo: dict) -> dict:
         "support_label": meta.get("support_label"),
         "resistance_label": meta.get("resistance_label"),
     }
+    cfg["decision"] = wfo.get("decision")
+    if "explanation" in wfo:
+        cfg["explanation"] = wfo.get("explanation")
+    cfg["procedure_oos"] = wfo.get("procedure_oos")
+    cfg["baselines"] = wfo.get("baselines")
+    if "line_touch_stats" in wfo:
+        cfg["line_touch_stats"] = wfo.get("line_touch_stats")
     return cfg
 
 

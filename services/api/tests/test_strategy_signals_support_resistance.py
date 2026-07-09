@@ -398,65 +398,6 @@ def test_sr_wfo_endpoint_returns_insufficient_history_for_short_fixture(monkeypa
     assert "line_touch_stats" in payload
 
 
-def test_sr_overlay_enters_on_support_and_exits_on_resistance() -> None:
-    close = np.array([100.0, 101.0, 104.0, 103.0], dtype=float)
-    high = np.array([101.0, 102.0, 106.0, 104.0], dtype=float)
-    low = np.array([99.0, 98.0, 102.0, 101.0], dtype=float)
-    baseline_position = np.array([0.0, 1.0, 1.0, 0.0], dtype=float)
-    support = np.array([np.nan, 99.0, 100.0, np.nan], dtype=float)
-    resistance = np.array([np.nan, 105.0, 105.0, np.nan], dtype=float)
-
-    result = strategy_signals._sr_simulate_signal_overlay(
-        close=close,
-        high=high,
-        low=low,
-        dates=["2024-01-01", "2024-01-02", "2024-01-03", "2024-01-04"],
-        baseline_position=baseline_position,
-        support_series=support,
-        resistance_series=resistance,
-        cost_bps=0.0,
-        slippage_bps=0.0,
-        cooldown_bars=0,
-        allow_short=False,
-    )
-
-    assert result["metrics"]["n_trades"] == 1
-    assert result["trades"][0]["open_price"] == 99.0
-    assert result["trades"][0]["close_price"] == 105.0
-    assert result["trades"][0]["exit_reason"] == "resistance"
-    assert result["metrics"]["total_return"] > 0.06
-
-
-def test_sr_overlay_mirrors_short_when_allowed() -> None:
-    close = np.array([100.0, 99.0, 95.0, 96.0], dtype=float)
-    high = np.array([101.0, 103.0, 97.0, 97.0], dtype=float)
-    low = np.array([99.0, 98.0, 94.0, 95.0], dtype=float)
-    baseline_position = np.array([0.0, -1.0, -1.0, 0.0], dtype=float)
-    support = np.array([np.nan, 96.0, 96.0, np.nan], dtype=float)
-    resistance = np.array([np.nan, 102.0, 101.0, np.nan], dtype=float)
-
-    result = strategy_signals._sr_simulate_signal_overlay(
-        close=close,
-        high=high,
-        low=low,
-        dates=["2024-01-01", "2024-01-02", "2024-01-03", "2024-01-04"],
-        baseline_position=baseline_position,
-        support_series=support,
-        resistance_series=resistance,
-        cost_bps=0.0,
-        slippage_bps=0.0,
-        cooldown_bars=0,
-        allow_short=True,
-    )
-
-    assert result["metrics"]["n_trades"] == 1
-    assert result["trades"][0]["direction"] == -1.0
-    assert result["trades"][0]["open_price"] == 102.0
-    assert result["trades"][0]["close_price"] == 96.0
-    assert result["trades"][0]["exit_reason"] == "support"
-    assert result["metrics"]["total_return"] > 0.06
-
-
 def test_sr_ict_methods_are_built_and_have_finite_or_nan_series(monkeypatch) -> None:
     from services.api.app.routers.strategy_signals import _support_resistance as sr_mod
 

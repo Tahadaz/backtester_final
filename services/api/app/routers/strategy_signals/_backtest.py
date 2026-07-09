@@ -47,10 +47,6 @@ from ._shared import (
     _safe_float,
     _safe_float_list,
 )
-from ._support_resistance import (
-    _sr_overlay_empty,
-    _sr_overlay_for_position_series,
-)
 from ._evidence import (
     _read_best_evidence_snapshot,
     _signal_backtest_diagnostics_with_source_reps,
@@ -171,29 +167,6 @@ def get_signal_backtest_results(
             )
 
         response_metrics_dict = dict(response_metrics or {})
-        sr_overlay = _sr_overlay_empty(
-            "unavailable",
-            "source_not_wfo",
-            response_metrics_dict,
-        )
-        if str(row.source or "") == "wfo":
-            sr_overlay = _sr_overlay_for_position_series(
-                db,
-                symbol=symbol,
-                horizon=horizon,
-                variant=variant,
-                dates=row.dates_json if isinstance(row.dates_json, list) else [],
-                baseline_position=response_position,
-                baseline_metrics=response_metrics_dict,
-                cost_bps=float(row.cost_bps or 0.0),
-                slippage_bps=float(row.slippage_bps or 0.0),
-                cooldown_bars=int(getattr(row, "cooldown_bars", 0) or 0),
-                side_policy=(
-                    "long_short"
-                    if direction_filter == "short"
-                    else str(row.side_policy or "long_only")
-                ),
-            )
 
         results.append({
             "source": row.source,
@@ -224,7 +197,6 @@ def get_signal_backtest_results(
                 cache=representative_lookup_cache,
             ),
             "metrics": response_metrics,
-            "sr_overlay": sr_overlay,
             "mc": response_mc,
             "shuffle_stats": row.shuffle_stats_json,
             "computed_at": row.computed_at.isoformat() if row.computed_at else None,

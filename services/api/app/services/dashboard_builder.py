@@ -1780,7 +1780,7 @@ def build_dashboard_payload(db: Session, horizon: str, *, include_edge: bool = F
 
     wfo_summary_rows = db.execute(
         text(f"""
-        SELECT symbol, category, score_pct, signal_label, variant
+        SELECT symbol, category, score_pct, signal_label, variant, config_json
         FROM wfo_signal_summary
         WHERE horizon = :horizon
           AND variant IN ({EXPANDED_TA_SIMPLE_VARIANT_SQL})
@@ -1791,9 +1791,9 @@ def build_dashboard_payload(db: Session, horizon: str, *, include_edge: bool = F
     ).fetchall()
     wfo_summary_by_symbol: dict[str, dict[str, Any]] = {}
     for row in wfo_summary_rows:
-        sym, cat, score, label, _variant = row
+        sym, cat, score, label, _variant, config_json = row
         wfo_summary_by_symbol.setdefault(str(sym), {}).setdefault(str(cat), {
-            "score_pct": _round(score), "label": label
+            "score_pct": _round(score), "label": label, "config": config_json
         })
 
     technical_se_rows = db.execute(
@@ -1962,14 +1962,21 @@ def build_dashboard_payload(db: Session, horizon: str, *, include_edge: bool = F
                 "consensus_wfe_pct": _round(wfo_row[13]),
                 "consensus_robustness": _round(wfo_row[14]),
                 "status": "succeeded",
-                "technical_levels": {
-                    "support_buy_trigger": _round(wfo_row[8]),
-                    "resistance_sell_trigger": _round(wfo_row[9]),
-                    "support_reference": _round(wfo_row[8]),
-                    "support_method": wfo_row[10] or "",
-                    "resistance_method": wfo_row[11] or "",
-                    "method": "wfo_sr",
-                },
+            }
+
+        # support_resistance has its own independent success/failure status per
+        # symbol/horizon and is intentionally excluded from EXPANDED_CATEGORY_FAMILIES
+        # (never a scoring/voting input) — surfaced here as a sibling of per_family.
+        sr_summary = wfo_summary_by_symbol.get(symbol, {}).get("support_resistance")
+        if sr_summary is not None:
+            if wfo_scores_obj is None:
+                wfo_scores_obj = {}
+            sr_config = sr_summary.get("config") or {}
+            wfo_scores_obj["support_resistance"] = {
+                "status": "succeeded",
+                "score_pct": sr_summary.get("score_pct"),
+                "label": sr_summary.get("label"),
+                "live_recommendation": sr_config.get("live_recommendation"),
             }
 
         market_stats = market_stats_by_symbol.get(symbol, {})
@@ -2151,7 +2158,7 @@ def build_dashboard_payload(db: Session, horizon: str, *, include_edge: bool = F
                 se_fx_cats[c].append(d["score_pct"])
             wfo = st["scores"].get("wfo")
             if wfo:
-                if wfo["aggregate_score_pct"] is not None:
+                if wfo.get("aggregate_score_pct") is not None:
                     wfo_aggs.append(wfo["aggregate_score_pct"])
                 for c, d in wfo.get("per_family", {}).items():
                     wfo_cats[c].append(d["score_pct"])
@@ -2246,7 +2253,7 @@ def build_dashboard_payload(db: Session, horizon: str, *, include_edge: bool = F
 
         wfo = st["scores"].get("wfo")
         if wfo:
-            score = wfo["aggregate_score_pct"]
+            score = wfo.get("aggregate_score_pct")
             if score is not None:
                 wfo_aggs.append(score)
                 if score >= 66.6: wfo_breadth["achat"] += 1

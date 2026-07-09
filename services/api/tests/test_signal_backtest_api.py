@@ -856,7 +856,6 @@ def test_signal_best_evidence_reads_stored_payload_without_live_build(monkeypatc
         "oos_periods": [],
         "evidence_trade_count": 0,
         "stitched_oos_backtest": None,
-        "sr_overlay": {"status": "unavailable", "reason": "not_requested"},
     }
     snapshot = SignalBestEvidenceSnapshot(
         symbol="AAA",

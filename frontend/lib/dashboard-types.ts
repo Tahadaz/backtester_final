@@ -92,13 +92,18 @@ export interface SignalEngineScores {
   breadth?: DashboardBreadth
 }
 
-export interface WfoTechnicalLevels {
-  support_buy_trigger: number | null
-  resistance_sell_trigger: number | null
-  support_reference: number | null
-  support_method: string
-  resistance_method: string
-  method: string
+export interface WfoSupportResistanceSummary {
+  status: string
+  score_pct: number | null
+  label: string | null
+  live_recommendation: {
+    support_level: number | null
+    resistance_level: number | null
+    support_method: string | null
+    resistance_method: string | null
+    support_label?: string | null
+    resistance_label?: string | null
+  } | null
 }
 
 export interface WfoScores {
@@ -106,7 +111,7 @@ export interface WfoScores {
   aggregate_score_pct: number | null
   aggregate_signal_label: string | null
   per_family: Record<string, FamilyScore>
-  technical_levels?: WfoTechnicalLevels | null
+  support_resistance?: WfoSupportResistanceSummary | null
   best_category?: string
   consensus_wfe_pct?: number | null
   consensus_robustness?: number | null

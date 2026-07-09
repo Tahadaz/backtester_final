@@ -797,7 +797,7 @@ def test_dashboard_payload_reads_canonical_expanded_rows(monkeypatch) -> None:
                 ])
             if "FROM wfo_signal_summary" in sql and "variant IN" in sql:
                 return Result([
-                    ("AAA", "tendance", 66.0, "Achat", "expanded_ta_simple"),
+                    ("AAA", "tendance", 66.0, "Achat", "expanded_ta_simple", None),
                 ])
             return Result([])
 
@@ -906,8 +906,8 @@ def test_dashboard_payload_prefers_canonical_expanded_rows(monkeypatch) -> None:
                 ])
             if "FROM wfo_signal_summary" in sql and "variant IN" in sql:
                 return Result([
-                    ("AAA", "tendance", 70.0, "Achat", "expanded_ta_simple"),
-                    ("AAA", "tendance", 30.0, "Vente", "expanded"),
+                    ("AAA", "tendance", 70.0, "Achat", "expanded_ta_simple", None),
+                    ("AAA", "tendance", 30.0, "Vente", "expanded", None),
                 ])
             return Result([])
 

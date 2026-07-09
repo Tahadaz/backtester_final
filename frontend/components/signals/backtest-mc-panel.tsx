@@ -262,56 +262,6 @@ function EdgeProofStrip({
   )
 }
 
-function SrOverlayStrip({ row }: { row: SignalBacktestResult }) {
-  if (row.source !== "wfo") return null
-  const overlay = row.sr_overlay
-  if (!overlay) return null
-  const ready = (overlay.status === "ready" || overlay.status === "actionable" || overlay.status === "research_only") && overlay.overlay_metrics
-  const bestLabel = overlay.best_variant_id?.replace(/^sr:/, "").replaceAll("__", " / ").replaceAll(":", " ")
-
-  return (
-    <div className="rounded border bg-muted/20 p-3">
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">S/R execution overlay</h4>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Baseline WFO signal compared with support-entry / resistance-exit execution.
-          </p>
-        </div>
-        <Badge variant={ready ? "default" : "outline"} className="text-xs">
-          {ready ? `${overlay.viable_count} viable / ${overlay.tested_count} tested` : overlay.reason ?? "unavailable"}
-        </Badge>
-      </div>
-      {ready ? (
-        <div className="grid gap-2 sm:grid-cols-4">
-          <div className="rounded border bg-background p-2">
-            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Baseline return</div>
-            <div className="font-mono text-sm font-semibold">{formatPercent(overlay.baseline_metrics.total_return)}</div>
-            <div className="text-[10px] text-muted-foreground">trades {fmt(overlay.baseline_metrics.n_trades)}</div>
-          </div>
-          <div className="rounded border bg-background p-2">
-            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">S/R return</div>
-            <div className="font-mono text-sm font-semibold">{formatPercent(overlay.overlay_metrics?.total_return)}</div>
-            <div className="truncate text-[10px] text-muted-foreground">{bestLabel ?? "best pair"}</div>
-          </div>
-          <div className="rounded border bg-background p-2">
-            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Return uplift</div>
-            <div className="font-mono text-sm font-semibold">{formatPercent(overlay.uplift.total_return)}</div>
-            <div className="text-[10px] text-muted-foreground">
-              {overlay.best_support_method ?? "--"} {overlay.best_support_line ?? ""} / {overlay.best_resistance_method ?? "--"} {overlay.best_resistance_line ?? ""}
-            </div>
-          </div>
-          <div className="rounded border bg-background p-2">
-            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Drawdown uplift</div>
-            <div className="font-mono text-sm font-semibold">{formatPercent(overlay.uplift.max_drawdown)}</div>
-            <div className="text-[10px] text-muted-foreground">positive means lower DD</div>
-          </div>
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
 function ResultBlock({
   row,
   symbol,
@@ -438,8 +388,6 @@ function ResultBlock({
       )}
 
       <EdgeProofStrip row={row} symbol={symbol} horizon={horizon} />
-
-      <SrOverlayStrip row={row} />
 
       {representatives.length > 0 && (
         <div>

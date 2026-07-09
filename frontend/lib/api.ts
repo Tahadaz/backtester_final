@@ -1643,51 +1643,6 @@ export const SignalEvidenceStitchedMetricsSchema = z.object({
   metric_basis: z.string().nullable().optional(),
 })
 
-export const SrOverlayMetricsSchema = z.object({
-  total_return: z.number().nullable().optional(),
-  cagr: z.number().nullable().optional(),
-  sharpe: z.number().nullable().optional(),
-  max_drawdown: z.number().nullable().optional(),
-  win_rate: z.number().nullable().optional(),
-  n_trades: z.number().nullable().optional(),
-}).passthrough()
-
-export const SrOverlayVariantSchema = z.object({
-  variant_id: z.string(),
-  support_method: z.string().nullable().optional(),
-  support_line: z.string().nullable().optional(),
-  resistance_method: z.string().nullable().optional(),
-  resistance_line: z.string().nullable().optional(),
-  support_level: z.number().nullable().optional(),
-  resistance_level: z.number().nullable().optional(),
-  metrics: SrOverlayMetricsSchema.default({}),
-  uplift: z.record(z.string(), z.number().nullable()).default({}),
-  rank_score: z.number().nullable().optional(),
-  trade_count: z.number().default(0),
-  trades: z.array(z.record(z.unknown())).default([]),
-}).passthrough()
-
-export const SrOverlaySchema = z.object({
-  status: z.string().default("unavailable"),
-  decision: z.string().nullable().optional(),
-  reason: z.string().nullable().optional(),
-  validation: z.record(z.unknown()).nullable().optional(),
-  best_variant_id: z.string().nullable().optional(),
-  best_support_method: z.string().nullable().optional(),
-  best_support_line: z.string().nullable().optional(),
-  best_resistance_method: z.string().nullable().optional(),
-  best_resistance_line: z.string().nullable().optional(),
-  baseline_metrics: SrOverlayMetricsSchema.default({}),
-  overlay_metrics: SrOverlayMetricsSchema.nullable().optional(),
-  uplift: z.record(z.string(), z.number().nullable()).default({}),
-  top_variants: z.array(SrOverlayVariantSchema).default([]),
-  tested_count: z.number().default(0),
-  viable_count: z.number().default(0),
-  invalid_pair_count: z.number().default(0),
-  unavailable_count: z.number().default(0),
-}).passthrough()
-export type SrOverlay = z.infer<typeof SrOverlaySchema>
-
 export const SignalEvidenceProofSummarySchema = z.object({
   limit: z.string().default("100"),
   n_trades: z.number().default(0),
@@ -1726,7 +1681,6 @@ export const SignalEvidenceStitchedOosBacktestSchema = z.object({
   trade_ledger: z.array(z.record(z.unknown())).default([]),
   warnings: z.array(z.string()).default([]),
   metrics: SignalEvidenceStitchedMetricsSchema.default({}),
-  sr_overlay: SrOverlaySchema.optional(),
 }).nullable()
 export type SignalEvidenceStitchedOosBacktest = z.infer<typeof SignalEvidenceStitchedOosBacktestSchema>
 
@@ -1769,7 +1723,6 @@ export const SignalEvidenceSchema = z.object({
   oos_periods: z.array(SignalEvidenceOosPeriodSchema).default([]),
   evidence_trade_count: z.number().default(0),
   stitched_oos_backtest: SignalEvidenceStitchedOosBacktestSchema.optional(),
-  sr_overlay: SrOverlaySchema.optional(),
 })
 export type SignalEvidence = z.infer<typeof SignalEvidenceSchema>
 
@@ -5681,6 +5634,7 @@ export type WfoFold = z.infer<typeof WfoFoldSchema>
 export const WfoCategoryDetailSchema = WfoCategorySummarySchema.extend({
   folds: z.array(WfoFoldSchema).nullable().optional(),
   config: z.record(z.unknown()).nullable().optional(),
+  fragility: z.record(z.unknown()).nullable().optional(),
   error_message: z.string().nullable().optional(),
 })
 export type WfoCategoryDetail = z.infer<typeof WfoCategoryDetailSchema>
@@ -5863,7 +5817,6 @@ export const SignalBacktestResultSchema = z.object({
   global_score_series: z.array(z.number().nullable()).nullable().optional(),
   signal_diagnostics: z.record(z.unknown()).nullable().optional(),
   metrics: BacktestMetricsSchema,
-  sr_overlay: SrOverlaySchema.optional(),
   mc: z.object({
     method: z.string(),
     n_paths: z.number(),
@@ -7259,8 +7212,11 @@ export async function getFundamentalSnapshotBatch(symbols: string[]): Promise<Re
   return z.record(FundamentalLightSnapshotSchema.nullable()).parse(data)
 }
 
-export async function getFundamentalStockDetail(symbol: string, scenario = "auto"): Promise<FundamentalStockDetail> {
+export async function getFundamentalStockDetail(symbol: string, scenario = "auto", peerSymbols?: string[]): Promise<FundamentalStockDetail> {
   const params = new URLSearchParams({ scenario })
+  if (peerSymbols && peerSymbols.length) {
+    params.set("peer_symbols", peerSymbols.join(","))
+  }
   const data = await request<unknown>(`/fundamentals/stocks/${encodeURIComponent(symbol)}?${params.toString()}`)
   return FundamentalStockDetailSchema.parse(data)
 }

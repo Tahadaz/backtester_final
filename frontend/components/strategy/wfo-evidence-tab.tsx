@@ -1,15 +1,14 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Activity, AlertCircle, BarChart3, CheckCircle2, ExternalLink, Gauge, Layers, RefreshCw, Settings, TrendingUp } from "lucide-react"
+import { Activity, AlertCircle, BarChart3, CheckCircle2, ExternalLink, Layers, RefreshCw, Settings, TrendingUp } from "lucide-react"
 import { useWfoSummary } from "@/hooks/use-wfo-summary"
 import {
-  fetchSignalEvidence,
-  fetchSrWfo,
   fetchWfoDetail,
   triggerWfoComputation,
-  type SrOverlay,
+  SrWfoSchema,
+  type SrWfo,
   type SrWfoPairMeta,
   type SrWfoResponse,
   type WfoCategoryDetail,
@@ -26,17 +25,12 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { SignalBadge } from "@/components/ui/signal-badge"
 import { SignalScoreBar } from "./signal-score-bar"
 
-const EDGE_COST_BPS = 33
-
-type BaseCategoryId = "tendance" | "momentum" | "oscillation" | "volume"
-type SyntheticCategoryId = "sr_execution" | "sr_wfo"
-type CategoryId = BaseCategoryId | SyntheticCategoryId
+type CategoryId = "tendance" | "momentum" | "oscillation" | "volume" | "support_resistance"
 
 type CategoryMeta = {
   id: CategoryId
   label: string
   icon: typeof TrendingUp
-  synthetic?: boolean
 }
 
 const CATEGORY_META: CategoryMeta[] = [
@@ -44,17 +38,13 @@ const CATEGORY_META: CategoryMeta[] = [
   { id: "momentum", label: "Momentum", icon: Activity },
   { id: "oscillation", label: "Oscillation", icon: Activity },
   { id: "volume", label: "Volume", icon: BarChart3 },
-  { id: "sr_execution", label: "S/R Execution", icon: Gauge, synthetic: true },
-  { id: "sr_wfo", label: "S/R Walk-Forward", icon: Layers, synthetic: true },
+  { id: "support_resistance", label: "S/R Walk-Forward", icon: Layers },
 ]
 
-const SYNTHETIC_CATEGORY_IDS: SyntheticCategoryId[] = ["sr_execution", "sr_wfo"]
-
-function isSyntheticCategory(id: CategoryId): id is SyntheticCategoryId {
-  return (SYNTHETIC_CATEGORY_IDS as CategoryId[]).includes(id)
-}
-
-const BASE_CATEGORY_META = CATEGORY_META.filter((meta): meta is CategoryMeta & { id: BaseCategoryId } => !meta.synthetic)
+// support_resistance is intentionally excluded from the global consensus vote (backend:
+// dashboard_builder.py comment "never a scoring/voting input") — the "Categories X/4" tally
+// and the default-category fallback stay scoped to the 4 base categories that do vote.
+const VOTING_CATEGORY_IDS: CategoryId[] = ["tendance", "momentum", "oscillation", "volume"]
 
 const GRADE_COLORS: Record<string, string> = {
   A: "bg-green-600 text-white",
@@ -344,257 +334,9 @@ function FoldTable({ folds }: { folds: Array<Record<string, unknown>> }) {
   )
 }
 
-type SrOverlayVariant = SrOverlay["top_variants"][number]
-
 function returnTone(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return "text-foreground"
   return value >= 0 ? "text-[oklch(0.50_0.13_165)]" : "text-[oklch(0.52_0.20_25)]"
-}
-
-function formatSrReason(reason: string): string {
-  if (reason === "baseline_has_no_positions") return "Sans positions directionnelles"
-  if (reason === "source_not_wfo") return "Source non WFO"
-  if (reason === "not_requested") return "Non demande"
-  return reason
-}
-
-function SrOverlayStatusCard({
-  overlay,
-  error,
-}: {
-  overlay: SrOverlay | null
-  error: string | null
-}) {
-  const rawReason = error ?? overlay?.reason ?? overlay?.status ?? "unavailable"
-  const reason = formatSrReason(rawReason)
-  return (
-    <Card>
-      <CardHeader className="pb-2 pt-3 px-4">
-        <CardTitle className="flex items-center gap-2 text-sm font-bold">
-          <Gauge className="h-4 w-4 text-muted-foreground" />
-          S/R Execution Overlay
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3 px-4 pb-4">
-        <p className="rounded-md border border-dashed bg-muted/20 p-3 text-sm text-muted-foreground">
-          {reason}
-        </p>
-        {overlay ? (
-          <div className="grid gap-2 sm:grid-cols-4">
-            <MetricBox label="Tested" value={formatNumber(overlay.tested_count, 0)} />
-            <MetricBox label="Viable" value={formatNumber(overlay.viable_count, 0)} />
-            <MetricBox label="Invalid pairs" value={formatNumber(overlay.invalid_pair_count, 0)} />
-            <MetricBox label="Unavailable" value={formatNumber(overlay.unavailable_count, 0)} />
-          </div>
-        ) : null}
-      </CardContent>
-    </Card>
-  )
-}
-
-function SrOverlayVariantsTable({ variants }: { variants: SrOverlayVariant[] }) {
-  if (!variants.length) {
-    return (
-      <div className="rounded-md border border-dashed bg-muted/20 p-3 text-xs text-muted-foreground">
-        Aucun couple S/R viable disponible.
-      </div>
-    )
-  }
-
-  return (
-    <div className="overflow-x-auto rounded-md border">
-      <table className="w-full min-w-[860px] text-xs">
-        <thead>
-          <tr className="border-b bg-muted/30 text-muted-foreground">
-            <th className="px-3 py-2 text-left font-medium">Couple</th>
-            <th className="px-3 py-2 text-right font-medium">Support</th>
-            <th className="px-3 py-2 text-right font-medium">Resistance</th>
-            <th className="px-3 py-2 text-right font-medium">S/R return</th>
-            <th className="px-3 py-2 text-right font-medium">Return uplift</th>
-            <th className="px-3 py-2 text-right font-medium">DD uplift</th>
-            <th className="px-3 py-2 text-right font-medium">Trades</th>
-            <th className="px-3 py-2 text-right font-medium">Rank</th>
-          </tr>
-        </thead>
-        <tbody>
-          {variants.map((row) => (
-            <tr key={row.variant_id} className="border-b border-border/50 hover:bg-muted/30">
-              <td className="px-3 py-2">
-                <div className="font-medium">{row.support_method ?? "--"} / {row.resistance_method ?? "--"}</div>
-                <div className="font-mono text-[9px] text-muted-foreground">{row.variant_id}</div>
-              </td>
-              <td className="px-3 py-2 text-right">
-                <div className="font-mono">{formatNumber(row.support_level, 2)}</div>
-                <div className="text-[9px] text-muted-foreground">{row.support_line ?? "--"}</div>
-              </td>
-              <td className="px-3 py-2 text-right">
-                <div className="font-mono">{formatNumber(row.resistance_level, 2)}</div>
-                <div className="text-[9px] text-muted-foreground">{row.resistance_line ?? "--"}</div>
-              </td>
-              <td className={cn("px-3 py-2 text-right font-mono font-semibold", returnTone(row.metrics?.total_return))}>
-                {formatPercent(row.metrics?.total_return)}
-              </td>
-              <td className={cn("px-3 py-2 text-right font-mono font-semibold", returnTone(row.uplift?.total_return))}>
-                {formatPercent(row.uplift?.total_return)}
-              </td>
-              <td className={cn("px-3 py-2 text-right font-mono font-semibold", returnTone(row.uplift?.max_drawdown))}>
-                {formatPercent(row.uplift?.max_drawdown)}
-              </td>
-              <td className="px-3 py-2 text-right font-mono">{formatNumber(row.trade_count, 0)}</td>
-              <td className="px-3 py-2 text-right font-mono">{formatNumber(row.rank_score, 4)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-function SrOverlayTradesTable({ trades }: { trades: Array<Record<string, unknown>> }) {
-  if (!trades.length) {
-    return (
-      <div className="rounded-md border border-dashed bg-muted/20 p-3 text-xs text-muted-foreground">
-        Aucun trade S/R recent pour le meilleur couple.
-      </div>
-    )
-  }
-
-  return (
-    <div className="overflow-x-auto rounded-md border">
-      <table className="w-full min-w-[720px] text-xs">
-        <thead>
-          <tr className="border-b bg-muted/30 text-muted-foreground">
-            <th className="px-3 py-2 text-left font-medium">Entry</th>
-            <th className="px-3 py-2 text-left font-medium">Exit</th>
-            <th className="px-3 py-2 text-right font-medium">Open</th>
-            <th className="px-3 py-2 text-right font-medium">Close</th>
-            <th className="px-3 py-2 text-right font-medium">Bars</th>
-            <th className="px-3 py-2 text-right font-medium">P&L</th>
-            <th className="px-3 py-2 text-left font-medium">Reason</th>
-          </tr>
-        </thead>
-        <tbody>
-          {trades.map((trade, index) => {
-            const pnl = asNumber(trade.pnl_return)
-            return (
-              <tr key={`${asString(trade.open_date)}-${asString(trade.close_date)}-${index}`} className="border-b border-border/50">
-                <td className="px-3 py-2 font-mono">{compactDate(asString(trade.open_date))}</td>
-                <td className="px-3 py-2 font-mono">{compactDate(asString(trade.close_date))}</td>
-                <td className="px-3 py-2 text-right font-mono">{formatNumber(asNumber(trade.open_price), 2)}</td>
-                <td className="px-3 py-2 text-right font-mono">{formatNumber(asNumber(trade.close_price), 2)}</td>
-                <td className="px-3 py-2 text-right font-mono">{formatNumber(asNumber(trade.bars_held), 0)}</td>
-                <td className={cn("px-3 py-2 text-right font-mono font-semibold", returnTone(pnl))}>{formatPercent(pnl)}</td>
-                <td className="px-3 py-2">
-                  {asString(trade.entry_reason) || "--"} {"->"} {asString(trade.exit_reason) || "--"}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-function SrOverlayDetailPanel({
-  overlay,
-  isLoading,
-  error,
-}: {
-  overlay: SrOverlay | null
-  isLoading: boolean
-  error: string | null
-}) {
-  if (isLoading) {
-    return (
-      <div className="space-y-3">
-        <Skeleton className="h-24 w-full rounded-md" />
-        <Skeleton className="h-56 w-full rounded-md" />
-      </div>
-    )
-  }
-
-  const ready = (overlay?.status === "actionable" || overlay?.status === "research_only") && overlay.overlay_metrics
-  if (!ready) return <SrOverlayStatusCard overlay={overlay} error={error} />
-
-  const bestVariant =
-    overlay.top_variants.find((row) => row.variant_id === overlay.best_variant_id) ??
-    overlay.top_variants[0] ??
-    null
-  const bestTrades = bestVariant?.trades ?? []
-
-  return (
-    <div className="space-y-3">
-      <Card>
-        <CardHeader className="pb-2 pt-3 px-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <CardTitle className="flex items-center gap-2 text-sm font-bold">
-                <Gauge className="h-4 w-4 text-primary" />
-                S/R Execution Overlay
-              </CardTitle>
-              <p className="mt-1 text-xs text-muted-foreground">
-                WFO signal replayed with support-entry / resistance-exit execution.
-              </p>
-            </div>
-            <Badge variant="outline" className="h-6 text-[10px]">
-              {overlay.viable_count} viable / {overlay.tested_count} tested
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="grid gap-2 px-4 pb-4 sm:grid-cols-4">
-          <MetricBox
-            label="Baseline return"
-            value={formatPercent(overlay.baseline_metrics.total_return)}
-            sub={`trades ${formatNumber(overlay.baseline_metrics.n_trades, 0)}`}
-            valueClassName={returnTone(overlay.baseline_metrics.total_return)}
-          />
-          <MetricBox
-            label="S/R return"
-            value={formatPercent(overlay.overlay_metrics?.total_return)}
-            sub={overlay.best_variant_id ?? "best pair"}
-            valueClassName={returnTone(overlay.overlay_metrics?.total_return)}
-          />
-          <MetricBox
-            label="Return uplift"
-            value={formatPercent(overlay.uplift.total_return)}
-            sub={`${overlay.best_support_method ?? "--"} ${overlay.best_support_line ?? ""} / ${overlay.best_resistance_method ?? "--"} ${overlay.best_resistance_line ?? ""}`}
-            valueClassName={returnTone(overlay.uplift.total_return)}
-          />
-          <MetricBox
-            label="Drawdown uplift"
-            value={formatPercent(overlay.uplift.max_drawdown)}
-            sub="positive means lower drawdown"
-            valueClassName={returnTone(overlay.uplift.max_drawdown)}
-          />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-2 pt-3 px-4">
-          <CardTitle className="text-xs font-semibold">Execution candidates</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 px-4 pb-4">
-          <div className="grid gap-2 sm:grid-cols-4">
-            <MetricBox label="Invalid pairs" value={formatNumber(overlay.invalid_pair_count, 0)} />
-            <MetricBox label="Unavailable" value={formatNumber(overlay.unavailable_count, 0)} />
-            <MetricBox label="Best support" value={`${overlay.best_support_method ?? "--"} ${overlay.best_support_line ?? ""}`} />
-            <MetricBox label="Best resistance" value={`${overlay.best_resistance_method ?? "--"} ${overlay.best_resistance_line ?? ""}`} />
-          </div>
-          <SrOverlayVariantsTable variants={overlay.top_variants} />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-2 pt-3 px-4">
-          <CardTitle className="text-xs font-semibold">Recent best-pair trades</CardTitle>
-        </CardHeader>
-        <CardContent className="px-4 pb-4">
-          <SrOverlayTradesTable trades={bestTrades} />
-        </CardContent>
-      </Card>
-    </div>
-  )
 }
 
 function srWfoDecisionLabel(decision: string | null | undefined): string {
@@ -626,7 +368,7 @@ function sortedWinCounts(counts: Record<string, number>, limit = 5): Array<[stri
     .slice(0, limit)
 }
 
-function SrWfoStatusCard({ wfo, error }: { wfo: SrWfoResponse["wfo"] | null; error: string | null }) {
+function SrWfoStatusCard({ wfo, error }: { wfo: SrWfo | null; error: string | null }) {
   const reason = error ?? wfo?.explanation ?? "Historique insuffisant pour la procedure walk-forward S/R."
   return (
     <Card>
@@ -643,7 +385,7 @@ function SrWfoStatusCard({ wfo, error }: { wfo: SrWfoResponse["wfo"] | null; err
   )
 }
 
-function SrWfoProcedureTable({ wfo }: { wfo: SrWfoResponse["wfo"] }) {
+function SrWfoProcedureTable({ wfo }: { wfo: SrWfo }) {
   const proc = wfo.procedure_oos
   const buyHold = wfo.baselines?.buy_hold
   const isBest = wfo.baselines?.in_sample_best
@@ -746,7 +488,7 @@ function SrWfoProcedureTable({ wfo }: { wfo: SrWfoResponse["wfo"] }) {
   )
 }
 
-function SrWfoWindowsTable({ windows }: { windows: SrWfoResponse["wfo"]["windows"] }) {
+function SrWfoWindowsTable({ windows }: { windows: SrWfo["windows"] }) {
   if (!windows.length) {
     return (
       <div className="rounded-md border border-dashed bg-muted/20 p-3 text-xs text-muted-foreground">
@@ -841,13 +583,34 @@ function SrWfoTouchStatsTable({
   )
 }
 
+function srWfoResultFromDetail(detail: WfoCategoryDetail | null): SrWfo | null {
+  if (!detail) return null
+  const config = (detail.config ?? {}) as Record<string, unknown>
+  const candidate = {
+    version: null,
+    status: detail.status === "succeeded" ? "ok" : "insufficient_history",
+    decision: config.decision ?? null,
+    explanation: config.explanation ?? "",
+    windows: detail.folds ?? [],
+    procedure_oos: config.procedure_oos ?? null,
+    baselines: config.baselines ?? null,
+    stability: detail.fragility ?? null,
+    live_recommendation: config.live_recommendation ?? null,
+    params_echo: config.params_echo ?? null,
+  }
+  const parsed = SrWfoSchema.safeParse(candidate)
+  return parsed.success ? parsed.data : null
+}
+
 function SrWfoDetailPanel({
-  wfo,
+  detail,
+  result,
   touchStats,
   isLoading,
   error,
 }: {
-  wfo: SrWfoResponse | null
+  detail: WfoCategoryDetail | null
+  result: SrWfo | null
   touchStats: SrWfoResponse["line_touch_stats"] | undefined
   isLoading: boolean
   error: string | null
@@ -862,14 +625,13 @@ function SrWfoDetailPanel({
   }
 
   if (error) {
-    return <SrWfoStatusCard wfo={wfo?.wfo ?? null} error={error} />
+    return <SrWfoStatusCard wfo={result ?? null} error={error} />
   }
 
-  if (!wfo || wfo.wfo.status === "insufficient_history") {
-    return <SrWfoStatusCard wfo={wfo?.wfo ?? null} error={null} />
+  if (!result || result.status === "insufficient_history") {
+    return <SrWfoStatusCard wfo={result ?? null} error={null} />
   }
 
-  const { wfo: result } = wfo
   const rec = result.live_recommendation
   const stability = result.stability
   const supportWins = stability ? sortedWinCounts(stability.support_win_counts) : []
@@ -880,6 +642,36 @@ function SrWfoDetailPanel({
 
   return (
     <div className="space-y-3">
+      <Card>
+        <CardHeader className="pb-2 pt-3 px-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <CardTitle className="text-sm font-bold">
+                Detail WFO - S/R Walk-Forward
+              </CardTitle>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {detail?.computed_at ? `Calcule le ${detail.computed_at}` : "Aucun calcul date disponible"}
+                {detail?.compute_seconds != null ? ` (${detail.compute_seconds.toFixed(1)}s)` : ""}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="h-6 text-[10px]">{detail?.status ?? "--"}</Badge>
+              {detail?.robustness_grade ? (
+                <Badge className={cn("h-6 px-2 text-[10px] font-bold", GRADE_COLORS[detail.robustness_grade] ?? "")}>
+                  Grade {detail.robustness_grade}
+                </Badge>
+              ) : null}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="grid gap-2 px-4 pb-4 sm:grid-cols-4">
+          <MetricBox label="Score" value={scoreText(detail?.score_pct ?? null)} />
+          <MetricBox label="WFE" value={pct(detail?.wfe_pct, 1)} />
+          <MetricBox label="Robustesse" value={formatNumber(detail?.robustness_ratio, 2)} />
+          <MetricBox label="Folds rentables" value={`${detail?.profitable_folds ?? 0}/${detail?.total_folds ?? 0}`} />
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader className="pb-2 pt-3 px-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1149,33 +941,17 @@ export function WfoEvidenceTab({
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
   const [triggering, setTriggering] = useState<"selected" | "all" | null>(null)
-  const [srOverlay, setSrOverlay] = useState<SrOverlay | null>(null)
-  const [srOverlayLoading, setSrOverlayLoading] = useState(false)
-  const [srOverlayError, setSrOverlayError] = useState<string | null>(null)
-  const [srWfo, setSrWfo] = useState<SrWfoResponse | null>(null)
-  const [srWfoLoading, setSrWfoLoading] = useState(false)
-  const [srWfoError, setSrWfoError] = useState<string | null>(null)
-  const srWfoCacheKeyRef = useRef<string | null>(null)
 
   const categories = data?.categories ?? {}
   const bestCategory = data?.global_signal?.best_category as CategoryId | null | undefined
-  const normalizedCooldownBars = Math.max(0, Math.floor(cooldownBars || 0))
 
   useEffect(() => {
-    const firstSucceeded = BASE_CATEGORY_META.find((meta) => categories[meta.id]?.status === "succeeded")?.id
+    const firstSucceeded = VOTING_CATEGORY_IDS.find((id) => categories[id]?.status === "succeeded")
     setSelectedCategory(bestCategory ?? firstSucceeded ?? "tendance")
   }, [bestCategory, horizon, symbol, variant])
 
   useEffect(() => {
     let cancelled = false
-    if (isSyntheticCategory(selectedCategory)) {
-      setDetail(null)
-      setDetailLoading(false)
-      setDetailError(null)
-      return () => {
-        cancelled = true
-      }
-    }
 
     setDetail(null)
     setDetailLoading(true)
@@ -1197,71 +973,7 @@ export function WfoEvidenceTab({
     }
   }, [horizon, selectedCategory, symbol, variant])
 
-  useEffect(() => {
-    let cancelled = false
-    setSrOverlay(null)
-    setSrOverlayLoading(true)
-    setSrOverlayError(null)
-
-    fetchSignalEvidence({
-      symbol,
-      horizon,
-      source: "wfo",
-      variant,
-      costBps: EDGE_COST_BPS,
-      cooldownBars: normalizedCooldownBars,
-    })
-      .then((res) => {
-        if (cancelled) return
-        setSrOverlay(res.stitched_oos_backtest?.sr_overlay ?? res.sr_overlay ?? null)
-      })
-      .catch((err) => {
-        if (!cancelled) setSrOverlayError(err instanceof Error ? err.message : String(err))
-      })
-      .finally(() => {
-        if (!cancelled) setSrOverlayLoading(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [horizon, normalizedCooldownBars, symbol, variant])
-
-  useEffect(() => {
-    const key = `${symbol}|${horizon}`
-
-    if (srWfoCacheKeyRef.current === key) {
-      // Already fetched (or in flight) for this symbol/horizon combination.
-      return
-    }
-
-    let cancelled = false
-    srWfoCacheKeyRef.current = key
-    setSrWfo(null)
-    setSrWfoLoading(true)
-    setSrWfoError(null)
-
-    fetchSrWfo({ symbol, horizon, timeframe: "1D" })
-      .then((res) => {
-        if (!cancelled) setSrWfo(res)
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setSrWfoError(err instanceof Error ? err.message : String(err))
-          srWfoCacheKeyRef.current = null
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setSrWfoLoading(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [horizon, symbol])
-
   const handleTrigger = async (scope: "selected" | "all") => {
-    if (scope === "selected" && isSyntheticCategory(selectedCategory)) return
     setTriggering(scope)
     try {
       await triggerWfoComputation({
@@ -1281,46 +993,8 @@ export function WfoEvidenceTab({
   }
 
   const global = data?.global_signal ?? null
-  const srReturnPct = srOverlay?.overlay_metrics?.total_return
-  const srReady = (srOverlay?.status === "actionable" || srOverlay?.status === "research_only") && srOverlay.overlay_metrics
-  const rawStatus = srOverlayLoading ? "loading" : srOverlayError ? "error" : srReady ? "ready" : srOverlay?.reason ?? srOverlay?.status ?? "unavailable"
-  const srCategorySummary: CategoryButtonSummary = {
-    status: formatSrReason(rawStatus),
-    score_pct: srReturnPct == null ? null : srReturnPct * 100,
-    signal_label: srReady ? "Overlay ready" : srOverlayError ?? srOverlay?.reason ?? "Unavailable",
-    representatives: [],
-    badges: srOverlay
-      ? [
-          `${formatNumber(srOverlay.viable_count, 0)} viable`,
-          `${formatNumber(srOverlay.tested_count, 0)} tested`,
-        ]
-      : [],
-  }
-  const srWfoResult = srWfo?.wfo ?? null
-  const srWfoRawStatus = srWfoLoading
-    ? "loading"
-    : srWfoError
-      ? "error"
-      : srWfoResult
-        ? srWfoResult.decision ?? srWfoResult.status
-        : "unavailable"
-  const srWfoCategorySummary: CategoryButtonSummary = {
-    status: srWfoRawStatus,
-    score_pct:
-      srWfoResult?.procedure_oos?.total_return != null ? srWfoResult.procedure_oos.total_return * 100 : null,
-    signal_label: srWfoError ?? (srWfoResult ? srWfoDecisionLabel(srWfoResult.decision) : "Unavailable"),
-    representatives: [],
-    badges: srWfoResult
-      ? [
-          `${srWfoResult.windows.length} fenetres`,
-          srWfoResult.stability?.selection_stability != null
-            ? `${Math.round(srWfoResult.stability.selection_stability * 100)}% stable`
-            : "-- stable",
-        ]
-      : [],
-  }
   const categoryCount = useMemo(
-    () => BASE_CATEGORY_META.filter((meta) => categories[meta.id]?.status === "succeeded").length,
+    () => VOTING_CATEGORY_IDS.filter((id) => categories[id]?.status === "succeeded").length,
     [categories],
   )
 
@@ -1379,11 +1053,10 @@ export function WfoEvidenceTab({
                 variant="outline"
                 size="sm"
                 className="h-7 text-xs"
-                disabled={triggering != null || isSyntheticCategory(selectedCategory)}
+                disabled={triggering != null}
                 onClick={() => handleTrigger("selected")}
-                title={isSyntheticCategory(selectedCategory) ? "S/R a la demande - calcule depuis signal evidence, non recalculable ici." : undefined}
               >
-                {isSyntheticCategory(selectedCategory) ? "S/R a la demande" : triggering === "selected" ? "Envoi..." : "Recalculer categorie"}
+                {triggering === "selected" ? "Envoi..." : "Recalculer categorie"}
               </Button>
               <Button
                 type="button"
@@ -1416,31 +1089,20 @@ export function WfoEvidenceTab({
             <CategoryButton
               key={meta.id}
               meta={meta}
-              summary={
-                meta.id === "sr_wfo"
-                  ? srWfoCategorySummary
-                  : meta.id === "sr_execution"
-                    ? srCategorySummary
-                    : categories[meta.id]
-              }
+              summary={categories[meta.id]}
               selected={selectedCategory === meta.id}
               onSelect={() => setSelectedCategory(meta.id)}
             />
           ))}
         </div>
 
-        {selectedCategory === "sr_wfo" ? (
+        {selectedCategory === "support_resistance" ? (
           <SrWfoDetailPanel
-            wfo={srWfo}
-            touchStats={srWfo?.line_touch_stats}
-            isLoading={srWfoLoading}
-            error={srWfoError}
-          />
-        ) : selectedCategory === "sr_execution" ? (
-          <SrOverlayDetailPanel
-            overlay={srOverlay}
-            isLoading={srOverlayLoading}
-            error={srOverlayError}
+            detail={detail}
+            result={srWfoResultFromDetail(detail)}
+            touchStats={undefined}
+            isLoading={detailLoading}
+            error={detailError}
           />
         ) : (
           <WfoDetailPanel

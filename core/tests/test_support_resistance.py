@@ -8,10 +8,7 @@ from quant_core.signal_engine.support_resistance import (
     compute_representative_ma_anchor,
     finalize_support_resistance_methods,
 )
-from core.quant_core.signal_engine.sr_validation import (
-    baseline_returns_from_position,
-    validate_sr_overlay_candidate,
-)
+from core.quant_core.signal_engine.sr_validation import baseline_returns_from_position
 from core.quant_core.signal_engine.wfo_global import compute_global_wfo_signal
 from core.quant_core.signal_engine.wfo_signal import WfoCategoryResult
 
@@ -169,51 +166,6 @@ def test_score_inversion_budget_flag_is_exposed() -> None:
 
     inputs = result.get("inputs") or {}
     assert inputs.get("budget_exceeded") is True
-
-
-def test_sr_validation_rejects_selection_only_uplift() -> None:
-    baseline = np.zeros(40, dtype=float)
-    overlay = np.array([0.01] * 20 + [-0.01] * 20, dtype=float)
-    trades = [
-        {"close_idx": idx + 1, "pnl_return": float(overlay[idx])}
-        for idx in range(40)
-    ]
-
-    result = validate_sr_overlay_candidate(
-        baseline_returns=baseline,
-        overlay_returns=overlay,
-        overlay_trades=trades,
-        min_trades=5,
-        freshness_min_trades=3,
-        bootstrap_iter=100,
-        seed=1,
-    )
-
-    assert result["decision"] == "research_only"
-    assert "proof_net_uplift" in result["reason_codes"]
-
-
-def test_sr_validation_marks_durable_net_uplift_actionable() -> None:
-    baseline = np.zeros(60, dtype=float)
-    overlay = np.array([0.002] * 30 + [0.01] * 30, dtype=float)
-    trades = [
-        {"close_idx": idx + 1, "pnl_return": float(overlay[idx])}
-        for idx in range(60)
-    ]
-
-    result = validate_sr_overlay_candidate(
-        baseline_returns=baseline,
-        overlay_returns=overlay,
-        overlay_trades=trades,
-        min_trades=10,
-        freshness_min_trades=5,
-        bootstrap_iter=100,
-        seed=2,
-    )
-
-    assert result["decision"] == "actionable"
-    assert result["reason_codes"] == []
-    assert result["proof"]["uplift"]["total_return"] > 0.0
 
 
 def test_baseline_returns_from_position_charges_transitions() -> None:

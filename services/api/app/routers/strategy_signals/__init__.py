@@ -39,7 +39,7 @@ from ._shared import (
     latest_rsi_variant_signal,
     monte_carlo_equity_paths,
 )
-from ._support_resistance import _sr_direct_objective_summary, _sr_simulate_signal_overlay
+from ._support_resistance import _sr_direct_objective_summary
 from ._variants import _family_for_variant
 from ._evidence import (
     _select_signal_evidence_edge,
@@ -81,7 +81,6 @@ __all__ = [
     "latest_rsi_variant_signal",
     "monte_carlo_equity_paths",
     "_sr_direct_objective_summary",
-    "_sr_simulate_signal_overlay",
     "_family_for_variant",
     "_BACKTEST_CACHE",
     "_SR_INVERSION_CACHE",

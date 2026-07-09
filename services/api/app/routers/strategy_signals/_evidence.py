@@ -56,11 +56,6 @@ from ._shared import (
     _evidence_max_drawdown,
     _evidence_float,
 )
-from ._support_resistance import (
-    _sr_overlay_empty,
-    _sr_overlay_for_position_series,
-)
-
 EVIDENCE_BENCHMARK_SYMBOL = "MASI"
 EVIDENCE_BENCHMARK_SYMBOL_CANDIDATES = (EVIDENCE_BENCHMARK_SYMBOL, "MASI.CS", "MASI.MA")
 
@@ -1783,7 +1778,6 @@ def _build_signal_evidence_payload(
     cost_bps: float | None = None,
     cooldown_bars: int = 0,
     proof_limit: str = "100",
-    include_sr_overlay: bool = True,
 ) -> dict[str, Any]:
     """Build the full signal-evidence payload for one symbol/horizon.
 
@@ -1840,34 +1834,6 @@ def _build_signal_evidence_payload(
         proof_limit_label=proof_limit_label,
     )
     selected_edge = _edge_with_stitched_evidence(selected_edge, stitched_oos_backtest)
-    sr_overlay = _sr_overlay_empty("unavailable", "source_not_wfo")
-    if include_sr_overlay and selected_source == "wfo" and isinstance(stitched_oos_backtest, dict):
-        stitched_metrics = stitched_oos_backtest.get("metrics")
-        baseline_metrics = dict(stitched_metrics) if isinstance(stitched_metrics, dict) else {}
-        sr_overlay = _sr_overlay_for_position_series(
-            db,
-            symbol=symbol_upper,
-            horizon=canonical_h,
-            variant=selected_variant,
-            dates=stitched_oos_backtest.get("dates") if isinstance(stitched_oos_backtest.get("dates"), list) else [],
-            baseline_position=(
-                stitched_oos_backtest.get("position_series")
-                if isinstance(stitched_oos_backtest.get("position_series"), list)
-                else []
-            ),
-            baseline_metrics=baseline_metrics,
-            cost_bps=resolved_cost_bps,
-            slippage_bps=0.0,
-            cooldown_bars=cooldown,
-            side_policy=(
-                "long_short"
-                if str(stitched_oos_backtest.get("direction") or "").strip().lower() == "short"
-                else "long_only"
-            ),
-        )
-        stitched_oos_backtest["sr_overlay"] = sr_overlay
-    elif not include_sr_overlay:
-        sr_overlay = _sr_overlay_empty("unavailable", "not_requested")
 
     return {
         "symbol": symbol_upper,
@@ -1901,7 +1867,6 @@ def _build_signal_evidence_payload(
         "oos_periods": oos_periods,
         "evidence_trade_count": evidence_trade_count,
         "stitched_oos_backtest": stitched_oos_backtest,
-        "sr_overlay": sr_overlay,
     }
 
 
@@ -1971,7 +1936,6 @@ def get_signal_evidence(
         cost_bps=cost_bps,
         cooldown_bars=cooldown_bars,
         proof_limit=proof_limit,
-        include_sr_overlay=True,
     )
 
 

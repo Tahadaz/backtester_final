@@ -77,6 +77,7 @@ class WfoCategoryDetailOut(WfoCategorySummaryOut):
     """Extended schema with fold-by-fold details for drill-down."""
     folds: list[dict[str, Any]] | None = None
     config: dict[str, Any] | None = None
+    fragility: dict[str, Any] | None = None
     error_message: str | None = None
 
 
@@ -232,6 +233,7 @@ def _row_to_detail(row: WfoSignalSummary) -> WfoCategoryDetailOut:
         compute_seconds=row.compute_seconds,
         folds=row.folds_json,
         config=row.config_json,
+        fragility=row.fragility_json,
         error_message=row.error_message,
     )
 

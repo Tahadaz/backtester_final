@@ -143,8 +143,6 @@ def refresh_signal_best_evidence_for_symbol(
     symbol: str,
     horizon: str,
     cooldown_bars: int = 0,
-    *,
-    include_sr_overlay: bool = True,
 ) -> dict[str, Any]:
     from services.api.app.routers.strategy_signals import (
         _build_signal_evidence_payload,
@@ -164,7 +162,6 @@ def refresh_signal_best_evidence_for_symbol(
             source="wfo",
             variant=preferred_variant,
             cooldown_bars=cooldown,
-            include_sr_overlay=include_sr_overlay,
         )
         selected_variant = str(evidence_payload.get("variant") or preferred_variant or "expanded_ta_simple")
         chart_payload = build_stored_best_backtest_chart_payload(
@@ -215,8 +212,6 @@ def refresh_signal_best_evidence_snapshot(
     symbol: str | None = None,
     horizon: str | None = None,
     cooldown_bars: int = 0,
-    *,
-    include_sr_overlay: bool = True,
 ) -> dict[str, Any]:
     db: Session = SessionLocal()
     try:
@@ -230,7 +225,6 @@ def refresh_signal_best_evidence_snapshot(
             item,
             h,
             cooldown_bars,
-            include_sr_overlay=include_sr_overlay,
         )
         for item in symbols
         for h in horizons
