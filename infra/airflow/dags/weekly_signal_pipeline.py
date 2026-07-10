@@ -173,6 +173,15 @@ _STEPS = [
     ("dashboard_snapshot", "daily_dashboard_snapshot"),
 ]
 
+# Per-step sensor timeout override. WFO's individual RQ jobs now carry a
+# 24h job_timeout (see wfo_signal_batch.py), so the sensor waiting on the
+# whole dispatch batch needs a matching ceiling — the other steps stay at
+# the default 4h.
+_STEP_SENSOR_TIMEOUT_SECONDS = {
+    "wfo_dispatch": 90000,  # 25h: 24h max per job + 1h slack
+}
+_DEFAULT_SENSOR_TIMEOUT_SECONDS = 14400
+
 # ---------------------------------------------------------------------------
 # DAG definition
 # ---------------------------------------------------------------------------
@@ -219,7 +228,7 @@ with DAG(
             python_callable=_wait_for_schedule,
             op_kwargs={"trigger_task_id": trigger_task_id},
             poke_interval=60,
-            timeout=14400,  # 4 hours max per step
+            timeout=_STEP_SENSOR_TIMEOUT_SECONDS.get(step_name, _DEFAULT_SENSOR_TIMEOUT_SECONDS),
             mode="reschedule",
             doc_md=(
                 f"Polls `GET /ops/scheduler/run/{{run_id}}` every 60 s until terminal. "
