@@ -7,13 +7,16 @@ Orchestrates the full weekly signal batch in dependency order:
             ▼
     trigger_wfo_dispatch → wait_wfo_dispatch
             ▼
-    trigger_signal_engine_dispatch → wait_signal_engine_dispatch
-            ▼
     trigger_signal_backtest_dispatch → wait_signal_backtest_dispatch
             ▼
     trigger_best_evidence_snapshot → wait_best_evidence_snapshot
             ▼
     trigger_dashboard_snapshot → wait_dashboard_snapshot   (maintenance tail)
+
+Note: Signal Engine recompute is no longer a standalone weekly step — it now
+piggybacks on the Friday daily_market_refresh run (see
+_enqueue_signal_layers_after_refresh in refresh_market_data.py) and is not
+part of this DAG.
 
 Design:
 - Each trigger_* = PythonOperator POSTing to POST /ops/scheduler/run/{schedule_id},
@@ -164,7 +167,6 @@ def _on_failure_alert(context: Any) -> None:
 _STEPS = [
     ("fundamental_refresh", "weekly_fundamental_refresh"),
     ("wfo_dispatch", "weekly_wfo_dispatch"),
-    ("signal_engine_dispatch", "weekly_signal_engine_dispatch"),
     ("signal_backtest_dispatch", "weekly_signal_backtest_dispatch"),
     ("signal_history_dispatch", "weekly_signal_history_dispatch"),
     ("best_evidence_snapshot", "weekly_signal_best_evidence_snapshot"),

@@ -14,7 +14,7 @@ from ..auth import rate_limit_trigger, require_admin
 from ..config import settings
 from ..db import get_db
 from .. import models
-from ..models import SchedulerRun, SignalEngineGlobalResult, WfoGlobalSignal
+from ..models import SchedulerRun, SignalEngineGlobalResult, WfoGlobalSignal, WfoSignalSummary
 from ..services.fundamentals import (
     derive_research_overlay,
     latest_data_verification,
@@ -102,7 +102,7 @@ def _signal_staleness(db: Session) -> dict[str, Any]:
             WfoGlobalSignal.symbol,
             WfoGlobalSignal.horizon,
             WfoGlobalSignal.variant,
-            WfoGlobalSignal.computed_at,
+            WfoGlobalSignal.full_computed_at,
         )
         .filter(tuple_(WfoGlobalSignal.symbol, WfoGlobalSignal.horizon, WfoGlobalSignal.variant).in_(tuple_keys))
         .all()
@@ -110,7 +110,7 @@ def _signal_staleness(db: Session) -> dict[str, Any]:
         else []
     )
     se_map = {(row.symbol, row.horizon, row.variant): row.computed_at for row in se_rows}
-    wfo_map = {(row.symbol, row.horizon, row.variant): row.computed_at for row in wfo_rows}
+    wfo_map = {(row.symbol, row.horizon, row.variant): row.full_computed_at for row in wfo_rows}
     now = datetime.now(timezone.utc)
 
     se_stale: list[tuple[str, str, str]] = []
@@ -120,6 +120,25 @@ def _signal_staleness(db: Session) -> dict[str, Any]:
             se_stale.append(key)
         if needs_weekly_recompute(wfo_map.get(key), now):
             wfo_stale.append(key)
+
+    # WfoSignalSummary persists status="failed" on a compute error (the global
+    # WfoGlobalSignal/SignalEngineGlobalResult rows do not), so it's the only
+    # table that lets us tell "hasn't run yet" apart from "keeps failing" —
+    # a symbol stuck here just gets silently re-enqueued every week otherwise.
+    failing_rows = (
+        db.query(WfoSignalSummary.symbol)
+        .filter(
+            tuple_(WfoSignalSummary.symbol, WfoSignalSummary.horizon, WfoSignalSummary.variant).in_(
+                [(symbol, horizon, variant) for symbol, horizon, variant in tuple_keys]
+            ),
+            WfoSignalSummary.status == "failed",
+        )
+        .distinct()
+        .all()
+        if tuple_keys
+        else []
+    )
+    wfo_failing_symbols = sorted({row.symbol for row in failing_rows})
 
     non_masi_symbols = [row.symbol for row in instruments if not is_masi_dashboard_member(row)]
     masi_symbols = [row.symbol for row in instruments if is_masi_dashboard_member(row)]
@@ -134,6 +153,8 @@ def _signal_staleness(db: Session) -> dict[str, Any]:
         "wfo_stale_tuples": len(wfo_stale),
         "stale_symbols_sample": sorted(set([s for s, _, _ in se_stale] + [s for s, _, _ in wfo_stale]))[:40],
         "non_masi_symbols_sample": sorted(non_masi_symbols)[:40],
+        "wfo_failing_symbols_count": len(wfo_failing_symbols),
+        "wfo_failing_symbols_sample": wfo_failing_symbols[:40],
     }
 
 

@@ -6271,6 +6271,8 @@ export const OpsSignalCoverageSchema = z.object({
   wfo_stale_tuples: z.number().default(0),
   stale_symbols_sample: z.array(z.string()).default([]),
   non_masi_symbols_sample: z.array(z.string()).default([]),
+  wfo_failing_symbols_count: z.number().default(0),
+  wfo_failing_symbols_sample: z.array(z.string()).default([]),
 })
 export type OpsSignalCoverage = z.infer<typeof OpsSignalCoverageSchema>
 
