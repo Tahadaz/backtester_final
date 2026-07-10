@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import math
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from types import SimpleNamespace
 from typing import Any
 
@@ -634,11 +634,59 @@ def run_wfo_for_symbol_horizon(
 
         db.commit()
 
-    # --- Support/Resistance WFO ---
-    try:
-        from services.api.app.routers.strategy_signals._support_resistance import _sr_get_or_compute_wfo
+    # --- Global consensus ---
+    support, resistance, support_method, resistance_method, atr = _get_sr_levels(
+        close, high, low, volume, horizon
+    )
 
-        t_sr = time.monotonic()
+    try:
+        global_result = compute_global_wfo_signal(
+            category_results, close,
+            support=support, resistance=resistance,
+            support_method=support_method,
+            resistance_method=resistance_method,
+            atr=atr, volume=volume, high=high, low=low,
+        )
+        global_result.symbol = symbol
+        global_result.horizon = horizon
+        _upsert_global(
+            db,
+            symbol,
+            horizon,
+            global_result,
+            data_as_of,
+            variant=variant,
+            is_full_recompute=True,
+        )
+    except Exception:
+        logger.exception("WFO global failed: %s/%s", symbol, horizon)
+
+    db.commit()
+
+
+def run_sr_wfo_for_symbol_horizon(
+    db: Session,
+    symbol: str,
+    horizon: str,
+    *,
+    variant: str = "expanded",
+) -> None:
+    """Run the full Support/Resistance WFO compute for one symbol × horizon × variant.
+
+    Extracted from ``run_wfo_for_symbol_horizon`` so it can be dispatched and
+    weekly-stale-tracked independently of the 4-category + global-consensus
+    compute: S/R is the heaviest part of the original combined job and was
+    the first casualty whenever the job ran long or was interrupted (worker
+    restart, RQ job_timeout kill), silently leaving the S/R row stale for a
+    full week since the shared staleness check only read
+    ``WfoGlobalSignal.full_computed_at``.
+    """
+    variant = signal_mode_storage_name(variant)
+
+    from services.api.app.routers.strategy_signals._support_resistance import _sr_get_or_compute_wfo
+
+    t_sr = time.monotonic()
+    try:
         sr_payload = _sr_get_or_compute_wfo(
             db=db,
             symbol=symbol,
@@ -648,6 +696,17 @@ def run_wfo_for_symbol_horizon(
             cooldown_bars=0,
         )
         wfo = sr_payload["response"]["wfo"] if "response" in sr_payload else sr_payload["wfo"]
+
+        data_as_of: date | None = None
+        try:
+            as_of = wfo.get("as_of") if isinstance(wfo, dict) else None
+            if as_of is None and "response" in sr_payload:
+                as_of = sr_payload["response"].get("as_of")
+            if as_of is not None:
+                data_as_of = datetime.strptime(str(as_of)[:10], "%Y-%m-%d").date()
+        except Exception:
+            data_as_of = None
+
         fields = _sr_wfo_to_summary_fields(wfo)
         fields.compute_seconds = round(time.monotonic() - t_sr, 2)
         _upsert_summary(
@@ -667,26 +726,39 @@ def run_wfo_for_symbol_horizon(
         )
     db.commit()
 
-    # --- Global consensus ---
-    support, resistance, support_method, resistance_method, atr = _get_sr_levels(
-        close, high, low, volume, horizon
+
+def enqueue_sr_wfo_for_symbol_horizon(
+    symbol: str,
+    horizon: str,
+    *,
+    variant: str = "expanded",
+    triggered_by: str | None = None,
+) -> str:
+    """Enqueue a standalone full S/R WFO compute for one tuple on the wfo_signals queue."""
+    from rq import Queue
+    from services.worker.config import settings
+
+    variant = signal_mode_storage_name(variant)
+    redis = connect_redis_with_fallback(settings.REDIS_URL, decode_responses=False, logger=logger)
+    q = Queue("wfo_signals", connection=redis)
+    job = q.enqueue(
+        "services.worker.tasks.wfo_signal_batch.enqueue_sr_wfo_for_symbol_horizon_task",
+        symbol,
+        horizon,
+        variant,
+        job_timeout=900,
+        meta={"triggered_by": triggered_by or "manual"},
     )
+    return str(job.id)
 
+
+def enqueue_sr_wfo_for_symbol_horizon_task(symbol: str, horizon: str, variant: str = "expanded") -> None:
+    """RQ entry point for run_sr_wfo_for_symbol_horizon: creates its own DB session."""
+    db: Session = SessionLocal()
     try:
-        global_result = compute_global_wfo_signal(
-            category_results, close,
-            support=support, resistance=resistance,
-            support_method=support_method,
-            resistance_method=resistance_method,
-            atr=atr, volume=volume, high=high, low=low,
-        )
-        global_result.symbol = symbol
-        global_result.horizon = horizon
-        _upsert_global(db, symbol, horizon, global_result, data_as_of, variant=variant)
-    except Exception:
-        logger.exception("WFO global failed: %s/%s", symbol, horizon)
-
-    db.commit()
+        run_sr_wfo_for_symbol_horizon(db, symbol, horizon, variant=variant)
+    finally:
+        db.close()
 
 
 def refresh_wfo_for_symbol_horizon(
@@ -1097,6 +1169,7 @@ def _upsert_global(
     data_as_of,
     *,
     variant: str = "expanded",
+    is_full_recompute: bool = False,
 ) -> None:
     row = (
         db.query(WfoGlobalSignal)
@@ -1128,6 +1201,9 @@ def _upsert_global(
     row.consensus_robustness = result.consensus_robustness
     row.computed_at          = datetime.now(timezone.utc)
     row.data_as_of           = data_as_of
+    if is_full_recompute:
+        row.full_computed_at = row.computed_at
+        row.full_data_as_of = data_as_of
 
 
 # ---------------------------------------------------------------------------

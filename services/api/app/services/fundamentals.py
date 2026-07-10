@@ -59,6 +59,9 @@ from core.quant_core.fundamentals.domain import (
 from core.quant_core.fundamentals.valuation import (
     VALUATION_MODEL_ORDER,
     _ensemble_weight_overrides_from_assumptions,
+    _is_financial,
+    _peer_stats,
+    _relative_multiples,
 )
 from core.quant_core.fundamentals.trends import PILLAR_KEYS, classify_all_pillar_trends
 
@@ -4576,6 +4579,51 @@ def _symbol_valuation_context(
         "sectors": _stock_sectors(db, [row.symbol for row in peer_snapshots]),
         "is_current_snapshot": is_current_snapshot,
     }
+
+
+def compute_relative_multiples_preview(
+    db: Session,
+    *,
+    import_id: uuid.UUID,
+    symbol: str,
+    scenario: str,
+    peer_symbols: list[str],
+) -> ValuationResult | None:
+    """Recompute only the relative_multiples model against an explicit peer basket.
+
+    Purely on-the-fly (no persistence, no tie-out/projection rebuild) so a user's
+    comparator basket choice can be reflected in the ensemble/triangulation without
+    touching the cached default (sector-based) valuation rows.
+    """
+    symbol = symbol.upper()
+    scenario = _scenario_key(scenario)
+    cleaned_peers = sorted({peer.strip().upper() for peer in peer_symbols if peer and peer.strip()} - {symbol})
+    if not cleaned_peers:
+        return None
+
+    all_symbols = [symbol, *cleaned_peers]
+    scope = _scope_for_symbols(db, all_symbols)
+    latest_rows = latest_snapshot_rows_by_symbol(db, symbols=all_symbols, scope=scope)
+    if symbol not in latest_rows:
+        return None
+    enriched = enriched_snapshots_by_symbol(db, latest_rows)
+    target_snapshot = enriched.get(symbol)
+    if target_snapshot is None:
+        return None
+    peer_snapshots = [enriched[peer] for peer in cleaned_peers if peer in enriched]
+    if not peer_snapshots:
+        return None
+
+    synthetic_sector = "__comparator_basket__"
+    sectors = {sym: synthetic_sector for sym in all_symbols}
+    sector = _stock_sectors(db, [symbol]).get(symbol)
+    is_financial = _is_financial(sector)
+    history = _load_history(db, import_id, symbol)
+    merged_assumptions = active_assumptions_for(db, symbol=symbol, sector=sector, scenario=scenario)
+    peer_min_count = int(merged_assumptions.get("peer_min_count", DEFAULT_ASSUMPTIONS.get("peer_min_count", 3)))
+    peer_stats = _peer_stats(peer_snapshots, sectors, symbol, peer_min_count)
+    current_price = _positive_num(target_snapshot.metrics.get("Current_Price"))
+    return _relative_multiples(target_snapshot, history, current_price, peer_stats, merged_assumptions, scenario, is_financial=is_financial)
 
 
 def recompute_symbol_valuations(

@@ -20,9 +20,9 @@ ScheduleKind = Literal[
     "fundamental_refresh",
     "value_strategy_refresh",
     "wfo_dispatch",
-    "signal_engine_dispatch",
     "signal_backtest_dispatch",
     "signal_best_evidence_snapshot",
+    "signal_history_dispatch",
 ]
 
 
@@ -127,15 +127,6 @@ SCHEDULE_SPECS: tuple[ScheduleSpec, ...] = (
         description="Enqueue stale WFO signal tuples for all data-backed instruments.",
     ),
     ScheduleSpec(
-        id="weekly_signal_engine_dispatch",
-        label="Weekly Signal Engine dispatch",
-        kind="signal_engine_dispatch",
-        queue="signal_engine",
-        cron="0 22 * * sun",
-        timezone="UTC",
-        description="Enqueue stale Signal Engine tuples for all data-backed instruments.",
-    ),
-    ScheduleSpec(
         id="weekly_signal_backtest_dispatch",
         label="Weekly signal backtest dispatch",
         kind="signal_backtest_dispatch",
@@ -143,6 +134,15 @@ SCHEDULE_SPECS: tuple[ScheduleSpec, ...] = (
         cron="0 23 * * sun",
         timezone="UTC",
         description="Enqueue signal backtest jobs after weekly Signal Engine dispatch.",
+    ),
+    ScheduleSpec(
+        id="weekly_signal_history_dispatch",
+        label="Weekly signal history dispatch",
+        kind="signal_history_dispatch",
+        queue="score_history",
+        cron="30 23 * * sun",
+        timezone="UTC",
+        description="Recompute predictive score-history / signal-validation series after weekly WFO and Signal Engine dispatch.",
     ),
     ScheduleSpec(
         id="weekly_signal_best_evidence_snapshot",

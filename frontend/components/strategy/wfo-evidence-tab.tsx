@@ -498,13 +498,14 @@ function SrWfoWindowsTable({ windows }: { windows: SrWfo["windows"] }) {
   }
   return (
     <div className="overflow-x-auto rounded-md border">
-      <table className="w-full min-w-[780px] text-xs">
+      <table className="w-full min-w-[920px] text-xs">
         <thead>
           <tr className="border-b bg-muted/30 text-muted-foreground">
-            <th className="px-3 py-2 text-left font-medium">Fenetre</th>
-            <th className="px-3 py-2 text-left font-medium">Periode test</th>
+            <th className="px-3 py-2 text-left font-medium">Fold</th>
+            <th className="px-3 py-2 text-left font-medium">Periode train</th>
+            <th className="px-3 py-2 text-left font-medium">Periode test / OOS</th>
             <th className="px-3 py-2 text-left font-medium">Paire selectionnee</th>
-            <th className="px-3 py-2 text-right font-medium">Objectif train</th>
+            <th className="px-3 py-2 text-right font-medium">Objectif de selection (train)</th>
             <th className="px-3 py-2 text-right font-medium">Sharpe test</th>
             <th className="px-3 py-2 text-right font-medium">Rendement test</th>
             <th className="px-3 py-2 text-right font-medium">N trades</th>
@@ -514,6 +515,9 @@ function SrWfoWindowsTable({ windows }: { windows: SrWfo["windows"] }) {
           {windows.map((win) => (
             <tr key={win.window_index} className="border-b border-border/50">
               <td className="px-3 py-2 font-medium">#{win.window_index + 1}</td>
+              <td className="px-3 py-2 font-mono text-[10px] text-muted-foreground">
+                {compactDate(win.train_start_date)} - {compactDate(win.train_end_date)}
+              </td>
               <td className="px-3 py-2 font-mono text-[10px] text-muted-foreground">
                 {compactDate(win.test_start_date)} - {compactDate(win.test_end_date)}
               </td>
@@ -769,10 +773,13 @@ function SrWfoDetailPanel({
 
       <Card>
         <CardHeader className="pb-2 pt-3 px-4">
-          <CardTitle className="text-xs font-semibold">Fenetres walk-forward</CardTitle>
+          <CardTitle className="text-xs font-semibold">Folds walk-forward</CardTitle>
         </CardHeader>
-        <CardContent className="px-4 pb-4">
+        <CardContent className="space-y-2 px-4 pb-4">
           <SrWfoWindowsTable windows={result.windows} />
+          <p className="text-[10px] italic text-muted-foreground">
+            L&apos;objectif train sert uniquement a selectionner la paire S/R pour le test suivant ; ce n&apos;est pas un rendement in-sample comparable.
+          </p>
         </CardContent>
       </Card>
 
@@ -897,7 +904,7 @@ function WfoDetailPanel({
             <ConfigItem label="Donnees" value={`${config.data_bars ?? "--"} barres`} />
             <ConfigItem label="Min requis" value={`${config.min_bars_needed ?? "--"} barres`} />
             <ConfigItem label="Dernier OOS" value={lastOosEnd || "--"} />
-            <ConfigItem label="Data as of" value={dataAsOf || "--"} />
+            <ConfigItem label="Live data as of" value={dataAsOf || "--"} />
             <ConfigItem label="Tail inutilisee" value={`${unusedTailBars ?? "--"} barres`} />
           </CardContent>
         </Card>

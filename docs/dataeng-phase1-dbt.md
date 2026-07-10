@@ -10,7 +10,7 @@ with **zero risk to the running app** — dbt only *reads* the app's tables and 
 into a separate `analytics` schema.
 
 This is the foundation for Phase 2 (Airflow orchestrates `dbt run`/`dbt test`) and Phase 3
-(BigQuery target swap, Kubernetes).
+(Oracle Autonomous Data Warehouse target swap, Kubernetes).
 
 ---
 
@@ -99,7 +99,7 @@ the app. No dump, no seed, no prod access required.
 Safety: use the existing `app` role for now (simplest); optionally create a read-only `dbt_ro`
 role later. dbt never writes to app-owned schemas — only `analytics*`.
 
-A BigQuery target (Phase 1.2) is an additive profile, not a replacement.
+An Oracle Autonomous Data Warehouse target (Phase 1.2) is an additive profile, not a replacement.
 
 ---
 
@@ -109,7 +109,7 @@ A BigQuery target (Phase 1.2) is an additive profile, not a replacement.
 dataeng/
 └── dbt/
     ├── dbt_project.yml
-    ├── profiles.yml            # local Postgres target "dev"; BigQuery target "bq" added in Phase 1.2
+    ├── profiles.yml            # local Postgres target "dev"; OCI target "oci" added in Phase 1.2
     ├── packages.yml            # dbt_utils (date spine, surrogate keys, tests)
     ├── models/
     │   ├── staging/
@@ -203,9 +203,9 @@ shows the staging → star lineage; README documents it.
 
 ## 8. Phase 1.2 and beyond (not now)
 
-- **1.2 — BigQuery target:** add a `bq` profile, `dbt run --target bq`. Same models, new engine
-  → ticks "cloud" + "warehouse" + "ported dbt across engines". Needs a GCP project + a load step
-  (Postgres → BigQuery via a small Python job or `dlt`).
+- **1.2 — Oracle Autonomous Data Warehouse target:** add an Oracle profile, `dbt run --target oci`. Same models, new engine
+  → ticks "cloud" + "warehouse" + "ported dbt across engines". Needs an OCI tenancy + a load step
+  (Postgres → Oracle Autonomous Data Warehouse via a small Python job or `dlt`).
 - **Phase 2 — Airflow:** one DAG `ingest → dbt run → dbt test`, replacing parts of
   `services/worker/scheduler.py`.
 - **Phase 3 — Kubernetes + KEDA, Kafka, MLflow.**

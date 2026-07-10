@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import datetime as dt
 import os
+import types
 import uuid
 from collections import defaultdict
 from math import isfinite
@@ -17,8 +18,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from core.quant_core.fundamentals import DEFAULT_ASSUMPTIONS, eva, scenario_probabilities_from_assumptions
-from core.quant_core.fundamentals.domain import AnnualMetricRow, FundamentalSnapshot
+from core.quant_core.fundamentals.domain import AnnualMetricRow, FundamentalSnapshot, ValuationResult
 from core.quant_core.fundamentals.triangulation import compute_triangulation
+from core.quant_core.fundamentals.valuation import compute_valuation_ensemble
 
 from .. import models
 from ..auth import AppUser, optional_app_user, require_admin, require_app_user
@@ -88,6 +90,7 @@ from ..services.fundamentals import (
     annual_by_year,
     annual_metric_rows_for_symbol,
     clean_assumption_override_values,
+    compute_relative_multiples_preview,
     compute_symbol_sensitivity,
     create_import_run,
     derive_research_overlay,
@@ -2609,9 +2612,15 @@ def get_fundamental_comparables(
 
 
 @router.get("/stocks/{symbol}", response_model=FundamentalStockDetailOut)
-def get_fundamental_stock_detail(symbol: str, db: Session = Depends(get_db), scenario: str = "auto") -> FundamentalStockDetailOut:
+def get_fundamental_stock_detail(
+    symbol: str,
+    db: Session = Depends(get_db),
+    scenario: str = "auto",
+    peer_symbols: str | None = Query(None, description="Comma-separated peer symbols overriding the relative_multiples comparator basket"),
+) -> FundamentalStockDetailOut:
     symbol = symbol.upper()
     scenario = _scenario_or_auto(scenario)
+    comparator_peer_symbols = [item.strip().upper() for item in (peer_symbols or "").split(",") if item.strip()]
     snapshots = latest_snapshot_rows_by_symbol(db, symbols=[symbol])
     snapshot = snapshots.get(symbol)
     import_row = db.get(models.FundamentalImport, snapshot.import_id) if snapshot else None
@@ -2674,6 +2683,91 @@ def get_fundamental_stock_detail(symbol: str, db: Session = Depends(get_db), sce
         .order_by(models.FundamentalValuationResult.family.asc(), models.FundamentalValuationResult.model.asc())
         .all()
     )
+    ensemble = (
+        db.query(models.FundamentalEnsembleResult)
+        .filter(models.FundamentalEnsembleResult.import_id == import_row.id, models.FundamentalEnsembleResult.symbol == symbol, models.FundamentalEnsembleResult.scenario == selected_scenario)
+        .first()
+    )
+    if comparator_peer_symbols:
+        preview_result = compute_relative_multiples_preview(
+            db,
+            import_id=import_row.id,
+            symbol=symbol,
+            scenario=selected_scenario,
+            peer_symbols=comparator_peer_symbols,
+        )
+        if preview_result is not None:
+            preview_row = types.SimpleNamespace(
+                model=preview_result.model,
+                scenario=preview_result.scenario,
+                fair_value=preview_result.fair_value,
+                current_price=preview_result.current_price,
+                upside_pct=preview_result.upside_pct,
+                confidence=preview_result.confidence,
+                confidence_score=preview_result.confidence_score,
+                weight=preview_result.weight,
+                family=preview_result.family,
+                methodology=preview_result.methodology,
+                model_version=preview_result.model_version,
+                is_proxy=preview_result.is_proxy,
+                data_quality_score=preview_result.data_quality_score,
+                currency=preview_result.currency,
+                inputs_json=preview_result.inputs,
+                outputs_json=preview_result.outputs,
+                warnings_json=preview_result.warnings,
+                computed_at=None,
+            )
+            valuations = [row for row in valuations if row.model != "relative_multiples"] + [preview_row]
+            substituted_valuation_results = [
+                ValuationResult(
+                    symbol=symbol,
+                    scenario=row.scenario,
+                    model=row.model,
+                    fair_value=row.fair_value,
+                    current_price=row.current_price,
+                    upside_pct=row.upside_pct,
+                    confidence=row.confidence,
+                    inputs=dict(getattr(row, "inputs_json", None) or {}),
+                    outputs=dict(getattr(row, "outputs_json", None) or {}),
+                    warnings=list(getattr(row, "warnings_json", None) or []),
+                    family=row.family,
+                    model_version=row.model_version,
+                    methodology=row.methodology,
+                    confidence_score=row.confidence_score,
+                    weight=row.weight,
+                    is_proxy=bool(row.is_proxy),
+                    data_quality_score=row.data_quality_score,
+                    currency=row.currency,
+                )
+                if row.model != "relative_multiples" else preview_result
+                for row in valuations
+            ]
+            preview_ensemble = compute_valuation_ensemble(symbol, selected_scenario, substituted_valuation_results)
+            ensemble = types.SimpleNamespace(
+                symbol=preview_ensemble.symbol,
+                scenario=preview_ensemble.scenario,
+                fair_value_low=preview_ensemble.fair_value_low,
+                fair_value_base=preview_ensemble.fair_value_base,
+                fair_value_high=preview_ensemble.fair_value_high,
+                current_price=preview_ensemble.current_price,
+                upside_pct=preview_ensemble.upside_pct,
+                confidence_score=preview_ensemble.confidence_score,
+                usable_model_count=preview_ensemble.usable_model_count,
+                excluded_model_count=preview_ensemble.excluded_model_count,
+                model_weights_json=preview_ensemble.model_weights,
+                warnings_json=preview_ensemble.warnings,
+                currency=preview_ensemble.currency,
+                model_dispersion_low=preview_ensemble.model_dispersion_low,
+                model_dispersion_base=preview_ensemble.model_dispersion_base,
+                model_dispersion_high=preview_ensemble.model_dispersion_high,
+                monte_carlo_low=preview_ensemble.monte_carlo_low,
+                monte_carlo_base=preview_ensemble.monte_carlo_base,
+                monte_carlo_high=preview_ensemble.monte_carlo_high,
+                fair_value_mean=preview_ensemble.fair_value_mean,
+                model_dispersion_cv=preview_ensemble.model_dispersion_cv,
+                dispersion_factor=preview_ensemble.dispersion_factor,
+                sensitivity_grids_json=None,
+            )
     broker_anchor = load_broker_target(db, symbol)
     triangulation = compute_triangulation(
         [
@@ -2685,11 +2779,6 @@ def get_fundamental_stock_detail(symbol: str, db: Session = Depends(get_db), sce
     ).to_dict()
     if broker_anchor is not None:
         triangulation["broker"] = broker_anchor
-    ensemble = (
-        db.query(models.FundamentalEnsembleResult)
-        .filter(models.FundamentalEnsembleResult.import_id == import_row.id, models.FundamentalEnsembleResult.symbol == symbol, models.FundamentalEnsembleResult.scenario == selected_scenario)
-        .first()
-    )
     base_ensemble = ensemble if selected_scenario == HEADLINE_SCENARIO else (
         db.query(models.FundamentalEnsembleResult)
         .filter(

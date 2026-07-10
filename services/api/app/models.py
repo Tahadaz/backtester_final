@@ -1629,6 +1629,10 @@ class WfoGlobalSignal(Base):
     # --- Metadata ---
     computed_at = Column(DateTime(timezone=True), nullable=True)
     data_as_of = Column(Date, nullable=True)
+    # Live representative refreshes update the current signal. These fields
+    # identify the last run that actually rebuilt the WFO folds and metrics.
+    full_computed_at = Column(DateTime(timezone=True), nullable=True)
+    full_data_as_of = Column(Date, nullable=True)
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

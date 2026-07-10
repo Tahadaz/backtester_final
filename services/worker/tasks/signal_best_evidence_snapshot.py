@@ -9,7 +9,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from core.quant_core.horizons import canonical_horizon
-from services.api.app.models import MarketDataStore, SignalBestEvidenceSnapshot
+from services.api.app.models import MarketDataStore, SignalBestEvidenceSnapshot, WfoGlobalSignal
 from services.api.app.services.dashboard_builder import _build_best_signal_payload
 from services.api.app.services.market_universe import list_signal_universe_symbols
 from services.worker.db import SessionLocal
@@ -56,6 +56,15 @@ def _market_data_as_of(db: Session, symbol: str) -> date | None:
     return _coerce_date(getattr(row, "data_as_of", None)) if row is not None else None
 
 
+def _wfo_full_data_as_of(db: Session, symbol: str, horizon: str, variant: str) -> date | None:
+    row = (
+        db.query(WfoGlobalSignal)
+        .filter_by(symbol=symbol, horizon=horizon, variant=variant)
+        .first()
+    )
+    return _coerce_date(getattr(row, "full_data_as_of", None)) if row is not None else None
+
+
 def _select_wfo_best_variant(db: Session, symbol: str, horizon: str) -> str | None:
     best = _build_best_signal_payload(db, symbol, horizon)
     if isinstance(best, dict) and str(best.get("source") or "") == "wfo":
@@ -90,8 +99,17 @@ def _upsert_snapshot(
         row = SignalBestEvidenceSnapshot(symbol=symbol, horizon=horizon, cooldown_bars=cooldown_bars)
         db.add(row)
 
-    data_as_of = _payload_data_as_of(evidence_payload, chart_payload) or _market_data_as_of(db, symbol)
-    market_data_as_of = _market_data_as_of(db, symbol)
+    payload_data_as_of = _payload_data_as_of(evidence_payload, chart_payload) or _market_data_as_of(db, symbol)
+    raw_market_data_as_of = _market_data_as_of(db, symbol)
+    # A live representative refresh can see a newer close without rebuilding
+    # folds. Store the full WFO data revision as the snapshot freshness basis so
+    # the reader rejects that artifact until a full recomputation has completed.
+    market_data_as_of = (
+        _wfo_full_data_as_of(db, symbol, horizon, selected_variant)
+        if selected_source == "wfo"
+        else raw_market_data_as_of
+    )
+    data_as_of = market_data_as_of if selected_source == "wfo" else payload_data_as_of
     row.status = "succeeded"
     row.source = selected_source
     row.variant = selected_variant
@@ -105,7 +123,9 @@ def _upsert_snapshot(
         "horizon": horizon,
         "variant": selected_variant,
         "data_as_of": data_as_of.isoformat() if data_as_of else None,
+        "payload_data_as_of": payload_data_as_of.isoformat() if payload_data_as_of else None,
         "market_data_as_of": market_data_as_of.isoformat() if market_data_as_of else None,
+        "raw_market_data_as_of": raw_market_data_as_of.isoformat() if raw_market_data_as_of else None,
     }
     row.data_as_of = data_as_of
     row.market_data_as_of = market_data_as_of

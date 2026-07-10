@@ -6,7 +6,7 @@ import {
   type FundamentalValuationResult,
 } from "@/lib/api"
 import { buildFinancialStatementTable } from "@/lib/fundamental-statement-utils.js"
-import { ASSUMPTION_FIELDS, DEFAULT_VALUATION_FORMULA, ESTIMATION_ASSUMPTION_KEYS, EXTREME_VALUATION_FAIR_VALUE_MULTIPLE, FUNDAMENTAL_HORIZONS, FUNDAMENTAL_LIQUIDITY_ADV20_THRESHOLD, FUND_TABS, JUSTIFIED_MULTIPLE_RATIOS, JUSTIFIED_MULTIPLE_RATIO_DEFAULT_MASK, JUSTIFIED_MULTIPLE_RATIO_MASK_KEY, MODEL_FORMULA_META, MODEL_LABELS, MODEL_ORDER, RELATIVE_MULTIPLE_RATIOS, RELATIVE_MULTIPLE_RATIO_DEFAULT_MASK, RELATIVE_MULTIPLE_RATIO_MASK_KEY, SCENARIOS, SEVERE_FCF_WARNING_PREFIXES, SEVERE_VALUATION_WARNINGS, STATEMENT_TITLES, VALUATION_COMPARABLE_METRICS, VALUATION_EXCLUSIONS_STORAGE_KEY } from "../lib/constants"
+import { ASSUMPTION_FIELDS, DEFAULT_COMPARATOR_STORAGE_KEY, DEFAULT_VALUATION_FORMULA, ESTIMATION_ASSUMPTION_KEYS, EXTREME_VALUATION_FAIR_VALUE_MULTIPLE, FUNDAMENTAL_HORIZONS, FUNDAMENTAL_LIQUIDITY_ADV20_THRESHOLD, FUND_TABS, JUSTIFIED_MULTIPLE_RATIOS, JUSTIFIED_MULTIPLE_RATIO_DEFAULT_MASK, JUSTIFIED_MULTIPLE_RATIO_MASK_KEY, MODEL_FORMULA_META, MODEL_LABELS, MODEL_ORDER, RELATIVE_MULTIPLE_RATIOS, RELATIVE_MULTIPLE_RATIO_DEFAULT_MASK, RELATIVE_MULTIPLE_RATIO_MASK_KEY, SCENARIOS, SEVERE_FCF_WARNING_PREFIXES, SEVERE_VALUATION_WARNINGS, STATEMENT_TITLES, VALUATION_COMPARABLE_METRICS, VALUATION_EXCLUSIONS_STORAGE_KEY } from "../lib/constants"
 import { asNumber, asPositiveNumber, asRatio, asRecord, boundedMask, comparableMetricLabel, confidenceLabel, fmtMoney, fmtNumber, fmtPct, fmtRatio, formatStatementValue, valueLabel } from "../lib/formatters"
 import { comparablePeerFairValueSummary, evToEbitdaFairValue, medianValue } from "../panels/comparables"
 import { ComparableModelSummary, ComparableView, DcfMode, DetailTab, FinancialStatementTable, FundamentalHorizon, ModelValueItem, MultipleRatioDefinition, ProjectionView, Scenario, SeriesPoint, SortKey, StatementEvidenceGroup, ValuationFormulaMeta, ValuationMethodRange, ValuationSelectionSummary } from "../lib/types"
@@ -358,6 +358,27 @@ export function writeValuationExclusionsBySymbol(value: Record<string, string>) 
     window.localStorage.setItem(VALUATION_EXCLUSIONS_STORAGE_KEY, JSON.stringify(value))
   } catch {
     // Ignore storage failures; the URL still reflects the active stock.
+  }
+}
+
+
+export function readDefaultComparatorId(): string | null {
+  if (typeof window === "undefined") return null
+  try {
+    const value = window.localStorage.getItem(DEFAULT_COMPARATOR_STORAGE_KEY)
+    return value && value.trim() ? value.trim() : null
+  } catch {
+    return null
+  }
+}
+
+
+export function writeDefaultComparatorId(comparatorId: string) {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.setItem(DEFAULT_COMPARATOR_STORAGE_KEY, comparatorId)
+  } catch {
+    // Ignore storage failures.
   }
 }
 

@@ -125,6 +125,9 @@ export function SupportResistanceDrilldown({
         <p className="text-[10px] text-muted-foreground">
           Cliquez pour tester les combinaisons support x resistance
         </p>
+        <p className="text-[10px] text-muted-foreground">
+          Les niveaux ICT sont structures sur des bougies quotidiennes, pour des decisions swing hebdomadaires, mensuelles ou trimestrielles — pas pour une execution ICT intraday par session.
+        </p>
       </CardContent>
     </Card>
   )

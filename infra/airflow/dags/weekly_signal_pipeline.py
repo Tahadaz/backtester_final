@@ -166,6 +166,7 @@ _STEPS = [
     ("wfo_dispatch", "weekly_wfo_dispatch"),
     ("signal_engine_dispatch", "weekly_signal_engine_dispatch"),
     ("signal_backtest_dispatch", "weekly_signal_backtest_dispatch"),
+    ("signal_history_dispatch", "weekly_signal_history_dispatch"),
     ("best_evidence_snapshot", "weekly_signal_best_evidence_snapshot"),
     ("dashboard_snapshot", "daily_dashboard_snapshot"),
 ]

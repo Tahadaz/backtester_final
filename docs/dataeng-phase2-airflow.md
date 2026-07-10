@@ -122,7 +122,7 @@ Use a short-lived SQLAlchemy session built from `DATABASE_URL` (reuse
   replacing the staggered-cron coordination for that chain. Old scheduler can then be flipped off
   for *those* specs only.
 - **v2 (later):** astronomer-cosmos to render each dbt model as its own Airflow task (per-model
-  lineage in the Airflow graph); BigQuery target (Phase 1.2); Kubernetes executor (Phase 3).
+  lineage in the Airflow graph); Oracle Autonomous Data Warehouse target (Phase 1.2); Kubernetes executor (Phase 3).
 
 Do not build v1.1/v2 now. Ship v1 green first.
 

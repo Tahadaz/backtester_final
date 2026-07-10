@@ -796,6 +796,7 @@ def _upsert_market_data_store_index(
     end_ts,
     row_count: int,
     dataset_id,
+    source_provider: str = 'casablanca_bourse_excel',
 ) -> None:
     db.execute(
         text("""
@@ -805,7 +806,7 @@ def _upsert_market_data_store_index(
                 created_at, updated_at
             ) VALUES (
                 :symbol, '1D', :object_key, :start_ts, :end_ts, :row_count,
-                :last_dataset_id, 'casablanca_bourse_excel', :data_as_of, 'index',
+                :last_dataset_id, :source_provider, :data_as_of, 'index',
                 now(), now()
             )
             ON CONFLICT (symbol, timeframe)
@@ -827,6 +828,7 @@ def _upsert_market_data_store_index(
             "end_ts":          end_ts,
             "row_count":       row_count,
             "last_dataset_id": dataset_id,
+            "source_provider": source_provider,
             "data_as_of":      end_ts.date() if hasattr(end_ts, "date") else end_ts,
         },
     )

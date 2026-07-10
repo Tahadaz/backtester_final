@@ -918,7 +918,7 @@ def _sr_build_base_methods(context: dict[str, Any]) -> list[dict[str, Any]]:
         methods.append(
             {
                 "id": "ict_liquidity",
-                "label": "Liquidité ICT (BSL/SSL)",
+                "label": "Liquidité ICT quotidienne (BSL/SSL)",
                 "support": liquidity.get("nearest_support"),
                 "resistance": liquidity.get("nearest_resistance"),
                 "status": (
@@ -962,7 +962,7 @@ def _sr_build_base_methods(context: dict[str, Any]) -> list[dict[str, Any]]:
         methods.append(
             {
                 "id": "ict_liquidity",
-                "label": "Liquidité ICT (BSL/SSL)",
+                "label": "Liquidité ICT quotidienne (BSL/SSL)",
                 "support": None,
                 "resistance": None,
                 "status": "unavailable",
@@ -987,7 +987,7 @@ def _sr_build_base_methods(context: dict[str, Any]) -> list[dict[str, Any]]:
         methods.append(
             {
                 "id": "ict_order_block",
-                "label": "Order blocks ICT",
+                "label": "Order blocks ICT quotidiens",
                 "support": order_blocks.get("nearest_support"),
                 "resistance": order_blocks.get("nearest_resistance"),
                 "status": (
@@ -1029,7 +1029,7 @@ def _sr_build_base_methods(context: dict[str, Any]) -> list[dict[str, Any]]:
         methods.append(
             {
                 "id": "ict_order_block",
-                "label": "Order blocks ICT",
+                "label": "Order blocks ICT quotidiens",
                 "support": None,
                 "resistance": None,
                 "status": "unavailable",
@@ -1052,7 +1052,7 @@ def _sr_build_base_methods(context: dict[str, Any]) -> list[dict[str, Any]]:
         methods.append(
             {
                 "id": "ict_fvg",
-                "label": "Fair value gaps ICT",
+                "label": "Fair value gaps ICT quotidiens",
                 "support": fvg.get("nearest_support"),
                 "resistance": fvg.get("nearest_resistance"),
                 "status": (
@@ -1094,7 +1094,7 @@ def _sr_build_base_methods(context: dict[str, Any]) -> list[dict[str, Any]]:
         methods.append(
             {
                 "id": "ict_fvg",
-                "label": "Fair value gaps ICT",
+                "label": "Fair value gaps ICT quotidiens",
                 "support": None,
                 "resistance": None,
                 "status": "unavailable",

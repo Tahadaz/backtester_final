@@ -660,7 +660,15 @@ def compute_wfo_factor_x_ta_for_symbol(
             )
             global_result.symbol = symbol
             global_result.horizon = horizon
-            _upsert_global(db, symbol, horizon, global_result, data_as_of, variant=variant)
+            _upsert_global(
+                db,
+                symbol,
+                horizon,
+                global_result,
+                data_as_of,
+                variant=variant,
+                is_full_recompute=True,
+            )
         except Exception:
             logger.exception("WFO×fx global failed: %s/%s", symbol, horizon)
         db.commit()

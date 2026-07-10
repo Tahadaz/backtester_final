@@ -1,3 +1,4 @@
+# OCI production VM stack.
 x-wfo-worker-base: &wfo_worker_base
   image: ghcr.io/tahadaz/bt-worker:${IMAGE_TAG:-latest}
   environment:
@@ -112,6 +113,9 @@ services:
     container_name: quant_api
     environment:
       API_WORKERS: ${API_WORKERS:-1}
+      DB_POOL_SIZE: "20"
+      DB_MAX_OVERFLOW: "20"
+      DB_POOL_TIMEOUT_SECONDS: "10"
       REDIS_URL: redis://quant_redis:6379/0
       DATABASE_URL: postgresql+psycopg2://app:app@quant_postgres:5432/quant
       API_EMBEDDED_SCHEDULER_ENABLED: "0"
@@ -163,7 +167,7 @@ services:
       RUNS_QUEUE_NAME: runs
       DEFAULTS_DISCOVERY_QUEUE_NAME: defaults_discovery
       WORKER_QUEUES: runs,market_refresh,signal_backtest
-      SIGNAL_ENGINE_REFRESH_ON_MARKET_REFRESH: "1"
+      SIGNAL_ENGINE_REFRESH_ON_MARKET_REFRESH: "0"
       RUN_HEARTBEAT_INTERVAL_SECONDS: "15"
       RUN_ORPHAN_STALE_SECONDS: "600"
       S3_ENDPOINT: http://minio:9000

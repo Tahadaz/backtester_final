@@ -4,12 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import useSWR, { useSWRConfig } from "swr"
 import { AlertTriangle, Landmark, Maximize2, Minimize2 } from "lucide-react"
 import {
+  fetchDashboardIndices,
   getFundamentalMethodology,
   getFundamentalSensitivity,
   getFundamentalStockDetail,
   getFundamentalUniverse,
   updateFundamentalAssumptions,
   updateFundamentalDeskAssumptions,
+  type DashboardCustomIndex,
   type FundamentalMethodology,
   type FundamentalSensitivity,
   type FundamentalStockDetail,
@@ -20,7 +22,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import { FUND_TABS, FUND_TAB_PURPOSE } from "./lib/constants"
 import { asNumber } from "./lib/formatters"
-import { useOptionalSelectedComparableView } from "./panels/comparables"
+import { resolveComparatorPeerSymbols, useOptionalSelectedComparableView } from "./panels/comparables"
 import { IpoProfileForm } from "./panels/ipo-profile-form"
 import { IpoValuationCard } from "./panels/ipo-valuation-card"
 import { deleteCustomIpoProfile, getIpoProfile, listAllIpoProfiles, saveCustomIpoProfile, T2S_PROFILE_ID, type IpoProfile } from "./lib/ipo-store"
@@ -32,7 +34,7 @@ import { StrategieValeurTab } from "./tabs/strategie-tab"
 import { SyntheseTab } from "./tabs/synthese-tab"
 import { ValuationTab } from "./tabs/valuation-tab"
 import { UniverseScreen } from "./universe-screen"
-import { applyRatioDraftToValuationRows, buildValuationSelectionSummary, comparableModelSummary, editableAssumptionDraft, emptyComparableModelSummary, enabledRelativeValuationMetricsForDraft, horizonFromQuery, isLiquidFundamentalRow, isMasiFundamentalRow, parseExcludedModelIds, readValuationExclusionsBySymbol, scenarioFromQuery, sortValuationRows, tabFromQuery, valuationSymbolKey, writeValuationExclusionsBySymbol } from "./lib/view-models"
+import { applyRatioDraftToValuationRows, buildValuationSelectionSummary, comparableModelSummary, editableAssumptionDraft, emptyComparableModelSummary, enabledRelativeValuationMetricsForDraft, horizonFromQuery, isLiquidFundamentalRow, isMasiFundamentalRow, parseExcludedModelIds, readDefaultComparatorId, readValuationExclusionsBySymbol, scenarioFromQuery, sortValuationRows, tabFromQuery, valuationSymbolKey, writeValuationExclusionsBySymbol } from "./lib/view-models"
 
 export function SignalFundamentalView({
   selectedSymbol,
@@ -49,7 +51,7 @@ export function SignalFundamentalView({
   const [showIpoForm, setShowIpoForm] = useState(false)
   const [ipoRegistryVersion, setIpoRegistryVersion] = useState(0)
   const selectedHorizon = horizonFromQuery(searchParams.get("fund_horizon"))
-  const selectedComparableBenchmarkId = searchParams.get("fund_benchmark") || "sector"
+  const selectedComparableBenchmarkId = searchParams.get("fund_benchmark") || readDefaultComparatorId() || "sector"
   const excludedValuationModelsParam = searchParams.get("fund_excluded_models")
   const selectedSymbolKey = valuationSymbolKey(selectedSymbol)
   const [valuationExclusionsBySymbol, setValuationExclusionsBySymbol] = useState<Record<string, string>>(() => readValuationExclusionsBySymbol())
@@ -133,17 +135,31 @@ export function SignalFundamentalView({
       !visibleUniverseRows.some((row) => row.symbol === selectedSymbol),
   )
 
+  const { data: dashboardIndices } = useSWR<DashboardCustomIndex[]>(
+    "fundamental-comparable-indices",
+    () => fetchDashboardIndices().catch(() => []),
+    { revalidateOnFocus: false, dedupingInterval: 60_000 },
+  )
+  const comparatorPeerSymbols = useMemo(
+    () => selectedSymbol ? resolveComparatorPeerSymbols(selectedComparableBenchmarkId, selectedSymbol, dashboardIndices) : undefined,
+    [dashboardIndices, selectedComparableBenchmarkId, selectedSymbol],
+  )
+
   const {
     data: detailRaw,
     error: detailError,
     isLoading: isDetailLoading,
     isValidating: isDetailValidating,
     mutate: mutateDetail,
-  } = useSWR<FundamentalStockDetail>(selectedSymbol && !activeIpoId ? ["fundamental-detail", selectedSymbol, apiScenario] : null, () => getFundamentalStockDetail(selectedSymbol as string, apiScenario), {
-    keepPreviousData: true,
-    revalidateOnFocus: false,
-    dedupingInterval: 60_000,
-  })
+  } = useSWR<FundamentalStockDetail>(
+    selectedSymbol && !activeIpoId ? ["fundamental-detail", selectedSymbol, apiScenario, (comparatorPeerSymbols ?? []).join("|")] : null,
+    () => getFundamentalStockDetail(selectedSymbol as string, apiScenario, comparatorPeerSymbols),
+    {
+      keepPreviousData: true,
+      revalidateOnFocus: false,
+      dedupingInterval: 60_000,
+    },
+  )
 
   const detail = detailRaw?.symbol === selectedSymbol ? detailRaw : null
   const resolvedScenario = scenarioParam ? scenario : scenarioFromQuery(detail?.viewed_scenario ?? detail?.ensemble?.scenario ?? "base")

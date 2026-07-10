@@ -117,6 +117,93 @@ def test_dispatch_fundamental_refresh_skips_when_no_active_symbols(monkeypatch) 
     assert queue.calls == []
 
 
+def test_weekly_signal_history_dispatch_is_registered_on_score_history_queue() -> None:
+    spec = get_schedule_spec("weekly_signal_history_dispatch")
+
+    assert spec.kind == "signal_history_dispatch"
+    assert spec.queue == "score_history"
+    assert spec.cron == "30 23 * * sun"
+    # Fires 30 minutes after weekly_signal_backtest_dispatch (23:00 UTC sun) and
+    # well before weekly_signal_best_evidence_snapshot (01:30 UTC mon).
+    assert spec.trigger() is not None
+
+
+def test_dispatch_stale_wfo_enqueues_both_base_wfo_and_sr_independently(monkeypatch) -> None:
+    monkeypatch.setattr(scheduler_dispatch, "list_signal_universe_symbols", lambda _db: ["AAA"])
+
+    # Base WFO stale for weekly only; SR stale for monthly only — disjoint sets to
+    # prove they're dispatched independently.
+    monkeypatch.setattr(
+        scheduler_dispatch,
+        "iter_wfo_weekly_stale_tuples",
+        lambda db, *, symbols: [("AAA", "weekly", "expanded_ta_simple")],
+    )
+    monkeypatch.setattr(
+        scheduler_dispatch,
+        "iter_sr_wfo_weekly_stale_tuples",
+        lambda db, *, symbols: [("AAA", "monthly", "expanded_ta_simple")],
+    )
+
+    from services.worker.tasks import wfo_signal_batch
+
+    wfo_calls: list[tuple] = []
+    sr_calls: list[tuple] = []
+    monkeypatch.setattr(
+        wfo_signal_batch,
+        "enqueue_wfo_full_for_symbol_horizon",
+        lambda symbol, horizon, *, variant, triggered_by: wfo_calls.append((symbol, horizon, variant))
+        or f"wfo-{symbol}-{horizon}",
+    )
+    monkeypatch.setattr(
+        wfo_signal_batch,
+        "enqueue_sr_wfo_for_symbol_horizon",
+        lambda symbol, horizon, *, variant, triggered_by: sr_calls.append((symbol, horizon, variant))
+        or f"sr-{symbol}-{horizon}",
+    )
+
+    result = scheduler_dispatch._dispatch_stale_wfo(object(), trigger_source="scheduled")
+
+    assert wfo_calls == [("AAA", "weekly", "expanded_ta_simple")]
+    assert sr_calls == [("AAA", "monthly", "expanded_ta_simple")]
+    assert result["wfo_jobs"] == 1
+    assert result["sr_jobs"] == 1
+    assert result["enqueued_jobs"] == 2
+
+
+def test_dispatch_schedule_routes_signal_history_dispatch(monkeypatch) -> None:
+    run_id = uuid.uuid4()
+    fake_db = SimpleNamespace(close=lambda: None)
+    finished: dict = {}
+    calls: list = []
+
+    monkeypatch.setattr(scheduler_dispatch, "SessionLocal", lambda: fake_db)
+    monkeypatch.setattr(
+        scheduler_dispatch,
+        "_create_scheduler_run",
+        lambda db, schedule_id, trigger_source: SimpleNamespace(id=run_id),
+    )
+    monkeypatch.setattr(
+        scheduler_dispatch,
+        "_dispatch_signal_history",
+        lambda db: calls.append(db) or {"enqueued_jobs": 5, "triggered": 5, "job_ids": ["a", "b"]},
+    )
+
+    def record_finish(db, run, **kwargs):
+        finished.update(kwargs)
+
+    monkeypatch.setattr(scheduler_dispatch, "_finish_scheduler_run", record_finish)
+
+    result = scheduler_dispatch.dispatch_schedule("weekly_signal_history_dispatch", trigger_source="manual")
+
+    assert calls == [fake_db]
+    assert result["status"] == "succeeded"
+    assert result["schedule_id"] == "weekly_signal_history_dispatch"
+    assert result["enqueued_jobs"] == 5
+    assert finished["status"] == "succeeded"
+    assert finished["meta_json"]["schedule_label"] == "Weekly signal history dispatch"
+    assert finished["meta_json"]["queue"] == "score_history"
+
+
 def test_dispatch_schedule_routes_weekly_fundamental_refresh(monkeypatch) -> None:
     run_id = uuid.uuid4()
     fake_db = SimpleNamespace(close=lambda: None)

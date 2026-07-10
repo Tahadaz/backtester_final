@@ -189,7 +189,7 @@ function WfoDetailContent() {
               <ConfigItem label="Cout" value={`${config.cost_bps} bps`} />
               <ConfigItem label="Max reps" value={String(config.max_reps)} />
               <ConfigItem label="Dernier OOS" value={lastOosEnd || "--"} />
-              <ConfigItem label="Data as of" value={dataAsOf || "--"} />
+              <ConfigItem label="Live data as of" value={dataAsOf || "--"} />
               <ConfigItem label="Tail inutilisee" value={`${unusedTailBars ?? "--"} barres`} />
             </div>
             {config.families && (

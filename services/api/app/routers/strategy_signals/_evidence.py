@@ -1904,12 +1904,13 @@ def _read_best_evidence_snapshot(
     )
     market_as_of = getattr(market_row, "data_as_of", None) if market_row is not None else None
     snapshot_as_of = row.market_data_as_of or row.data_as_of
-    if market_as_of is not None and snapshot_as_of is not None and market_as_of > snapshot_as_of:
+    if market_as_of is not None and (snapshot_as_of is None or market_as_of > snapshot_as_of):
+        snapshot_label = snapshot_as_of.isoformat() if snapshot_as_of is not None else "no full WFO revision"
         raise HTTPException(
             status_code=409,
             detail=(
                 f"Stored best signal evidence for {symbol}/{canonical_h} is stale "
-                f"(built for {snapshot_as_of.isoformat()}, latest market data is {market_as_of.isoformat()})."
+                f"(built for {snapshot_label}, latest market data is {market_as_of.isoformat()})."
             ),
         )
     return row

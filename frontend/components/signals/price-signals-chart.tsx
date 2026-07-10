@@ -30,6 +30,8 @@ export interface IndicatorOverlaySeries {
   family?: string
   category?: string
   params?: Record<string, number>
+  color?: string
+  lineStyle?: "solid" | "dashed" | "dotted"
 }
 
 interface PriceSignalsChartProps {
@@ -66,12 +68,13 @@ const MARKER_META: Record<TradeMarkerKind, { label: string; color: string }> = {
   short: { label: "Short", color: "#dc2626" },
   cover: { label: "Cover", color: "#7c3aed" },
 }
-const CATEGORY_ORDER = ["tendance", "momentum", "oscillation", "volume"] as const
+const CATEGORY_ORDER = ["tendance", "momentum", "oscillation", "volume", "support_resistance"] as const
 const CATEGORY_LABELS: Record<string, string> = {
   tendance: "Tendance",
   momentum: "Momentum",
   oscillation: "Oscillation",
   volume: "Volume",
+  support_resistance: "S/R WFO",
 }
 
 type PanelKind = "rsi" | "macd" | "oscillator" | "indicator"
@@ -96,6 +99,12 @@ function toTime(date: string): Time {
 
 function finiteValue(value: number | null | undefined): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null
+}
+
+function chartLineStyle(style: IndicatorOverlaySeries["lineStyle"]): LineStyle {
+  if (style === "dashed") return LineStyle.Dashed
+  if (style === "dotted") return LineStyle.Dotted
+  return LineStyle.Solid
 }
 
 function lowerText(series: IndicatorOverlaySeries) {
@@ -311,7 +320,7 @@ export function PriceSignalsChart({
   const allIndicators = useMemo(() => dedupeIndicatorSeries(indicatorSeries ?? []), [indicatorSeries])
   const indicatorCategories = useMemo(() => orderedIndicatorCategories(allIndicators), [allIndicators])
   const colorById = useMemo(
-    () => new Map(allIndicators.map((series, index) => [series.id, COLORS[index % COLORS.length]])),
+    () => new Map(allIndicators.map((series, index) => [series.id, series.color ?? COLORS[index % COLORS.length]])),
     [allIndicators],
   )
   const visibleIndicators = useMemo(
@@ -477,6 +486,7 @@ export function PriceSignalsChart({
         {
           color,
           lineWidth: 2,
+          lineStyle: chartLineStyle(series.lineStyle),
           priceLineVisible: false,
           lastValueVisible: false,
           crosshairMarkerVisible: false,

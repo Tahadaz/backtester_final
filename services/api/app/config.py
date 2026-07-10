@@ -65,6 +65,9 @@ def _getenv_any(*names: str, default: str) -> str:
 
 class Settings(BaseModel):
     DATABASE_URL: str = os.getenv("DATABASE_URL", DEFAULT_LOCAL_DATABASE_URL)
+    DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "20"))
+    DB_MAX_OVERFLOW: int = int(os.getenv("DB_MAX_OVERFLOW", "20"))
+    DB_POOL_TIMEOUT_SECONDS: int = int(os.getenv("DB_POOL_TIMEOUT_SECONDS", "10"))
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     EDGE_COST_BPS_PER_SIDE: float = float(os.getenv("EDGE_COST_BPS_PER_SIDE", "33"))
     EDGE_INLINE_LIMIT_MS: int = int(os.getenv("EDGE_INLINE_LIMIT_MS", "200"))

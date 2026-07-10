@@ -57,8 +57,8 @@ and `relationships` proving **zero orphan facts** (referential integrity enforce
 - **dbt-core 1.11.11** + **dbt-postgres** adapter, **dbt_utils** package.
 - Installed in an **isolated virtualenv** (`dataeng/.venv`) — deliberately separate from the app's
   Python env to avoid dependency conflicts.
-- Target warehouse: the Docker-compose Postgres (`localhost:5555/quant`). A BigQuery target is a
-  planned additive profile (Phase 1.2).
+- Target warehouse: the Docker-compose Postgres (`localhost:5555/quant`). An Oracle Autonomous
+  Data Warehouse target is a planned additive profile (Phase 1.2).
 
 ## How to run
 

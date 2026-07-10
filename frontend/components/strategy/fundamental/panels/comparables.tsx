@@ -18,7 +18,7 @@ import { asNumber, asPositiveNumber, asRatio, comparableMetricLabel, fmtCap, fmt
 import { FundCard, StatTile } from "../shared/cards"
 import { VerdictChip, type VerdictTone } from "../shared/verdict-chip"
 import { ComparableBenchmarkView, ComparableChoice, ComparableIndexDefinition, ComparableModelSummary, ComparablePeerFairValue, ComparablePeerView, ComparableView } from "../lib/types"
-import { comparableModelSummary, enabledRelativeValuationMetrics } from "../lib/view-models"
+import { comparableModelSummary, enabledRelativeValuationMetrics, readDefaultComparatorId, writeDefaultComparatorId } from "../lib/view-models"
 
 function comparableMetricHeader(metric: string): ReactNode {
   const glossaryId = COMPARABLE_METRIC_GLOSSARY_IDS[metric]
@@ -224,7 +224,7 @@ function comparableComponentShares(definition: ComparableIndexDefinition): Recor
 }
 
 
-function comparableChoiceForIndex(definition: ComparableIndexDefinition, targetSymbol: string): ComparableChoice | null {
+export function comparableChoiceForIndex(definition: ComparableIndexDefinition, targetSymbol: string): ComparableChoice | null {
   const componentShares = comparableComponentShares(definition)
   const componentSymbols = (definition.components ?? []).map((component) => component.symbol)
   const symbols = normalizeComparableSymbols([
@@ -534,6 +534,53 @@ export function comparablePeerFairValueSummary(
 }
 
 
+export function buildIndexComparatorChoices(
+  dashboardIndices: DashboardCustomIndex[] | undefined,
+  targetSymbol: string,
+): ComparableChoice[] {
+  const userIndices = dashboardIndices ?? []
+  const builtInIndices: ComparableIndexDefinition[] = [
+    BUILTIN_WEIGHTED_MASI_INDEX,
+    ...BUILTIN_CUSTOM_DASHBOARD_INDICES,
+  ].filter((builtIn) => {
+    const builtInName = builtIn.name.trim().toLowerCase()
+    return !userIndices.some(
+      (definition) =>
+        definition.id === builtIn.id ||
+        definition.name.trim().toLowerCase() === builtInName,
+    )
+  })
+  const sourceIndices: ComparableIndexDefinition[] = [...builtInIndices, ...userIndices]
+  const seenIds = new Set<string>()
+  const seenNames = new Set<string>()
+  return sourceIndices
+    .map((definition) => comparableChoiceForIndex(definition, targetSymbol))
+    .filter((choice): choice is ComparableChoice => Boolean(choice))
+    .filter((choice) => choice.containsTarget)
+    .filter((choice) => {
+      const id = choice.id.trim().toLowerCase()
+      const name = choice.name.trim().toLowerCase()
+      if (seenIds.has(id) || seenNames.has(name)) return false
+      seenIds.add(id)
+      seenNames.add(name)
+      return true
+    })
+}
+
+
+export function resolveComparatorPeerSymbols(
+  comparatorId: string,
+  targetSymbol: string,
+  dashboardIndices: DashboardCustomIndex[] | undefined,
+): string[] | undefined {
+  if (!comparatorId.startsWith("index:") || !targetSymbol) return undefined
+  const choice = buildIndexComparatorChoices(dashboardIndices, targetSymbol).find((item) => item.id === comparatorId)
+  if (!choice) return undefined
+  const target = normalizeComparableSymbol(targetSymbol)
+  return choice.symbols.filter((symbol) => symbol !== target)
+}
+
+
 function useComparableChoices(
   detail: FundamentalStockDetail | null,
   selectedRow: FundamentalUniverseRow | null,
@@ -547,33 +594,7 @@ function useComparableChoices(
   return useMemo<ComparableChoice[]>(() => {
     if (!detail) return []
     const sectorChoice = defaultSectorComparableChoice(detail, selectedRow, rows)
-    const userIndices = dashboardIndices ?? []
-    const builtInIndices: ComparableIndexDefinition[] = [
-      BUILTIN_WEIGHTED_MASI_INDEX,
-      ...BUILTIN_CUSTOM_DASHBOARD_INDICES,
-    ].filter((builtIn) => {
-      const builtInName = builtIn.name.trim().toLowerCase()
-      return !userIndices.some(
-        (definition) =>
-          definition.id === builtIn.id ||
-          definition.name.trim().toLowerCase() === builtInName,
-      )
-    })
-    const sourceIndices: ComparableIndexDefinition[] = [...builtInIndices, ...userIndices]
-    const seenIds = new Set<string>()
-    const seenNames = new Set<string>()
-    const indexChoices = sourceIndices
-      .map((definition) => comparableChoiceForIndex(definition, detail.symbol))
-      .filter((choice): choice is ComparableChoice => Boolean(choice))
-      .filter((choice) => choice.containsTarget)
-      .filter((choice) => {
-        const id = choice.id.trim().toLowerCase()
-        const name = choice.name.trim().toLowerCase()
-        if (seenIds.has(id) || seenNames.has(name)) return false
-        seenIds.add(id)
-        seenNames.add(name)
-        return true
-      })
+    const indexChoices = buildIndexComparatorChoices(dashboardIndices, detail.symbol)
     return [sectorChoice, ...indexChoices]
   }, [dashboardIndices, detail, rows, selectedRow])
 }
@@ -745,6 +766,7 @@ export function ComparableBenchmarkPanel({
   title?: string
 }) {
   const [activeMetric, setActiveMetric] = useState<string>("PER")
+  const [defaultComparatorSaved, setDefaultComparatorSaved] = useState(false)
   const {
     comparatorChoices,
     selectedComparator,
@@ -759,6 +781,16 @@ export function ComparableBenchmarkPanel({
       onSelectedComparatorIdChange("sector")
     }
   }, [comparatorChoices, onSelectedComparatorIdChange, selectedComparatorId])
+
+  const isDefaultComparator = readDefaultComparatorId() === selectedComparator.id
+  useEffect(() => {
+    setDefaultComparatorSaved(false)
+  }, [selectedComparator.id])
+
+  const handleSaveDefaultComparator = () => {
+    writeDefaultComparatorId(selectedComparator.id)
+    setDefaultComparatorSaved(true)
+  }
 
   const benchmark = comparables.benchmarks[activeMetric]
   const selectedValue = asNumber(comparables.selected_metrics[activeMetric]) ?? asNumber(detail.metrics[activeMetric])
@@ -797,6 +829,15 @@ export function ComparableBenchmarkPanel({
             </option>
           ))}
         </select>
+        <button
+          type="button"
+          className="fund-compare-metric"
+          onClick={handleSaveDefaultComparator}
+          disabled={isDefaultComparator}
+          title="Utiliser ce benchmark par defaut sur toutes les fiches"
+        >
+          {isDefaultComparator ? "Benchmark par defaut ✓" : defaultComparatorSaved ? "Enregistre ✓" : "Definir par defaut"}
+        </button>
         <div className="fund-compare-metrics">
           {COMPARABLE_METRICS.map((metric) => (
             <button

@@ -43,7 +43,7 @@ Local development uses `infra/docker-compose.yml`, which builds images from the 
 | `services/api/` | FastAPI app, routers, Pydantic schemas, SQLAlchemy models, Alembic migrations. |
 | `services/worker/` | RQ worker entrypoint and long-running task implementations. |
 | `core/quant_core/` | Quant, signal, WFO, strategy, research, and portfolio logic shared by API and workers. |
-| `infra/` | Docker Compose, Caddy, systemd timer, backup scripts, and legacy GCP Cloud Build file. |
+| `infra/` | Oracle Cloud VM Docker Compose, Caddy, systemd timer, and backup scripts. |
 | `.github/workflows/` | CI, image build, VM deploy, and static dashboard Pages deploy. |
 | `docs/ops/` | Existing auth and restore operational notes. |
 | `latex/`, `report-pfe-mis3/`, `docs/presentations/` | Academic report and presentation deliverables; not used by runtime containers. |

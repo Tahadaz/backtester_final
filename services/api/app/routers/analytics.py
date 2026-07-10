@@ -2149,38 +2149,10 @@ def trigger_predictive_history(
     dependencies=[Depends(require_admin), Depends(rate_limit_trigger)],
 )
 def trigger_all_predictive_history(db: Session = Depends(get_db)) -> PredictiveHistoryTriggerOut:
-    from redis import Redis
-    from rq import Queue
-    from ..config import settings
+    from services.worker.tasks.score_history_batch import dispatch_score_history_for_all_symbols
 
-    wfo_syms = {s for (s,) in db.query(models.WfoSignalSummary.symbol).distinct().all()}
-    eng_syms = {s for (s,) in db.query(models.SignalEngineGlobalResult.symbol).distinct().all()}
-    symbols = list(wfo_syms | eng_syms)
-    if not symbols:
-        return PredictiveHistoryTriggerOut(triggered=0, job_ids=[])
-
-    redis_conn = Redis.from_url(settings.REDIS_URL, decode_responses=False)
-    q = Queue("score_history", connection=redis_conn)
-
-    job_ids: list[str] = []
-    for sym in symbols:
-        row = db.query(models.ScoreHistoryJob).filter_by(symbol=sym).first()
-        if row is None:
-            row = models.ScoreHistoryJob(symbol=sym, status="pending")
-            db.add(row)
-        else:
-            row.status = "pending"
-            row.error_message = None
-        job = q.enqueue(
-            "services.worker.tasks.score_history_batch.enqueue_score_history_for_symbol",
-            sym,
-            job_timeout=7200,
-        )
-        row.rq_job_id = str(job.id)
-        job_ids.append(str(job.id))
-    db.commit()
-    _invalidate_leaderboard_cache()
-    return PredictiveHistoryTriggerOut(triggered=len(symbols), job_ids=job_ids)
+    result = dispatch_score_history_for_all_symbols(db)
+    return PredictiveHistoryTriggerOut(triggered=result["triggered"], job_ids=result["job_ids"])
 
 
 @router.get("/predictive-history/batch-status", response_model=PredictiveHistoryStatus)

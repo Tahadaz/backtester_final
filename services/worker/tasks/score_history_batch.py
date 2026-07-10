@@ -455,6 +455,55 @@ def run_score_history_for_symbol(db: Session, symbol: str) -> dict[str, int]:
     return summary
 
 
+def dispatch_score_history_for_all_symbols(db: Session) -> dict[str, Any]:
+    """Collect every WFO/Signal-Engine symbol, upsert a pending ScoreHistoryJob row,
+    and enqueue a score_history job for each on the ``score_history`` RQ queue.
+
+    Shared core used by both the admin HTTP endpoint
+    (``analytics.trigger_all_predictive_history``) and the scheduled weekly
+    dispatcher (``scheduler_dispatch._dispatch_signal_history``).
+    """
+    from redis import Redis
+    from rq import Queue
+    from services.api.app.config import settings
+    from services.api.app.routers.analytics import _invalidate_leaderboard_cache
+
+    wfo_syms = {s for (s,) in db.query(models.WfoSignalSummary.symbol).distinct().all()}
+    eng_syms = {s for (s,) in db.query(models.SignalEngineGlobalResult.symbol).distinct().all()}
+    symbols = list(wfo_syms | eng_syms)
+    if not symbols:
+        return {"enqueued_jobs": 0, "triggered": 0, "job_ids": [], "job_ids_sample": []}
+
+    redis_conn = Redis.from_url(settings.REDIS_URL, decode_responses=False)
+    q = Queue("score_history", connection=redis_conn)
+
+    job_ids: list[str] = []
+    for sym in symbols:
+        row = db.query(models.ScoreHistoryJob).filter_by(symbol=sym).first()
+        if row is None:
+            row = models.ScoreHistoryJob(symbol=sym, status="pending")
+            db.add(row)
+        else:
+            row.status = "pending"
+            row.error_message = None
+        job = q.enqueue(
+            "services.worker.tasks.score_history_batch.enqueue_score_history_for_symbol",
+            sym,
+            job_timeout=7200,
+        )
+        row.rq_job_id = str(job.id)
+        job_ids.append(str(job.id))
+    db.commit()
+    _invalidate_leaderboard_cache()
+    return {
+        "enqueued_jobs": len(job_ids),
+        "triggered": len(symbols),
+        "symbols": len(symbols),
+        "job_ids": job_ids,
+        "job_ids_sample": job_ids[:20],
+    }
+
+
 def enqueue_score_history_for_symbol(symbol: str) -> dict[str, int] | None:
     """RQ entry point — runs in the worker process."""
     db: Session = SessionLocal()

@@ -11,7 +11,6 @@ from services.api.app.models import SignalEngineGlobalResult, WfoGlobalSignal, W
 
 HORIZONS = ("weekly", "monthly", "quarterly")
 VARIANTS = ALL_SIGNAL_MODE_NAMES
-WFO_CATEGORIES = ("tendance", "momentum", "oscillation", "volume")
 MARKET_REFRESH_TIMEZONE = ZoneInfo("Africa/Casablanca")
 WEEKLY_RECOMPUTE_DELTA = timedelta(days=7)
 
@@ -67,8 +66,10 @@ def get_wfo_last_full_compute_at(
         .filter_by(symbol=symbol, horizon=horizon, variant=variant)
         .first()
     )
-    if global_row is not None and global_row.computed_at is not None:
-        return _normalize_utc(global_row.computed_at)
+    if global_row is not None:
+        # `computed_at` can be updated by the cheap live-indicator refresh.
+        # Only a full WFO run is allowed to satisfy the weekly fold refresh.
+        return _normalize_utc(getattr(global_row, "full_computed_at", None))
 
     rows = (
         db.query(WfoSignalSummary)
@@ -78,11 +79,24 @@ def get_wfo_last_full_compute_at(
     if not rows:
         return None
 
-    by_category = {row.category: _normalize_utc(row.computed_at) for row in rows}
-    category_times = [by_category.get(category) for category in WFO_CATEGORIES]
-    if any(value is None for value in category_times):
-        return None
-    return min(value for value in category_times if value is not None)
+    # Old rows predate the explicit full-run marker. Treat them as stale rather
+    # than guessing from a timestamp that may have been written by a live refresh.
+    return None
+
+
+def get_sr_wfo_last_full_compute_at(
+    db: Session,
+    *,
+    symbol: str,
+    horizon: str,
+    variant: str,
+) -> datetime | None:
+    row = (
+        db.query(WfoSignalSummary)
+        .filter_by(symbol=symbol, horizon=horizon, variant=variant, category="support_resistance")
+        .first()
+    )
+    return _normalize_utc(row.computed_at if row is not None else None)
 
 
 def iter_signal_engine_weekly_stale_tuples(
@@ -100,6 +114,31 @@ def iter_signal_engine_weekly_stale_tuples(
             for raw_variant in variants:
                 variant = signal_mode_storage_name(raw_variant)
                 last_computed_at = get_signal_engine_last_full_compute_at(
+                    db,
+                    symbol=symbol,
+                    horizon=horizon,
+                    variant=variant,
+                )
+                if needs_weekly_recompute(last_computed_at, normalized_now):
+                    stale.append((symbol, horizon, variant))
+    return stale
+
+
+def iter_sr_wfo_weekly_stale_tuples(
+    db: Session,
+    *,
+    symbols: Iterable[str],
+    horizons: Iterable[str] = HORIZONS,
+    variants: Iterable[str] = VARIANTS,
+    now: datetime | None = None,
+) -> list[tuple[str, str, str]]:
+    normalized_now = _normalize_utc(now) or datetime.now(timezone.utc)
+    stale: list[tuple[str, str, str]] = []
+    for symbol in symbols:
+        for horizon in horizons:
+            for raw_variant in variants:
+                variant = signal_mode_storage_name(raw_variant)
+                last_computed_at = get_sr_wfo_last_full_compute_at(
                     db,
                     symbol=symbol,
                     horizon=horizon,

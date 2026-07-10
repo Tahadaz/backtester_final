@@ -87,6 +87,7 @@ def _wfo_global_rows(symbol: str, *, stale_target: tuple[str, str] | None = None
                     horizon=horizon,
                     variant=variant,
                     computed_at=computed_at,
+                    full_computed_at=computed_at,
                 )
             )
     return rows

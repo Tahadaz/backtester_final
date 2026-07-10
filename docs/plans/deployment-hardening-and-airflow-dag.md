@@ -45,7 +45,6 @@ batch chain into a real orchestrated DAG.
 |---|---------|----------|------|
 | P1 | **Prod compose is not in version control.** `deploy-vm.yml` + `docs/APP_MAP.md` + `docs/DEPLOY_RUNBOOK.md` all reference `infra/docker-compose.prod.yml`, which has **never existed in git** and is not gitignored. It lives only as an untracked file on the one VM. | `git log --all -- infra/docker-compose.prod.yml` is empty; `git check-ignore` says not ignored. | Prod topology is unreviewed and unrecoverable if the VM is lost. SPOF. |
 | P2 | **CI does not run the API/worker test suites.** `ci.yml` runs only `core/tests/`. The `services/api/tests` + `services/worker/tests` suites — including the 3 best-evidence tests that were red — never run in CI. | `ci.yml` lines 22-23. | Half-built features with failing tests reach prod (exactly what happened here). |
-| P3 | **Two half-built deploy targets.** Oracle (`deploy-vm.yml`, hardcoded IP) **and** GCP (`docker-compose.gcp.yml`, `Caddyfile.gcp`, `cloudbuild.api.yaml`). | File tree. | Ambiguity; dead config rots and misleads. |
 | P4 | **Weekly chain has no dependency enforcement.** Five cron entries spaced by guessed hour-offsets. If WFO dispatch runs long, signal-engine dispatch starts anyway on stale inputs. No retries, no failure alerting, no completion signal. | `scheduler_registry.py` cron specs; `scheduler_dispatch.py`. | Silent partial pipelines; downstream artifacts built on incomplete upstream data. |
 | P5 | **Deploy doesn't rebuild best-evidence snapshots.** It rebuilds `dashboard_snapshot` to avoid 503s after payload-shape changes, but the equivalent for `signal_best_evidence_snapshot` was never added. | `deploy-vm.yml` lines 46-61. | After a deploy, the signal-evidence tab serves 404/409 until the next Monday refresh. |
 | P6 | **No off-VM backup.** DB + prod compose + `/etc/bt/env` live only on the VM. | — | Total loss on VM failure. |
@@ -59,7 +58,7 @@ weekly batch. k8s would add a control plane, ingress controllers, secret
 management, RBAC, and a permanent ops burden for **zero** benefit at this scale —
 no multi-node scaling need, no per-service autoscaling need, no multi-tenant
 isolation need. Docker Compose on a VM is the correct tool. The actual problems
-(P1-P6) are about **versioning, testing, orchestration, and backups** — none of
+(P1, P2, P4, P5, and P6) are about **versioning, testing, orchestration, and backups** — none of
 which k8s fixes and all of which it complicates. Revisit k8s only if you reach
 multi-node horizontal scaling or strict multi-tenant isolation requirements.
 
@@ -109,11 +108,6 @@ with a tracking issue, then (c) add the job:
       - run: python -m pytest services/api/tests services/worker/tests -q --tb=short
 ```
 Make `build-images` depend on this job (or gate `deploy-vm` on `ci` success).
-
-### A3. Pick one deploy target (fixes P3)
-Recommendation: **keep Oracle**, archive GCP. Move `docker-compose.gcp.yml`,
-`Caddyfile.gcp`, `cloudbuild.api.yaml` to `infra/archive/` (or delete) and strip
-GCP references from docs. Destructive — confirm with the user before removing.
 
 ### A4. Rebuild best-evidence snapshots on deploy (fixes P5)
 Mirror the existing dashboard-snapshot rebuild in `deploy-vm.yml`, after the

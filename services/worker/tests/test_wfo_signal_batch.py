@@ -249,13 +249,20 @@ def test_local_neighbors_uses_ten_percent_window_and_caps():
 
 
 def test_refresh_wfo_uses_persisted_representatives_without_reselection(monkeypatch):
+    full_run_at = dt.datetime(2026, 1, 10, tzinfo=dt.timezone.utc)
     rows = [
         _summary_row("AAA", "tendance", "weekly", "expanded", "sma"),
         _summary_row("AAA", "momentum", "weekly", "expanded", "macd"),
         _summary_row("AAA", "oscillation", "weekly", "expanded", "rsi"),
         _summary_row("AAA", "volume", "weekly", "expanded", "obv"),
     ]
-    fake_db = _FakeDB({WfoSignalSummary: rows, WfoGlobalSignal: []})
+    global_row = WfoGlobalSignal(
+        symbol="AAA",
+        horizon="weekly",
+        variant="expanded",
+        full_computed_at=full_run_at,
+    )
+    fake_db = _FakeDB({WfoSignalSummary: rows, WfoGlobalSignal: [global_row]})
 
     monkeypatch.setattr(wfo_batch_mod, "SessionLocal", lambda: fake_db)
     monkeypatch.setattr(wfo_batch_mod, "load_ohlcv_for_symbol", lambda *_a, **_k: _ohlcv_frame())
@@ -311,6 +318,7 @@ def test_refresh_wfo_uses_persisted_representatives_without_reselection(monkeypa
     assert result["mode"] == "representatives_refresh"
     assert result["refreshed_categories"] == 4
     assert result["failed_categories"] == 0
+    assert global_row.full_computed_at == full_run_at
 
     expected_close = float(_ohlcv_frame()["Close"].iloc[-1])
     for row in fake_db.rows_by_model[WfoSignalSummary]:
@@ -331,6 +339,9 @@ def test_run_weekly_wfo_batch_only_processes_weekly_stale_data_backed_tuples(mon
                     horizon=horizon,
                     variant=variant,
                     computed_at=now - dt.timedelta(
+                        days=8 if (horizon, variant) == ("weekly", "legacy_ta_simple") else 2
+                    ),
+                    full_computed_at=now - dt.timedelta(
                         days=8 if (horizon, variant) == ("weekly", "legacy_ta_simple") else 2
                     ),
                 )
@@ -355,3 +366,141 @@ def test_run_weekly_wfo_batch_only_processes_weekly_stale_data_backed_tuples(mon
 
     assert result == {"total": 1, "succeeded": 1, "failed": 0}
     assert calls == [("AAA", "weekly", "legacy_ta_simple")]
+
+
+def _sr_wfo_payload(as_of: str = "2026-04-20") -> dict:
+    return {
+        "response": {
+            "as_of": as_of,
+            "wfo": {
+                "as_of": as_of,
+                "status": "ok",
+                "decision": "actionable",
+                "procedure_oos": {"sharpe": 1.0, "hit_rate": 0.6, "n_trades": 10, "total_return": 0.1},
+                "baselines": {"in_sample_best": {"sharpe": 1.5}},
+                "stability": {"selection_stability": 0.7},
+                "windows": [{"test_metrics": {"total_return": 0.05, "max_drawdown": -0.02}}],
+                "params_echo": {"foo": "bar"},
+                "live_recommendation": {"support_level": 100.0, "resistance_level": 110.0, "pair_meta": {}},
+            },
+        }
+    }
+
+
+def test_run_sr_wfo_for_symbol_horizon_success_writes_succeeded_row(monkeypatch):
+    fake_db = _FakeDB({WfoSignalSummary: []})
+    monkeypatch.setattr(wfo_batch_mod, "SessionLocal", lambda: fake_db)
+
+    import services.api.app.routers.strategy_signals._support_resistance as sr_mod
+
+    monkeypatch.setattr(sr_mod, "_sr_get_or_compute_wfo", lambda **kwargs: _sr_wfo_payload())
+
+    wfo_batch_mod.run_sr_wfo_for_symbol_horizon(fake_db, "AAA", "weekly", variant="expanded")
+
+    rows = fake_db.rows_by_model[WfoSignalSummary]
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.category == "support_resistance"
+    assert row.status == "succeeded"
+    assert row.folds_json == _sr_wfo_payload()["response"]["wfo"]["windows"]
+    assert row.config_json["foo"] == "bar"
+    assert row.fragility_json == {"selection_stability": 0.7}
+    assert row.data_as_of == dt.date(2026, 4, 20)
+
+
+def test_run_sr_wfo_for_symbol_horizon_exception_writes_failed_row(monkeypatch):
+    fake_db = _FakeDB({WfoSignalSummary: []})
+    monkeypatch.setattr(wfo_batch_mod, "SessionLocal", lambda: fake_db)
+
+    import services.api.app.routers.strategy_signals._support_resistance as sr_mod
+
+    def _boom(**kwargs):
+        raise RuntimeError("sr compute exploded")
+
+    monkeypatch.setattr(sr_mod, "_sr_get_or_compute_wfo", _boom)
+
+    wfo_batch_mod.run_sr_wfo_for_symbol_horizon(fake_db, "AAA", "weekly", variant="expanded")
+
+    rows = fake_db.rows_by_model[WfoSignalSummary]
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.category == "support_resistance"
+    assert row.status == "failed"
+    assert "sr compute exploded" in row.error_message
+
+
+def test_run_wfo_for_symbol_horizon_no_longer_computes_sr_inline(monkeypatch):
+    """run_wfo_for_symbol_horizon should only compute the 4 base categories +
+    global consensus; S/R is dispatched separately via run_sr_wfo_for_symbol_horizon."""
+    fake_db = _FakeDB({WfoSignalSummary: [], WfoGlobalSignal: []})
+    monkeypatch.setattr(wfo_batch_mod, "SessionLocal", lambda: fake_db)
+    monkeypatch.setattr(wfo_batch_mod, "load_ohlcv_for_symbol", lambda *_a, **_k: _ohlcv_frame())
+    monkeypatch.setattr(wfo_batch_mod, "drop_incomplete_ohlcv_rows", lambda df: df)
+
+    def _unexpected_sr_call(*_args, **_kwargs):
+        raise AssertionError("run_wfo_for_symbol_horizon must not compute S/R inline anymore")
+
+    import services.api.app.routers.strategy_signals._support_resistance as sr_mod
+
+    monkeypatch.setattr(sr_mod, "_sr_get_or_compute_wfo", _unexpected_sr_call)
+
+    def _fake_category(category, horizon, close, *, volume=None, high=None, low=None, families=None, **kwargs):
+        return SimpleNamespace(
+            category=category,
+            symbol=None,
+            horizon=horizon,
+            status="succeeded",
+            score_pct=0.0,
+            signal_label="Neutre",
+            representatives=[],
+            wfe_pct=0.0,
+            robustness_ratio=0.0,
+            total_folds=0,
+            profitable_folds=0,
+            mean_oos_sharpe=0.0,
+            total_oos_pnl=0.0,
+            worst_fold_drawdown=0.0,
+            composite_score=0.0,
+            robustness_grade="F",
+            config_used={},
+            data_as_of="",
+            compute_seconds=0.0,
+            engine_result=None,
+            error_message=None,
+        )
+
+    monkeypatch.setattr(wfo_batch_mod, "run_wfo_category_signal", _fake_category)
+    monkeypatch.setattr(
+        wfo_batch_mod,
+        "_get_sr_levels",
+        lambda close, high, low, volume, horizon: (None, None, None, None, 0.0),
+    )
+    monkeypatch.setattr(
+        wfo_batch_mod,
+        "compute_global_wfo_signal",
+        lambda *args, **kwargs: SimpleNamespace(
+            status="succeeded",
+            global_score_pct=0.0,
+            raw_score_pct=0.0,
+            signal_label="Neutre",
+            recommendation="conserver",
+            weights={"tendance": 0.25, "momentum": 0.25, "oscillation": 0.25, "volume": 0.25},
+            sr_modifier=1.0,
+            sr_support=None,
+            sr_resistance=None,
+            sr_support_method=None,
+            sr_resistance_method=None,
+            best_category="tendance",
+            best_category_score=0.0,
+            categories_viable=4,
+            consensus_wfe_pct=0.0,
+            consensus_robustness=0.0,
+        ),
+    )
+
+    wfo_batch_mod.run_wfo_for_symbol_horizon(fake_db, "AAA", "weekly", variant="expanded")
+
+    categories = {row.category for row in fake_db.rows_by_model[WfoSignalSummary]}
+    assert "support_resistance" not in categories
+    assert categories == {"tendance", "momentum", "oscillation", "volume"}
+    assert fake_db.rows_by_model[WfoGlobalSignal][0].full_computed_at is not None

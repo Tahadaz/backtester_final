@@ -26,6 +26,7 @@ from services.api.app.services.scheduler_registry import (
 )
 from services.api.app.services.weekly_recompute_policy import (
     iter_signal_engine_weekly_stale_tuples,
+    iter_sr_wfo_weekly_stale_tuples,
     iter_wfo_weekly_stale_tuples,
 )
 from services.worker.config import settings
@@ -125,6 +126,8 @@ def dispatch_schedule(schedule_id: str, *, trigger_source: str = "scheduled") ->
             result = _dispatch_signal_backtests(db, trigger_source=trigger_source)
         elif spec.kind == "signal_best_evidence_snapshot":
             result = _dispatch_signal_best_evidence_snapshot()
+        elif spec.kind == "signal_history_dispatch":
+            result = _dispatch_signal_history(db)
         else:  # pragma: no cover - guarded by registry typing
             raise ValueError(f"Unsupported schedule kind {spec.kind!r}")
 
@@ -165,11 +168,8 @@ def dispatch_schedule(schedule_id: str, *, trigger_source: str = "scheduled") ->
 
 
 def dispatch_signal_backfill(*, trigger_source: str = "manual_backfill") -> dict[str, Any]:
-    """Dispatch both stale Signal Engine and WFO work for the full signal universe."""
-    results = [
-        dispatch_schedule("weekly_signal_engine_dispatch", trigger_source=trigger_source),
-        dispatch_schedule("weekly_wfo_dispatch", trigger_source=trigger_source),
-    ]
+    """Dispatch stale WFO work for the full signal universe."""
+    results = [dispatch_schedule("weekly_wfo_dispatch", trigger_source=trigger_source)]
     return {
         "status": "succeeded" if all(r.get("status") == "succeeded" for r in results) else "partial",
         "runs": results,
@@ -424,13 +424,17 @@ def _dispatch_stale_signal_engine(
 
 
 def _dispatch_stale_wfo(db: Session, *, trigger_source: str) -> dict[str, Any]:
-    from services.worker.tasks.wfo_signal_batch import enqueue_wfo_full_for_symbol_horizon
+    from services.worker.tasks.wfo_signal_batch import (
+        enqueue_sr_wfo_for_symbol_horizon,
+        enqueue_wfo_full_for_symbol_horizon,
+    )
 
     symbols = list_signal_universe_symbols(db)
-    targets = iter_wfo_weekly_stale_tuples(db, symbols=symbols)
-    job_ids: list[str] = []
-    for symbol, horizon, variant in targets:
-        job_ids.append(
+
+    wfo_targets = iter_wfo_weekly_stale_tuples(db, symbols=symbols)
+    wfo_job_ids: list[str] = []
+    for symbol, horizon, variant in wfo_targets:
+        wfo_job_ids.append(
             enqueue_wfo_full_for_symbol_horizon(
                 symbol,
                 horizon,
@@ -438,12 +442,38 @@ def _dispatch_stale_wfo(db: Session, *, trigger_source: str) -> dict[str, Any]:
                 triggered_by=trigger_source,
             )
         )
+
+    # S/R is dispatched and stale-tracked independently of the base 4-category
+    # WFO compute — a symbol/horizon may be S/R-stale while base-WFO-fresh (or
+    # vice versa), since S/R is the heaviest part of the original combined job
+    # and was the first casualty of a long-running or interrupted worker.
+    sr_targets = iter_sr_wfo_weekly_stale_tuples(db, symbols=symbols)
+    sr_job_ids: list[str] = []
+    for symbol, horizon, variant in sr_targets:
+        sr_job_ids.append(
+            enqueue_sr_wfo_for_symbol_horizon(
+                symbol,
+                horizon,
+                variant=variant,
+                triggered_by=trigger_source,
+            )
+        )
+
+    job_ids = wfo_job_ids + sr_job_ids
     return {
         "enqueued_jobs": len(job_ids),
+        "wfo_jobs": len(wfo_job_ids),
+        "sr_jobs": len(sr_job_ids),
         "symbols": len(symbols),
-        "tuples": len(targets),
+        "tuples": len(wfo_targets) + len(sr_targets),
         "job_ids_sample": job_ids[:20],
     }
+
+
+def _dispatch_signal_history(db: Session) -> dict[str, Any]:
+    from services.worker.tasks.score_history_batch import dispatch_score_history_for_all_symbols
+
+    return dispatch_score_history_for_all_symbols(db)
 
 
 def _dispatch_signal_backtests(db: Session, *, trigger_source: str) -> dict[str, Any]:

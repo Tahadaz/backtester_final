@@ -24,7 +24,13 @@ def _ensure_session_factory() -> sessionmaker:
     with _init_lock:
         if _SessionLocal is None:
             # Lazy init: avoid DB-driver import/network side effects at module import time.
-            _engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)
+            _engine = create_engine(
+                settings.DATABASE_URL,
+                pool_pre_ping=True,
+                pool_size=settings.DB_POOL_SIZE,
+                max_overflow=settings.DB_MAX_OVERFLOW,
+                pool_timeout=settings.DB_POOL_TIMEOUT_SECONDS,
+            )
             _SessionLocal = sessionmaker(bind=_engine, autoflush=False, autocommit=False)
     return _SessionLocal
 

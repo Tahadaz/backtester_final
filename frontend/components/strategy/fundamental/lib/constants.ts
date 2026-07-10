@@ -35,6 +35,8 @@ export const MODEL_ORDER = ["fcff_dcf", "fcfe_dcf", "ddm", "residual_income", "j
 
 export const VALUATION_EXCLUSIONS_STORAGE_KEY = "fundamental_valuation_exclusions_by_symbol"
 
+export const DEFAULT_COMPARATOR_STORAGE_KEY = "fundamental_default_comparator_id"
+
 
 export const FUNDAMENTAL_LIQUIDITY_ADV20_THRESHOLD = 500_000
 

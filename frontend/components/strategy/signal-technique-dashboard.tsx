@@ -463,6 +463,56 @@ function sliceIndicatorSeries(series: IndicatorOverlaySeries[], start: number): 
   }))
 }
 
+function srWfoOverlaySeries(
+  wfoData: WfoSummaryResponse | null,
+  dates: string[] | null | undefined,
+  enabled: boolean,
+): IndicatorOverlaySeries[] {
+  if (!enabled || !dates?.length) return []
+
+  const srCategory = wfoData?.categories?.support_resistance
+  if (srCategory?.status !== "succeeded") return []
+
+  const config = asRecord(srCategory.config)
+  const liveRecommendation = asRecord(config?.live_recommendation)
+  const pairMeta = asRecord(liveRecommendation?.pair_meta)
+  const support = asNumber(liveRecommendation?.support_level)
+  const resistance = asNumber(liveRecommendation?.resistance_level)
+  const lines: IndicatorOverlaySeries[] = []
+
+  const labelFor = (side: "support" | "resistance", fallback: string) => {
+    const method = asString(pairMeta?.[`${side}_label`])
+    const line = asString(pairMeta?.[`${side}_line_label`])
+    return [method || fallback, line].filter(Boolean).join(" · ")
+  }
+
+  if (support != null) {
+    lines.push({
+      id: "wfo-sr-support",
+      label: `Support WFO · ${labelFor("support", "Support")}`,
+      values: dates.map(() => support),
+      axis: "price",
+      family: "support_resistance",
+      category: "support_resistance",
+      color: "#16a34a",
+      lineStyle: "dashed",
+    })
+  }
+  if (resistance != null) {
+    lines.push({
+      id: "wfo-sr-resistance",
+      label: `Résistance WFO · ${labelFor("resistance", "Résistance")}`,
+      values: dates.map(() => resistance),
+      axis: "price",
+      family: "support_resistance",
+      category: "support_resistance",
+      color: "#dc2626",
+      lineStyle: "dashed",
+    })
+  }
+  return lines
+}
+
 function wfoLabelForFamily(wfoData: WfoSummaryResponse | null, family: string, category: CategoryId): string | null {
   const cat = wfoData?.categories?.[category]
   if (!cat || cat.status !== "succeeded") return null
@@ -942,9 +992,16 @@ export function SignalTechniqueDashboard({
     () => filterLedgerByDates(backtestRow?.trade_ledger ?? null, sliced.dates),
     [backtestRow?.trade_ledger, sliced.dates],
   )
+  const chartIndicatorSeries = useMemo(
+    () => [
+      ...indicatorSeries,
+      ...srWfoOverlaySeries(wfoData, backtestRow?.dates, selectedSource === "wfo"),
+    ],
+    [backtestRow?.dates, indicatorSeries, selectedSource, wfoData],
+  )
   const visibleIndicatorSeries = useMemo(
-    () => sliceIndicatorSeries(indicatorSeries, sliced.start),
-    [indicatorSeries, sliced.start],
+    () => sliceIndicatorSeries(chartIndicatorSeries, sliced.start),
+    [chartIndicatorSeries, sliced.start],
   )
 
   return (
