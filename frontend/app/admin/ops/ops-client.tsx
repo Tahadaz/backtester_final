@@ -291,7 +291,6 @@ export function OpsClient({ adminEmail }: OpsClientProps) {
   const heartbeatJobs = heartbeat?.jobs ?? []
   const schedulerOnline = Boolean(data?.scheduler.online)
   const legacyEntries = data?.legacy_rq_scheduler_entries ?? []
-  const signalEngineSchedule = data?.schedules.find((schedule) => schedule.id === "weekly_signal_engine_dispatch")
   const wfoSchedule = data?.schedules.find((schedule) => schedule.id === "weekly_wfo_dispatch")
 
   return (
@@ -399,6 +398,24 @@ export function OpsClient({ adminEmail }: OpsClientProps) {
                 </div>
               </div>
             </div>
+            {(coverage?.wfo_failing_symbols_count ?? 0) > 0 ? (
+              <div>
+                <p className="text-sm font-medium text-red-700">
+                  WFO chronically failing ({formatNumber(coverage?.wfo_failing_symbols_count)})
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  These symbols errored on their most recent WFO attempt and will keep
+                  re-enqueueing weekly without fresh folds until fixed.
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {(coverage?.wfo_failing_symbols_sample ?? []).map((symbol) => (
+                    <Badge key={symbol} variant="outline" className="border-red-200 bg-red-50 font-mono text-[10px] text-red-700">
+                      {symbol}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
 
@@ -411,19 +428,6 @@ export function OpsClient({ adminEmail }: OpsClientProps) {
             <Button className="w-full justify-start" onClick={runSignalBackfill} disabled={Boolean(runningAction)}>
               {runningAction === "backfill" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
               Backfill Signal Engine and WFO
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full justify-start"
-              onClick={() => signalEngineSchedule && runSchedule(signalEngineSchedule)}
-              disabled={Boolean(runningAction) || !signalEngineSchedule}
-            >
-              {runningAction === "run:weekly_signal_engine_dispatch" ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Play className="h-4 w-4" />
-              )}
-              Run Signal Engine dispatch
             </Button>
             <Button
               variant="outline"

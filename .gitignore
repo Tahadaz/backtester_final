@@ -95,6 +95,7 @@ older_support_resistance.py
 .codex/worktrees/
 # research-out/ is tracked — fundamental data must deploy with the app
 frontend/.playwright-cli/
+.playwright-cli/
 _patch_*/
 _commit*.patch
 _execute_run*.diff

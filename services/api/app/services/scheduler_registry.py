@@ -12,6 +12,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 ScheduleKind = Literal[
     "market_refresh",
+    "live_quote_refresh",
     "dashboard_snapshot",
     "factor_monitor",
     "factor_recalibration",
@@ -45,6 +46,15 @@ class ScheduleSpec:
 
 
 SCHEDULE_SPECS: tuple[ScheduleSpec, ...] = (
+    ScheduleSpec(
+        id="live_quote_refresh",
+        label="Live quote refresh",
+        kind="live_quote_refresh",
+        queue="market_refresh",
+        cron="*/5 10-17 * * mon-fri",
+        timezone="Africa/Casablanca",
+        description="Refresh cached live quotes during the Casablanca trading session.",
+    ),
     ScheduleSpec(
         id="daily_market_refresh",
         label="Daily market refresh",
@@ -122,9 +132,15 @@ SCHEDULE_SPECS: tuple[ScheduleSpec, ...] = (
         label="Weekly WFO dispatch",
         kind="wfo_dispatch",
         queue="wfo_signals",
-        cron="0 21 * * sun",
+        cron="0 14 * * sat",
         timezone="UTC",
-        description="Enqueue stale WFO signal tuples for all data-backed instruments.",
+        description=(
+            "Enqueue stale WFO signal tuples for all data-backed instruments. "
+            "Runs Saturday afternoon (uses Friday's close, the latest available "
+            "since the exchange is closed weekends) to give the up-to-24h-per-job "
+            "full compute a full day of buffer before Sunday's signal_backtest "
+            "and Monday's best_evidence_snapshot consume it."
+        ),
     ),
     ScheduleSpec(
         id="weekly_signal_backtest_dispatch",

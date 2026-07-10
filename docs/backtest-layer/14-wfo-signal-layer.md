@@ -127,11 +127,15 @@ The modulation parameters (distance thresholds, boost/dampen factors) are WFO-op
 
 ## Computation Schedule
 
-WFO signals are **batch-computed weekly** (e.g., Sunday night):
+WFO signals are **batch-computed weekly**, dispatched Saturday afternoon
+(14:00 UTC) via `weekly_wfo_dispatch` — after Friday's close (the latest
+available data, since the exchange is closed weekends) and ahead of Sunday's
+signal-backtest / Monday's best-evidence-snapshot steps that consume the
+results. Each tuple's full compute carries a 24h job_timeout:
 
 ```
 For each tracked symbol:
-  For each horizon (short, medium, long):
+  For each horizon (weekly, monthly, quarterly):
     For each family (trend, momentum, oscillation, volume):
       run_wfo_family_signal(symbol, family, horizon)
     run_wfo_global_signal(symbol, horizon)  # consensus + S/R modulation

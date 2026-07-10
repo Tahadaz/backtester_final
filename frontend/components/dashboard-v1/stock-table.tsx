@@ -90,7 +90,18 @@ function resolveFactorDependencies(stock: DashboardStock, family: string, signal
 }
 
 function priceForDisplay(stock: DashboardStock): number | null {
-  return stock.last_price ?? stock.scores.signal_engine.technical_levels?.close_used ?? null
+  const quote = stock.live_quote
+  return (quote?.is_fresh ? quote.last_price : null) ?? stock.last_price ?? stock.scores.signal_engine.technical_levels?.close_used ?? null
+}
+
+function quoteStatusLabel(stock: DashboardStock): string {
+  const quote = stock.live_quote
+  if (!quote) return "Close"
+  if (quote.is_fresh) return "Live"
+  const ageSeconds = quote.age_seconds
+  if (ageSeconds == null) return "Live update unavailable"
+  const ageMinutes = Math.max(1, Math.floor(ageSeconds / 60))
+  return ageMinutes >= 60 ? `Stale • ${Math.floor(ageMinutes / 60)}h ago` : `Stale • ${ageMinutes}m ago`
 }
 
 function pctChange(endPrice: number | null | undefined, startPrice: number | null | undefined) {
@@ -937,7 +948,9 @@ export function StockTable({
                 </TableCell>
                 <TableCell className="dashboard-mono px-3 py-2.5 text-right text-[11px]">
                   <div>{formatNumber(priceForDisplay(stock))}</div>
-                  <div className="text-[9px] text-muted-foreground">{stock.live_quote?.is_fresh ? "Live" : "Close"}</div>
+                  <div className={cn("text-[9px]", stock.live_quote && !stock.live_quote.is_fresh ? "text-amber-600" : "text-muted-foreground")}>
+                    {quoteStatusLabel(stock)}
+                  </div>
                 </TableCell>
                 {showSupportResistance ? (
                   <TableCell className="px-3 py-2.5 text-right align-middle">

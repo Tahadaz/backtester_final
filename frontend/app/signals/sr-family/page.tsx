@@ -81,6 +81,11 @@ function SupportResistanceFamilyContent() {
 
   const data = variants.data
   const bestVariant = sortedAll.find((variant) => variant.variant_id === data.best_variant_id) ?? sortedAll[0] ?? null
+  const openVariantDetail = (variantId: string) => {
+    router.push(
+      `/signals/sr-variant/${encodeURIComponent(variantId)}?symbol=${encodeURIComponent(symbol)}&horizon=${encodeURIComponent(horizon)}&cooldown=${cooldownBars}&variant=${encodeURIComponent(variant)}`,
+    )
+  }
 
   return (
     <div className="mx-auto max-w-6xl space-y-5 p-6">
@@ -122,6 +127,86 @@ function SupportResistanceFamilyContent() {
           </div>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader className="px-4 pb-2 pt-3">
+          <CardTitle className="text-xs font-semibold">Entonnoir de selection</CardTitle>
+        </CardHeader>
+        <CardContent className="px-4 pb-4">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-center">
+            {[
+              { label: "Testes", value: data.tested_count },
+              { label: "Viables", value: data.viable_count },
+              { label: "Competitifs", value: data.competitive_count },
+              { label: "Representants", value: data.representative_count },
+            ].map((step, index) => (
+              <div key={step.label} className="flex items-center gap-2">
+                {index > 0 && <span className="text-lg text-muted-foreground/40">&rarr;</span>}
+                <div>
+                  <div className="text-lg font-bold">{step.value}</div>
+                  <div className="text-[10px] text-muted-foreground">{step.label}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <section className="space-y-3">
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold">Couples S/R representatifs</h2>
+          <Badge variant="outline" className="text-[10px]">
+            {data.representative_count}
+          </Badge>
+        </div>
+        {data.representatives.length === 0 ? (
+          <Card>
+            <CardContent className="py-6 text-center text-sm text-muted-foreground">
+              Aucun couple S/R representatif strict apres filtrage. Les couples testes restent disponibles ci-dessous.
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {data.representatives.map((representative) => (
+              <Card
+                key={representative.variant_id}
+                className="cursor-pointer transition-colors hover:border-primary/50"
+                onClick={() => openVariantDetail(representative.variant_id)}
+              >
+                <CardContent className="space-y-3 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold">{representative.description}</p>
+                      <p className="break-all font-mono text-[10px] text-muted-foreground">
+                        {representative.variant_id}
+                      </p>
+                    </div>
+                    <Badge variant="outline" className="shrink-0 border-emerald-300 text-[10px] text-emerald-700">
+                      Selectionne
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="rounded border bg-emerald-50/40 p-2">
+                      <p className="text-emerald-700/80">Support</p>
+                      <p className="font-mono font-semibold text-emerald-700">{fmtPrice(representative.support_level)}</p>
+                    </div>
+                    <div className="rounded border bg-red-50/40 p-2">
+                      <p className="text-red-700/80">Resistance</p>
+                      <p className="font-mono font-semibold text-red-700">{fmtPrice(representative.resistance_level)}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 text-[11px]">
+                    <span className="text-muted-foreground">Objectif SR</span>
+                    <span className="font-mono font-semibold">
+                      {fmtPct(representative.sr_objective_score ?? representative.reliability_score)}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </section>
 
       <section className="space-y-3">
         <div className="flex items-center gap-2">
@@ -170,11 +255,7 @@ function SupportResistanceFamilyContent() {
                     className={`cursor-pointer border-b border-border/50 hover:bg-secondary/20 ${
                       variant.variant_id === data.best_variant_id ? "bg-emerald-50/40" : ""
                     }`}
-                    onClick={() =>
-                      router.push(
-                        `/signals/sr-variant/${encodeURIComponent(variant.variant_id)}?symbol=${encodeURIComponent(symbol)}&horizon=${encodeURIComponent(horizon)}&cooldown=${cooldownBars}&variant=${variant}`,
-                      )
-                    }
+                    onClick={() => openVariantDetail(variant.variant_id)}
                   >
                     <td className="px-3 py-2">
                       <div className="flex flex-wrap items-center gap-2">

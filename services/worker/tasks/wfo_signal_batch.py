@@ -156,7 +156,7 @@ def enqueue_wfo_full_for_symbol_horizon(
         horizon,
         overrides if overrides else None,
         variant,
-        job_timeout=7200,
+        job_timeout=86400,
         meta={"triggered_by": triggered_by},
         depends_on=depends_on,
     )
