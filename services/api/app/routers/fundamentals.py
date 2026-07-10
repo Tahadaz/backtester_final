@@ -2616,7 +2616,11 @@ def get_fundamental_stock_detail(
     symbol: str,
     db: Session = Depends(get_db),
     scenario: str = "auto",
-    peer_symbols: str | None = Query(None, description="Comma-separated peer symbols overriding the relative_multiples comparator basket"),
+    # Keep this default as a regular Python value because the tearsheet and IC
+    # memo routes call this handler directly. FastAPI still exposes it as an
+    # optional query parameter, while internal callers no longer receive a
+    # ``Query`` sentinel and fail on ``.split()`` below.
+    peer_symbols: str | None = None,
 ) -> FundamentalStockDetailOut:
     symbol = symbol.upper()
     scenario = _scenario_or_auto(scenario)
