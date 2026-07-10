@@ -65,7 +65,10 @@ def _upsert_wfo_live_history(
     """Persist the current-bar overlay without changing validated WFO history."""
     if data_as_of is None:
         return
-    source = f"wfo_live:{signal_mode_storage_name(variant)}"
+    # Keep the derived series adjacent to the validated series naming so the
+    # analytics loader can overlay ``wfo:<variant>_live`` on the immutable
+    # ``wfo:<variant>`` history.
+    source = f"wfo:{signal_mode_storage_name(variant)}_live"
     for category, result in category_results.items():
         identity = (data_as_of, symbol, source, category, horizon)
         row = db.get(SignalScoreHistory, identity)
