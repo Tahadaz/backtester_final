@@ -453,6 +453,13 @@ class BaseDataSource:
         # Normalize, validate OHLC integrity, then slice
         normed: Dict[str, pd.DataFrame] = {}
         for sym, df in bars.items():
+            # Adapters signal "no data for this symbol" (unmapped, HTTP error,
+            # untraded session, ...) with an empty DataFrame. Its index is a
+            # default RangeIndex, not a DatetimeIndex, so standardization must
+            # not run on it — pass it through as-is instead of raising.
+            if df is None or df.empty:
+                normed[sym] = df if df is not None else pd.DataFrame()
+                continue
             df = _standardize_ohlcv(df, tz=self.timezone, fill_adj_close=self.fill_adj_close)
             df = _validate_ohlcv(df, symbol=sym)
             df = slice_date_range(df, start, end)
@@ -1185,6 +1192,247 @@ class BDCSessionAdapter(BaseDataSource):
             # Naive timestamp; base-class load() calls _standardize_ohlcv which
             # tz-localizes to self.timezone (UTC by default).
             ts = pd.Timestamp(session_date)
+            df = pd.DataFrame([row], index=pd.DatetimeIndex([ts], name="Date"))
+            results[symbol] = df
+
+        return results
+
+
+# Internal symbol -> BMCE Capital Bourse "listingId" (as used in
+# https://www.bmcecapitalbourse.com/bkbbourse/details/{listingId}).
+# Built 2026-07-10 by matching stock_master.display_name against the
+# name->listingId table served by GET /bkbbourse/ext/details/ticker.
+# "INSTRUMENT" / "MAJ" (synthetic stock_master placeholder rows) are not
+# real instruments and intentionally have no entry here.
+BMCE_CAPITAL_LISTING_IDS: Dict[str, str] = {
+    "ADH": "2585582,102,608",
+    "ADI": "4402446,102,608",
+    "AFI": "14506826,102,608",
+    "AFM": "30475766,102,608",
+    "AGM": "1028379,102,608",
+    "AKT": "123429130,102,608",
+    "ALM": "521641,102,608",
+    "ARD": "58537666,102,608",
+    "ATH": "1028380,102,608",
+    "ATL": "3428404,102,608",
+    "ATW": "56107421,102,608",
+    "BAL": "11737507,102,608",
+    "BCI": "781122,102,608",
+    "BCP": "4998885,102,608",
+    "BOA": "53613625,102,608",
+    "CAP": "150349775,102,608",
+    "CDM": "781650,102,608",
+    "CFG": "131057160,102,608",
+    "CIH": "2395856,102,608",
+    "CMA": "18337,102,608",
+    "CMG": "140242147,102,608",
+    "CMT": "4240267,102,608",
+    "COL": "11349116,102,608",
+    "CRS": "4826973,102,608",
+    "CSR": "26545773,102,608",
+    "CTM": "277392,102,608",
+    "DHO": "4625623,102,608",
+    "DRI": "2199434,102,608",
+    "DWY": "2966429,102,608",
+    "DYT": "120097655,102,608",
+    "EQD": "490590,102,608",
+    "FBR": "2789058,102,608",
+    "GAZ": "1035527,102,608",
+    "GTM": "150904121,102,608",
+    "HPS": "129902470,102,608",
+    "IAM": "1832967,102,608",
+    "IBC": "1480974,102,608",
+    "IMO": "41302964,102,608",
+    "INV": "2829140,102,608",
+    "JET": "14333999,102,608",
+    "LBV": "4307141,102,608",
+    "LES": "12479758,102,608",
+    "LHM": "33076955,102,608",
+    "M2M": "3250676,102,608",
+    "MAB": "680975,102,608",
+    "MDP": "123578755,102,608",
+    "MIC": "18738219,102,608",
+    "MLE": "608605,102,608",
+    "MNG": "1103450,102,608",
+    "MOX": "821506,102,608",
+    "MSA": "32976479,102,608",
+    "MUT": "45444984,102,608",
+    "NEJ": "1041513,102,608",
+    "NKL": "11527959,102,608",
+    "OUL": "783261,102,608",
+    "PRO": "3208143,102,608",
+    "RDS": "26125006,102,608",
+    "REB": "1033204,102,608",
+    "RIS": "1730672,102,608",
+    "S2M": "14524535,102,608",
+    "SAH": "11994556,102,608",
+    "SBM": "16693,102,608",
+    "SID": "499831,102,608",
+    "SLF": "3570640,102,608",
+    "SMI": "659253,102,608",
+    "SNA": "138953776,102,608",
+    "SNP": "3469755,102,608",
+    "SOT": "156047861,102,608",
+    "SRM": "2829208,102,608",
+    "STR": "13194665,102,608",
+    "TGC": "115038557,102,608",
+    "TMA": "28148390,102,608",
+    "TQM": "23057746,102,608",
+    "UMR": "12342334,102,608",
+    "VCN": "146374042,102,608",
+    "WAA": "935037,102,608",
+    "ZDJ": "783273,102,608",
+}
+
+
+class BMCECapitalLiveAdapter(BaseDataSource):
+    """
+    Scrapes the current/last session OHLCV from the public BMCE Capital Bourse
+    instrument details page:
+
+        https://www.bmcecapitalbourse.com/bkbbourse/details/{listingId}
+
+    This is a fallback data source, used when the primary Casablanca Bourse
+    live-market pages (BDCSessionAdapter / BourseDirectAdapter) are
+    unreachable (e.g. the exchange site or its WAF blocking a server IP).
+    The BMCE Capital Bourse site is a separate host/IP and, as of 2026-07-10,
+    reachable when casablanca-bourse.com is not.
+
+    The details page is server-rendered — the last session's OHLCV is present
+    as plain HTML even before any client-side "live streaming" JS runs, so no
+    session/JS execution is required, only a single GET per symbol.
+
+    Verified field mapping (details page, 2026-07-10):
+
+        data-s="LVAL_NORM:::..."          -> Close  ("Cours")
+        data-s="LVAL_NORM:datetime:..."   -> session datetime ("Date/Heure")
+        data-s="OPEN:::..."               -> Open   ("Ouverture")
+        data-s="HIGH:::..."               -> High   ("+ Haut")
+        data-s="LOW:::..."                -> Low    ("+ Bas")
+        data-s="VOL:...m:..."             -> Volume ("Quantité", shares traded;
+                                              distinct from "Volume"/TUR, which
+                                              is turnover value in MAD, not used)
+
+    Numbers use French formatting (comma decimal, space thousands) and the
+    datetime is "dd.mm.YYYY HH:MM:SS".
+    """
+
+    _BASE_URL = "https://www.bmcecapitalbourse.com/bkbbourse/details/{listing_id}"
+    _FIELDS: List[Tuple[str, str]] = [
+        ("LVAL_NORM:::", "Close"),
+        ("OPEN:::", "Open"),
+        ("HIGH:::", "High"),
+        ("LOW:::", "Low"),
+        ("VOL:", "Volume"),
+    ]
+    _DATETIME_FIELD_PREFIX = "LVAL_NORM:datetime:"
+    _USER_AGENT = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    )
+
+    @staticmethod
+    def listing_id_for(symbol: str) -> Optional[str]:
+        return BMCE_CAPITAL_LISTING_IDS.get(str(symbol).strip().upper())
+
+    def _load_impl(
+        self,
+        symbols: Sequence[str],
+        start: Optional[str],
+        end: Optional[str],
+        interval: str,
+        **kwargs,
+    ) -> Dict[str, pd.DataFrame]:
+        import re
+        import datetime
+        import warnings
+        import requests
+
+        http = requests.Session()
+        http.headers["User-Agent"] = self._USER_AGENT
+
+        results: Dict[str, pd.DataFrame] = {}
+
+        for symbol in symbols:
+            listing_id = self.listing_id_for(symbol)
+            if listing_id is None:
+                warnings.warn(
+                    f"BMCECapitalLiveAdapter: no known listingId for symbol '{symbol}'; skipping."
+                )
+                results[symbol] = pd.DataFrame()
+                continue
+
+            url = self._BASE_URL.format(listing_id=listing_id)
+            try:
+                resp = http.get(url, timeout=30, verify=True)
+                resp.raise_for_status()
+                html = resp.text
+            except Exception as exc:
+                warnings.warn(f"BMCECapitalLiveAdapter: HTTP error for {symbol}: {exc}")
+                results[symbol] = pd.DataFrame()
+                continue
+
+            # --- Session datetime: "10.07.2026 14:24:14" -----------------------
+            dt_m = re.search(
+                r'data-s="' + re.escape(self._DATETIME_FIELD_PREFIX) + r'[^"]*"[^>]*>(.*?)</td>',
+                html,
+                re.DOTALL,
+            )
+            if not dt_m:
+                warnings.warn(
+                    f"BMCECapitalLiveAdapter: no session datetime found for {symbol} "
+                    f"(listingId={listing_id}); skipping. The page layout may have changed."
+                )
+                results[symbol] = pd.DataFrame()
+                continue
+            dt_text = re.sub(r"<[^>]+>", "", dt_m.group(1)).strip()
+            try:
+                session_dt = datetime.datetime.strptime(dt_text, "%d.%m.%Y %H:%M:%S")
+            except ValueError:
+                warnings.warn(
+                    f"BMCECapitalLiveAdapter: cannot parse session datetime '{dt_text}' "
+                    f"for {symbol} (listingId={listing_id}); skipping."
+                )
+                results[symbol] = pd.DataFrame()
+                continue
+
+            # --- Parse each OHLCV field ----------------------------------------
+            row: Dict[str, float] = {}
+            missing: List[str] = []
+            for field_prefix, col in self._FIELDS:
+                m = re.search(
+                    r'data-s="' + re.escape(field_prefix) + r'[^"]*"[^>]*>(.*?)</td>',
+                    html,
+                    re.DOTALL,
+                )
+                if not m:
+                    missing.append(col)
+                    continue
+                raw_val = re.sub(r"<[^>]+>", "", m.group(1)).strip()
+                # Thousands separator is a narrow no-break space (U+202F), not a
+                # regular space or the more common U+00A0 non-breaking space.
+                normalized = (
+                    raw_val.replace(" ", "")
+                    .replace(" ", "")
+                    .replace(" ", "")
+                    .replace(",", ".")
+                )
+                try:
+                    row[col] = float(normalized)
+                except ValueError:
+                    missing.append(col)
+
+            if "Close" not in row or missing:
+                warnings.warn(
+                    f"BMCECapitalLiveAdapter: incomplete/untraded session for {symbol} "
+                    f"(listingId={listing_id}); missing={missing}. Skipping — "
+                    "do NOT invent a fallback value."
+                )
+                results[symbol] = pd.DataFrame()
+                continue
+
+            ts = pd.Timestamp(session_dt.date())
             df = pd.DataFrame([row], index=pd.DatetimeIndex([ts], name="Date"))
             results[symbol] = df
 

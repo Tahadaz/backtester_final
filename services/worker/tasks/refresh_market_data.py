@@ -33,6 +33,7 @@ from core.quant_core.data import (
     BourseDirectAdapter,
     YFinanceMoroccoAdapter,
     BDCSessionAdapter,
+    BMCECapitalLiveAdapter,
     CasablancaBourseIndicesAdapter,
 )
 from core.quant_core.s3_keys import build_market_store_object_key
@@ -658,6 +659,15 @@ def _do_refresh_symbol(
         adapter = YFinanceMoroccoAdapter(timezone="UTC", use_cache=False)
         # Pass the provider_symbol directly via map so YFinanceMoroccoAdapter uses it
         adapter.provider_map = {symbol: provider_symbol}
+    elif source == "bmce_excel":
+        # "bmce_excel" tracked symbols have no automated Casablanca Bourse
+        # scrape path (that source name was originally only used for manual
+        # BMCEDataSource Excel/CSV uploads). Use the BMCE Capital Bourse
+        # live-market details page instead — a separate host from
+        # casablanca-bourse.com, useful as an automated source in its own
+        # right and as a fallback when the exchange site is unreachable.
+        adapter = BMCECapitalLiveAdapter(timezone="UTC", use_cache=False)
+        use_session_adapter = True
     else:
         # bourse_direct (or any other source): prefer the downloadable-file adapter
         # when a URL template is explicitly configured; otherwise use the BDC public
