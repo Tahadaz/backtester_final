@@ -12,6 +12,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 ScheduleKind = Literal[
     "market_refresh",
+    "live_quote_refresh",
     "dashboard_snapshot",
     "factor_monitor",
     "factor_recalibration",
@@ -45,6 +46,15 @@ class ScheduleSpec:
 
 
 SCHEDULE_SPECS: tuple[ScheduleSpec, ...] = (
+    ScheduleSpec(
+        id="live_quote_refresh",
+        label="Live quote refresh",
+        kind="live_quote_refresh",
+        queue="market_refresh",
+        cron="*/5 10-17 * * mon-fri",
+        timezone="Africa/Casablanca",
+        description="Refresh cached live quotes during the Casablanca trading session.",
+    ),
     ScheduleSpec(
         id="daily_market_refresh",
         label="Daily market refresh",

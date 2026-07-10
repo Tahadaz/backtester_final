@@ -104,6 +104,8 @@ def dispatch_schedule(schedule_id: str, *, trigger_source: str = "scheduled") ->
     try:
         if spec.kind == "market_refresh":
             result = _dispatch_market_refresh(db)
+        elif spec.kind == "live_quote_refresh":
+            result = _dispatch_live_quote_refresh()
         elif spec.kind == "dashboard_snapshot":
             result = _dispatch_dashboard_snapshot()
         elif spec.kind == "factor_monitor":
@@ -216,6 +218,15 @@ def _dispatch_market_refresh(db: Session) -> dict[str, Any]:
         "rq_job_id": str(job.id),
         "symbols_total": active_count,
     }
+
+
+def _dispatch_live_quote_refresh() -> dict[str, Any]:
+    job = _queue(settings.MARKET_REFRESH_QUEUE_NAME).enqueue(
+        "services.worker.tasks.live_quotes.refresh_live_quotes_job",
+        None,
+        job_timeout=1800,
+    )
+    return {"enqueued_jobs": 1, "rq_job_id": str(job.id), "source": "live_quote_provider_chain"}
 
 
 def _dispatch_dashboard_snapshot() -> dict[str, Any]:

@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Backtester Docker housekeeping daily
+
+[Timer]
+OnCalendar=*-*-* 03:15:00 UTC
+Persistent=true
+Unit=bt-docker-housekeeping.service
+
+[Install]
+WantedBy=timers.target

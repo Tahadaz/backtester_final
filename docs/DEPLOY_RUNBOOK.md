@@ -212,6 +212,17 @@ sudo systemctl enable --now bt-heartbeat.timer
 sudo systemctl list-timers bt-heartbeat.timer
 ```
 
+Install the safe Docker housekeeping timer at the same time. It retains active
+images plus one rollback release, and never prunes named volumes or backups:
+
+```bash
+sudo cp /opt/bt/infra/systemd/bt-docker-housekeeping.service /etc/systemd/system/
+sudo cp /opt/bt/infra/systemd/bt-docker-housekeeping.timer /etc/systemd/system/
+sudo chmod 0755 /opt/bt/infra/scripts/docker_housekeeping.sh
+sudo systemctl daemon-reload
+sudo systemctl enable --now bt-docker-housekeeping.timer
+```
+
 11. Configure backups:
 
 ```bash

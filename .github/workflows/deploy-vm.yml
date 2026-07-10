@@ -21,6 +21,13 @@ jobs:
             set -euo pipefail
             cd /opt/bt
 
+            # Keep the currently-running release available for one rollback.
+            # The housekeeping timer reads these immutable image IDs and never
+            # deletes them, even when their commit tags are otherwise unused.
+            docker ps -aq --filter name='^/quant_(api|frontend|worker)' \
+              | xargs -r docker inspect -f '{{.Image}}' \
+              | sort -u > /opt/bt/.rollback-image-ids
+
             # Pull latest compose + config
             git fetch --quiet
             git reset --hard origin/main
@@ -60,8 +67,7 @@ jobs:
                 sys.exit(1)
             PY
 
-            # Prune old images
-            docker image prune -f
+            bash infra/scripts/docker_housekeeping.sh
 
       # Rebuild best-evidence snapshots so the signal-evidence tab serves fresh
       # data immediately after deploy rather than waiting until the next Monday

@@ -3,20 +3,27 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import math
+import os
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 import pandas as pd
+from redis import Redis
 from sqlalchemy.orm import Session
 
-from core.quant_core.data import BDCSessionAdapter
+from core.quant_core.data import BDCSessionAdapter, BMCECapitalLiveAdapter
 
 from .. import models
 
 
 DEFAULT_MAX_AGE_SECONDS = 60
-SOURCE_PROVIDER = "casablanca_bourse_live"
+CASABLANCA_PROVIDER = "casablanca_bourse_live"
+BKB_PROVIDER = "bmce_capital_bourse_live"
+SOURCE_PROVIDER = CASABLANCA_PROVIDER
 SOURCE_URL_TEMPLATE = "https://www.casablanca-bourse.com/fr/live-market/instruments/{symbol}?pwa=1"
+BKB_SOURCE_URL_TEMPLATE = "https://www.bmcecapitalbourse.com/bkbbourse/details/{listing_id}"
+PROVIDER_COOLDOWN_SECONDS = int(os.getenv("LIVE_QUOTE_PROVIDER_COOLDOWN_SECONDS", "3600"))
+REFRESH_LOCK_SECONDS = int(os.getenv("LIVE_QUOTE_REFRESH_LOCK_SECONDS", "120"))
 logger = logging.getLogger(__name__)
 
 
@@ -128,7 +135,14 @@ def _prev_close_for_quote(db: Session, symbol: str, session_date: dt.date | None
     return _safe_float(getattr(store, "prev_close", None))
 
 
-def _upsert_quote_from_frame(db: Session, symbol: str, frame: pd.DataFrame) -> models.BourseLiveQuote | None:
+def _upsert_quote_from_frame(
+    db: Session,
+    symbol: str,
+    frame: pd.DataFrame,
+    *,
+    provider: str,
+    source_url: str,
+) -> models.BourseLiveQuote | None:
     if frame is None or frame.empty:
         return None
     row_data = frame.sort_index().iloc[-1]
@@ -148,10 +162,10 @@ def _upsert_quote_from_frame(db: Session, symbol: str, frame: pd.DataFrame) -> m
     quote.low_price = _safe_float(row_data.get("Low"))
     quote.prev_close = _prev_close_for_quote(db, symbol, session_date)
     quote.volume = _safe_float(row_data.get("Volume"))
-    quote.source_provider = SOURCE_PROVIDER
-    quote.source_url = SOURCE_URL_TEMPLATE.format(symbol=symbol)
+    quote.source_provider = provider
+    quote.source_url = source_url
     quote.raw_json = {
-        "source": "BDCSessionAdapter",
+        "source": provider,
         "columns": {str(key): _safe_float(value) for key, value in row_data.items()},
     }
     quote.updated_at = now
@@ -223,28 +237,172 @@ def get_or_refresh_live_quotes(
         if force_refresh or symbol not in cached_rows or not is_quote_fresh(cached_rows[symbol], max_age_seconds=max_age_seconds)
     ]
 
+    # This compatibility helper deliberately became cache-only.  Performing an
+    # exchange request while a request-scoped SQLAlchemy session is checked out
+    # caused the production pool exhaustion incident.  Refreshes are exclusively
+    # performed by ``services.worker.tasks.live_quotes``.
     if stale_symbols:
-        adapter = BDCSessionAdapter(timezone="UTC", use_cache=False)
-        for symbol in stale_symbols:
-            try:
-                market_data = adapter.load(symbols=[symbol], start=None, end=None, interval="1d")
-                frame = market_data.bars.get(symbol)
-                quote = _upsert_quote_from_frame(db, symbol, frame) if frame is not None else None
-                if quote is not None:
-                    if persist_history:
-                        _append_quote_history(db, quote)
-                    db.commit()
-                    db.refresh(quote)
-                    cached_rows[symbol] = quote
-            except Exception:
-                logger.debug("Bourse live quote scrape failed", extra={"symbol": symbol}, exc_info=True)
-                db.rollback()
-
+        enqueue_live_quote_refresh(stale_symbols)
     return {
         symbol: quote_to_view(cached_rows[symbol], max_age_seconds=max_age_seconds)
         for symbol in normalized
         if symbol in cached_rows
     }
+
+
+def _redis() -> Redis:
+    return Redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"), decode_responses=True)
+
+
+def _provider_key(provider: str) -> str:
+    return f"live_quotes:provider_cooldown:{provider}"
+
+
+def _symbol_key(provider: str, symbol: str) -> str:
+    return f"live_quotes:symbol_cooldown:{provider}:{symbol}"
+
+
+def _provider_available(redis: Redis, provider: str) -> bool:
+    return not bool(redis.get(_provider_key(provider)))
+
+
+def _symbol_available(redis: Redis, provider: str, symbol: str) -> bool:
+    return not bool(redis.get(_symbol_key(provider, symbol)))
+
+
+def _open_provider_cooldown(redis: Redis, provider: str, reason: str) -> None:
+    redis.setex(_provider_key(provider), PROVIDER_COOLDOWN_SECONDS, reason[:240])
+
+
+def _open_symbol_cooldown(redis: Redis, provider: str, symbol: str, reason: str) -> None:
+    redis.setex(_symbol_key(provider, symbol), PROVIDER_COOLDOWN_SECONDS, reason[:240])
+
+
+def _provider_source_url(provider: str, symbol: str) -> str:
+    if provider == BKB_PROVIDER:
+        listing_id = BMCECapitalLiveAdapter.listing_id_for(symbol)
+        return BKB_SOURCE_URL_TEMPLATE.format(listing_id=listing_id) if listing_id else ""
+    return SOURCE_URL_TEMPLATE.format(symbol=symbol)
+
+
+def _load_one(provider: str, symbol: str) -> pd.DataFrame | None:
+    if provider == BKB_PROVIDER:
+        adapter = BMCECapitalLiveAdapter(timezone="UTC", use_cache=False)
+    else:
+        adapter = BDCSessionAdapter(timezone="UTC", use_cache=False)
+    market_data = adapter.load(symbols=[symbol], start=None, end=None, interval="1d")
+    frame = market_data.bars.get(symbol)
+    return frame if frame is not None and not frame.empty else None
+
+
+def refresh_live_quotes(
+    symbols: list[str],
+    *,
+    session_factory: Callable[[], Session],
+    persist_history: bool = True,
+) -> dict[str, Any]:
+    """Refresh quotes in a worker without holding DB connections during HTTP.
+
+    A provider-wide network failure opens a one-hour Redis circuit breaker. The
+    next provider is attempted immediately; subsequent jobs use the fallback
+    until the cooldown expires.  Empty/unmapped results are cooled down per
+    symbol, so one suspended instrument cannot disable the entire provider.
+    """
+    normalized = normalize_symbols(symbols)
+    redis = _redis()
+    refreshed: list[str] = []
+    failures: dict[str, str] = {}
+    providers_used: dict[str, str] = {}
+    try:
+        for symbol in normalized:
+            frame: pd.DataFrame | None = None
+            selected_provider: str | None = None
+            for provider in (CASABLANCA_PROVIDER, BKB_PROVIDER):
+                if not _provider_available(redis, provider) or not _symbol_available(redis, provider, symbol):
+                    continue
+                if provider == BKB_PROVIDER and BMCECapitalLiveAdapter.listing_id_for(symbol) is None:
+                    _open_symbol_cooldown(redis, provider, symbol, "no_listing_id")
+                    continue
+                try:
+                    candidate = _load_one(provider, symbol)
+                except Exception as exc:
+                    _open_provider_cooldown(redis, provider, f"{type(exc).__name__}: {exc}")
+                    logger.warning("Live quote provider failed; opening cooldown", extra={"provider": provider, "symbol": symbol})
+                    continue
+                if candidate is None:
+                    # BDCSessionAdapter converts connection failures into an
+                    # empty frame. Treat that as a provider failure so the
+                    # next symbol does not immediately repeat the same 30s
+                    # timeout. BKB's empty response can legitimately mean an
+                    # untraded symbol, so that one is scoped to the symbol.
+                    if provider == CASABLANCA_PROVIDER:
+                        _open_provider_cooldown(redis, provider, "empty_provider_response")
+                    else:
+                        _open_symbol_cooldown(redis, provider, symbol, "empty_or_untraded_response")
+                    continue
+                frame = candidate
+                selected_provider = provider
+                redis.delete(_provider_key(provider))
+                break
+
+            if frame is None or selected_provider is None:
+                failures[symbol] = "all_providers_unavailable_or_cooled_down"
+                continue
+
+            # Open a DB session only after external I/O has completed.
+            db = session_factory()
+            try:
+                quote = _upsert_quote_from_frame(
+                    db,
+                    symbol,
+                    frame,
+                    provider=selected_provider,
+                    source_url=_provider_source_url(selected_provider, symbol),
+                )
+                if quote is None:
+                    db.rollback()
+                    failures[symbol] = "invalid_quote_frame"
+                    continue
+                if persist_history:
+                    _append_quote_history(db, quote)
+                db.commit()
+                refreshed.append(symbol)
+                providers_used[symbol] = selected_provider
+            except Exception as exc:
+                db.rollback()
+                failures[symbol] = f"persistence_failed:{type(exc).__name__}"
+                logger.exception("Live quote persistence failed", extra={"symbol": symbol})
+            finally:
+                db.close()
+    finally:
+        redis.close()
+    return {"requested": len(normalized), "refreshed": refreshed, "failures": failures, "providers": providers_used}
+
+
+def enqueue_live_quote_refresh(symbols: list[str]) -> bool:
+    """Best-effort, coalesced enqueue used by request paths; never blocks on a provider."""
+    normalized = normalize_symbols(symbols)
+    if not normalized:
+        return False
+    redis = _redis()
+    try:
+        lock_key = "live_quotes:refresh_enqueued"
+        if not redis.set(lock_key, "1", nx=True, ex=REFRESH_LOCK_SECONDS):
+            return False
+        from rq import Queue
+
+        queue_name = os.getenv("MARKET_REFRESH_QUEUE_NAME", "market_refresh")
+        Queue(queue_name, connection=redis).enqueue(
+            "services.worker.tasks.live_quotes.refresh_live_quotes_job",
+            normalized,
+            job_timeout=1800,
+        )
+        return True
+    except Exception:
+        logger.warning("Unable to enqueue live quote refresh", exc_info=True)
+        return False
+    finally:
+        redis.close()
 
 
 def effective_price_from_quote(
