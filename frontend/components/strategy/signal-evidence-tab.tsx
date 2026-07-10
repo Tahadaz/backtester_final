@@ -888,6 +888,7 @@ function EvidenceOosPeriodCard({ period }: { period: SignalEvidenceOosPeriod }) 
 function EvidenceOosPeriods({ data, selectedVariantId }: { data: SignalEvidence; selectedVariantId?: string | null }) {
   const periods = data.oos_periods ?? []
   const edge = data.edge
+  const pendingWfoRefresh = data.freshness?.status === "wfo_recalibration_pending"
   const stitched = data.stitched_oos_backtest
   const selectedContributor = selectedVariantId
     ? data.contributors.find((item) => item.variant_id === selectedVariantId)
@@ -975,6 +976,11 @@ function SignalEvidenceContent({
 
   return (
     <div className="space-y-4">
+      {pendingWfoRefresh ? (
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+          {data.freshness?.message} Current market data: {fmtDate(data.freshness?.market_data_as_of)}. WFO validation: {fmtDate(data.freshness?.wfo_validated_as_of)}.
+        </div>
+      ) : null}
       <StitchedWfoEvidenceBacktest data={data} mcStats={mcStats} />
 
       <Card className="rounded-md py-0">

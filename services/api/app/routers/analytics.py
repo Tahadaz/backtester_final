@@ -1471,12 +1471,14 @@ def _load_score_history(
     db: Session, *, symbol: str, source: str, horizon: str,
 ) -> dict[str, pd.Series]:
     spec = _resolve_score_source(source)
-    source_priority = {name: idx for idx, name in enumerate(spec.read_sources)}
+    live_sources = tuple(f"{name}_live" for name in spec.read_sources if name.startswith("wfo:"))
+    source_priority = {name: idx + 1 for idx, name in enumerate(spec.read_sources)}
+    source_priority.update({name: 0 for name in live_sources})
     rows = (
         db.query(models.SignalScoreHistory)
         .filter(
             models.SignalScoreHistory.symbol == symbol,
-            models.SignalScoreHistory.source.in_(spec.read_sources),
+            models.SignalScoreHistory.source.in_((*spec.read_sources, *live_sources)),
             models.SignalScoreHistory.horizon.in_(_score_history_horizons(horizon)),
         )
         .order_by(models.SignalScoreHistory.date.asc())

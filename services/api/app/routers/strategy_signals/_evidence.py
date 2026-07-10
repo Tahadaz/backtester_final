@@ -1877,12 +1877,7 @@ def _read_best_evidence_snapshot(
     horizon: str,
     cooldown_bars: int,
 ):
-    """Load the stored best-evidence snapshot row without any live rebuild.
-
-    Raises 404 when no successful snapshot exists and 409 when the stored
-    payload predates the latest market data (the weekly refresh has not caught
-    up yet).
-    """
+    """Load stored weekly evidence without rejecting newer daily market data."""
     from services.api.app import models
 
     canonical_h = _require_canonical_signal_horizon(horizon)
@@ -1897,23 +1892,26 @@ def _read_best_evidence_snapshot(
             status_code=404,
             detail=f"No stored best signal evidence for {symbol}/{canonical_h}.",
         )
-    market_row = (
-        db.query(models.MarketDataStore)
-        .filter_by(symbol=symbol, timeframe="1D")
-        .first()
-    )
-    market_as_of = getattr(market_row, "data_as_of", None) if market_row is not None else None
-    snapshot_as_of = row.market_data_as_of or row.data_as_of
-    if market_as_of is not None and (snapshot_as_of is None or market_as_of > snapshot_as_of):
-        snapshot_label = snapshot_as_of.isoformat() if snapshot_as_of is not None else "no full WFO revision"
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"Stored best signal evidence for {symbol}/{canonical_h} is stale "
-                f"(built for {snapshot_label}, latest market data is {market_as_of.isoformat()})."
-            ),
-        )
     return row
+
+
+def _best_evidence_freshness(db: Session, row: Any, *, symbol: str) -> dict[str, Any]:
+    from services.api.app import models
+
+    market_row = db.query(models.MarketDataStore).filter_by(symbol=symbol, timeframe="1D").first()
+    market_as_of = getattr(market_row, "data_as_of", None) if market_row is not None else None
+    wfo_validated_as_of = row.market_data_as_of or row.data_as_of
+    pending = market_as_of is not None and (wfo_validated_as_of is None or market_as_of > wfo_validated_as_of)
+    return {
+        "status": "wfo_recalibration_pending" if pending else "current",
+        "market_data_as_of": market_as_of.isoformat() if market_as_of else None,
+        "wfo_validated_as_of": wfo_validated_as_of.isoformat() if wfo_validated_as_of else None,
+        "message": (
+            "Latest daily signal is shown; weekly WFO validation refresh is pending."
+            if pending
+            else "Current market data and WFO validation are aligned."
+        ),
+    }
 
 
 @router.get("/signal/evidence", summary="Get auditable OOS evidence for today's selected signal")
@@ -1949,8 +1947,8 @@ def get_signal_best_evidence(
 ):
     """Serve the weekly-materialized best-evidence payload for the signal page.
 
-    Never triggers a live rebuild: returns the stored row, 404 when it has not
-    been built, or 409 when it is stale relative to fresh market data.
+    Never triggers a live rebuild. A newer daily bar is represented by freshness
+    metadata rather than an error, so weekly validation evidence remains usable.
     """
     symbol_upper = symbol.strip().upper()
     if not symbol_upper:
@@ -1968,7 +1966,23 @@ def get_signal_best_evidence(
             status_code=404,
             detail=f"Stored best signal evidence for {symbol_upper}/{canonical_h} has no payload.",
         )
-    return payload
+    response = dict(payload)
+    freshness = _best_evidence_freshness(db, row, symbol=symbol_upper)
+    response["freshness"] = freshness
+    if freshness["status"] == "wfo_recalibration_pending":
+        # The lightweight refresh updates this stored global score without
+        # changing the weekly WFO selection/backtest evidence.
+        response["current_signal"] = {
+            **dict(response.get("current_signal") or {}),
+            **_current_evidence_signal(
+                db,
+                symbol=symbol_upper,
+                horizon=canonical_h,
+                source=str(row.source or "wfo"),
+                variant=str(row.variant or ""),
+            ),
+        }
+    return response
 
 
 def _signal_backtest_direction_filter(value: str | None) -> str | None:
