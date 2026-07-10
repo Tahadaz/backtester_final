@@ -21,9 +21,23 @@ function isActionableBestSignal(signal: DashboardBestSignal | null | undefined):
   return false
 }
 
+function hasAvailableWfoSignal(stock: DashboardStock | null | undefined): boolean {
+  const wfo = stock?.scores.wfo
+  const label = wfo?.aggregate_signal_label?.trim().toLowerCase()
+  return Boolean(
+    wfo
+    && wfo.aggregate_score_pct != null
+    && Number.isFinite(wfo.aggregate_score_pct)
+    && label
+    && label !== "indisponible"
+    && label !== "unavailable",
+  )
+}
+
 export function bestSignalForDisplay(stock: DashboardStock | null | undefined): DashboardBestSignal | null {
   const signal = stock?.best_signal ?? null
   if (signal?.source !== "wfo") return null
+  if (!hasAvailableWfoSignal(stock)) return null
   if (!isActionableBestSignal(signal)) return null
   if (signal.action_expected_return_net == null || signal.hit_rate == null) return null
   return signal

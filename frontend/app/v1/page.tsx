@@ -186,10 +186,24 @@ function isMasiEquity(stock: DashboardStock) {
     && stock.market_region === "masi"
 }
 
+function hasAvailableWfoSignal(stock: DashboardStock) {
+  const wfo = stock.scores.wfo
+  const label = wfo?.aggregate_signal_label?.trim().toLowerCase()
+  return Boolean(
+    wfo
+    && wfo.aggregate_score_pct != null
+    && Number.isFinite(wfo.aggregate_score_pct)
+    && label
+    && label !== "indisponible"
+    && label !== "unavailable",
+  )
+}
+
 function bestActionableSignal(stock: DashboardStock, opts?: { excludeMasiShorts?: boolean }) {
   const signal = stock.best_signal ?? null
   if (!signal) return null
   if (signal.source !== "wfo") return null
+  if (!hasAvailableWfoSignal(stock)) return null
   if (signal.direction === "none" || signal.bucket === "hold") return null
   if (opts?.excludeMasiShorts && isMasiEquity(stock) && signal.direction === "short") return null
   if ((signal.bucket === "buy" || signal.bucket === "strong_buy") && signal.direction !== "long") return null
