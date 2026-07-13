@@ -13,6 +13,7 @@ import {
   expectedMixturePop,
   normalizeJointScenarios,
   optimalSubscriptionAcrossScenarios,
+  popsForTranche,
   type IpoBaseParams,
   type IpoJointScenario,
   type IpoOptimalPoint,
@@ -83,8 +84,9 @@ function sampleGrid<T>(rows: T[]): T[] {
   return indices.map((index) => rows[Math.min(rows.length - 1, index)])
 }
 
-function popOf(scenario: IpoJointScenario, key: "bear" | "base" | "bull"): IpoPopScenario {
-  return scenario.pops.find((p) => p.key === key) ?? scenario.pops[0]
+function popOf(scenario: IpoJointScenario, tranche: IpoSubscriptionSettings["tranche"], key: "bear" | "base" | "bull"): IpoPopScenario {
+  const pops = popsForTranche(scenario, tranche)
+  return pops.find((p) => p.key === key) ?? pops[0]
 }
 
 function verdictFor(optimizer: IpoOptimalSubscription): { label: string; tone: string } {
@@ -179,8 +181,14 @@ export function IpoSubscriptionPanel({
       settings.scenarios.map((scenario) => ({
         scenario,
         cells: (["bear", "base", "bull"] as const).map((popKey) => {
-          const pop = popOf(scenario, popKey)
-          const singleScenario: IpoJointScenario = { ...scenario, probability: 1, pops: [{ ...pop, probability: 1 }] }
+          const pop = popOf(scenario, primaryTranche, popKey)
+          const selectedPops = [{ ...pop, probability: 1 }]
+          const singleScenario: IpoJointScenario = {
+            ...scenario,
+            probability: 1,
+            pops: selectedPops,
+            popsByTranche: { retail: selectedPops, institutional: selectedPops },
+          }
           const combined = combinedExpectedEconomics(primaryOptimizer.recommendedMad, primaryBaseParams, [singleScenario])
           return { key: `${scenario.key}-${popKey}`, popKey, profitMad: combined.expectedProfitMad, annualizedReturn: combined.expectedAnnualizedReturn }
         }),
@@ -200,20 +208,36 @@ export function IpoSubscriptionPanel({
         }).`
 
   const normalizedScenarios = useMemo(() => normalizeJointScenarios(settings.scenarios), [settings.scenarios])
-  const mixturePop = useMemo(() => expectedMixturePop(settings.scenarios), [settings.scenarios])
+  const mixturePop = useMemo(() => expectedMixturePop(settings.scenarios, primaryTranche), [primaryTranche, settings.scenarios])
   const popRange = useMemo(() => {
-    const pops = settings.scenarios.flatMap((s) => s.pops.map((p) => p.pop))
+    const pops = settings.scenarios.flatMap((scenario) => popsForTranche(scenario, primaryTranche).map((pop) => pop.pop))
     return pops.length ? { min: Math.min(...pops), max: Math.max(...pops) } : { min: 0, max: 0 }
-  }, [settings.scenarios])
+  }, [primaryTranche, settings.scenarios])
 
   function updateScenario(index: number, patch: Partial<IpoJointScenario>) {
     onChange({ ...settings, scenarios: settings.scenarios.map((scenario, currentIndex) => (currentIndex === index ? { ...scenario, ...patch } : scenario)) })
   }
   function updateScenarioPop(index: number, popKey: "bear" | "base" | "bull", patch: Partial<IpoPopScenario>) {
+    const sharedProbabilityPatch = patch.probability == null ? {} : { probability: patch.probability }
     onChange({
       ...settings,
       scenarios: settings.scenarios.map((scenario, currentIndex) =>
-        currentIndex === index ? { ...scenario, pops: scenario.pops.map((pop) => (pop.key === popKey ? { ...pop, ...patch } : pop)) } : scenario,
+        currentIndex === index
+          ? {
+              ...scenario,
+              pops: scenario.pops.map((pop) =>
+                pop.key === popKey ? { ...pop, ...(primaryTranche === "retail" ? patch : sharedProbabilityPatch) } : pop,
+              ),
+              popsByTranche: {
+                retail: (scenario.popsByTranche?.retail ?? scenario.pops).map((pop) =>
+                  pop.key === popKey ? { ...pop, ...(primaryTranche === "retail" ? patch : sharedProbabilityPatch) } : pop,
+                ),
+                institutional: (scenario.popsByTranche?.institutional ?? scenario.pops).map((pop) =>
+                  pop.key === popKey ? { ...pop, ...(primaryTranche === "institutional" ? patch : sharedProbabilityPatch) } : pop,
+                ),
+              },
+            }
+          : scenario,
       ),
     })
   }
@@ -294,6 +318,9 @@ export function IpoSubscriptionPanel({
 
           <div className="mt-4 rounded-md border border-line bg-card p-3.5">
             <div className="flex items-center gap-2"><TrendingUp className="h-4 w-4 shrink-0 text-primary" /><span className="text-sm font-semibold">Variation attendue du titre</span></div>
+            <div className="mt-1 inline-flex rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary">
+              Calibration {primaryTranche === "retail" ? "retail" : "institutionnelle"}
+            </div>
             <p className="mt-1 text-[10px] text-muted-foreground">Scénarios estimés, éditables dans Hypothèses (avancé) — ancrés sur J5 : Bear = pire trajectoire observée, Base = 50% de l&apos;ancre historique, Bull = ancre complète.</p>
             <p className="mt-2 text-sm">
               Pop espéré (pondéré) ≈ <span className={cn("font-mono font-semibold", mixturePop >= 0 ? "t-pos" : "t-neg")}>{fmtPct(mixturePop, 1)}</span>
@@ -312,7 +339,8 @@ export function IpoSubscriptionPanel({
                 </thead>
                 <tbody>
                   {normalizedScenarios.map((scenario) => {
-                    const variation = scenario.pops.reduce((sum, p) => sum + p.probability * p.pop, 0)
+                    const selectedPops = popsForTranche(scenario, primaryTranche)
+                    const variation = selectedPops.reduce((sum, p) => sum + p.probability * p.pop, 0)
                     return (
                       <tr key={scenario.key}>
                         <td>
@@ -320,7 +348,7 @@ export function IpoSubscriptionPanel({
                           <div className="text-[10px] text-muted-foreground">prob. {fmtPct(scenario.probability, 0, false)}</div>
                         </td>
                         {(["bear", "base", "bull"] as const).map((popKey) => {
-                          const pop = popOf(scenario, popKey)
+                          const pop = popOf(scenario, primaryTranche, popKey)
                           return (
                             <td key={popKey} className="r font-mono">
                               {fmtPct(pop.pop, 0)}
@@ -340,7 +368,7 @@ export function IpoSubscriptionPanel({
           <div className="mt-4 rounded-md border border-line bg-card p-3.5">
             <span className="text-sm font-semibold">IPO passées à Casablanca (base rates)</span>
             <p className="mt-1 text-[10px] text-muted-foreground">Historique utilisé comme prior pour calibrer les scénarios ci-dessus.</p>
-            <div className="mt-3"><BaseRateTable rows={baseRateRows} /></div>
+            <div className="mt-3"><BaseRateTable rows={baseRateRows} tranche={primaryTranche} /></div>
           </div>
 
           <Accordion type="single" collapsible className="mt-4 rounded-md border border-line bg-card px-3">
@@ -373,7 +401,7 @@ export function IpoSubscriptionPanel({
 
                 <Accordion type="multiple" className="mt-4 space-y-2">
                   <AccordionItem value="assumptions" className="rounded-md border border-line px-3"><AccordionTrigger className="py-3 text-xs font-semibold no-underline hover:no-underline"><span className="flex items-center gap-2"><ShieldCheck className="h-3.5 w-3.5 text-primary" />Scénarios joints (ESTIMATIONS éditables — calibrées sur les IPO 2021-2025, aucun de ces chiffres n&apos;est connu d&apos;avance)</span></AccordionTrigger><AccordionContent className="pb-3">
-                    <ScenarioInputs settings={settings} updateScenario={updateScenario} updateScenarioPop={updateScenarioPop} />
+                    <ScenarioInputs settings={settings} tranche={primaryTranche} updateScenario={updateScenario} updateScenarioPop={updateScenarioPop} />
                   </AccordionContent></AccordionItem>
                   <AccordionItem value="diagnostics" className="rounded-md border border-line px-3"><AccordionTrigger className="py-3 text-xs font-semibold no-underline hover:no-underline">Diagnostic du montant recommandé (tranche recommandée)</AccordionTrigger><AccordionContent className="pb-3"><DiagnosticTables qGrid={qGrid} scenarioMatrix={scenarioMatrix} financingRate={settings.financingRate} /></AccordionContent></AccordionItem>
                   <AccordionItem value="methodology" className="rounded-md border border-line px-3"><AccordionTrigger className="py-3 text-xs font-semibold no-underline hover:no-underline"><span className="flex items-center gap-2"><CircleHelp className="h-3.5 w-3.5 text-primary" />Comment la taille est-elle choisie ?</span></AccordionTrigger><AccordionContent className="pb-3"><div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
@@ -453,15 +481,20 @@ function MethodStep({ title, children }: { title: string; children: ReactNode })
 
 function ScenarioInputs({
   settings,
+  tranche,
   updateScenario,
   updateScenarioPop,
 }: {
   settings: IpoSubscriptionSettings
+  tranche: IpoSubscriptionSettings["tranche"]
   updateScenario: (index: number, patch: Partial<IpoJointScenario>) => void
   updateScenarioPop: (index: number, popKey: "bear" | "base" | "bull", patch: Partial<IpoPopScenario>) => void
 }) {
   return (
     <div className="overflow-x-auto">
+      <p className="mb-2 text-[10px] text-muted-foreground">
+        Hypoth&egrave;ses de rendement actuellement &eacute;dit&eacute;es pour la cat&eacute;gorie {tranche === "retail" ? "retail" : "institutionnelle"}.
+      </p>
       <div className="valuation-mini-title mb-1">Scénarios joints (sursouscription, N, pops conditionnels)</div>
       <table className="claude-table">
         <thead>
@@ -487,12 +520,12 @@ function ScenarioInputs({
               <td className="r"><NumberInput value={scenario.oversubInstit} onChange={(value) => updateScenario(index, { oversubInstit: Math.max(1, value) })} min={1} /></td>
               <td className="r"><NumberInput value={scenario.oversubRetail} onChange={(value) => updateScenario(index, { oversubRetail: Math.max(1, value) })} min={1} /></td>
               <td className="r"><NumberInput value={scenario.retailSubscribers} onChange={(value) => updateScenario(index, { retailSubscribers: Math.max(1, value) })} step={1_000} min={1} /></td>
-              <td className="r"><NumberInput value={popOf(scenario, "bear").pop * 100} onChange={(value) => updateScenarioPop(index, "bear", { pop: value / 100 })} /></td>
-              <td className="r"><NumberInput value={popOf(scenario, "bear").probability * 100} onChange={(value) => updateScenarioPop(index, "bear", { probability: Math.max(0, value) / 100 })} min={0} /></td>
-              <td className="r"><NumberInput value={popOf(scenario, "base").pop * 100} onChange={(value) => updateScenarioPop(index, "base", { pop: value / 100 })} /></td>
-              <td className="r"><NumberInput value={popOf(scenario, "base").probability * 100} onChange={(value) => updateScenarioPop(index, "base", { probability: Math.max(0, value) / 100 })} min={0} /></td>
-              <td className="r"><NumberInput value={popOf(scenario, "bull").pop * 100} onChange={(value) => updateScenarioPop(index, "bull", { pop: value / 100 })} /></td>
-              <td className="r"><NumberInput value={popOf(scenario, "bull").probability * 100} onChange={(value) => updateScenarioPop(index, "bull", { probability: Math.max(0, value) / 100 })} min={0} /></td>
+              <td className="r"><NumberInput value={popOf(scenario, tranche, "bear").pop * 100} onChange={(value) => updateScenarioPop(index, "bear", { pop: value / 100 })} /></td>
+              <td className="r"><NumberInput value={popOf(scenario, tranche, "bear").probability * 100} onChange={(value) => updateScenarioPop(index, "bear", { probability: Math.max(0, value) / 100 })} min={0} /></td>
+              <td className="r"><NumberInput value={popOf(scenario, tranche, "base").pop * 100} onChange={(value) => updateScenarioPop(index, "base", { pop: value / 100 })} /></td>
+              <td className="r"><NumberInput value={popOf(scenario, tranche, "base").probability * 100} onChange={(value) => updateScenarioPop(index, "base", { probability: Math.max(0, value) / 100 })} min={0} /></td>
+              <td className="r"><NumberInput value={popOf(scenario, tranche, "bull").pop * 100} onChange={(value) => updateScenarioPop(index, "bull", { pop: value / 100 })} /></td>
+              <td className="r"><NumberInput value={popOf(scenario, tranche, "bull").probability * 100} onChange={(value) => updateScenarioPop(index, "bull", { probability: Math.max(0, value) / 100 })} min={0} /></td>
             </tr>
           ))}
         </tbody>
@@ -524,14 +557,19 @@ function DiagnosticTables({
   )
 }
 
-function BaseRateTable({ rows }: { rows: IpoBaseRateRow[] }) {
+function BaseRateTable({ rows, tranche }: { rows: IpoBaseRateRow[]; tranche: IpoSubscriptionSettings["tranche"] }) {
   return (
     <div className="overflow-x-auto">
+      <p className="mb-2 text-[10px] text-muted-foreground">
+        Donn&eacute;es comparables: {tranche === "retail" ? "retail / personnes physiques" : "institutionnels"}. Les ratios globaux ne sont pas utilis&eacute;s.
+      </p>
       <table className="claude-table">
         <thead>
           <tr>
             <th>IPO</th>
             <th className="r">Année</th>
+            <th>Cat&eacute;gorie</th>
+            <th className="r">Prix IPO</th>
             <th className="r">Oversub</th>
             <th className="r">Satisfaction</th>
             <th className="r">J1</th>
@@ -540,24 +578,32 @@ function BaseRateTable({ rows }: { rows: IpoBaseRateRow[] }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr key={`${row.ipo}-${row.year}`}>
-              <td title={row.note}>
-                {row.ipo}
-                {row.estimated ? <span className="ml-1 rounded bg-amber-500/15 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">est.</span> : null}
-              </td>
-              <td className="r">{row.year}</td>
-              <td className="r font-mono">{row.oversubscription}</td>
-              <td className="r font-mono">{row.satisfaction}</td>
-              <td className="r font-mono" title={row.performanceNote}>{formatIpoReturn(row.j1Return)}{row.j1Reserved ? "*" : ""}</td>
-              <td className="r font-mono" title={row.performanceNote}>{formatIpoReturn(row.j5Return)}</td>
-              <td className="r font-mono" title={row.performanceNote}>{formatIpoReturn(row.j10Return)}</td>
-            </tr>
-          ))}
+          {rows.map((row) => <BaseRateTableRow key={`${row.ipo}-${row.year}-${tranche}`} row={row} tranche={tranche} />)}
         </tbody>
       </table>
       <p className="mt-1.5 text-[10px] text-muted-foreground">J1/J5/J10 = performance cumulée vs prix d&apos;offre après 1, 5 et 10 séances dans l&apos;historique OHLC de l&apos;app ; * = cours réservé, pas nécessairement exécutable. n.d. = non disponible ; &laquo;&nbsp;dérivé&nbsp;&raquo; = calculé comme 1/sursouscription.</p>
     </div>
+  )
+}
+
+function BaseRateTableRow({ row, tranche }: { row: IpoBaseRateRow; tranche: IpoSubscriptionSettings["tranche"] }) {
+  const evidence = row.tranches[tranche]
+  const observedReturn = (marketPrice: number | null) => marketPrice == null ? null : marketPrice / evidence.offerPrice - 1
+  return (
+    <tr>
+      <td title={row.note}>
+        {row.ipo}
+        {row.estimated ? <span className="ml-1 rounded bg-amber-500/15 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">est.</span> : null}
+      </td>
+      <td className="r">{row.year}</td>
+      <td>{evidence.label}</td>
+      <td className="r font-mono">{fmtMoney(evidence.offerPrice, 0)}</td>
+      <td className="r font-mono">{fmtNumber(evidence.oversubscription, 2)}x</td>
+      <td className="r font-mono">{fmtPct(evidence.satisfaction, 2, false)}</td>
+      <td className="r font-mono" title={row.performanceNote}>{formatIpoReturn(observedReturn(row.marketPrices.j1))}{row.j1Reserved ? "*" : ""}</td>
+      <td className="r font-mono" title={row.performanceNote}>{formatIpoReturn(observedReturn(row.marketPrices.j5))}</td>
+      <td className="r font-mono" title={row.performanceNote}>{formatIpoReturn(observedReturn(row.marketPrices.j10))}</td>
+    </tr>
   )
 }
 

@@ -6,13 +6,16 @@ import {
   expectedAllocation,
   IPO_JOINT_PRESETS,
   IPO_RETURN_CALIBRATION,
+  IPO_RETURN_CALIBRATIONS,
   normalizeJointScenarios,
   optimalSubscriptionAcrossScenarios,
+  popsForTranche,
   subscriptionEconomics,
   type IpoAllocationParams,
   type IpoBaseParams,
   type IpoJointScenario,
 } from "./ipo-subscription"
+import { IPO_T2S } from "./ipo-data"
 
 let passed = 0
 let failed = 0
@@ -324,6 +327,21 @@ console.log("8. Historical return calibration")
   ok("central base applies 50% haircut", approx(pop(central, "base"), IPO_RETURN_CALIBRATION.centralAnchor * 0.5))
   ok("hot bull equals SGTM J5", approx(pop(hot, "bull"), IPO_RETURN_CALIBRATION.hotAnchor))
   ok("bear uses worst observed path", approx(pop(hot, "bear"), IPO_RETURN_CALIBRATION.downside))
+}
+
+console.log("9. Investor-specific historical evidence")
+{
+  const hot = IPO_JOINT_PRESETS.find((row) => row.key === "hot")!
+  const retailBull = popsForTranche(hot, "retail").find((row) => row.key === "bull")!.pop
+  const institutionalBull = popsForTranche(hot, "institutional").find((row) => row.key === "bull")!.pop
+  const sgtm = IPO_T2S.casablancaBaseRates.find((row) => row.ipo === "SGTM")!
+
+  ok("SGTM retail oversubscription is Type II ~= 2.99x", approx(sgtm.tranches.retail.oversubscription, 1 / 0.3348))
+  ok("SGTM institutional oversubscription is Type IV ~= 43.48x", approx(sgtm.tranches.institutional.oversubscription, 1 / 0.023))
+  ok("retail SGTM anchor uses the 380 MAD Type II offer price", approx(retailBull, 676.1 / 380 - 1))
+  ok("institutional SGTM anchor uses the 420 MAD Type IV offer price", approx(institutionalBull, 676.1 / 420 - 1))
+  ok("retail hot return exceeds institutional hot return", retailBull > institutionalBull)
+  ok("calibration exports remain distinct by investor type", IPO_RETURN_CALIBRATIONS.retail.hotAnchor !== IPO_RETURN_CALIBRATIONS.institutional.hotAnchor)
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

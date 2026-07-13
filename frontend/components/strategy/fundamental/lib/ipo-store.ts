@@ -41,7 +41,7 @@ export type IpoProfile = {
 export const T2S_PROFILE_ID = "t2s"
 
 export type IpoSubscriptionSettings = {
-  version: 5
+  version: 6
   capitalMad: number
   tranche: IpoTrancheKind
   financingRate: number
@@ -55,11 +55,11 @@ export type IpoSubscriptionSettings = {
   scenarios: IpoJointScenario[]
 }
 
-// Version 5 resets scenario returns to the J5/J10 historical calibration.
-// Older settings would silently preserve the disconnected pre-calibration
-// values, so they deliberately fall back to the fresh defaults.
+// Version 6 stores separate retail/institutional return assumptions. Older
+// settings had one shared return set and deliberately fall back to fresh,
+// tranche-specific defaults.
 export function isCurrentSubscriptionSettings(value: unknown): value is IpoSubscriptionSettings {
-  return Boolean(value && typeof value === "object" && (value as { version?: unknown }).version === 5)
+  return Boolean(value && typeof value === "object" && (value as { version?: unknown }).version === 6)
 }
 
 export function builtinT2sProfile(): IpoProfile {

@@ -83,7 +83,7 @@ function clamp(value: number, min: number, max: number): number {
 
 function buildDefaultSubscriptionSettings(): IpoSubscriptionSettings {
   return {
-    version: 5,
+    version: 6,
     capitalMad: 500_000,
     tranche: "retail",
     financingRate: 0.03,
@@ -91,7 +91,16 @@ function buildDefaultSubscriptionSettings(): IpoSubscriptionSettings {
     retailCoverageRate: 1.0,
     institCoverageRate: 0.0,
     exitDays: 5,
-    scenarios: IPO_JOINT_PRESETS.map((scenario) => ({ ...scenario, pops: scenario.pops.map((pop) => ({ ...pop })) })),
+    scenarios: IPO_JOINT_PRESETS.map((scenario) => ({
+      ...scenario,
+      pops: scenario.pops.map((pop) => ({ ...pop })),
+      popsByTranche: scenario.popsByTranche
+        ? {
+            retail: scenario.popsByTranche.retail.map((pop) => ({ ...pop })),
+            institutional: scenario.popsByTranche.institutional.map((pop) => ({ ...pop })),
+          }
+        : undefined,
+    })),
   }
 }
 

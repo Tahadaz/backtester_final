@@ -13,9 +13,9 @@
 // Both tranches share a regulatory cap of 10% of the offer per investor
 // (493 273 shares).
 
-import { IPO_T2S } from "./ipo-data"
+import { IPO_T2S, type IpoInvestorKind } from "./ipo-data"
 
-export type IpoTrancheKind = "retail" | "institutional"
+export type IpoTrancheKind = IpoInvestorKind
 
 export type IpoAllocationParams = {
   tranche: IpoTrancheKind
@@ -59,6 +59,7 @@ export type IpoJointScenario = {
   oversubRetail: number
   retailSubscribers: number
   pops: IpoPopScenario[]
+  popsByTranche?: Record<IpoTrancheKind, IpoPopScenario[]>
 }
 
 export type IpoAllocationResult = {
@@ -128,33 +129,52 @@ export type IpoOptimalSubscription = {
 
 export const DEFAULT_SUBSCRIPTION_CAP_SHARES = 493_273
 
-type HistoricalReturnField = "j5Return" | "j10Return"
+type HistoricalPriceField = "j5" | "j10"
 
-function historicalReturn(ipo: string, field: HistoricalReturnField, fallback: number): number {
-  const value = IPO_T2S.casablancaBaseRates.find((row) => row.ipo === ipo)?.[field]
-  return value == null || !Number.isFinite(value) ? fallback : value
+export function historicalIpoReturn(
+  ipo: string,
+  tranche: IpoTrancheKind,
+  field: HistoricalPriceField,
+  fallback: number,
+): number {
+  const row = IPO_T2S.casablancaBaseRates.find((candidate) => candidate.ipo === ipo)
+  const marketPrice = row?.marketPrices[field]
+  const offerPrice = row?.tranches[tranche].offerPrice
+  if (marketPrice == null || !Number.isFinite(marketPrice) || !(offerPrice && offerPrice > 0)) return fallback
+  return marketPrice / offerPrice - 1
 }
 
-// Use the same observations shown in the base-rate table. With the default
-// J5 exit, bear is the worst observed J10 path, base keeps only half of the
-// matching J5 anchor, and bull keeps the full J5 anchor. Probabilities remain
-// separate, editable assumptions.
-const HISTORICAL_DOWNSIDE = Math.min(
-  ...IPO_T2S.casablancaBaseRates.map((row) => row.j10Return).filter((value): value is number => value != null),
-)
-const COLD_J5_ANCHOR = historicalReturn("CMGP", "j5Return", 0.25)
-const CENTRAL_J5_ANCHOR =
-  (historicalReturn("Vicenne", "j5Return", 0.4) + historicalReturn("Cash Plus", "j5Return", 0.4)) / 2
-const HOT_J5_ANCHOR = historicalReturn("SGTM", "j5Return", 0.45)
+export function buildIpoReturnCalibration(tranche: IpoTrancheKind) {
+  const observedJ10 = IPO_T2S.casablancaBaseRates
+    .map((row) => {
+      const marketPrice = row.marketPrices.j10
+      const offerPrice = row.tranches[tranche].offerPrice
+      return marketPrice == null || !(offerPrice > 0) ? null : marketPrice / offerPrice - 1
+    })
+    .filter((value): value is number => value != null && Number.isFinite(value))
+  const downside = observedJ10.length ? Math.min(...observedJ10) : -0.05
+  const coldAnchor = historicalIpoReturn("CMGP", tranche, "j5", 0.25)
+  const centralAnchor =
+    (historicalIpoReturn("Vicenne", tranche, "j5", 0.4) + historicalIpoReturn("Cash Plus", tranche, "j5", 0.4)) / 2
+  const hotAnchor = historicalIpoReturn("SGTM", tranche, "j5", 0.45)
+  return { horizon: "J5" as const, baseHaircut: 0.5, downside, coldAnchor, centralAnchor, hotAnchor }
+}
 
-export const IPO_RETURN_CALIBRATION = {
-  horizon: "J5",
-  baseHaircut: 0.5,
-  downside: HISTORICAL_DOWNSIDE,
-  coldAnchor: COLD_J5_ANCHOR,
-  centralAnchor: CENTRAL_J5_ANCHOR,
-  hotAnchor: HOT_J5_ANCHOR,
+export const IPO_RETURN_CALIBRATIONS = {
+  retail: buildIpoReturnCalibration("retail"),
+  institutional: buildIpoReturnCalibration("institutional"),
 } as const
+
+// Backward-compatible alias: retail is the default selected investor type.
+export const IPO_RETURN_CALIBRATION = IPO_RETURN_CALIBRATIONS.retail
+
+function calibratedPops(anchor: number, downside: number, probabilities: [number, number, number]): IpoPopScenario[] {
+  return [
+    { key: "bear", label: "Bear", pop: downside, probability: probabilities[0] },
+    { key: "base", label: "Base", pop: anchor * 0.5, probability: probabilities[1] },
+    { key: "bull", label: "Bull", pop: anchor, probability: probabilities[2] },
+  ]
+}
 
 // Default joint scenarios: Rock 1986 winner's curse logic (cold deals -> worse
 // pops), calibrated on Casablanca 2024-25 base rates. High turnout (SGTM:
@@ -164,6 +184,9 @@ export const IPO_RETURN_CALIBRATION = {
 // because the offer itself was huge (4.8 Bn MAD). N figures below are
 // estimates for T2S (deal size 1.1 Bn MAD); anchors: CMGP 33.7k subscribers,
 // Vicenne 37.7k, Cash Plus 81.5k, SGTM 171.4k.
+const RETAIL_CALIBRATION = IPO_RETURN_CALIBRATIONS.retail
+const INSTITUTIONAL_CALIBRATION = IPO_RETURN_CALIBRATIONS.institutional
+
 export const IPO_JOINT_PRESETS: IpoJointScenario[] = [
   {
     key: "cold",
@@ -172,11 +195,11 @@ export const IPO_JOINT_PRESETS: IpoJointScenario[] = [
     oversubInstit: 25,
     oversubRetail: 30,
     retailSubscribers: 35_000,
-    pops: [
-      { key: "bear", label: "Bear", pop: HISTORICAL_DOWNSIDE, probability: 0.3 },
-      { key: "base", label: "Base", pop: COLD_J5_ANCHOR * 0.5, probability: 0.5 },
-      { key: "bull", label: "Bull", pop: COLD_J5_ANCHOR, probability: 0.2 },
-    ],
+    pops: calibratedPops(RETAIL_CALIBRATION.coldAnchor, RETAIL_CALIBRATION.downside, [0.3, 0.5, 0.2]),
+    popsByTranche: {
+      retail: calibratedPops(RETAIL_CALIBRATION.coldAnchor, RETAIL_CALIBRATION.downside, [0.3, 0.5, 0.2]),
+      institutional: calibratedPops(INSTITUTIONAL_CALIBRATION.coldAnchor, INSTITUTIONAL_CALIBRATION.downside, [0.3, 0.5, 0.2]),
+    },
   },
   {
     key: "central",
@@ -185,11 +208,11 @@ export const IPO_JOINT_PRESETS: IpoJointScenario[] = [
     oversubInstit: 45,
     oversubRetail: 55,
     retailSubscribers: 60_000,
-    pops: [
-      { key: "bear", label: "Bear", pop: HISTORICAL_DOWNSIDE, probability: 0.15 },
-      { key: "base", label: "Base", pop: CENTRAL_J5_ANCHOR * 0.5, probability: 0.6 },
-      { key: "bull", label: "Bull", pop: CENTRAL_J5_ANCHOR, probability: 0.25 },
-    ],
+    pops: calibratedPops(RETAIL_CALIBRATION.centralAnchor, RETAIL_CALIBRATION.downside, [0.15, 0.6, 0.25]),
+    popsByTranche: {
+      retail: calibratedPops(RETAIL_CALIBRATION.centralAnchor, RETAIL_CALIBRATION.downside, [0.15, 0.6, 0.25]),
+      institutional: calibratedPops(INSTITUTIONAL_CALIBRATION.centralAnchor, INSTITUTIONAL_CALIBRATION.downside, [0.15, 0.6, 0.25]),
+    },
   },
   {
     key: "hot",
@@ -198,11 +221,11 @@ export const IPO_JOINT_PRESETS: IpoJointScenario[] = [
     oversubInstit: 60,
     oversubRetail: 75,
     retailSubscribers: 150_000,
-    pops: [
-      { key: "bear", label: "Bear", pop: HISTORICAL_DOWNSIDE, probability: 0.1 },
-      { key: "base", label: "Base", pop: HOT_J5_ANCHOR * 0.5, probability: 0.5 },
-      { key: "bull", label: "Bull", pop: HOT_J5_ANCHOR, probability: 0.4 },
-    ],
+    pops: calibratedPops(RETAIL_CALIBRATION.hotAnchor, RETAIL_CALIBRATION.downside, [0.1, 0.5, 0.4]),
+    popsByTranche: {
+      retail: calibratedPops(RETAIL_CALIBRATION.hotAnchor, RETAIL_CALIBRATION.downside, [0.1, 0.5, 0.4]),
+      institutional: calibratedPops(INSTITUTIONAL_CALIBRATION.hotAnchor, INSTITUTIONAL_CALIBRATION.downside, [0.1, 0.5, 0.4]),
+    },
   },
 ]
 
@@ -223,18 +246,31 @@ function safeProbabilities<T extends { probability: number }>(rows: T[]): T[] {
 // (conditional) pop distribution.
 export function normalizeJointScenarios(scenarios: IpoJointScenario[]): IpoJointScenario[] {
   const normalizedTop = safeProbabilities(scenarios)
-  return normalizedTop.map((scenario) => ({ ...scenario, pops: safeProbabilities(scenario.pops) }))
+  return normalizedTop.map((scenario) => ({
+    ...scenario,
+    pops: safeProbabilities(scenario.pops),
+    popsByTranche: scenario.popsByTranche
+      ? {
+          retail: safeProbabilities(scenario.popsByTranche.retail),
+          institutional: safeProbabilities(scenario.popsByTranche.institutional),
+        }
+      : undefined,
+  }))
+}
+
+export function popsForTranche(scenario: IpoJointScenario, tranche: IpoTrancheKind): IpoPopScenario[] {
+  return scenario.popsByTranche?.[tranche] ?? scenario.pops
 }
 
 // Flattens joint scenarios into a single mixture pop distribution: weight of
 // each (scenario, pop) pair = scenario.probability * pop.probability. Used
 // for the Kelly fraction search, which only cares about the unconditional
 // distribution of outcomes on allocated capital.
-export function mixturePopScenarios(scenarios: IpoJointScenario[]): IpoPopScenario[] {
+export function mixturePopScenarios(scenarios: IpoJointScenario[], tranche: IpoTrancheKind = "retail"): IpoPopScenario[] {
   const normalized = normalizeJointScenarios(scenarios)
   const flat: IpoPopScenario[] = []
   for (const scenario of normalized) {
-    for (const pop of scenario.pops) {
+    for (const pop of popsForTranche(scenario, tranche)) {
       flat.push({ key: `${scenario.key}-${pop.key}`, label: `${scenario.label} / ${pop.label}`, pop: pop.pop, probability: scenario.probability * pop.probability })
     }
   }
@@ -244,8 +280,8 @@ export function mixturePopScenarios(scenarios: IpoJointScenario[]): IpoPopScenar
 // Mixture mean pop across normalized joint scenarios: Sigma
 // scenario.probability * pop.probability * pop.pop. Pure - used to headline
 // the expected stock-price variation independent of any subscription amount.
-export function expectedMixturePop(scenarios: IpoJointScenario[]): number {
-  return mixturePopScenarios(scenarios).reduce((sum, pop) => sum + pop.probability * pop.pop, 0)
+export function expectedMixturePop(scenarios: IpoJointScenario[], tranche: IpoTrancheKind = "retail"): number {
+  return mixturePopScenarios(scenarios, tranche).reduce((sum, pop) => sum + pop.probability * pop.pop, 0)
 }
 
 function madToWholeShares(requestedMad: number, offerPrice: number): number {
@@ -456,7 +492,7 @@ export function combinedExpectedEconomics(requestedMad: number, baseParams: IpoB
   const normalized = normalizeJointScenarios(jointScenarios)
   const detailed = normalized.map((jointScenario) => {
     const params = paramsForScenario(baseParams, jointScenario)
-    const economics = subscriptionEconomics(requestedMad, params, jointScenario.pops)
+    const economics = subscriptionEconomics(requestedMad, params, popsForTranche(jointScenario, baseParams.tranche))
     return { jointScenario, economics }
   })
 
@@ -480,7 +516,7 @@ export function kellySuggestedMax(
   capitalMad: number,
   useHalfKelly = true,
 ): IpoKellyResult {
-  const mixture = mixturePopScenarios(jointScenarios)
+  const mixture = mixturePopScenarios(jointScenarios, baseParams.tranche)
   let bestFraction = 0
   let bestScore = expectedLogGrowth(0, mixture)
   const STEPS = 1000

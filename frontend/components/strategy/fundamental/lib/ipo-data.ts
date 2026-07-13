@@ -60,9 +60,22 @@ export type IpoBridgeStep = {
   note?: string
 }
 
+export type IpoInvestorKind = "retail" | "institutional"
+
+export type IpoBaseRateTranche = {
+  label: string
+  offerPrice: number
+  oversubscription: number
+  satisfaction: number
+  subscribers?: number
+}
+
 export type IpoBaseRateRow = {
   ipo: string
   year: number
+  marketPrices: { j1: number | null; j5: number | null; j10: number | null }
+  tranches: Record<IpoInvestorKind, IpoBaseRateTranche>
+  // Deprecated aggregate display fields retained for stored/editorial compatibility.
   oversubscription: string
   satisfaction: string
   j1Return: number | null
@@ -162,6 +175,11 @@ export const IPO_T2S = {
     {
       ipo: "Akdital",
       year: 2022,
+      marketPrices: { j1: 302, j5: 300, j10: 284 },
+      tranches: {
+        retail: { label: "Non-institutionnels", offerPrice: 300, oversubscription: 1 / 0.5083, satisfaction: 0.5083, subscribers: 8_036 },
+        institutional: { label: "Institutionnels", offerPrice: 300, oversubscription: 1 / 0.1891, satisfaction: 0.1891, subscribers: 189 },
+      },
       oversubscription: "3,77x",
       satisfaction: "~26% (dérivé ≈1/3,77)",
       j1Return: 302 / 300 - 1,
@@ -175,6 +193,11 @@ export const IPO_T2S = {
     {
       ipo: "CMGP",
       year: 2024,
+      marketPrices: { j1: 219.95, j5: 277.4, j10: 277.4 },
+      tranches: {
+        retail: { label: "Type II", offerPrice: 200, oversubscription: 1 / 0.2344, satisfaction: 0.2344, subscribers: 32_516 },
+        institutional: { label: "Type I", offerPrice: 200, oversubscription: 1 / 0.0191, satisfaction: 0.0191, subscribers: 1_255 },
+      },
       oversubscription: "37x",
       satisfaction: "~2,7% (dérivé ≈1/37)",
       j1Return: 219.95 / 200 - 1,
@@ -188,6 +211,11 @@ export const IPO_T2S = {
     {
       ipo: "Vicenne",
       year: 2025,
+      marketPrices: { j1: 259.55, j5: 379.85, j10: 485 },
+      tranches: {
+        retail: { label: "Type II", offerPrice: 236, oversubscription: 1 / 0.1546, satisfaction: 0.1546, subscribers: 36_335 },
+        institutional: { label: "Type I", offerPrice: 236, oversubscription: 1 / 0.0097, satisfaction: 0.0097, subscribers: 1_339 },
+      },
       oversubscription: "64x",
       satisfaction: "1,56% moy. / 2,29% retail",
       j1Return: 259.55 / 236 - 1,
@@ -202,6 +230,11 @@ export const IPO_T2S = {
     {
       ipo: "Cash Plus",
       year: 2025,
+      marketPrices: { j1: 219.95, j5: 321.9, j10: 318 },
+      tranches: {
+        retail: { label: "Type II", offerPrice: 200, oversubscription: 1 / 0.1425, satisfaction: 0.1425, subscribers: 78_916 },
+        institutional: { label: "Type I", offerPrice: 200, oversubscription: 1 / 0.0091, satisfaction: 0.0091, subscribers: 1_679 },
+      },
       oversubscription: "64x",
       satisfaction: "~1,6% (dérivé)",
       j1Return: 219.95 / 200 - 1,
@@ -215,6 +248,11 @@ export const IPO_T2S = {
     {
       ipo: "SGTM",
       year: 2025,
+      marketPrices: { j1: 461.95, j5: 676.1, j10: 760 },
+      tranches: {
+        retail: { label: "Type II", offerPrice: 380, oversubscription: 1 / 0.3348, satisfaction: 0.3348, subscribers: 168_017 },
+        institutional: { label: "Type IV", offerPrice: 420, oversubscription: 1 / 0.023, satisfaction: 0.023, subscribers: 480 },
+      },
       oversubscription: "34x",
       satisfaction: "2,94% moy.",
       j1Return: 461.95 / 420 - 1,
