@@ -881,7 +881,9 @@ def test_signal_best_evidence_reads_stored_payload_without_live_build(monkeypatc
     response = client.get("/strategy/signal/best-evidence?symbol=AAA&horizon=weekly")
 
     assert response.status_code == 200
-    assert response.json() == payload
+    response_payload = response.json()
+    assert {key: value for key, value in response_payload.items() if key != "freshness"} == payload
+    assert response_payload["freshness"]["status"] == "current"
 
 
 def test_signal_best_backtest_chart_reads_stored_payload_without_trigger():
@@ -925,7 +927,7 @@ def test_signal_best_backtest_chart_reads_stored_payload_without_trigger():
     assert response.json() == chart_payload
 
 
-def test_signal_best_snapshot_rejects_stale_payload():
+def test_signal_best_snapshot_serves_stale_payload_with_freshness_metadata():
     payload = {
         "symbol": "AAA",
         "horizon": "weekly",
@@ -957,8 +959,13 @@ def test_signal_best_snapshot_rejects_stale_payload():
 
     response = client.get("/strategy/signal/best-evidence?symbol=AAA&horizon=weekly")
 
-    assert response.status_code == 409
-    assert "stale" in response.json()["detail"]
+    assert response.status_code == 200
+    assert response.json()["freshness"] == {
+        "status": "wfo_recalibration_pending",
+        "market_data_as_of": "2026-01-08",
+        "wfo_validated_as_of": "2026-01-07",
+        "message": "Latest daily signal is shown; weekly WFO validation refresh is pending.",
+    }
 
 
 def test_normalize_wfo_folds_rebases_stale_horizon_capped_rows():

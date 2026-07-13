@@ -1723,6 +1723,12 @@ export const SignalEvidenceSchema = z.object({
   oos_periods: z.array(SignalEvidenceOosPeriodSchema).default([]),
   evidence_trade_count: z.number().default(0),
   stitched_oos_backtest: SignalEvidenceStitchedOosBacktestSchema.optional(),
+  freshness: z.object({
+    status: z.enum(["current", "wfo_recalibration_pending"]).default("current"),
+    market_data_as_of: z.string().nullable().optional(),
+    wfo_validated_as_of: z.string().nullable().optional(),
+    message: z.string().default(""),
+  }).optional(),
 })
 export type SignalEvidence = z.infer<typeof SignalEvidenceSchema>
 

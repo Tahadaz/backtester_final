@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from services.worker.db import SessionLocal
 from services.worker.redis_utils import connect_redis_with_fallback
 from services.api.app.models import (
+    SignalScoreHistory,
     WfoGlobalSignal,
     WfoSignalSummary,
 )
@@ -50,6 +51,42 @@ logger = logging.getLogger(__name__)
 
 HORIZONS = ("weekly", "monthly", "quarterly")
 CATEGORIES = ("tendance", "momentum", "oscillation", "volume")
+
+
+def _upsert_wfo_live_history(
+    db: Session,
+    *,
+    symbol: str,
+    horizon: str,
+    variant: str,
+    data_as_of: date | None,
+    category_results: dict[str, WfoCategoryResult],
+) -> None:
+    """Persist the current-bar overlay without changing validated WFO history."""
+    if data_as_of is None:
+        return
+    # Keep the derived series adjacent to the validated series naming so the
+    # analytics loader can overlay ``wfo:<variant>_live`` on the immutable
+    # ``wfo:<variant>`` history.
+    source = f"wfo:{signal_mode_storage_name(variant)}_live"
+    for category, result in category_results.items():
+        identity = (data_as_of, symbol, source, category, horizon)
+        row = db.get(SignalScoreHistory, identity)
+        if row is None:
+            db.add(
+                SignalScoreHistory(
+                    date=data_as_of,
+                    symbol=symbol,
+                    source=source,
+                    category=category,
+                    horizon=horizon,
+                    score_pct=float(result.score_pct),
+                    is_oos=False,
+                )
+            )
+        else:
+            row.score_pct = float(result.score_pct)
+            row.is_oos = False
 
 
 # ---------------------------------------------------------------------------
@@ -979,6 +1016,14 @@ def refresh_wfo_for_symbol_horizon(
         global_result.symbol = symbol
         global_result.horizon = horizon
         _upsert_global(db, symbol, horizon, global_result, data_as_of, variant=variant)
+        _upsert_wfo_live_history(
+            db,
+            symbol=symbol,
+            horizon=horizon,
+            variant=variant,
+            data_as_of=data_as_of,
+            category_results=category_results,
+        )
         db.commit()
 
         final_status = "succeeded" if failed == 0 else ("partial" if refreshed > 0 else "failed")
