@@ -20,6 +20,7 @@ from .routers import (
     factor_selection,
     factor_signals,
     fundamentals,
+    historical_portfolio_backtest,
     leaderboard,
     market_data,
     market_data_indices,
@@ -81,6 +82,7 @@ def create_app() -> FastAPI:
     app.include_router(strategy_signals.router)
     app.include_router(strategy.router)
     app.include_router(strategy_backtest_runs.router)
+    app.include_router(historical_portfolio_backtest.router)
     app.include_router(dashboard_indices.router)
     app.include_router(wfo_signals.router)
 

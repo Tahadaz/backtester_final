@@ -24,6 +24,7 @@ ScheduleKind = Literal[
     "signal_backtest_dispatch",
     "signal_best_evidence_snapshot",
     "signal_history_dispatch",
+    "pit_opportunity_materialization",
 ]
 
 
@@ -168,6 +169,15 @@ SCHEDULE_SPECS: tuple[ScheduleSpec, ...] = (
         cron="30 1 * * mon",
         timezone="UTC",
         description="Persist one WFO-best signal evidence and chart artifact per stock/horizon.",
+    ),
+    ScheduleSpec(
+        id="weekly_pit_opportunity_materialization",
+        label="Weekly PIT opportunity materialization",
+        kind="pit_opportunity_materialization",
+        queue="score_history",
+        cron="0 6 * * mon",
+        timezone="UTC",
+        description="Incrementally persist the latest fold-scoped point-in-time opportunity candidates for fast portfolio backtests.",
     ),
 )
 

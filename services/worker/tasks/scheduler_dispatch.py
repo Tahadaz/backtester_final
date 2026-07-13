@@ -130,6 +130,8 @@ def dispatch_schedule(schedule_id: str, *, trigger_source: str = "scheduled") ->
             result = _dispatch_signal_best_evidence_snapshot()
         elif spec.kind == "signal_history_dispatch":
             result = _dispatch_signal_history(db)
+        elif spec.kind == "pit_opportunity_materialization":
+            result = _dispatch_pit_opportunity_materialization(db)
         else:  # pragma: no cover - guarded by registry typing
             raise ValueError(f"Unsupported schedule kind {spec.kind!r}")
 
@@ -485,6 +487,35 @@ def _dispatch_signal_history(db: Session) -> dict[str, Any]:
     from services.worker.tasks.score_history_batch import dispatch_score_history_for_all_symbols
 
     return dispatch_score_history_for_all_symbols(db)
+
+
+def _dispatch_pit_opportunity_materialization(db: Session) -> dict[str, Any]:
+    from datetime import timedelta
+    from core.quant_core.historical_portfolio import METHODOLOGY_VERSION
+
+    today = _now().date()
+    config = {
+        "start_date": (today - timedelta(days=21)).isoformat(),
+        "end_date": today.isoformat(),
+        "symbols": [],
+        "cost_bps_per_side": 33.0,
+        "slippage_bps_per_side": 5.0,
+        "bootstrap_seed": 5107,
+    }
+    row = models.HistoricalOpportunityMaterializationRun(
+        status="queued", methodology_version=METHODOLOGY_VERSION,
+        config_json=config, progress_json={"stage": "queued", "progress_pct": 0}, coverage_json={},
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    job = _queue("score_history").enqueue(
+        "services.worker.tasks.historical_portfolio_backtest.materialize_historical_opportunities",
+        str(row.id), job_timeout="24h",
+    )
+    row.rq_job_id = str(job.id)
+    db.commit()
+    return {"enqueued_jobs": 1, "materialization_run_id": str(row.id), "job_id": str(job.id)}
 
 
 def _dispatch_signal_backtests(db: Session, *, trigger_source: str) -> dict[str, Any]:

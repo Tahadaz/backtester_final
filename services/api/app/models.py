@@ -1932,6 +1932,106 @@ class SignalBacktestRun(Base):
     )
 
 
+class HistoricalPortfolioBacktestRun(Base):
+    """Persisted point-in-time dashboard-opportunity portfolio backtest job.
+
+    Result families are stored separately so status/provenance can be inspected
+    without loading a potentially large trade or curve payload.  Only rows in
+    ``succeeded`` state are valid completed backtests.
+    """
+
+    __tablename__ = "historical_portfolio_backtest_run"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    status = Column(String(20), nullable=False, server_default="queued")
+    rq_job_id = Column(String, nullable=True)
+    methodology_version = Column(String(80), nullable=False)
+    config_json = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False, default=dict)
+    provenance_json = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False, default=dict)
+    diagnostics_json = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False, default=dict)
+    opportunities_json = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False, default=list)
+    trades_json = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False, default=list)
+    equity_curves_json = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False, default=dict)
+    benchmark_curves_json = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False, default=dict)
+    statistics_json = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False, default=dict)
+    validation_json = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False, default=dict)
+    snapshot_audit_json = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False, default=dict)
+    warnings_json = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False, default=list)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued','running','succeeded','failed')",
+            name="ck_historical_portfolio_backtest_run_status",
+        ),
+        Index("ix_historical_portfolio_backtest_run_status", "status"),
+        Index("ix_historical_portfolio_backtest_run_created", "created_at"),
+    )
+
+
+class HistoricalOpportunityMaterializationRun(Base):
+    """Tracks one incremental build of the reusable PIT opportunity store."""
+
+    __tablename__ = "historical_opportunity_materialization_run"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    status = Column(String(20), nullable=False, server_default="queued")
+    rq_job_id = Column(String, nullable=True)
+    methodology_version = Column(String(80), nullable=False)
+    config_json = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False, default=dict)
+    progress_json = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False, default=dict)
+    coverage_json = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False, default=dict)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued','running','succeeded','failed')",
+            name="ck_historical_opportunity_materialization_status",
+        ),
+        Index("ix_historical_opportunity_materialization_status", "status"),
+        Index("ix_historical_opportunity_materialization_created", "created_at"),
+    )
+
+
+class HistoricalTradeOpportunity(Base):
+    """Immutable-by-vintage PIT candidate reused by fast portfolio simulations."""
+
+    __tablename__ = "historical_trade_opportunity"
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    decision_date = Column(Date, nullable=False)
+    symbol = Column(String, nullable=False)
+    horizon = Column(String(16), nullable=False)
+    variant = Column(String(64), nullable=False)
+    accepted = Column(Boolean, nullable=False, server_default=text("false"))
+    rank_json = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False, default=list)
+    opportunity_json = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False, default=dict)
+    input_hash = Column(String(64), nullable=False)
+    materialization_run_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("historical_opportunity_materialization_run.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "decision_date", "symbol", "horizon", "variant",
+            name="uq_historical_trade_opportunity_key",
+        ),
+        Index("ix_historical_trade_opportunity_accepted_date", "accepted", "decision_date"),
+        Index("ix_historical_trade_opportunity_symbol_horizon", "symbol", "horizon"),
+    )
+
+
 class SignalEngineBatchJob(Base):
     """Tracks batch computation jobs for signal engine or backtest for a (symbol, horizon).
 

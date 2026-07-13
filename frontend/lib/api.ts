@@ -7423,6 +7423,103 @@ export async function getPortfolioBacktestUniverse(params: {
   return { symbols: data.symbols ?? [], date_range: data.date_range ?? { min: null, max: null } }
 }
 
+export type HistoricalPortfolioRunStatus = {
+  run_id: string
+  status: "queued" | "running" | "succeeded" | "failed"
+  methodology_version: string
+  progress: Record<string, unknown>
+  error_message: string | null
+  created_at: string
+  started_at: string | null
+  completed_at: string | null
+}
+
+export type HistoricalPortfolioRunResult = {
+  run_id: string
+  status: "succeeded"
+  methodology_version: string
+  config: Record<string, unknown>
+  provenance: Record<string, unknown>
+  diagnostics: Record<string, unknown>
+  opportunities: Array<Record<string, unknown>>
+  trades: Array<Record<string, unknown>>
+  equity_curves: Record<string, any>
+  benchmark_curves: Record<string, any>
+  statistics: Record<string, any>
+  validation: Record<string, any>
+  snapshot_audit: Record<string, any>
+  warnings: string[]
+}
+
+export type HistoricalOpportunityMaterialization = {
+  materialization_run_id: string
+  status: "queued" | "running" | "succeeded" | "failed"
+  methodology_version: string
+  config: Record<string, unknown>
+  progress: Record<string, unknown>
+  coverage: Record<string, unknown>
+  error_message: string | null
+  created_at: string
+  started_at: string | null
+  completed_at: string | null
+}
+
+export type HistoricalOpportunityCoverage = {
+  available: boolean
+  methodology_version: string
+  requested_start: string
+  requested_end: string
+  requested_symbols: string[]
+  intervals: Array<{ start: string; end: string }>
+  materialization_run_ids: string[]
+}
+
+export async function createHistoricalPortfolioBacktest(body: {
+  start_date: string
+  end_date: string
+  symbols?: string[]
+  initial_capital?: number
+  capacity_fraction?: 0.01 | 0.025 | 0.05 | 0.1
+  allow_partial_fills?: boolean
+}): Promise<{ run_id: string; status: "queued" | "succeeded"; reused: boolean }> {
+  return request("/strategy/signal/historical-portfolio-backtests", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+}
+
+export async function getHistoricalPortfolioBacktestStatus(runId: string): Promise<HistoricalPortfolioRunStatus> {
+  return request(`/strategy/signal/historical-portfolio-backtests/${encodeURIComponent(runId)}`)
+}
+
+export async function getHistoricalPortfolioBacktestResult(runId: string): Promise<HistoricalPortfolioRunResult> {
+  return request(`/strategy/signal/historical-portfolio-backtests/${encodeURIComponent(runId)}/result`)
+}
+
+export async function getHistoricalOpportunityCoverage(body: {
+  start_date: string
+  end_date: string
+  symbols?: string[]
+}): Promise<HistoricalOpportunityCoverage> {
+  return request("/strategy/signal/historical-portfolio-backtests/coverage", {
+    method: "POST", body: JSON.stringify(body),
+  })
+}
+
+export async function createHistoricalOpportunityMaterialization(body: {
+  start_date: string
+  end_date: string
+  symbols?: string[]
+}): Promise<HistoricalOpportunityMaterialization> {
+  return request("/strategy/signal/historical-portfolio-backtests/materializations", {
+    method: "POST", body: JSON.stringify(body),
+  })
+}
+
+export async function getHistoricalOpportunityMaterialization(runId: string): Promise<HistoricalOpportunityMaterialization> {
+  return request(`/strategy/signal/historical-portfolio-backtests/materializations/${encodeURIComponent(runId)}`)
+}
+
 export async function runFundamentalSignalBacktest(
   body: FundamentalSignalBacktestInput,
 ): Promise<FundamentalSignalBacktestResult> {

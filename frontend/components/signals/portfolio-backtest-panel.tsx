@@ -16,6 +16,12 @@ import { useMarketCatalog, useStockOhlcvHistory } from "@/hooks/use-api"
 import { formatNumber } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import {
+  createHistoricalPortfolioBacktest,
+  createHistoricalOpportunityMaterialization,
+  getHistoricalPortfolioBacktestResult,
+  getHistoricalPortfolioBacktestStatus,
+  getHistoricalOpportunityCoverage,
+  getHistoricalOpportunityMaterialization,
   getPortfolioBacktestUniverse,
   runPortfolioBacktest,
   type PortfolioBacktestBenchmark,
@@ -23,6 +29,10 @@ import {
   type PortfolioBacktestResult,
   type PortfolioBacktestTrade,
   type PortfolioBacktestUniverseSymbol,
+  type HistoricalPortfolioRunResult,
+  type HistoricalPortfolioRunStatus,
+  type HistoricalOpportunityCoverage,
+  type HistoricalOpportunityMaterialization,
 } from "@/lib/api"
 
 type Props = {
@@ -349,7 +359,7 @@ function PortfolioAccountingLedger({
   )
 }
 
-export function PortfolioBacktestPanel({ horizon }: Props) {
+function SnapshotAuditLegacyPanel({ horizon }: Props) {
   const [initialCapital, setInitialCapital] = useState(100_000)
   const [longOnly, setLongOnly] = useState(true)
   // Off by default: exit-policy research found no TP/SL variant beats the plain
@@ -1363,6 +1373,192 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
           ) : null}
         </>
       ) : null}
+    </div>
+  )
+}
+
+function pct(value: unknown): string {
+  return typeof value === "number" && Number.isFinite(value) ? `${(value * 100).toFixed(2)}%` : "Indisponible"
+}
+
+export function PortfolioBacktestPanel({ horizon }: Props) {
+  const [view, setView] = useState<"reconstructed" | "audit">("reconstructed")
+  const [startDate, setStartDate] = useState("2021-01-01")
+  const [endDate, setEndDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [capacity, setCapacity] = useState<0.01 | 0.025 | 0.05 | 0.1>(0.01)
+  const [runId, setRunId] = useState<string | null>(null)
+  const [status, setStatus] = useState<HistoricalPortfolioRunStatus | null>(null)
+  const [result, setResult] = useState<HistoricalPortfolioRunResult | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [coverage, setCoverage] = useState<HistoricalOpportunityCoverage | null>(null)
+  const [materialization, setMaterialization] = useState<HistoricalOpportunityMaterialization | null>(null)
+
+  useEffect(() => {
+    let stopped = false
+    setCoverage(null)
+    void getHistoricalOpportunityCoverage({ start_date: startDate, end_date: endDate })
+      .then((next) => { if (!stopped) setCoverage(next) })
+      .catch(() => { if (!stopped) setCoverage(null) })
+    return () => { stopped = true }
+  }, [startDate, endDate])
+
+  useEffect(() => {
+    if (!materialization || !["queued", "running"].includes(materialization.status)) return
+    let stopped = false
+    const poll = async () => {
+      const next = await getHistoricalOpportunityMaterialization(materialization.materialization_run_id)
+      if (stopped) return
+      setMaterialization(next)
+      if (next.status === "succeeded") {
+        setCoverage(await getHistoricalOpportunityCoverage({ start_date: startDate, end_date: endDate }))
+      } else if (next.status === "failed") {
+        setError(next.error_message || "Le pré-calcul PIT a échoué.")
+      }
+    }
+    const timer = window.setInterval(() => { void poll().catch(() => undefined) }, 3000)
+    return () => { stopped = true; window.clearInterval(timer) }
+  }, [materialization, startDate, endDate])
+
+  useEffect(() => {
+    if (!runId || result) return
+    let stopped = false
+    const poll = async () => {
+      try {
+        const next = await getHistoricalPortfolioBacktestStatus(runId)
+        if (stopped) return
+        setStatus(next)
+        if (next.status === "succeeded") {
+          setResult(await getHistoricalPortfolioBacktestResult(runId))
+        } else if (next.status === "failed") {
+          setError(next.error_message || "Le calcul a échoué.")
+        }
+      } catch (cause) {
+        if (!stopped) setError(cause instanceof Error ? cause.message : "Statut indisponible")
+      }
+    }
+    void poll()
+    const timer = window.setInterval(poll, 3000)
+    return () => { stopped = true; window.clearInterval(timer) }
+  }, [runId, result])
+
+  const launch = async () => {
+    setError(null)
+    setResult(null)
+    setStatus(null)
+    try {
+      const created = await createHistoricalPortfolioBacktest({
+        start_date: startDate, end_date: endDate, capacity_fraction: capacity,
+        initial_capital: 100_000, allow_partial_fills: true,
+      })
+      setRunId(created.run_id)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Impossible de créer le calcul")
+    }
+  }
+
+  const materialize = async () => {
+    setError(null)
+    try {
+      setMaterialization(await createHistoricalOpportunityMaterialization({ start_date: startDate, end_date: endDate }))
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Impossible de lancer le pré-calcul PIT")
+    }
+  }
+
+  const selectedScenario = result?.equity_curves?.[String(capacity)]
+  const combined = selectedScenario?.combined
+  const stats = result?.statistics?.combined ?? combined?.statistics ?? {}
+  const audit = result?.snapshot_audit
+  const progress = typeof status?.progress?.progress_pct === "number" ? status.progress.progress_pct : null
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+        <p className="font-semibold">Backtest historique point-in-time — exécutions modélisées</p>
+        <p className="mt-1 text-xs">
+          Reconstitution hebdomadaire des opportunités avec les huit variantes WFO, informations arrêtées à chaque date,
+          entrée J+1, sortie J+ sélectionnée, demi-Kelly sans échantillon de départ synthétique, coûts, glissement et ADV20.
+          L&apos;ancien calcul fondé sur la sélection actuelle n&apos;est plus présenté comme un backtest historique.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <Button variant={view === "reconstructed" ? "default" : "outline"} onClick={() => setView("reconstructed")}>Reconstitution point-in-time</Button>
+        <Button variant={view === "audit" ? "default" : "outline"} onClick={() => setView("audit")}>Audit littéral DashboardSnapshot</Button>
+      </div>
+
+      <Card>
+        <CardHeader><CardTitle className="text-sm">Lancer un calcul persistant en arrière-plan</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-5">
+            <Label>Début<Input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></Label>
+            <Label>Fin<Input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} /></Label>
+            <Label>Capacité
+              <select className="mt-1 h-9 w-full rounded-md border bg-background px-2" value={capacity} onChange={(event) => setCapacity(Number(event.target.value) as 0.01 | 0.025 | 0.05 | 0.1)}>
+                <option value={0.01}>1% ADV20</option><option value={0.025}>2,5% ADV20</option>
+                <option value={0.05}>5% ADV20</option><option value={0.1}>10% ADV20</option>
+              </select>
+            </Label>
+            <div className="flex items-end"><Button variant="outline" className="w-full" disabled={!startDate || !endDate || materialization?.status === "running" || materialization?.status === "queued"} onClick={materialize}>{coverage?.available ? "Actualiser le PIT" : "Pré-calculer le PIT"}</Button></div>
+            <div className="flex items-end"><Button className="w-full" disabled={!coverage?.available || status?.status === "running" || status?.status === "queued"} onClick={launch}>Backtest rapide</Button></div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Store PIT: {coverage?.available ? "couverture disponible — le backtest réutilise les opportunités stockées" : "couverture absente pour cette période"}.
+            {materialization ? ` Pré-calcul ${materialization.status}${typeof materialization.progress.progress_pct === "number" ? ` (${materialization.progress.progress_pct}%)` : ""}.` : ""}
+          </p>
+          {status ? <p className="text-xs text-muted-foreground">Run {status.run_id} — {status.status}{progress != null ? ` (${progress}%)` : ""}. Un résultat partiel n&apos;est jamais affiché.</p> : null}
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        </CardContent>
+      </Card>
+
+      {view === "reconstructed" && result ? (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+            <StatCard label="Rendement absolu" value={pct(stats.absolute_return)} />
+            <StatCard label="CAGR" value={pct(stats.cagr)} />
+            <StatCard label="Volatilité" value={pct(stats.volatility)} />
+            <StatCard label="Sharpe" value={typeof stats.sharpe === "number" ? stats.sharpe.toFixed(2) : "Indisponible"} />
+            <StatCard label="Drawdown max." value={pct(stats.max_drawdown)} tone="neg" />
+            <StatCard label="Vs MASI investi" value={pct(stats.excess_return_vs_full_investment_masi)} />
+            <StatCard label="Vs MASI expo." value={pct(stats.excess_return_vs_exposure_matched_masi)} />
+            <StatCard label="Exposition moy." value={pct(stats.average_exposure)} />
+            <StatCard label="VaR 1j 95%" value={pct(stats.var_1d_95)} />
+            <StatCard label="ES 10j 95%" value={pct(stats.expected_shortfall_10d_95)} />
+            <StatCard label="Trades" value={String(stats.trade_count ?? 0)} />
+            <StatCard label="Coût" value={typeof stats.cost_impact_mad === "number" ? `${stats.cost_impact_mad.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} MAD` : "Indisponible"} />
+          </div>
+          <Card><CardContent className="pt-4 text-xs text-muted-foreground">
+            <p>Couverture: {String(result.provenance.coverage_start ?? "—")} → {String(result.provenance.coverage_end ?? "—")} · Décisions hebdomadaires · Sleeves hebdomadaire, mensuelle et trimestrielle séparées · Portefeuille combiné à allocation rolling equal-risk.</p>
+            <p className="mt-1">Benchmark: MASI pleinement investi et MASI à exposition historique égale. Capacité affichée: {(capacity * 100).toLocaleString("fr-FR")}% ADV20. Coûts: 33 pb/côté + glissement 5 pb/côté.</p>
+            <p className="mt-1">Risque: drawdown roulant 12 mois au 95e percentile d&apos;un bootstrap stationnaire; frontière de capacité choisie dans des folds externes imbriqués. Les métriques sans historique suffisant restent indisponibles.</p>
+          </CardContent></Card>
+          {result.warnings.map((warning, index) => <p key={index} className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">{warning}</p>)}
+        </div>
+      ) : null}
+
+      {view === "audit" ? (
+        <Card>
+          <CardHeader><CardTitle className="text-sm">Audit littéral des opportunités réellement stockées</CardTitle></CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            {!result ? <p>Lancez ou chargez un run terminé pour comparer les dates de snapshots qui existaient réellement.</p> : (
+              <>
+                <p className="font-medium">Fenêtre courte: {audit?.coverage_start ?? "indisponible"} → {audit?.coverage_end ?? "indisponible"}</p>
+                <p className="text-xs text-muted-foreground">Cet audit DashboardSnapshot n&apos;est pas statistiquement équivalent au backtest reconstruit de longue période. Aucune date sans snapshot n&apos;est inventée.</p>
+                <p>{audit?.snapshot_dates?.length ?? 0} date(s) de snapshot · {audit?.comparisons?.length ?? 0} comparaison(s) · {audit?.discrepancy_count ?? 0} écart(s).</p>
+                <p>Portefeuille littéral modélisé: {audit?.portfolio?.opportunity_count ?? 0} opportunité(s) · rendement {pct(audit?.portfolio?.combined?.statistics?.absolute_return)} · historique insuffisant affiché comme indisponible.</p>
+                {(audit?.comparisons ?? []).slice(0, 200).map((row: any, index: number) => (
+                  <div key={`${row.as_of_date}-${row.horizon}-${row.symbol}-${index}`} className="grid grid-cols-5 gap-2 border-t py-1 text-xs">
+                    <span>{row.as_of_date}</span><span>{row.horizon}</span><span>{row.symbol}</span>
+                    <span>{row.snapshot_variant ?? "absent"} → {row.reconstructed_variant ?? "absent"}</span>
+                    <span className={row.matches ? "text-emerald-600" : "text-amber-700"}>{row.matches ? "Concordant" : "Écart"}</span>
+                  </div>
+                ))}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+      <details className="text-xs text-muted-foreground"><summary>Ancien calcul de compatibilité (non point-in-time)</summary><div className="mt-2"><SnapshotAuditLegacyPanel horizon={horizon} /></div></details>
     </div>
   )
 }
