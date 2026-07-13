@@ -888,7 +888,6 @@ function EvidenceOosPeriodCard({ period }: { period: SignalEvidenceOosPeriod }) 
 function EvidenceOosPeriods({ data, selectedVariantId }: { data: SignalEvidence; selectedVariantId?: string | null }) {
   const periods = data.oos_periods ?? []
   const edge = data.edge
-  const pendingWfoRefresh = data.freshness?.status === "wfo_recalibration_pending"
   const stitched = data.stitched_oos_backtest
   const selectedContributor = selectedVariantId
     ? data.contributors.find((item) => item.variant_id === selectedVariantId)
@@ -973,6 +972,7 @@ function SignalEvidenceContent({
   onProofLimitChange: (value: ProofLimitKey) => void
 }) {
   const edge = data.edge
+  const pendingWfoRefresh = data.freshness?.status === "wfo_recalibration_pending"
 
   return (
     <div className="space-y-4">

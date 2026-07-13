@@ -43,6 +43,12 @@ class _FakeDB:
     def query(self, model):
         return _FakeQuery(self.rows_by_model.get(model, []))
 
+    def get(self, model, identity):
+        values = identity if isinstance(identity, tuple) else (identity,)
+        primary_keys = [column.key for column in model.__mapper__.primary_key]
+        filters = dict(zip(primary_keys, values, strict=True))
+        return self.query(model).filter_by(**filters).first()
+
     def commit(self):
         return None
 
