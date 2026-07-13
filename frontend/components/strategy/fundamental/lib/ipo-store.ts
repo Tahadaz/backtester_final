@@ -41,7 +41,7 @@ export type IpoProfile = {
 export const T2S_PROFILE_ID = "t2s"
 
 export type IpoSubscriptionSettings = {
-  version: 4
+  version: 5
   capitalMad: number
   tranche: IpoTrancheKind
   financingRate: number
@@ -55,13 +55,11 @@ export type IpoSubscriptionSettings = {
   scenarios: IpoJointScenario[]
 }
 
-// Settings written before the v4 rework (draft-on-focus number inputs fixing
-// the zero-trap bug, corrected scenario presets) had a different shape -
-// discard anything that isn't explicitly version 4 and fall back to fresh
-// defaults rather than trying to remap older shapes. This also purges any
-// persisted capitalMad=0 left behind by the pre-fix zero-commit bug.
+// Version 5 resets scenario returns to the J5/J10 historical calibration.
+// Older settings would silently preserve the disconnected pre-calibration
+// values, so they deliberately fall back to the fresh defaults.
 export function isCurrentSubscriptionSettings(value: unknown): value is IpoSubscriptionSettings {
-  return Boolean(value && typeof value === "object" && (value as { version?: unknown }).version === 4)
+  return Boolean(value && typeof value === "object" && (value as { version?: unknown }).version === 5)
 }
 
 export function builtinT2sProfile(): IpoProfile {

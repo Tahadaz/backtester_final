@@ -81,9 +81,9 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
-function buildDefaultSubscriptionSettings(basePop: number): IpoSubscriptionSettings {
+function buildDefaultSubscriptionSettings(): IpoSubscriptionSettings {
   return {
-    version: 4,
+    version: 5,
     capitalMad: 500_000,
     tranche: "retail",
     financingRate: 0.03,
@@ -91,11 +91,7 @@ function buildDefaultSubscriptionSettings(basePop: number): IpoSubscriptionSetti
     retailCoverageRate: 1.0,
     institCoverageRate: 0.0,
     exitDays: 5,
-    scenarios: IPO_JOINT_PRESETS.map((scenario) =>
-      scenario.key === "central"
-        ? { ...scenario, pops: scenario.pops.map((pop) => (pop.key === "base" ? { ...pop, pop: basePop } : { ...pop })) }
-        : { ...scenario, pops: scenario.pops.map((pop) => ({ ...pop })) },
-    ),
+    scenarios: IPO_JOINT_PRESETS.map((scenario) => ({ ...scenario, pops: scenario.pops.map((pop) => ({ ...pop })) })),
   }
 }
 
@@ -815,16 +811,13 @@ export function IpoValuationCard({
   onBack: () => void
 }) {
   const { meta } = profile
-  const initialBasePop = clamp(0.7 * ((IPO_T2S.methods[0].fairValue / IPO_T2S.meta.offerPrice - 1 + ((IPO_T2S.methods[1].fairValue + IPO_T2S.methods[2].fairValue) / 2 / IPO_T2S.meta.offerPrice - 1)) / 2), 0, 0.35)
-
   const [scenario, setScenario] = useState<IpoScenarioKey>("base")
   const [inputs, setInputs] = useState<IpoDcfInputs>(profile.inputs)
   const [historicalRevenue, setHistoricalRevenue] = useState<number[]>(() => meta.priorActualYears.map((p) => p.revenue))
   const [evEbeMultiple, setEvEbeMultiple] = useState<number>(DEFAULT_EV_EBE_MULTIPLE)
   const [peMultiple, setPeMultiple] = useState<number>(DEFAULT_PE_MULTIPLE)
   const [peers, setPeers] = useState<IpoPeer[]>(() => (profile.customPeers?.length ? clonePeers(profile.customPeers) : clonePeers(IPO_T2S.peers)))
-  const [subscriptionSettings, setSubscriptionSettings] = useState<IpoSubscriptionSettings>(() => profile.subscriptionSettings ?? buildDefaultSubscriptionSettings(initialBasePop))
-  const [autoBasePop, setAutoBasePop] = useState<number>(initialBasePop)
+  const [subscriptionSettings, setSubscriptionSettings] = useState<IpoSubscriptionSettings>(() => profile.subscriptionSettings ?? buildDefaultSubscriptionSettings())
   const [sensX, setSensX] = useState<SensitivityAxis>("wacc")
   const [sensY, setSensY] = useState<SensitivityAxis>("terminalGrowth")
   const [sensMetric, setSensMetric] = useState<"perShare" | "upside">("perShare")
@@ -836,11 +829,8 @@ export function IpoValuationCard({
     setHistoricalRevenue(meta.priorActualYears.map((p) => p.revenue))
     setScenario("base")
     setPeers(profile.customPeers?.length ? clonePeers(profile.customPeers) : clonePeers(IPO_T2S.peers))
-    const nextSettings = profile.subscriptionSettings ?? buildDefaultSubscriptionSettings(initialBasePop)
+    const nextSettings = profile.subscriptionSettings ?? buildDefaultSubscriptionSettings()
     setSubscriptionSettings(nextSettings)
-    const nextCentral = nextSettings.scenarios.find((row) => row.key === "central")
-    const nextBaseScenario = nextCentral?.pops.find((row) => row.key === "base")?.pop ?? initialBasePop
-    setAutoBasePop(nextBaseScenario)
     setEvEbeMultiple(IPO_T2S.peerStats.mean.evEbe2026e ?? DEFAULT_EV_EBE_MULTIPLE)
     setPeMultiple(IPO_T2S.peerStats.mean.pe2026e ?? DEFAULT_PE_MULTIPLE)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -869,34 +859,6 @@ export function IpoValuationCard({
     () => compsPeFairValue({ multiple: peMultiple, netIncome: netIncomeSeed, shares: inputs.shares }),
     [peMultiple, netIncomeSeed, inputs.shares],
   )
-  const compsUpsides = [evEbeResult.perShare, peResult.perShare]
-    .filter((value) => Number.isFinite(value) && meta.offerPrice > 0)
-    .map((value) => value / meta.offerPrice - 1)
-  const compsMeanUpside = compsUpsides.length ? compsUpsides.reduce((sum, value) => sum + value, 0) / compsUpsides.length : dcf.upsideVsOffer
-  const blendedCardUpside = ((Number.isFinite(dcf.upsideVsOffer) ? dcf.upsideVsOffer : 0) + (Number.isFinite(compsMeanUpside) ? compsMeanUpside : 0)) / 2
-  // Day-1 convergence toward fair value is only partial (Vicenne's +40% was
-  // the first WEEK, not day 1) - seed the central scenario's base pop at 70%
-  // of the blended card upside, clamped to a plausible day-1 band.
-  const dynamicBasePop = clamp(0.7 * blendedCardUpside, 0, 0.35)
-
-  useEffect(() => {
-    setSubscriptionSettings((current) => {
-      const centralIndex = current.scenarios.findIndex((row) => row.key === "central")
-      if (centralIndex < 0) return current
-      const centralScenario = current.scenarios[centralIndex]
-      const baseIndex = centralScenario.pops.findIndex((row) => row.key === "base")
-      if (baseIndex < 0) return current
-      const baseScenario = centralScenario.pops[baseIndex]
-      if (Math.abs(baseScenario.pop - autoBasePop) > 1e-9) return current // user touched it - stop auto-syncing
-      const nextPops = centralScenario.pops.slice()
-      nextPops[baseIndex] = { ...baseScenario, pop: dynamicBasePop }
-      const nextScenarios = current.scenarios.slice()
-      nextScenarios[centralIndex] = { ...centralScenario, pops: nextPops }
-      return { ...current, scenarios: nextScenarios }
-    })
-    setAutoBasePop(dynamicBasePop)
-  }, [autoBasePop, dynamicBasePop])
-
   // Debounced autosave: settings/peers edits are frequent (typing in number
   // inputs) - coalesce them instead of firing onSaveProfile on every keystroke.
   useEffect(() => {
@@ -930,8 +892,7 @@ export function IpoValuationCard({
     const resetPeers = clonePeers(IPO_T2S.peers)
     const resetPeerStats = recomputeIpoPeerStats(resetPeers)
     setPeers(resetPeers)
-    setSubscriptionSettings(profile.subscriptionSettings ?? buildDefaultSubscriptionSettings(dynamicBasePop))
-    setAutoBasePop(dynamicBasePop)
+    setSubscriptionSettings(profile.subscriptionSettings ?? buildDefaultSubscriptionSettings())
     setEvEbeMultiple(resetPeerStats.mean.evEbe2026e ?? DEFAULT_EV_EBE_MULTIPLE)
     setPeMultiple(resetPeerStats.mean.pe2026e ?? DEFAULT_PE_MULTIPLE)
   }

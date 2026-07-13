@@ -4,6 +4,8 @@
 import {
   combinedExpectedEconomics,
   expectedAllocation,
+  IPO_JOINT_PRESETS,
+  IPO_RETURN_CALIBRATION,
   normalizeJointScenarios,
   optimalSubscriptionAcrossScenarios,
   subscriptionEconomics,
@@ -308,6 +310,20 @@ console.log("7. Coverage-aware financing cost")
     approx(econNoCoverage.scenarios[0].annualizedReturn, expectedAnnualized, 1e-9),
     String(econNoCoverage.scenarios[0].annualizedReturn),
   )
+}
+
+console.log("8. Historical return calibration")
+{
+  const cold = IPO_JOINT_PRESETS.find((row) => row.key === "cold")!
+  const central = IPO_JOINT_PRESETS.find((row) => row.key === "central")!
+  const hot = IPO_JOINT_PRESETS.find((row) => row.key === "hot")!
+  const pop = (scenario: IpoJointScenario, key: string) => scenario.pops.find((row) => row.key === key)!.pop
+
+  ok("calibration horizon is J5", IPO_RETURN_CALIBRATION.horizon === "J5")
+  ok("cold bull equals CMGP J5", approx(pop(cold, "bull"), IPO_RETURN_CALIBRATION.coldAnchor))
+  ok("central base applies 50% haircut", approx(pop(central, "base"), IPO_RETURN_CALIBRATION.centralAnchor * 0.5))
+  ok("hot bull equals SGTM J5", approx(pop(hot, "bull"), IPO_RETURN_CALIBRATION.hotAnchor))
+  ok("bear uses worst observed path", approx(pop(hot, "bear"), IPO_RETURN_CALIBRATION.downside))
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

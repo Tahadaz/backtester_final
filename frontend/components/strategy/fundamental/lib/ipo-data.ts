@@ -65,7 +65,11 @@ export type IpoBaseRateRow = {
   year: number
   oversubscription: string
   satisfaction: string
-  earlyPerformance: string
+  j1Return: number | null
+  j5Return: number | null
+  j10Return: number | null
+  j1Reserved?: boolean
+  performanceNote?: string
   note?: string
   source: string
   estimated?: boolean // true when the row (or a figure within it, e.g. a derived satisfaction) is not a directly published number
@@ -160,7 +164,10 @@ export const IPO_T2S = {
       year: 2021,
       oversubscription: "n.d.",
       satisfaction: "n.d.",
-      earlyPerformance: "n.d.",
+      j1Return: null,
+      j5Return: null,
+      j10Return: null,
+      performanceNote: "Historique OHLC de l'app disponible seulement depuis 2023.",
       note: "+553% depuis l'IPO (long terme, presse 2025)",
       source: "FNH",
       estimated: true,
@@ -170,7 +177,10 @@ export const IPO_T2S = {
       year: 2022,
       oversubscription: "3,77x",
       satisfaction: "~26% (dérivé ≈1/3,77)",
-      earlyPerformance: "n.d.",
+      j1Return: 302 / 300 - 1,
+      j5Return: 300 / 300 - 1,
+      j10Return: 284 / 300 - 1,
+      performanceNote: "Cours de clôture OHLC de l'app vs prix d'offre de 300 MAD.",
       note: "8 225 souscripteurs; marché froid 2022; +340% depuis (long terme)",
       source: "Médias24 14/12/2022",
       estimated: false,
@@ -180,7 +190,10 @@ export const IPO_T2S = {
       year: 2024,
       oversubscription: "37x",
       satisfaction: "~2,7% (dérivé ≈1/37)",
-      earlyPerformance: "solide",
+      j1Return: 219.95 / 200 - 1,
+      j5Return: 277.4 / 200 - 1,
+      j10Return: 277.4 / 200 - 1,
+      performanceNote: "Cours de clôture OHLC de l'app vs prix d'offre de 200 MAD.",
       note: "33 700 souscripteurs",
       source: "presse (FNH)",
       estimated: true,
@@ -190,7 +203,11 @@ export const IPO_T2S = {
       year: 2025,
       oversubscription: "64x",
       satisfaction: "1,56% moy. / 2,29% retail",
-      earlyPerformance: "J1 réservé +10% (259,55 DH); +40% 1ère semaine",
+      j1Return: 259.55 / 236 - 1,
+      j5Return: 379.85 / 236 - 1,
+      j10Return: 485 / 236 - 1,
+      j1Reserved: true,
+      performanceNote: "J1 réservé à la hausse; observations OHLC post-offre vs 236 MAD.",
       note: "37 674 souscripteurs; comp directe medtech",
       source: "Médias24/Boursenews 07/2025",
       estimated: false,
@@ -200,7 +217,10 @@ export const IPO_T2S = {
       year: 2025,
       oversubscription: "64x",
       satisfaction: "~1,6% (dérivé)",
-      earlyPerformance: "début positif",
+      j1Return: 219.95 / 200 - 1,
+      j5Return: 321.9 / 200 - 1,
+      j10Return: 318 / 200 - 1,
+      performanceNote: "Observations OHLC post-offre de l'app vs 200 MAD.",
       note: "81 466 souscripteurs",
       source: "Morocco World News/african-markets 12/2025",
       estimated: true,
@@ -210,7 +230,11 @@ export const IPO_T2S = {
       year: 2025,
       oversubscription: "34x",
       satisfaction: "2,94% moy.",
-      earlyPerformance: "J1 réservé +10%",
+      j1Return: 461.95 / 420 - 1,
+      j5Return: 676.1 / 420 - 1,
+      j10Return: 760 / 420 - 1,
+      j1Reserved: true,
+      performanceNote: "J1 réservé à la hausse; observations OHLC post-offre vs 420 MAD.",
       note: "171 377 souscripteurs (168k particuliers); record",
       source: "Médias24/Le Desk 12/2025",
       estimated: false,

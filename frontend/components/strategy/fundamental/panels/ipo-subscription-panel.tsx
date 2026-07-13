@@ -294,7 +294,7 @@ export function IpoSubscriptionPanel({
 
           <div className="mt-4 rounded-md border border-line bg-card p-3.5">
             <div className="flex items-center gap-2"><TrendingUp className="h-4 w-4 shrink-0 text-primary" /><span className="text-sm font-semibold">Variation attendue du titre</span></div>
-            <p className="mt-1 text-[10px] text-muted-foreground">Scénarios estimés, éditables dans Hypothèses (avancé) — calibrés sur les IPO passées ci-dessous.</p>
+            <p className="mt-1 text-[10px] text-muted-foreground">Scénarios estimés, éditables dans Hypothèses (avancé) — ancrés sur J5 : Bear = pire trajectoire observée, Base = 50% de l&apos;ancre historique, Bull = ancre complète.</p>
             <p className="mt-2 text-sm">
               Pop espéré (pondéré) ≈ <span className={cn("font-mono font-semibold", mixturePop >= 0 ? "t-pos" : "t-neg")}>{fmtPct(mixturePop, 1)}</span>
               <span className="ml-2 text-[11px] font-normal text-muted-foreground">plage {fmtPct(popRange.min, 0)} … {fmtPct(popRange.max, 0)}</span>
@@ -367,8 +367,9 @@ export function IpoSubscriptionPanel({
                 <p className="mt-2 text-xs text-muted-foreground"><TrendingUp className="mr-1 inline h-3.5 w-3.5" />Rendement pondéré par l&apos;allocation ≠ pop affiché : c&apos;est l&apos;effet winner&apos;s curse.</p>
 
                 <div className="mt-4 grid gap-3 md:grid-cols-3">
-                  <StatTile label="Souscription recommandée" value={`${fmtMoney(primaryOptimizer.recommendedMad, 0)} MAD`} /><StatTile label="Actions demandées" value={fmtNumber(primaryOptimizer.recommendedShares, 0)} /><StatTile label="Satisfaction (esp.)" value={fmtPct(expectedAtRecommendation.expectedSatisfactionRate, 2, false)} />
+                  <StatTile label="Montant demandé (reco.)" value={`${fmtMoney(primaryOptimizer.recommendedMad, 0)} MAD`} /><StatTile label="Actions demandées" value={fmtNumber(primaryOptimizer.recommendedShares, 0)} /><StatTile label="Satisfaction (esp.)" value={fmtPct(expectedAtRecommendation.expectedSatisfactionRate, 2, false)} />
                 </div>
+                <p className="mt-2 text-[10px] text-muted-foreground">Le montant recommandé est la demande brute déposée, pas le montant finalement investi. Seules les actions allouées sont achetées ; le solde non servi est restitué après l&apos;allocation.</p>
 
                 <Accordion type="multiple" className="mt-4 space-y-2">
                   <AccordionItem value="assumptions" className="rounded-md border border-line px-3"><AccordionTrigger className="py-3 text-xs font-semibold no-underline hover:no-underline"><span className="flex items-center gap-2"><ShieldCheck className="h-3.5 w-3.5 text-primary" />Scénarios joints (ESTIMATIONS éditables — calibrées sur les IPO 2021-2025, aucun de ces chiffres n&apos;est connu d&apos;avance)</span></AccordionTrigger><AccordionContent className="pb-3">
@@ -433,7 +434,7 @@ function TrancheBlock({
         <span className={cn("text-xs font-semibold", decision.tone)}>{decision.label}</span>
       </div>
       <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
-        <StatTile label="Souscription reco." value={`${fmtMoney(optimizer.recommendedMad, 0)} MAD`} />
+        <StatTile label="Montant demandé" value={`${fmtMoney(optimizer.recommendedMad, 0)} MAD`} />
         <StatTile label="Actions demandées" value={fmtNumber(optimizer.recommendedShares, 0)} />
         <StatTile label="Actions allouées (esp.)" value={fmtNumber(optimizer.expectedAllocatedShares, 1)} />
         <StatTile label="Satisfaction (esp.)" value={fmtPct(optimizer.expectedSatisfactionRate, 2, false)} />
@@ -533,7 +534,9 @@ function BaseRateTable({ rows }: { rows: IpoBaseRateRow[] }) {
             <th className="r">Année</th>
             <th className="r">Oversub</th>
             <th className="r">Satisfaction</th>
-            <th className="r">Perf. début</th>
+            <th className="r">J1</th>
+            <th className="r">J5</th>
+            <th className="r">J10</th>
             <th>Source</th>
           </tr>
         </thead>
@@ -547,13 +550,19 @@ function BaseRateTable({ rows }: { rows: IpoBaseRateRow[] }) {
               <td className="r">{row.year}</td>
               <td className="r font-mono">{row.oversubscription}</td>
               <td className="r font-mono">{row.satisfaction}</td>
-              <td className="r">{row.earlyPerformance}</td>
+              <td className="r font-mono" title={row.performanceNote}>{formatIpoReturn(row.j1Return)}{row.j1Reserved ? "*" : ""}</td>
+              <td className="r font-mono" title={row.performanceNote}>{formatIpoReturn(row.j5Return)}</td>
+              <td className="r font-mono" title={row.performanceNote}>{formatIpoReturn(row.j10Return)}</td>
               <td className="text-[10px] text-muted-foreground">{row.source}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      <p className="mt-1.5 text-[10px] text-muted-foreground">n.d. = non disponible ; &laquo;&nbsp;dérivé&nbsp;&raquo; = calculé comme 1/sursouscription, pas un chiffre publié.</p>
+      <p className="mt-1.5 text-[10px] text-muted-foreground">J1/J5/J10 = performance cumulée vs prix d&apos;offre après 1, 5 et 10 séances dans l&apos;historique OHLC de l&apos;app ; * = cours réservé, pas nécessairement exécutable. n.d. = non disponible ; &laquo;&nbsp;dérivé&nbsp;&raquo; = calculé comme 1/sursouscription.</p>
     </div>
   )
+}
+
+function formatIpoReturn(value: number | null): string {
+  return value == null ? "n.d." : fmtPct(value, 1)
 }

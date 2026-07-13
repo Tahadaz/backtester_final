@@ -13,6 +13,8 @@
 // Both tranches share a regulatory cap of 10% of the offer per investor
 // (493 273 shares).
 
+import { IPO_T2S } from "./ipo-data"
+
 export type IpoTrancheKind = "retail" | "institutional"
 
 export type IpoAllocationParams = {
@@ -126,6 +128,34 @@ export type IpoOptimalSubscription = {
 
 export const DEFAULT_SUBSCRIPTION_CAP_SHARES = 493_273
 
+type HistoricalReturnField = "j5Return" | "j10Return"
+
+function historicalReturn(ipo: string, field: HistoricalReturnField, fallback: number): number {
+  const value = IPO_T2S.casablancaBaseRates.find((row) => row.ipo === ipo)?.[field]
+  return value == null || !Number.isFinite(value) ? fallback : value
+}
+
+// Use the same observations shown in the base-rate table. With the default
+// J5 exit, bear is the worst observed J10 path, base keeps only half of the
+// matching J5 anchor, and bull keeps the full J5 anchor. Probabilities remain
+// separate, editable assumptions.
+const HISTORICAL_DOWNSIDE = Math.min(
+  ...IPO_T2S.casablancaBaseRates.map((row) => row.j10Return).filter((value): value is number => value != null),
+)
+const COLD_J5_ANCHOR = historicalReturn("CMGP", "j5Return", 0.25)
+const CENTRAL_J5_ANCHOR =
+  (historicalReturn("Vicenne", "j5Return", 0.4) + historicalReturn("Cash Plus", "j5Return", 0.4)) / 2
+const HOT_J5_ANCHOR = historicalReturn("SGTM", "j5Return", 0.45)
+
+export const IPO_RETURN_CALIBRATION = {
+  horizon: "J5",
+  baseHaircut: 0.5,
+  downside: HISTORICAL_DOWNSIDE,
+  coldAnchor: COLD_J5_ANCHOR,
+  centralAnchor: CENTRAL_J5_ANCHOR,
+  hotAnchor: HOT_J5_ANCHOR,
+} as const
+
 // Default joint scenarios: Rock 1986 winner's curse logic (cold deals -> worse
 // pops), calibrated on Casablanca 2024-25 base rates. High turnout (SGTM:
 // 171 377 subscribers, the record) means a BIG pop but a tiny per-capita
@@ -143,9 +173,9 @@ export const IPO_JOINT_PRESETS: IpoJointScenario[] = [
     oversubRetail: 30,
     retailSubscribers: 35_000,
     pops: [
-      { key: "bear", label: "Bear", pop: -0.15, probability: 0.3 },
-      { key: "base", label: "Base", pop: 0.12, probability: 0.5 },
-      { key: "bull", label: "Bull", pop: 0.25, probability: 0.2 },
+      { key: "bear", label: "Bear", pop: HISTORICAL_DOWNSIDE, probability: 0.3 },
+      { key: "base", label: "Base", pop: COLD_J5_ANCHOR * 0.5, probability: 0.5 },
+      { key: "bull", label: "Bull", pop: COLD_J5_ANCHOR, probability: 0.2 },
     ],
   },
   {
@@ -156,9 +186,9 @@ export const IPO_JOINT_PRESETS: IpoJointScenario[] = [
     oversubRetail: 55,
     retailSubscribers: 60_000,
     pops: [
-      { key: "bear", label: "Bear", pop: -0.1, probability: 0.15 },
-      { key: "base", label: "Base", pop: 0.25, probability: 0.6 },
-      { key: "bull", label: "Bull", pop: 0.4, probability: 0.25 },
+      { key: "bear", label: "Bear", pop: HISTORICAL_DOWNSIDE, probability: 0.15 },
+      { key: "base", label: "Base", pop: CENTRAL_J5_ANCHOR * 0.5, probability: 0.6 },
+      { key: "bull", label: "Bull", pop: CENTRAL_J5_ANCHOR, probability: 0.25 },
     ],
   },
   {
@@ -169,9 +199,9 @@ export const IPO_JOINT_PRESETS: IpoJointScenario[] = [
     oversubRetail: 75,
     retailSubscribers: 150_000,
     pops: [
-      { key: "bear", label: "Bear", pop: -0.05, probability: 0.1 },
-      { key: "base", label: "Base", pop: 0.3, probability: 0.5 },
-      { key: "bull", label: "Bull", pop: 0.45, probability: 0.4 },
+      { key: "bear", label: "Bear", pop: HISTORICAL_DOWNSIDE, probability: 0.1 },
+      { key: "base", label: "Base", pop: HOT_J5_ANCHOR * 0.5, probability: 0.5 },
+      { key: "bull", label: "Bull", pop: HOT_J5_ANCHOR, probability: 0.4 },
     ],
   },
 ]
