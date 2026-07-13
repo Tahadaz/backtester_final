@@ -160,19 +160,6 @@ export const IPO_T2S = {
 
   casablancaBaseRates: [
     {
-      ipo: "TGCC",
-      year: 2021,
-      oversubscription: "n.d.",
-      satisfaction: "n.d.",
-      j1Return: null,
-      j5Return: null,
-      j10Return: null,
-      performanceNote: "Historique OHLC de l'app disponible seulement depuis 2023.",
-      note: "+553% depuis l'IPO (long terme, presse 2025)",
-      source: "FNH",
-      estimated: true,
-    },
-    {
       ipo: "Akdital",
       year: 2022,
       oversubscription: "3,77x",

@@ -537,7 +537,6 @@ function BaseRateTable({ rows }: { rows: IpoBaseRateRow[] }) {
             <th className="r">J1</th>
             <th className="r">J5</th>
             <th className="r">J10</th>
-            <th>Source</th>
           </tr>
         </thead>
         <tbody>
@@ -553,7 +552,6 @@ function BaseRateTable({ rows }: { rows: IpoBaseRateRow[] }) {
               <td className="r font-mono" title={row.performanceNote}>{formatIpoReturn(row.j1Return)}{row.j1Reserved ? "*" : ""}</td>
               <td className="r font-mono" title={row.performanceNote}>{formatIpoReturn(row.j5Return)}</td>
               <td className="r font-mono" title={row.performanceNote}>{formatIpoReturn(row.j10Return)}</td>
-              <td className="text-[10px] text-muted-foreground">{row.source}</td>
             </tr>
           ))}
         </tbody>
