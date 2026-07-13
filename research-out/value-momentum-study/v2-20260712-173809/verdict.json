@@ -1,0 +1,137 @@
+{
+  "overall_verdict": "NOT PROMOTED (value-only C0a stands)",
+  "promoted": false,
+  "gates": {
+    "a_sharpe_ge_incumbent": {
+      "pass": false,
+      "primary": 1.5889754799379343,
+      "incumbent": 1.6235485625722093
+    },
+    "b_drawdown_tolerance": {
+      "pass": false,
+      "primary": -0.16533179302041334,
+      "incumbent": -0.13901244602814533,
+      "tolerance": 0.02
+    },
+    "c_difference_pvalue": {
+      "pass": false,
+      "pvalue": 0.2818,
+      "threshold": 0.1
+    },
+    "d_sharpe_ge_masi": {
+      "pass": true,
+      "primary": 1.5889754799379343,
+      "masi": 1.3944068052022727
+    },
+    "e_split_half_consistency": {
+      "pass": false,
+      "half1": {
+        "months": 26,
+        "vm2_cum_return": 0.629783691835939,
+        "c0a_cum_return": 0.8134402355445809,
+        "pass": false
+      },
+      "half2": {
+        "months": 25,
+        "vm2_cum_return": 0.8346873692886092,
+        "c0a_cum_return": 0.7696164117546915,
+        "pass": true
+      }
+    },
+    "f_cost_robustness_75bps": {
+      "pass": false,
+      "vm2_cost75_sharpe": 1.5630615192300854,
+      "c0a_cost33_sharpe": 1.6235485625722093
+    },
+    "g_drop_the_winner": {
+      "pass": true,
+      "winner_symbol": "JET",
+      "winner_total_return": 10.005,
+      "ex_common_invested_window": [
+        "2022-03-31",
+        "2026-05-31"
+      ],
+      "vm2_ex_sharpe": 1.447972335081671,
+      "c0a_ex_sharpe": 1.3961371779211813,
+      "candidate_returns_all_ever_held": {
+        "ADH": 3.524137931034482,
+        "ADI": 5.407251132989529,
+        "ATW": 0.517391304347826,
+        "BCP": -0.101123595505618,
+        "CDM": 0.631899871630295,
+        "JET": 10.005
+      }
+    }
+  },
+  "acceptance_raw": {
+    "verdict": "C",
+    "criteria": {
+      "a_sharpe_ge_incumbent": {
+        "pass": false,
+        "primary": 1.5889754799379343,
+        "incumbent": 1.6235485625722093
+      },
+      "b_drawdown_tolerance": {
+        "pass": false,
+        "primary": -0.16533179302041334,
+        "incumbent": -0.13901244602814533,
+        "tolerance": 0.02
+      },
+      "c_difference_pvalue": {
+        "pass": false,
+        "pvalue": 0.2818,
+        "threshold": 0.1
+      },
+      "d_sharpe_ge_masi": {
+        "pass": true,
+        "primary": 1.5889754799379343,
+        "masi": 1.3944068052022727
+      }
+    },
+    "difference_test": {
+      "nobs": 51,
+      "mean_monthly_diff": -0.0015255288455166996,
+      "annualized_diff": -0.018306346146200393,
+      "observed_total_return_diff": -0.08149709556447238,
+      "pvalue": 0.2818,
+      "method": "stationary_block_bootstrap_on_monthly_net_return_difference",
+      "block_mean": 6,
+      "n_iter": 5000
+    }
+  },
+  "c0a_sanity_check": {
+    "pass": true,
+    "fields": {
+      "cumulative_return": {
+        "this_run_C0a": 2.2090936025559835,
+        "v1_C0a": 2.2090936025559835,
+        "pass": true
+      },
+      "sharpe": {
+        "this_run_C0a": 1.0449603912315126,
+        "v1_C0a": 1.0449603912315126,
+        "pass": true
+      },
+      "max_drawdown": {
+        "this_run_C0a": -0.13901244602814533,
+        "v1_C0a": -0.13901244602814533,
+        "pass": true
+      },
+      "periods": {
+        "this_run_C0a": 111,
+        "v1_C0a": 111,
+        "pass": true
+      },
+      "cagr": {
+        "this_run_C0a": 0.13434207596163295,
+        "v1_C0a": 0.13434207596163295,
+        "pass": true
+      }
+    },
+    "note": null,
+    "v1_metrics_path": "research-out\\value-momentum-study\\20260712-172056\\metrics.json"
+  },
+  "active_return_correlation_VM2_vs_C0a": 0.9643264536468427,
+  "momentum_real_coverage_mean": 0.7506535947712418,
+  "anomalies": []
+}

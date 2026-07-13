@@ -1,0 +1,98 @@
+{
+  "overall_verdict": "C",
+  "stage_a_gate": {
+    "pass": true,
+    "criteria": {
+      "i_m12_sharpe_ge_masi_sharpe": {
+        "pass": true,
+        "m12_sharpe": 1.4180675372883853,
+        "masi_sharpe": 1.3944068052022727
+      },
+      "ii_m12_information_ratio_gt_0": {
+        "pass": true,
+        "m12_information_ratio": 1.9508222408317628
+      }
+    }
+  },
+  "stage_b_acceptance": {
+    "verdict": "C",
+    "criteria": {
+      "a_sharpe_ge_incumbent": {
+        "pass": false,
+        "primary": 1.4774476874787237,
+        "incumbent": 1.6235485625722093
+      },
+      "b_drawdown_tolerance": {
+        "pass": false,
+        "primary": -0.15918753624178428,
+        "incumbent": -0.13901244602814533,
+        "tolerance": 0.02
+      },
+      "c_difference_pvalue": {
+        "pass": false,
+        "pvalue": 0.189,
+        "threshold": 0.1
+      },
+      "d_sharpe_ge_masi": {
+        "pass": true,
+        "primary": 1.4774476874787237,
+        "masi": 1.3944068052022727
+      }
+    },
+    "difference_test": {
+      "nobs": 51,
+      "mean_monthly_diff": -0.00553453463489803,
+      "annualized_diff": -0.06641441561877635,
+      "observed_total_return_diff": -0.26658719007358755,
+      "pvalue": 0.189,
+      "method": "stationary_block_bootstrap_on_monthly_net_return_difference",
+      "block_mean": 6,
+      "n_iter": 5000
+    }
+  },
+  "stage_b_status": "CONFIRMED (Stage A passed)",
+  "c0a_sanity_check": {
+    "pass": true,
+    "fields": {
+      "cumulative_return": {
+        "this_run_C0a": 2.2090936025559835,
+        "prior_study_C0a": 2.2090936025559835,
+        "pass": true
+      },
+      "sharpe": {
+        "this_run_C0a": 1.0449603912315126,
+        "prior_study_C0a": 1.0449603912315126,
+        "pass": true
+      },
+      "max_drawdown": {
+        "this_run_C0a": -0.13901244602814533,
+        "prior_study_C0a": -0.13901244602814533,
+        "pass": true
+      },
+      "periods": {
+        "this_run_C0a": 111,
+        "prior_study_C0a": 111,
+        "pass": true
+      },
+      "cagr": {
+        "this_run_C0a": 0.13434207596163295,
+        "prior_study_C0a": 0.13434207596163295,
+        "pass": true
+      }
+    },
+    "note": null,
+    "prior_study_metrics_path": "research-out\\combined-portfolio-strategy\\20260712-161305\\metrics.json"
+  },
+  "m12_c0a_monthly_return_correlation": 0.7655456279774345,
+  "breakeven_cost_bps_VM_int_capped_vs_C0a": -5517.165876519631,
+  "coverage_summary": {
+    "mean_n_eligible_bm": 24.144144144144143,
+    "mean_n_momentum_12_1_notna": 19.855855855855857,
+    "mean_pct_momentum_12_1_of_eligible_bm": 1.3216063819894466,
+    "n_formation_dates": 111
+  },
+  "anomalies": [
+    "Analytic breakeven cost for VM_int_capped vs C0a is negative (-5517.2 bps) -- VM_int_capped's mean GROSS return is already below C0a's (mean_gross_diff_monthly=-0.00550), so the underperformance is not a cost/turnover artifact; the breakeven figure is degenerate (no positive cost level makes VM_int_capped competitive on this metric).",
+    "mean_pct_momentum_12_1_of_eligible_bm > 1.0: momentum_12_1_raw notna is counted within eligible_universe (the broader momentum-cell universe), which is larger than eligible_bm (requires book_to_market_raw notna too) on many dates -- not a data bug, just two different eligibility denominators."
+  ]
+}
