@@ -17,6 +17,7 @@ jobs:
           host: ${{ secrets.ORACLE_HOST }}
           username: deploy
           key: ${{ secrets.ORACLE_SSH_KEY }}
+          command_timeout: 30m
           script: |
             set -euo pipefail
             cd /opt/bt
@@ -53,7 +54,7 @@ jobs:
             # Dashboard snapshot mode serves persisted rows. Rebuild them with
             # the freshly deployed image so payload-shape changes do not leave
             # the dashboard returning 503 until the nightly refresh runs.
-            IMAGE_TAG=${{ github.event.workflow_run.head_sha }} \
+            IMAGE_TAG=${{ github.event.workflow_run.head_sha }} timeout --signal=TERM --kill-after=30s 20m \
               docker compose --env-file /etc/bt/env \
               -f infra/docker-compose.prod.yml \
               run --rm --no-deps quant_worker \
