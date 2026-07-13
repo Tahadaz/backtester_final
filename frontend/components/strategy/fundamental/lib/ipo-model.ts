@@ -13,7 +13,7 @@
 //   FCFF_t = Revenue_t * (ebeMargin_t - taxPctRev_t - bfrPctRev_t - capexPctRev_t)
 // Discounting uses the mid-year convention (period = index + 0.5), as the note does.
 
-import { IPO_T2S } from "./ipo-data"
+import { IPO_T2S, type IpoPeer, type IpoPeerStats } from "./ipo-data"
 
 export type IpoScenarioKey = "bear" | "base" | "bull"
 
@@ -145,6 +145,36 @@ export function compsPeFairValue(args: { multiple: number; netIncome: number; sh
 } {
   const equityValue = args.multiple * args.netIncome
   return { equityValue, perShare: args.shares > 0 ? equityValue / args.shares : NaN }
+}
+
+function averageNullable(values: Array<number | null>): number | null {
+  const finite = values.filter((value): value is number => Number.isFinite(value))
+  if (!finite.length) return null
+  return finite.reduce((sum, value) => sum + value, 0) / finite.length
+}
+
+function medianNullable(values: Array<number | null>): number | null {
+  const finite = values.filter((value): value is number => Number.isFinite(value)).sort((a, b) => a - b)
+  if (!finite.length) return null
+  const mid = Math.floor(finite.length / 2)
+  return finite.length % 2 === 0 ? (finite[mid - 1] + finite[mid]) / 2 : finite[mid]
+}
+
+export function recomputeIpoPeerStats(peers: IpoPeer[]): IpoPeerStats {
+  return {
+    mean: {
+      evEbe2026e: averageNullable(peers.map((peer) => peer.evEbe2026e)),
+      evEbe2027p: averageNullable(peers.map((peer) => peer.evEbe2027p)),
+      pe2026e: averageNullable(peers.map((peer) => peer.pe2026e)),
+      pe2027p: averageNullable(peers.map((peer) => peer.pe2027p)),
+    },
+    median: {
+      evEbe2026e: medianNullable(peers.map((peer) => peer.evEbe2026e)),
+      evEbe2027p: medianNullable(peers.map((peer) => peer.evEbe2027p)),
+      pe2026e: medianNullable(peers.map((peer) => peer.pe2026e)),
+      pe2027p: medianNullable(peers.map((peer) => peer.pe2027p)),
+    },
+  }
 }
 
 // ---- Sensitivity ----

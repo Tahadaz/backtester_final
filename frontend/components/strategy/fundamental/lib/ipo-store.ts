@@ -6,8 +6,9 @@
 // this mirrors the existing valuation-exclusions localStorage pattern in
 // view-models.ts: SSR-safe, fail-soft on parse errors, never throws.
 
-import { IPO_T2S } from "./ipo-data"
+import { IPO_T2S, type IpoPeer } from "./ipo-data"
 import { buildBaseInputs, type IpoDcfInputs } from "./ipo-model"
+import type { IpoJointScenario, IpoTrancheKind } from "./ipo-subscription"
 
 export type IpoProfileMeta = {
   id: string
@@ -33,11 +34,38 @@ export type IpoProfileMeta = {
 export type IpoProfile = {
   meta: IpoProfileMeta
   inputs: IpoDcfInputs
+  subscriptionSettings?: IpoSubscriptionSettings
+  customPeers?: IpoPeer[]
 }
 
 export const T2S_PROFILE_ID = "t2s"
 
+export type IpoSubscriptionSettings = {
+  version: 4
+  capitalMad: number
+  tranche: IpoTrancheKind
+  financingRate: number
+  blockedDays: number
+  // Coverage rate per tranche (prospectus p.15-16, p.53): retail must cover
+  // 100% of the requested amount at subscription; qualified institutional
+  // investors post none. Trading days after listing needed to exit the pop.
+  retailCoverageRate: number
+  institCoverageRate: number
+  exitDays: number
+  scenarios: IpoJointScenario[]
+}
+
+// Settings written before the v4 rework (draft-on-focus number inputs fixing
+// the zero-trap bug, corrected scenario presets) had a different shape -
+// discard anything that isn't explicitly version 4 and fall back to fresh
+// defaults rather than trying to remap older shapes. This also purges any
+// persisted capitalMad=0 left behind by the pre-fix zero-commit bug.
+export function isCurrentSubscriptionSettings(value: unknown): value is IpoSubscriptionSettings {
+  return Boolean(value && typeof value === "object" && (value as { version?: unknown }).version === 4)
+}
+
 export function builtinT2sProfile(): IpoProfile {
+  const stored = readStore().find((item) => item.meta?.id === T2S_PROFILE_ID)
   return {
     meta: {
       id: T2S_PROFILE_ID,
@@ -59,6 +87,8 @@ export function builtinT2sProfile(): IpoProfile {
       createdAt: "2026-07-06",
     },
     inputs: buildBaseInputs(),
+    subscriptionSettings: isCurrentSubscriptionSettings(stored?.subscriptionSettings) ? stored.subscriptionSettings : undefined,
+    customPeers: stored?.customPeers,
   }
 }
 
@@ -69,7 +99,9 @@ function readStore(): IpoProfile[] {
   try {
     const parsed = JSON.parse(window.localStorage.getItem(CUSTOM_IPO_STORAGE_KEY) ?? "[]")
     if (!Array.isArray(parsed)) return []
-    return parsed.filter((item): item is IpoProfile => Boolean(item && typeof item === "object" && item.meta && item.inputs))
+    return parsed
+      .filter((item): item is IpoProfile => Boolean(item && typeof item === "object" && item.meta && item.inputs))
+      .map((item) => (isCurrentSubscriptionSettings(item.subscriptionSettings) ? item : { ...item, subscriptionSettings: undefined }))
   } catch {
     return []
   }
@@ -85,7 +117,7 @@ function writeStore(profiles: IpoProfile[]) {
 }
 
 export function listCustomIpoProfiles(): IpoProfile[] {
-  return readStore()
+  return readStore().filter((item) => item.meta?.id !== T2S_PROFILE_ID)
 }
 
 export function saveCustomIpoProfile(profile: IpoProfile) {
@@ -106,7 +138,7 @@ export function getIpoProfile(id: string): IpoProfile | null {
 }
 
 export function listAllIpoProfiles(): IpoProfile[] {
-  return [builtinT2sProfile(), ...readStore()]
+  return [builtinT2sProfile(), ...listCustomIpoProfiles()]
 }
 
 export function newCustomIpoId(): string {

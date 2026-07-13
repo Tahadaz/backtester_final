@@ -5,19 +5,22 @@ import type { CSSProperties, ReactNode } from "react"
 import { cn } from "@/lib/utils"
 import { fmtMoney, fmtNumber, fmtPct, fmtRatio } from "../lib/formatters"
 import { FundCard, StatTile } from "../shared/cards"
-import { IPO_T2S } from "../lib/ipo-data"
-import type { IpoProfile, IpoProfileMeta } from "../lib/ipo-store"
+import { IPO_T2S, type IpoPeer } from "../lib/ipo-data"
+import type { IpoProfile, IpoProfileMeta, IpoSubscriptionSettings } from "../lib/ipo-store"
 import {
   buildScenarioInputs,
   compsEvEbeFairValue,
   compsPeFairValue,
   computeDcf,
+  recomputeIpoPeerStats,
   sensitivityGrid,
   type IpoDcfInputs,
   type IpoDcfResult,
   type IpoScenarioKey,
   type SensitivityAxis,
 } from "../lib/ipo-model"
+import { IPO_JOINT_PRESETS } from "../lib/ipo-subscription"
+import { IpoSubscriptionPanel } from "./ipo-subscription-panel"
 
 // ---------------------------------------------------------------------------
 // Pure helpers: immutable updates + percent<->decimal parsing for inputs.
@@ -47,8 +50,53 @@ function parseNumberInput(raw: string): number {
   return Number.isFinite(n) ? n : 0
 }
 
+function parseNullableNumberInput(raw: string): number | null {
+  if (raw.trim() === "") return null
+  const n = Number(raw)
+  return Number.isFinite(n) ? n : null
+}
+
 function pctDisplay(value: number, digits = 2): number {
   return Number.isFinite(value) ? Number((value * 100).toFixed(digits)) : 0
+}
+
+function clonePeers(rows: readonly IpoPeer[]): IpoPeer[] {
+  return rows.map((row) => ({ ...row }))
+}
+
+function createBlankPeer(): IpoPeer {
+  return {
+    name: "Nouveau peer",
+    country: "",
+    marketCapMusd: 0,
+    evEbe2026e: null,
+    evEbe2027p: null,
+    pe2026e: null,
+    pe2027p: null,
+    category: "custom",
+  }
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value))
+}
+
+function buildDefaultSubscriptionSettings(basePop: number): IpoSubscriptionSettings {
+  return {
+    version: 4,
+    capitalMad: 500_000,
+    tranche: "retail",
+    financingRate: 0.03,
+    blockedDays: IPO_T2S.meta.defaultBlockedDays,
+    retailCoverageRate: 1.0,
+    institCoverageRate: 0.0,
+    exitDays: 5,
+    scenarios: IPO_JOINT_PRESETS.map((scenario) =>
+      scenario.key === "central"
+        ? { ...scenario, pops: scenario.pops.map((pop) => (pop.key === "base" ? { ...pop, pop: basePop } : { ...pop })) }
+        : { ...scenario, pops: scenario.pops.map((pop) => ({ ...pop })) },
+    ),
+  }
 }
 
 const SCENARIO_LABELS: Record<IpoScenarioKey, string> = {
@@ -66,8 +114,8 @@ const AXIS_LABELS: Record<SensitivityAxis, string> = {
 
 const AXIS_OPTIONS: SensitivityAxis[] = ["wacc", "terminalGrowth", "terminalEbeMargin", "revenueGrowthShift"]
 
-const DEFAULT_EV_EBE_MULTIPLE = IPO_T2S.peerStats.mean.evEbe2026e
-const DEFAULT_PE_MULTIPLE = IPO_T2S.peerStats.mean.pe2026e
+const DEFAULT_EV_EBE_MULTIPLE = IPO_T2S.peerStats.mean.evEbe2026e ?? 0
+const DEFAULT_PE_MULTIPLE = IPO_T2S.peerStats.mean.pe2026e ?? 0
 
 function axisBaseValue(inputs: IpoDcfInputs, axis: SensitivityAxis): number {
   if (axis === "revenueGrowthShift") return 0
@@ -176,6 +224,62 @@ function NumberField({
         setFocused(false)
         setDraft(display)
       }}
+    />
+  )
+}
+
+function NullableNumberField({
+  value,
+  onChange,
+  step = 1,
+  className,
+}: {
+  value: number | null
+  onChange: (v: number | null) => void
+  step?: number
+  className?: string
+}) {
+  const display = value == null ? "" : String(value)
+  const [draft, setDraft] = useState(display)
+  const [focused, setFocused] = useState(false)
+
+  useEffect(() => {
+    if (!focused) setDraft(display)
+  }, [display, focused])
+
+  return (
+    <input
+      type="number"
+      step={step}
+      className={cn(
+        "h-8 w-full rounded-md border border-line bg-card px-2 text-right text-[11px] font-mono outline-none focus-visible:ring-1 focus-visible:ring-ring",
+        className,
+      )}
+      value={focused ? draft : display}
+      onFocus={() => {
+        setFocused(true)
+        setDraft(display)
+      }}
+      onChange={(event) => {
+        const next = event.target.value
+        setDraft(next)
+        onChange(parseNullableNumberInput(next))
+      }}
+      onBlur={() => {
+        setFocused(false)
+        setDraft(display)
+      }}
+    />
+  )
+}
+
+function TextField({ value, onChange, className }: { value: string; onChange: (v: string) => void; className?: string }) {
+  return (
+    <input
+      type="text"
+      className={cn("h-8 w-full rounded-md border border-line bg-card px-2 text-[11px] outline-none focus-visible:ring-1 focus-visible:ring-ring", className)}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
     />
   )
 }
@@ -579,8 +683,17 @@ function LiveTriangulationTable({ offerPrice, rows }: { offerPrice: number; rows
 // Reference tables (unchanged, editorial data)
 // ---------------------------------------------------------------------------
 
-function PeerTable() {
-  const { peers, peerStats } = IPO_T2S
+function PeerTable({
+  peers,
+  peerStats,
+  onChangePeer,
+  onRemovePeer,
+}: {
+  peers: IpoPeer[]
+  peerStats: ReturnType<typeof recomputeIpoPeerStats>
+  onChangePeer: (index: number, patch: Partial<IpoPeer>) => void
+  onRemovePeer: (index: number) => void
+}) {
   return (
     <div className="overflow-x-auto">
       <table className="claude-table">
@@ -593,21 +706,29 @@ function PeerTable() {
             <th className="r">EV/EBE 27p</th>
             <th className="r">P/E 26e</th>
             <th className="r">P/E 27p</th>
+            <th>Note</th>
+            <th />
           </tr>
         </thead>
         <tbody>
-          {peers.map((peer) => (
-            <tr key={peer.name}>
+          {peers.map((peer, index) => (
+            <tr key={`${peer.name}-${index}`}>
               <td className={cn(peer.isLocal && "font-bold")}>
-                {peer.name}
+                <TextField value={peer.name} onChange={(value) => onChangePeer(index, { name: value })} />
                 {peer.isLocal ? <span className="ml-1.5 rounded bg-primary/10 px-1 py-0.5 text-[9px] font-semibold text-primary">local</span> : null}
               </td>
-              <td>{peer.country}</td>
-              <td className="r font-mono">{fmtNumber(peer.marketCapMusd, 0)}</td>
-              <td className="r font-mono">{fmtRatio(peer.evEbe2026e, 1)}</td>
-              <td className="r font-mono">{fmtRatio(peer.evEbe2027p, 1)}</td>
-              <td className="r font-mono">{fmtRatio(peer.pe2026e, 1)}</td>
-              <td className="r font-mono">{fmtRatio(peer.pe2027p, 1)}</td>
+              <td><TextField value={peer.country} onChange={(value) => onChangePeer(index, { country: value })} /></td>
+              <td className="r"><NumberField value={peer.marketCapMusd} onChange={(value) => onChangePeer(index, { marketCapMusd: value })} step={1} /></td>
+              <td className="r"><NullableNumberField value={peer.evEbe2026e} onChange={(value) => onChangePeer(index, { evEbe2026e: value })} step={0.1} /></td>
+              <td className="r"><NullableNumberField value={peer.evEbe2027p} onChange={(value) => onChangePeer(index, { evEbe2027p: value })} step={0.1} /></td>
+              <td className="r"><NullableNumberField value={peer.pe2026e} onChange={(value) => onChangePeer(index, { pe2026e: value })} step={0.1} /></td>
+              <td className="r"><NullableNumberField value={peer.pe2027p} onChange={(value) => onChangePeer(index, { pe2027p: value })} step={0.1} /></td>
+              <td><TextField value={peer.note ?? ""} onChange={(value) => onChangePeer(index, { note: value })} /></td>
+              <td className="r">
+                <button type="button" className="text-[10px] text-red-600 hover:underline dark:text-red-400" onClick={() => onRemovePeer(index)}>
+                  Suppr.
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -619,6 +740,7 @@ function PeerTable() {
             <td className="r font-mono">{fmtRatio(peerStats.mean.evEbe2027p, 1)}</td>
             <td className="r font-mono">{fmtRatio(peerStats.mean.pe2026e, 1)}</td>
             <td className="r font-mono">{fmtRatio(peerStats.mean.pe2027p, 1)}</td>
+            <td colSpan={2} />
           </tr>
           <tr>
             <td colSpan={2} className="font-semibold">Mediane</td>
@@ -627,6 +749,7 @@ function PeerTable() {
             <td className="r font-mono">{fmtRatio(peerStats.median.evEbe2027p, 1)}</td>
             <td className="r font-mono">{fmtRatio(peerStats.median.pe2026e, 1)}</td>
             <td className="r font-mono">{fmtRatio(peerStats.median.pe2027p, 1)}</td>
+            <td colSpan={2} />
           </tr>
         </tfoot>
       </table>
@@ -692,12 +815,16 @@ export function IpoValuationCard({
   onBack: () => void
 }) {
   const { meta } = profile
+  const initialBasePop = clamp(0.7 * ((IPO_T2S.methods[0].fairValue / IPO_T2S.meta.offerPrice - 1 + ((IPO_T2S.methods[1].fairValue + IPO_T2S.methods[2].fairValue) / 2 / IPO_T2S.meta.offerPrice - 1)) / 2), 0, 0.35)
 
   const [scenario, setScenario] = useState<IpoScenarioKey>("base")
   const [inputs, setInputs] = useState<IpoDcfInputs>(profile.inputs)
   const [historicalRevenue, setHistoricalRevenue] = useState<number[]>(() => meta.priorActualYears.map((p) => p.revenue))
   const [evEbeMultiple, setEvEbeMultiple] = useState<number>(DEFAULT_EV_EBE_MULTIPLE)
   const [peMultiple, setPeMultiple] = useState<number>(DEFAULT_PE_MULTIPLE)
+  const [peers, setPeers] = useState<IpoPeer[]>(() => (profile.customPeers?.length ? clonePeers(profile.customPeers) : clonePeers(IPO_T2S.peers)))
+  const [subscriptionSettings, setSubscriptionSettings] = useState<IpoSubscriptionSettings>(() => profile.subscriptionSettings ?? buildDefaultSubscriptionSettings(initialBasePop))
+  const [autoBasePop, setAutoBasePop] = useState<number>(initialBasePop)
   const [sensX, setSensX] = useState<SensitivityAxis>("wacc")
   const [sensY, setSensY] = useState<SensitivityAxis>("terminalGrowth")
   const [sensMetric, setSensMetric] = useState<"perShare" | "upside">("perShare")
@@ -708,13 +835,20 @@ export function IpoValuationCard({
     setInputs(profile.inputs)
     setHistoricalRevenue(meta.priorActualYears.map((p) => p.revenue))
     setScenario("base")
-    setEvEbeMultiple(DEFAULT_EV_EBE_MULTIPLE)
-    setPeMultiple(DEFAULT_PE_MULTIPLE)
+    setPeers(profile.customPeers?.length ? clonePeers(profile.customPeers) : clonePeers(IPO_T2S.peers))
+    const nextSettings = profile.subscriptionSettings ?? buildDefaultSubscriptionSettings(initialBasePop)
+    setSubscriptionSettings(nextSettings)
+    const nextCentral = nextSettings.scenarios.find((row) => row.key === "central")
+    const nextBaseScenario = nextCentral?.pops.find((row) => row.key === "base")?.pop ?? initialBasePop
+    setAutoBasePop(nextBaseScenario)
+    setEvEbeMultiple(IPO_T2S.peerStats.mean.evEbe2026e ?? DEFAULT_EV_EBE_MULTIPLE)
+    setPeMultiple(IPO_T2S.peerStats.mean.pe2026e ?? DEFAULT_PE_MULTIPLE)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile.meta.id])
 
   const dcf = useMemo(() => computeDcf(inputs), [inputs])
   const baseDcf = useMemo(() => computeDcf(profile.inputs), [profile.inputs])
+  const peerStats = useMemo(() => recomputeIpoPeerStats(peers), [peers])
 
   const lastExplicitRow = dcf.rows[dcf.rows.length - 1]
   const ebeSeed = meta.hasProspectusContext ? 434 : lastExplicitRow?.ebe ?? 0
@@ -735,6 +869,43 @@ export function IpoValuationCard({
     () => compsPeFairValue({ multiple: peMultiple, netIncome: netIncomeSeed, shares: inputs.shares }),
     [peMultiple, netIncomeSeed, inputs.shares],
   )
+  const compsUpsides = [evEbeResult.perShare, peResult.perShare]
+    .filter((value) => Number.isFinite(value) && meta.offerPrice > 0)
+    .map((value) => value / meta.offerPrice - 1)
+  const compsMeanUpside = compsUpsides.length ? compsUpsides.reduce((sum, value) => sum + value, 0) / compsUpsides.length : dcf.upsideVsOffer
+  const blendedCardUpside = ((Number.isFinite(dcf.upsideVsOffer) ? dcf.upsideVsOffer : 0) + (Number.isFinite(compsMeanUpside) ? compsMeanUpside : 0)) / 2
+  // Day-1 convergence toward fair value is only partial (Vicenne's +40% was
+  // the first WEEK, not day 1) - seed the central scenario's base pop at 70%
+  // of the blended card upside, clamped to a plausible day-1 band.
+  const dynamicBasePop = clamp(0.7 * blendedCardUpside, 0, 0.35)
+
+  useEffect(() => {
+    setSubscriptionSettings((current) => {
+      const centralIndex = current.scenarios.findIndex((row) => row.key === "central")
+      if (centralIndex < 0) return current
+      const centralScenario = current.scenarios[centralIndex]
+      const baseIndex = centralScenario.pops.findIndex((row) => row.key === "base")
+      if (baseIndex < 0) return current
+      const baseScenario = centralScenario.pops[baseIndex]
+      if (Math.abs(baseScenario.pop - autoBasePop) > 1e-9) return current // user touched it - stop auto-syncing
+      const nextPops = centralScenario.pops.slice()
+      nextPops[baseIndex] = { ...baseScenario, pop: dynamicBasePop }
+      const nextScenarios = current.scenarios.slice()
+      nextScenarios[centralIndex] = { ...centralScenario, pops: nextPops }
+      return { ...current, scenarios: nextScenarios }
+    })
+    setAutoBasePop(dynamicBasePop)
+  }, [autoBasePop, dynamicBasePop])
+
+  // Debounced autosave: settings/peers edits are frequent (typing in number
+  // inputs) - coalesce them instead of firing onSaveProfile on every keystroke.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      onSaveProfile({ ...profile, subscriptionSettings, customPeers: peers })
+    }, 600)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onSaveProfile, profile.meta.id, subscriptionSettings, peers])
 
   const xs = useMemo(() => axisRange(inputs, sensX), [inputs, sensX])
   const ys = useMemo(() => axisRange(inputs, sensY), [inputs, sensY])
@@ -756,8 +927,13 @@ export function IpoValuationCard({
     setScenario("base")
     setInputs(profile.inputs)
     setHistoricalRevenue(meta.priorActualYears.map((p) => p.revenue))
-    setEvEbeMultiple(DEFAULT_EV_EBE_MULTIPLE)
-    setPeMultiple(DEFAULT_PE_MULTIPLE)
+    const resetPeers = clonePeers(IPO_T2S.peers)
+    const resetPeerStats = recomputeIpoPeerStats(resetPeers)
+    setPeers(resetPeers)
+    setSubscriptionSettings(profile.subscriptionSettings ?? buildDefaultSubscriptionSettings(dynamicBasePop))
+    setAutoBasePop(dynamicBasePop)
+    setEvEbeMultiple(resetPeerStats.mean.evEbe2026e ?? DEFAULT_EV_EBE_MULTIPLE)
+    setPeMultiple(resetPeerStats.mean.pe2026e ?? DEFAULT_PE_MULTIPLE)
   }
 
   function handleResetArrayField(field: ArrayField) {
@@ -778,7 +954,7 @@ export function IpoValuationCard({
   }
 
   function handleSave() {
-    onSaveProfile({ ...profile, inputs })
+    onSaveProfile({ ...profile, inputs, subscriptionSettings, customPeers: peers })
   }
 
   function handleDelete() {
@@ -792,6 +968,24 @@ export function IpoValuationCard({
 
   function handleScalarChange<K extends keyof IpoDcfInputs>(field: K, value: IpoDcfInputs[K]) {
     setInputs((cur) => withScalar(cur, field, value))
+  }
+
+  function handlePeerChange(index: number, patch: Partial<IpoPeer>) {
+    setPeers((current) => current.map((peer, currentIndex) => (currentIndex === index ? { ...peer, ...patch } : peer)))
+  }
+
+  function handleAddPeer() {
+    setPeers((current) => [...current, createBlankPeer()])
+  }
+
+  function handleAddLocalAnchorPeer() {
+    const anchor = IPO_T2S.localAnchorPeers[0]
+    if (!anchor) return
+    setPeers((current) => (current.some((peer) => peer.name === anchor.name) ? current : [...current, { ...anchor }]))
+  }
+
+  function handleRemovePeer(index: number) {
+    setPeers((current) => current.filter((_, currentIndex) => currentIndex !== index))
   }
 
   const deltaVsBase = dcf.fairValuePerShare - baseDcf.fairValuePerShare
@@ -1012,7 +1206,7 @@ export function IpoValuationCard({
               <button
                 type="button"
                 className="text-[10px] text-primary hover:underline"
-                onClick={() => setEvEbeMultiple(IPO_T2S.peerStats.mean.evEbe2026e)}
+                onClick={() => setEvEbeMultiple(peerStats.mean.evEbe2026e ?? DEFAULT_EV_EBE_MULTIPLE)}
               >
                 Utiliser la moyenne
               </button>
@@ -1033,7 +1227,7 @@ export function IpoValuationCard({
               <button
                 type="button"
                 className="text-[10px] text-primary hover:underline"
-                onClick={() => setPeMultiple(IPO_T2S.peerStats.mean.pe2026e)}
+                onClick={() => setPeMultiple(peerStats.mean.pe2026e ?? DEFAULT_PE_MULTIPLE)}
               >
                 Utiliser la moyenne
               </button>
@@ -1055,12 +1249,46 @@ export function IpoValuationCard({
           </div>
         </div>
         <div className="mt-3">
-          <div className="valuation-mini-title mb-1">Echantillon de comparables (Capital IQ, 25/06/2026)</div>
-          <PeerTable />
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <div className="valuation-mini-title">Echantillon de comparables (editable)</div>
+            <button type="button" className="rounded-md border border-line px-2 py-1 text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground" onClick={handleAddPeer}>
+              Ajouter une ligne
+            </button>
+            <button type="button" className="rounded-md border border-line px-2 py-1 text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground" onClick={handleAddLocalAnchorPeer}>
+              Ajouter Akdital
+            </button>
+            <button
+              type="button"
+              className="rounded-md border border-line px-2 py-1 text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground"
+              onClick={() => {
+                const resetPeers = clonePeers(IPO_T2S.peers)
+                const resetPeerStats = recomputeIpoPeerStats(resetPeers)
+                setPeers(resetPeers)
+                setEvEbeMultiple(resetPeerStats.mean.evEbe2026e ?? DEFAULT_EV_EBE_MULTIPLE)
+                setPeMultiple(resetPeerStats.mean.pe2026e ?? DEFAULT_PE_MULTIPLE)
+              }}
+            >
+              Reset prospectus
+            </button>
+          </div>
+          <PeerTable peers={peers} peerStats={peerStats} onChangePeer={handlePeerChange} onRemovePeer={handleRemovePeer} />
         </div>
       </FundCard>
 
-      {/* 6. Sensitivity */}
+      {/* 6. Subscription sizing */}
+      <IpoSubscriptionPanel
+        settings={subscriptionSettings}
+        offerPrice={meta.offerPrice}
+        retailTrancheShares={IPO_T2S.meta.trancheRetailShares}
+        institutionalTrancheShares={IPO_T2S.meta.trancheInstitutionalShares}
+        institutionalMinShares={IPO_T2S.meta.trancheInstitutionalMinShares}
+        retailBlockSize={IPO_T2S.meta.retailBlockSize}
+        subscriptionCapShares={IPO_T2S.meta.subscriptionCapShares}
+        baseRateRows={IPO_T2S.casablancaBaseRates}
+        onChange={setSubscriptionSettings}
+      />
+
+      {/* 7. Sensitivity */}
       <FundCard title="Sensibilite (live)">
         <div className="flex flex-wrap items-end gap-3">
           <Field label="Axe X">
@@ -1132,7 +1360,7 @@ export function IpoValuationCard({
         </p>
       </FundCard>
 
-      {/* 7. Context (collapsible reference) */}
+      {/* 8. Context (collapsible reference) */}
       <FundCard title={meta.hasProspectusContext ? "Contexte (reference prospectus)" : "Contexte"}>
         {meta.hasProspectusContext ? (
           <details>

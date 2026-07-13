@@ -25,7 +25,7 @@ import { asNumber } from "./lib/formatters"
 import { resolveComparatorPeerSymbols, useOptionalSelectedComparableView } from "./panels/comparables"
 import { IpoProfileForm } from "./panels/ipo-profile-form"
 import { IpoValuationCard } from "./panels/ipo-valuation-card"
-import { deleteCustomIpoProfile, getIpoProfile, listAllIpoProfiles, saveCustomIpoProfile, T2S_PROFILE_ID, type IpoProfile } from "./lib/ipo-store"
+import { deleteCustomIpoProfile, getIpoProfile, listAllIpoProfiles, saveCustomIpoProfile, type IpoProfile } from "./lib/ipo-store"
 import { ResearchTicket } from "./research-ticket"
 import { ComparableModelSummary, DetailTab, FundamentalHorizon, Scenario, SignalFundamentalViewProps, ValuationSelectionSummary } from "./lib/types"
 import { EstimatesAssumptionsTab } from "./tabs/estimates-tab"
@@ -281,7 +281,6 @@ export function SignalFundamentalView({
   const onAddIpo = useCallback(() => setShowIpoForm(true), [])
 
   const handleSaveIpoProfile = useCallback((p: IpoProfile) => {
-    if (p.meta.id === T2S_PROFILE_ID) return
     saveCustomIpoProfile(p)
     setIpoRegistryVersion((v) => v + 1)
   }, [])

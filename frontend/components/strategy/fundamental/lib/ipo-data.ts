@@ -27,6 +27,13 @@ export type IpoPeer = {
   pe2026e: number | null
   pe2027p: number | null
   isLocal?: boolean
+  note?: string
+  category?: "prospectus" | "local_anchor" | "custom"
+}
+
+export type IpoPeerStats = {
+  mean: { evEbe2026e: number | null; evEbe2027p: number | null; pe2026e: number | null; pe2027p: number | null }
+  median: { evEbe2026e: number | null; evEbe2027p: number | null; pe2026e: number | null; pe2027p: number | null }
 }
 
 export type IpoBpRow = {
@@ -53,6 +60,17 @@ export type IpoBridgeStep = {
   note?: string
 }
 
+export type IpoBaseRateRow = {
+  ipo: string
+  year: number
+  oversubscription: string
+  satisfaction: string
+  earlyPerformance: string
+  note?: string
+  source: string
+  estimated?: boolean // true when the row (or a figure within it, e.g. a derived satisfaction) is not a directly published number
+}
+
 export const IPO_T2S = {
   meta: {
     name: "T2S Group Holding",
@@ -77,6 +95,12 @@ export const IPO_T2S = {
     netDebt2025Mmad: 222,
     prospectusRef: "AMMC - visa VI/EM/021/2026 du 06/07/2026",
     referenceDoc: "Document de reference EN/EM/010/2026",
+    trancheInstitutionalShares: 3_139_013,
+    trancheRetailShares: 1_793_721,
+    trancheInstitutionalMinShares: 13_452,
+    retailBlockSize: 100,
+    defaultBlockedDays: 12,
+    subscriptionCapShares: 493_273, // 10% de l'offre, plafond par investisseur, les deux types
   },
 
   // Methodes de valorisation retenues (note d'operation, synthese p.38)
@@ -94,16 +118,104 @@ export const IPO_T2S = {
 
   // Echantillon de comparables boursiers (Capital IQ, 3 mois au 25/06/2026)
   peers: [
-    { name: "Vicenne", country: "Maroc", marketCapMusd: 449, evEbe2026e: 14.4, evEbe2027p: 13.0, pe2026e: 28.3, pe2027p: 27.6, isLocal: true },
-    { name: "Entero Healthcare Solutions", country: "Inde", marketCapMusd: 552, evEbe2026e: 19.9, evEbe2027p: 11.1, pe2026e: 34.9, pe2027p: 19.6 },
-    { name: "AddLife AB", country: "Suede", marketCapMusd: 1_978, evEbe2026e: 12.8, evEbe2027p: 11.7, pe2026e: 24.5, pe2027p: 21.4 },
-    { name: "Asker Healthcare Group", country: "Suede", marketCapMusd: 3_131, evEbe2026e: 14.3, evEbe2027p: 12.8, pe2026e: 25.3, pe2027p: 21.8 },
-    { name: "Uniphar plc", country: "Irlande", marketCapMusd: 1_308, evEbe2026e: 10.0, evEbe2027p: 9.0, pe2026e: 16.7, pe2027p: 15.4 },
+    {
+      name: "Vicenne",
+      country: "Maroc",
+      marketCapMusd: 449,
+      evEbe2026e: 14.4,
+      evEbe2027p: 13.0,
+      pe2026e: 28.3,
+      pe2027p: 27.6,
+      isLocal: true,
+      note: "Comp directe; IPO 07/2025 a 236 DH, +40% premiere semaine, satisfaction retail 1,56%.",
+      category: "prospectus",
+    },
+    { name: "Entero Healthcare Solutions", country: "Inde", marketCapMusd: 552, evEbe2026e: 19.9, evEbe2027p: 11.1, pe2026e: 34.9, pe2027p: 19.6, category: "prospectus" },
+    { name: "AddLife AB", country: "Suede", marketCapMusd: 1_978, evEbe2026e: 12.8, evEbe2027p: 11.7, pe2026e: 24.5, pe2027p: 21.4, category: "prospectus" },
+    { name: "Asker Healthcare Group", country: "Suede", marketCapMusd: 3_131, evEbe2026e: 14.3, evEbe2027p: 12.8, pe2026e: 25.3, pe2027p: 21.8, category: "prospectus" },
+    { name: "Uniphar plc", country: "Irlande", marketCapMusd: 1_308, evEbe2026e: 10.0, evEbe2027p: 9.0, pe2026e: 16.7, pe2027p: 15.4, category: "prospectus" },
+  ] as IpoPeer[],
+  localAnchorPeers: [
+    {
+      name: "Akdital",
+      country: "Maroc",
+      marketCapMusd: 1_650,
+      evEbe2026e: null,
+      evEbe2027p: null,
+      pe2026e: null,
+      pe2027p: null,
+      isLocal: true,
+      note: "Ancre locale de sentiment healthcare; operateur, pas distributeur.",
+      category: "local_anchor",
+    },
   ] as IpoPeer[],
   peerStats: {
     mean: { evEbe2026e: 14.3, evEbe2027p: 11.5, pe2026e: 25.9, pe2027p: 21.2 },
     median: { evEbe2026e: 14.3, evEbe2027p: 11.7, pe2026e: 25.3, pe2027p: 21.4 },
-  },
+  } as IpoPeerStats,
+
+  casablancaBaseRates: [
+    {
+      ipo: "TGCC",
+      year: 2021,
+      oversubscription: "n.d.",
+      satisfaction: "n.d.",
+      earlyPerformance: "n.d.",
+      note: "+553% depuis l'IPO (long terme, presse 2025)",
+      source: "FNH",
+      estimated: true,
+    },
+    {
+      ipo: "Akdital",
+      year: 2022,
+      oversubscription: "3,77x",
+      satisfaction: "~26% (dérivé ≈1/3,77)",
+      earlyPerformance: "n.d.",
+      note: "8 225 souscripteurs; marché froid 2022; +340% depuis (long terme)",
+      source: "Médias24 14/12/2022",
+      estimated: false,
+    },
+    {
+      ipo: "CMGP",
+      year: 2024,
+      oversubscription: "37x",
+      satisfaction: "~2,7% (dérivé ≈1/37)",
+      earlyPerformance: "solide",
+      note: "33 700 souscripteurs",
+      source: "presse (FNH)",
+      estimated: true,
+    },
+    {
+      ipo: "Vicenne",
+      year: 2025,
+      oversubscription: "64x",
+      satisfaction: "1,56% moy. / 2,29% retail",
+      earlyPerformance: "J1 réservé +10% (259,55 DH); +40% 1ère semaine",
+      note: "37 674 souscripteurs; comp directe medtech",
+      source: "Médias24/Boursenews 07/2025",
+      estimated: false,
+    },
+    {
+      ipo: "Cash Plus",
+      year: 2025,
+      oversubscription: "64x",
+      satisfaction: "~1,6% (dérivé)",
+      earlyPerformance: "début positif",
+      note: "81 466 souscripteurs",
+      source: "Morocco World News/african-markets 12/2025",
+      estimated: true,
+    },
+    {
+      ipo: "SGTM",
+      year: 2025,
+      oversubscription: "34x",
+      satisfaction: "2,94% moy.",
+      earlyPerformance: "J1 réservé +10%",
+      note: "171 377 souscripteurs (168k particuliers); record",
+      source: "Médias24/Le Desk 12/2025",
+      estimated: false,
+    },
+  ] as IpoBaseRateRow[],
 
   // Principaux agregats du business plan pre-money (MMAD)
   bpYears: ["2023", "2024", "2025", "2026e", "2027p", "2028p", "2029p", "2030p"],

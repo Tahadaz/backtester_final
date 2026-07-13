@@ -882,6 +882,40 @@ export const glossaryEntries: GlossaryEntry[] = [
     appLinks: [dashboardLink, strategyLink],
   },
   {
+    id: "ipo-allocation",
+    categoryId: "edge",
+    title: { fr: "Allocation IPO", en: "IPO allocation" },
+    plain: {
+      fr: "La part réellement reçue d'une demande de souscription. En IPO très demandée, demander plus n'implique pas recevoir plus dans la même proportion.",
+      en: "The portion of an IPO subscription actually received. In a heavily demanded IPO, applying for more does not mean receiving proportionally more.",
+    },
+    formula: "Taux de satisfaction = actions allouées / actions demandées",
+    aliases: ["satisfaction", "allocation ipo", "actions allouées"],
+    appLinks: [fundamentalsLink],
+  },
+  {
+    id: "ipo-oversubscription",
+    categoryId: "edge",
+    title: { fr: "Sursouscription IPO", en: "IPO oversubscription" },
+    plain: {
+      fr: "Le rapport entre la demande et les actions offertes. À 50x, la demande représente environ cinquante fois l'offre : l'allocation pro rata serait proche de 2% avant toute règle de tranche.",
+      en: "The ratio of demand to shares offered. At 50x, demand is roughly fifty times the offer: pro-rata allocation would be near 2% before tranche rules.",
+    },
+    aliases: ["oversub", "oversubscription", "sursouscription"],
+    appLinks: [fundamentalsLink],
+  },
+  {
+    id: "ipo-blocked-capital",
+    categoryId: "edge",
+    title: { fr: "Capital bloqué", en: "Blocked capital" },
+    plain: {
+      fr: "Le montant immobilisé entre la souscription et le remboursement de la part non allouée. Il a un coût de financement ou un coût d'opportunité, même si toutes les actions demandées ne sont pas reçues.",
+      en: "The amount tied up between subscription and refund of the unallocated portion. It has a financing or opportunity cost even when not all requested shares are received.",
+    },
+    aliases: ["capital immobilisé", "coût du capital", "blocked cash"],
+    appLinks: [fundamentalsLink],
+  },
+  {
     id: "entry-zone",
     categoryId: "edge",
     title: { fr: "Zone d'entrée", en: "Entry zone" },
