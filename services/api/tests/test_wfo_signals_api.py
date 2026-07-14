@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import types
 import sys
+import numpy as np
+import pandas as pd
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from services.api.app.db import get_db
 from services.api.app.models import WfoSignalSummary
 from services.api.app.routers import wfo_signals as wfo_signals_router
+from core.quant_core.signal_engine.domain import VariantDef
 
 
 class _FakeQuery:
@@ -192,3 +195,102 @@ def test_wfo_summary_rejects_legacy_horizon_query():
     client = TestClient(_app(_FakeDB({WfoSignalSummary: []})))
     response = client.get("/strategy/wfo/summary?symbol=AAA&horizon=short&variant=expanded")
     assert response.status_code == 422
+
+
+def test_wfo_fold_backtest_returns_train_and_test_periods(monkeypatch):
+    dates = pd.date_range("2026-01-01", periods=20, freq="D")
+    close = np.linspace(100.0, 120.0, len(dates))
+    ohlcv = pd.DataFrame(
+        {
+            "Open": close,
+            "High": close + 1.0,
+            "Low": close - 1.0,
+            "Close": close,
+            "Volume": np.full(len(dates), 1000.0),
+        },
+        index=dates,
+    )
+    winner = VariantDef(
+        variant_id="winner_sma",
+        family="sma",
+        archetype="price_vs_sma",
+        params={"window": 2},
+        description="Winner SMA",
+    )
+    row = WfoSignalSummary(
+        symbol="AAA",
+        category="tendance",
+        horizon="weekly",
+        variant="expanded_ta_simple",
+        status="succeeded",
+        folds_json=[
+            {
+                "index": 3,
+                "train_start_date": "2026-01-03",
+                "train_end_date": "2026-01-08",
+                "oos_start_date": "2026-01-09",
+                "oos_end_date": "2026-01-13",
+                "winner_variant_id": "winner_sma",
+                "winner_description": "Winner SMA",
+            }
+        ],
+        config_json={"families": ["sma"], "cost_bps": 10.0},
+    )
+    monkeypatch.setattr(wfo_signals_router, "load_ohlcv_for_symbol", lambda *_a, **_k: ohlcv)
+    monkeypatch.setattr(wfo_signals_router, "build_category_candidate_grid", lambda *_a, **_k: [winner])
+    wfo_signals_router._WFO_FOLD_BACKTEST_CACHE.clear()
+    client = TestClient(_app(_FakeDB({WfoSignalSummary: [row]})))
+
+    response = client.post(
+        "/strategy/wfo/fold-backtest",
+        json={
+            "symbol": "AAA",
+            "horizon": "weekly",
+            "category": "tendance",
+            "variant": "expanded",
+            "fold_index": 3,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["winner_variant_id"] == "winner_sma"
+    assert [period["phase"] for period in payload["periods"]] == ["train", "test"]
+    assert [(period["start_date"], period["end_date"]) for period in payload["periods"]] == [
+        ("2026-01-03", "2026-01-08"),
+        ("2026-01-09", "2026-01-13"),
+    ]
+
+
+def test_wfo_fold_backtest_returns_no_winner_without_loading_market_data(monkeypatch):
+    row = WfoSignalSummary(
+        symbol="AAA",
+        category="momentum",
+        horizon="weekly",
+        variant="expanded_ta_simple",
+        status="succeeded",
+        folds_json=[{"index": 0, "winner_variant_id": ""}],
+        config_json={},
+    )
+    monkeypatch.setattr(
+        wfo_signals_router,
+        "load_ohlcv_for_symbol",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("must not load market data")),
+    )
+    wfo_signals_router._WFO_FOLD_BACKTEST_CACHE.clear()
+    client = TestClient(_app(_FakeDB({WfoSignalSummary: [row]})))
+
+    response = client.post(
+        "/strategy/wfo/fold-backtest",
+        json={
+            "symbol": "AAA",
+            "horizon": "weekly",
+            "category": "momentum",
+            "variant": "expanded",
+            "fold_index": 0,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "no_winner", "fold_index": 0, "periods": []}

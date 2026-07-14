@@ -352,6 +352,103 @@ def _max_drawdown(returns: np.ndarray) -> float:
     return float(np.nanmax(drawdown)) if len(drawdown) > 0 else 0.0
 
 
+def _window_result(
+    *,
+    close: np.ndarray,
+    sig: np.ndarray,
+    variant: VariantDef,
+    window_index: int,
+    train_start: int,
+    train_end: int,
+    test_start: int,
+    test_end: int,
+    cost_bps: float,
+    cooldown_bars: int,
+    min_test_bars_valid: int,
+    force_valid: bool = False,
+) -> OOSWindowResult:
+    """Evaluate one window whose ``test_end`` is the final included price bar."""
+    sig_raw = apply_cooldown(sig[test_start:test_end], cooldown_bars)
+    close_oos = close[test_start : test_end + 1]
+    price_ret = close_oos[1:] / close_oos[:-1] - 1.0
+    sig_oos = signal_to_long_only_positions(sig_raw, variant)
+    sig_change = np.abs(np.diff(sig_oos, prepend=0.0))
+    ret = sig_oos * price_ret - ((cost_bps / 10_000.0) * sig_change)
+
+    n_trades = int(np.sum(sig_change > 0.0))
+    n_bars = len(ret)
+    mean_ret = float(np.mean(ret)) if n_bars > 0 else 0.0
+    frac_pos = float(np.mean(ret > 0.0)) if n_bars > 0 else 0.0
+    sr = sharpe_ratio(ret)
+    if not math.isfinite(sr):
+        sr = 0.0
+    mdd = _max_drawdown(ret)
+    is_valid = force_valid or n_bars >= min_test_bars_valid
+    total_return = float(np.prod(1.0 + ret) - 1.0)
+    window_cagr = (
+        (1.0 + total_return) ** (252.0 / max(n_bars, 1)) - 1.0
+        if total_return > -1.0
+        else -1.0
+    )
+
+    return OOSWindowResult(
+        window_index=window_index,
+        train_start=train_start,
+        train_end=train_end,
+        test_start=test_start,
+        test_end=test_end,
+        n_trades=n_trades,
+        mean_return_net=mean_ret,
+        sharpe=sr,
+        max_drawdown=mdd,
+        fraction_positive_bars=frac_pos,
+        n_bars=n_bars,
+        is_valid=is_valid,
+        total_return=total_return,
+        cagr=window_cagr,
+        pnl=100_000.0 * total_return,
+    )
+
+
+def evaluate_variant_windows(
+    close: np.ndarray,
+    variant: VariantDef,
+    windows: list[tuple[int, int]],
+    *,
+    cost_bps: float = DEFAULT_COST_BPS_PER_SIDE,
+    cooldown_bars: int = 0,
+    volume: np.ndarray | None = None,
+    high: np.ndarray | None = None,
+    low: np.ndarray | None = None,
+) -> list[OOSWindowResult]:
+    """Evaluate arbitrary ``(start, end_exclusive)`` windows with one signal compute."""
+    close_arr = np.asarray(close, dtype=np.float64)
+    sig = compute_signal_array(close_arr, variant, volume=volume, high=high, low=low)
+    results: list[OOSWindowResult] = []
+    for window_index, (start, end_exclusive) in enumerate(windows):
+        test_start = max(0, int(start))
+        bounded_end = min(int(end_exclusive), len(close_arr))
+        if bounded_end - test_start < 2:
+            continue
+        results.append(
+            _window_result(
+                close=close_arr,
+                sig=sig,
+                variant=variant,
+                window_index=window_index,
+                train_start=test_start,
+                train_end=test_start,
+                test_start=test_start,
+                test_end=bounded_end - 1,
+                cost_bps=cost_bps,
+                cooldown_bars=cooldown_bars,
+                min_test_bars_valid=0,
+                force_valid=True,
+            )
+        )
+    return results
+
+
 def evaluate_variant_oos(
     close: np.ndarray,
     variant: VariantDef,
@@ -393,7 +490,6 @@ def evaluate_variant_oos(
         sig = np.asarray(precomputed_signal, dtype=float)
     else:
         sig = compute_signal_array(close, variant, volume=volume, high=high, low=low)
-    cost_factor = cost_bps / 10_000.0
     results: list[OOSWindowResult] = []
     window_idx = 0
 
@@ -405,43 +501,19 @@ def evaluate_variant_oos(
         if oos_len < 2:
             continue
 
-        sig_raw = apply_cooldown(sig[test_start:test_end], cooldown_bars)
-        close_oos = close[test_start : test_end + 1]
-        price_ret = close_oos[1:] / close_oos[:-1] - 1.0
-        sig_oos = signal_to_long_only_positions(sig_raw, variant)
-        sig_change = np.abs(np.diff(sig_oos, prepend=0.0))
-        ret = sig_oos * price_ret - (cost_factor * sig_change)
-
-        n_trades = int(np.sum(sig_change > 0.0))
-        n_bars = len(ret)
-        mean_ret = float(np.mean(ret)) if n_bars > 0 else 0.0
-        frac_pos = float(np.mean(ret > 0.0)) if n_bars > 0 else 0.0
-        sr = sharpe_ratio(ret)
-        if not math.isfinite(sr):
-            sr = 0.0
-        mdd = _max_drawdown(ret)
-        is_valid = n_bars >= min_test_bars_valid
-        total_return = float(np.prod(1.0 + ret) - 1.0)
-        window_cagr = (1.0 + total_return) ** (252.0 / max(n_bars, 1)) - 1.0 if total_return > -1.0 else -1.0
-        window_pnl = 100_000.0 * total_return
-
         results.append(
-            OOSWindowResult(
+            _window_result(
+                close=close,
+                sig=sig,
+                variant=variant,
                 window_index=window_idx,
                 train_start=start,
                 train_end=train_end,
                 test_start=test_start,
                 test_end=test_end,
-                n_trades=n_trades,
-                mean_return_net=mean_ret,
-                sharpe=sr,
-                max_drawdown=mdd,
-                fraction_positive_bars=frac_pos,
-                n_bars=n_bars,
-                is_valid=is_valid,
-                total_return=total_return,
-                cagr=window_cagr,
-                pnl=window_pnl,
+                cost_bps=cost_bps,
+                cooldown_bars=cooldown_bars,
+                min_test_bars_valid=min_test_bars_valid,
             )
         )
         window_idx += 1

@@ -9,7 +9,10 @@ POST /strategy/wfo/trigger  — enqueue on-demand WFO computation
 from __future__ import annotations
 
 from datetime import date
+import time
 from typing import Any, Literal
+
+import pandas as pd
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -21,15 +24,24 @@ from core.quant_core.signal_engine.modes import (
     signal_mode_read_names,
     signal_mode_storage_name,
 )
+from core.quant_core.horizons import DEFAULT_COST_BPS_PER_SIDE
+from core.quant_core.signal_engine.oos_eval import evaluate_variant_windows
+from core.quant_core.signal_engine.variant_detail import compute_variant_detail
+from core.quant_core.signal_engine.wfo_signal import build_category_candidate_grid
 
 from ..auth import rate_limit_trigger, require_admin
 from ..db import get_db
+from ..market_data_loader import load_ohlcv_for_symbol
 from ..models import WfoGlobalSignal, WfoSignalSummary
 from ..services.market_universe import list_signal_universe_symbols
+from .strategy_signals._shared import _clean_ohlcv
 
 router = APIRouter(prefix="/strategy/wfo", tags=["wfo-signals"])
 
 CanonicalHorizon = Literal["weekly", "monthly", "quarterly"]
+
+_WFO_FOLD_BACKTEST_CACHE: dict[tuple[Any, ...], tuple[float, dict[str, Any]]] = {}
+_WFO_FOLD_BACKTEST_CACHE_TTL = 3600.0
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +146,15 @@ class WfoTriggerRequest(BaseModel):
 class WfoTriggerResponse(BaseModel):
     triggered: list[str]
     job_id: str | None = None
+
+
+class WfoFoldBacktestRequest(BaseModel):
+    symbol: str
+    horizon: CanonicalHorizon
+    category: str
+    variant: str = "expanded"
+    fold_index: int
+    timeframe: str = "1D"
 
 
 class WfoTriggerAllRequest(BaseModel):
@@ -340,6 +361,164 @@ def get_wfo_detail(
     if row is None:
         raise HTTPException(status_code=404, detail=f"No WFO data for {symbol}/{horizon}/{category}/{variant}")
     return _row_to_detail(row)
+
+
+def _fold_period_bounds(
+    fold: dict[str, Any],
+    phase: str,
+    index: pd.DatetimeIndex,
+) -> tuple[int, int]:
+    """Resolve one persisted fold range as ``(start, end_exclusive)``."""
+    prefix = "train" if phase == "train" else "oos"
+    start_date = fold.get(f"{prefix}_start_date")
+    end_date = fold.get(f"{prefix}_end_date")
+    if isinstance(start_date, str) and start_date and isinstance(end_date, str) and end_date:
+        start_target = pd.Timestamp(start_date)
+        end_target = pd.Timestamp(end_date)
+        if index.tz is not None:
+            if start_target.tzinfo is None:
+                start_target = start_target.tz_localize(index.tz)
+            if end_target.tzinfo is None:
+                end_target = end_target.tz_localize(index.tz)
+        start = int(index.searchsorted(start_target))
+        end = int(index.searchsorted(end_target, side="right"))
+    else:
+        start_raw = fold.get(f"{prefix}_start_abs_idx")
+        end_raw = fold.get(f"{prefix}_end_abs_idx")
+        if not isinstance(start_raw, int) or not isinstance(end_raw, int):
+            raise HTTPException(status_code=422, detail=f"Fold {phase} range is unavailable")
+        start = min(max(start_raw, 0), len(index))
+        end = min(max(end_raw, 0), len(index))
+    if end - start < 2:
+        raise HTTPException(status_code=422, detail=f"Fold {phase} range has fewer than two bars")
+    return start, end
+
+
+@router.post("/fold-backtest")
+def get_wfo_fold_backtest(
+    body: WfoFoldBacktestRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Replay a standard-category fold winner over its train and test ranges.
+
+    The test Sharpe uses the shared signal-engine evaluator. It should agree in
+    sign and magnitude with the persisted WFO Sharpe, but need not be identical
+    because the WFO selection evaluator has slightly different position rules.
+    """
+    symbol = body.symbol.strip().upper()
+    variant = signal_mode_storage_name(body.variant)
+    cache_key = (symbol, body.horizon, body.category, variant, body.fold_index, body.timeframe)
+    now = time.monotonic()
+    cached = _WFO_FOLD_BACKTEST_CACHE.get(cache_key)
+    if cached and (now - cached[0]) < _WFO_FOLD_BACKTEST_CACHE_TTL:
+        return cached[1]
+
+    row = None
+    for read_variant in signal_mode_read_names(variant):
+        row = (
+            db.query(WfoSignalSummary)
+            .filter_by(
+                symbol=symbol,
+                horizon=body.horizon,
+                category=body.category,
+                variant=read_variant,
+            )
+            .first()
+        )
+        if row is not None:
+            break
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No WFO data for {symbol}/{body.horizon}/{body.category}/{variant}",
+        )
+
+    folds = row.folds_json if isinstance(row.folds_json, list) else []
+    fold = next(
+        (
+            candidate
+            for candidate in folds
+            if isinstance(candidate, dict) and candidate.get("index") == body.fold_index
+        ),
+        None,
+    )
+    if fold is None:
+        raise HTTPException(status_code=404, detail=f"WFO fold {body.fold_index} was not found")
+
+    winner_id = str(fold.get("winner_variant_id") or "").strip()
+    if not winner_id:
+        response = {"status": "no_winner", "fold_index": body.fold_index, "periods": []}
+        _WFO_FOLD_BACKTEST_CACHE[cache_key] = (now, response)
+        return response
+
+    config = row.config_json if isinstance(row.config_json, dict) else {}
+    families_value = config.get("families")
+    families = families_value if isinstance(families_value, list) else None
+    pool = build_category_candidate_grid(body.category, body.horizon, families=families)
+    winner = next((candidate for candidate in pool if candidate.variant_id == winner_id), None)
+    if winner is None:
+        response = {
+            "status": "winner_unavailable",
+            "fold_index": body.fold_index,
+            "winner_variant_id": winner_id,
+            "periods": [],
+            "note": "The persisted winner is not available in the regenerated candidate grid.",
+        }
+        _WFO_FOLD_BACKTEST_CACHE[cache_key] = (now, response)
+        return response
+
+    try:
+        ohlcv = _clean_ohlcv(load_ohlcv_for_symbol(db, symbol, body.timeframe))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if len(ohlcv) == 0 or "Close" not in ohlcv.columns:
+        raise HTTPException(status_code=422, detail=f"No usable OHLCV rows for {symbol}")
+
+    index = pd.DatetimeIndex(pd.to_datetime(ohlcv.index))
+    train_start, train_end = _fold_period_bounds(fold, "train", index)
+    test_start, test_end = _fold_period_bounds(fold, "test", index)
+    close = ohlcv["Close"].to_numpy(dtype="float64")
+    volume = ohlcv["Volume"].to_numpy(dtype="float64") if "Volume" in ohlcv.columns else None
+    high = ohlcv["High"].to_numpy(dtype="float64") if "High" in ohlcv.columns else None
+    low = ohlcv["Low"].to_numpy(dtype="float64") if "Low" in ohlcv.columns else None
+    cost_bps = float(config.get("cost_bps", DEFAULT_COST_BPS_PER_SIDE))
+    windows = evaluate_variant_windows(
+        close,
+        winner,
+        [(train_start, train_end), (test_start, test_end)],
+        cost_bps=cost_bps,
+        cooldown_bars=0,
+        volume=volume,
+        high=high,
+        low=low,
+    )
+    result = compute_variant_detail(
+        ohlcv,
+        close,
+        winner,
+        windows,
+        volume=volume,
+        high=high,
+        low=low,
+        cost_bps=cost_bps,
+        cooldown_bars=0,
+        force_valid_windows=True,
+    )
+    phases = ("train", "test")
+    periods = [
+        {**period, "phase": phases[position]}
+        for position, period in enumerate(result.get("per_window", []))
+        if position < len(phases)
+    ]
+    response = {
+        "status": "ok",
+        "fold_index": body.fold_index,
+        "winner_variant_id": winner_id,
+        "description": str(fold.get("winner_description") or winner.description or winner_id),
+        "periods": periods,
+    }
+    _WFO_FOLD_BACKTEST_CACHE[cache_key] = (now, response)
+    return response
 
 
 @router.get("/config")

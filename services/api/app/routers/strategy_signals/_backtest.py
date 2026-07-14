@@ -259,6 +259,105 @@ def build_stored_best_backtest_chart_payload(
     return payload
 
 
+def _extend_chart_payload_with_recent_closes(
+    db: Session,
+    payload: dict[str, Any],
+    *,
+    symbol: str,
+) -> dict[str, Any]:
+    """Append post-backtest daily closes to each stored result row's price line.
+
+    Extends only ``dates``/``close_series`` and pads ``position_series`` with
+    None so the frontend's parallel-array slicing stays aligned. ``equity``,
+    ``trades``, ``trade_ledger``, ``metrics`` and ``mc`` stay frozen at the
+    backtest's window_end - the extension is display-only price context, not a
+    recomputed backtest. Copy-on-write: never mutates the stored JSONB payload.
+    Best-effort: any failure returns the payload unchanged.
+    """
+    results = payload.get("results")
+    if not isinstance(results, list) or not results:
+        return payload
+
+    def _row_last_date(row: Any) -> str | None:
+        if not isinstance(row, dict):
+            return None
+        dates = row.get("dates")
+        if isinstance(dates, list) and dates and isinstance(dates[-1], str):
+            return dates[-1]
+        window_end = row.get("window_end")
+        return window_end if isinstance(window_end, str) else None
+
+    last_dates = [d for d in (_row_last_date(row) for row in results) if d]
+    if not last_dates:
+        return payload
+
+    # Cheap staleness guard: skip the OHLCV load entirely when the market
+    # store has nothing newer than the oldest chart endpoint. ISO date
+    # strings compare correctly as strings.
+    from services.api.app.models import MarketDataStore
+
+    mds = db.query(MarketDataStore).filter_by(symbol=symbol, timeframe="1D").first()
+    market_as_of = mds.data_as_of.isoformat() if (mds and mds.data_as_of) else None
+    if not market_as_of or market_as_of <= min(last_dates):
+        return payload
+
+    try:
+        ohlcv = _clean_ohlcv(load_ohlcv_for_symbol(db, symbol, "1D"))
+        if ohlcv is None or len(ohlcv) == 0 or "Close" not in ohlcv.columns:
+            return payload
+        close = ohlcv["Close"].copy()
+        idx = pd.to_datetime(close.index)
+        if idx.tz is not None:
+            idx = idx.tz_localize(None)
+        close.index = idx.normalize()
+        close = close[~close.index.duplicated(keep="last")].sort_index().dropna()
+    except Exception:
+        logger.debug("best-chart price extension failed for %s", symbol, exc_info=True)
+        return payload
+    if len(close) == 0:
+        return payload
+
+    extended_any = False
+    max_extended: str | None = None
+    new_results: list[Any] = []
+    for row in results:
+        last_date = _row_last_date(row)
+        dates = row.get("dates") if isinstance(row, dict) else None
+        closes = row.get("close_series") if isinstance(row, dict) else None
+        if (
+            not last_date
+            or not isinstance(dates, list)
+            or not isinstance(closes, list)
+            or not dates
+            or len(dates) != len(closes)
+        ):
+            new_results.append(row)
+            continue
+        tail = close[close.index > pd.Timestamp(last_date)]
+        if len(tail) == 0:
+            new_results.append(row)
+            continue
+        new_dates = [ts.strftime("%Y-%m-%d") for ts in tail.index]
+        new_closes = [float(v) for v in tail.to_numpy()]
+        new_row = dict(row)
+        new_row["dates"] = list(dates) + new_dates
+        new_row["close_series"] = list(closes) + new_closes
+        positions = row.get("position_series")
+        if isinstance(positions, list):
+            new_row["position_series"] = list(positions) + [None] * len(new_dates)
+        new_row["backtest_end_date"] = last_date
+        new_row["price_extended_through"] = new_dates[-1]
+        new_row["price_extension_bars"] = len(new_dates)
+        new_results.append(new_row)
+        extended_any = True
+        if max_extended is None or new_dates[-1] > max_extended:
+            max_extended = new_dates[-1]
+
+    if not extended_any:
+        return payload
+    return {**payload, "results": new_results, "price_extended_through": max_extended}
+
+
 @router.get("/backtest-mc/best-chart", summary="Read the stored best-WFO backtest chart snapshot")
 def get_signal_best_backtest_chart(
     symbol: str,
@@ -287,7 +386,7 @@ def get_signal_best_backtest_chart(
             status_code=404,
             detail=f"Stored best backtest chart for {symbol_upper}/{canonical_h} is unavailable.",
         )
-    return payload
+    return _extend_chart_payload_with_recent_closes(db, payload, symbol=symbol_upper)
 
 
 def _batch_job_status_payload(

@@ -4060,6 +4060,7 @@ export const PerWindowDetailSchema = z.object({
   end_date: z.string(),
   sharpe: z.number(),
   pnl: z.number(),
+  pnl_100k: z.number().optional(),
   n_trades: z.number(),
   is_valid: z.boolean(),
   plot: PlotlyFigureSchema,
@@ -4068,6 +4069,62 @@ export const PerWindowDetailSchema = z.object({
   trades: z.array(z.record(z.unknown())),
 })
 export type PerWindowDetail = z.infer<typeof PerWindowDetailSchema>
+
+export const WfoFoldBacktestSchema = z.object({
+  status: z.string(),
+  fold_index: z.number(),
+  winner_variant_id: z.string().nullable().optional(),
+  pair_id: z.string().nullable().optional(),
+  description: z.string().nullable().optional(),
+  note: z.string().nullable().optional(),
+  periods: z.array(PerWindowDetailSchema.extend({ phase: z.enum(["train", "test"]) })),
+})
+export type WfoFoldBacktest = z.infer<typeof WfoFoldBacktestSchema>
+
+export async function fetchWfoFoldBacktest(body: {
+  symbol: string
+  horizon: string
+  category: string
+  variant?: string
+  fold_index: number
+  timeframe?: string
+}): Promise<WfoFoldBacktest> {
+  const raw = await request<unknown>("/strategy/wfo/fold-backtest", {
+    method: "POST",
+    body: JSON.stringify({
+      symbol: body.symbol,
+      horizon: canonicalSignalHorizon(body.horizon),
+      category: body.category,
+      variant: body.variant ?? "expanded",
+      fold_index: body.fold_index,
+      timeframe: body.timeframe ?? "1D",
+    }),
+  })
+  return WfoFoldBacktestSchema.parse(raw)
+}
+
+export async function fetchSrWfoFoldBacktest(body: {
+  symbol: string
+  horizon: string
+  window_index: number
+  timeframe?: string
+  cost_bps?: number
+  cooldown_bars?: number
+}): Promise<WfoFoldBacktest> {
+  const payload: Record<string, unknown> = {
+    symbol: body.symbol,
+    horizon: canonicalSignalHorizon(body.horizon),
+    window_index: body.window_index,
+    timeframe: body.timeframe ?? "1D",
+  }
+  if (body.cost_bps != null) payload.cost_bps = body.cost_bps
+  if (body.cooldown_bars != null) payload.cooldown_bars = body.cooldown_bars
+  const raw = await request<unknown>("/strategy/signal/support-resistance/wfo/fold-backtest", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+  return WfoFoldBacktestSchema.parse(raw)
+}
 
 // Variant backtest types
 const VariantMCEnvelopeSchema = z.object({
@@ -5818,9 +5875,12 @@ export const SignalBacktestResultSchema = z.object({
   trades: z.array(z.record(z.unknown())).nullable().optional(),
   trade_ledger: z.array(z.record(z.unknown())).nullable().optional(),
   close_series: z.array(z.number()).nullable().optional(),
-  position_series: z.array(z.number()).nullable().optional(),
+  position_series: z.array(z.number().nullable()).nullable().optional(),
   score_series: z.array(z.number().nullable()).nullable().optional(),
   global_score_series: z.array(z.number().nullable()).nullable().optional(),
+  backtest_end_date: z.string().nullable().optional(),
+  price_extended_through: z.string().nullable().optional(),
+  price_extension_bars: z.number().nullable().optional(),
   signal_diagnostics: z.record(z.unknown()).nullable().optional(),
   metrics: BacktestMetricsSchema,
   mc: z.object({

@@ -927,6 +927,126 @@ def test_signal_best_backtest_chart_reads_stored_payload_without_trigger():
     assert response.json() == chart_payload
 
 
+def test_signal_best_backtest_chart_extends_price_with_newer_market_data(monkeypatch):
+    chart_payload = {
+        "symbol": "AAA",
+        "horizon": "weekly",
+        "variant": "expanded_ta_simple",
+        "market_data_as_of": "2026-01-08",
+        "results": [
+            {
+                "source": "wfo",
+                "scope": "global",
+                "scope_key": "global",
+                "status": "succeeded",
+                "side_policy": "long_short",
+                "cooldown_bars": 0,
+                "window_end": "2026-01-08",
+                "dates": ["2026-01-07", "2026-01-08"],
+                "close_series": [100.0, 101.0],
+                "position_series": [0.0, 1.0],
+                "equity": [1.0, 1.01],
+            }
+        ],
+    }
+    snapshot = SignalBestEvidenceSnapshot(
+        symbol="AAA",
+        horizon="weekly",
+        cooldown_bars=0,
+        status="succeeded",
+        source="wfo",
+        variant="expanded_ta_simple",
+        evidence_payload_jsonb=None,
+        chart_payload_jsonb=chart_payload,
+        data_as_of=dt.date(2026, 1, 8),
+        market_data_as_of=dt.date(2026, 1, 8),
+    )
+    market_row = MarketDataStore(symbol="AAA", timeframe="1D", data_as_of=dt.date(2026, 1, 12))
+    index = pd.to_datetime(["2026-01-07", "2026-01-08", "2026-01-09", "2026-01-12"])
+    ohlcv = pd.DataFrame(
+        {
+            "Open": [99.0, 100.5, 101.5, 102.5],
+            "High": [101.0, 102.0, 103.0, 104.0],
+            "Low": [98.0, 99.5, 100.5, 101.5],
+            "Close": [100.0, 101.0, 102.0, 103.0],
+            "Volume": [1000.0, 1100.0, 1200.0, 1300.0],
+        },
+        index=index,
+    )
+    monkeypatch.setattr(
+        "services.api.app.routers.strategy_signals._backtest.load_ohlcv_for_symbol",
+        lambda *_a, **_k: ohlcv,
+    )
+    client = TestClient(
+        _app(_FakeDB({SignalBestEvidenceSnapshot: [snapshot], MarketDataStore: [market_row]}))
+    )
+
+    response = client.get("/strategy/backtest-mc/best-chart?symbol=AAA&horizon=weekly")
+
+    assert response.status_code == 200
+    body = response.json()
+    row = body["results"][0]
+    assert row["dates"] == ["2026-01-07", "2026-01-08", "2026-01-09", "2026-01-12"]
+    assert row["close_series"] == [100.0, 101.0, 102.0, 103.0]
+    assert row["position_series"] == [0.0, 1.0, None, None]
+    assert row["equity"] == [1.0, 1.01]
+    assert row["backtest_end_date"] == "2026-01-08"
+    assert row["price_extended_through"] == "2026-01-12"
+    assert row["price_extension_bars"] == 2
+    assert body["price_extended_through"] == "2026-01-12"
+    assert snapshot.chart_payload_jsonb["results"][0]["dates"] == ["2026-01-07", "2026-01-08"]
+    assert snapshot.chart_payload_jsonb["results"][0]["position_series"] == [0.0, 1.0]
+
+
+def test_signal_best_backtest_chart_noop_without_newer_market_data(monkeypatch):
+    chart_payload = {
+        "symbol": "AAA",
+        "horizon": "weekly",
+        "variant": "expanded_ta_simple",
+        "market_data_as_of": "2026-01-08",
+        "results": [
+            {
+                "source": "wfo",
+                "scope": "global",
+                "scope_key": "global",
+                "status": "succeeded",
+                "side_policy": "long_short",
+                "cooldown_bars": 0,
+                "window_end": "2026-01-08",
+                "dates": ["2026-01-07", "2026-01-08"],
+                "close_series": [100.0, 101.0],
+                "position_series": [0.0, 1.0],
+                "equity": [1.0, 1.01],
+            }
+        ],
+    }
+    snapshot = SignalBestEvidenceSnapshot(
+        symbol="AAA",
+        horizon="weekly",
+        cooldown_bars=0,
+        status="succeeded",
+        source="wfo",
+        variant="expanded_ta_simple",
+        evidence_payload_jsonb=None,
+        chart_payload_jsonb=chart_payload,
+        data_as_of=dt.date(2026, 1, 8),
+        market_data_as_of=dt.date(2026, 1, 8),
+    )
+    market_row = MarketDataStore(symbol="AAA", timeframe="1D", data_as_of=dt.date(2026, 1, 8))
+    monkeypatch.setattr(
+        "services.api.app.routers.strategy_signals._backtest.load_ohlcv_for_symbol",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("should not load OHLCV")),
+    )
+    client = TestClient(
+        _app(_FakeDB({SignalBestEvidenceSnapshot: [snapshot], MarketDataStore: [market_row]}))
+    )
+
+    response = client.get("/strategy/backtest-mc/best-chart?symbol=AAA&horizon=weekly")
+
+    assert response.status_code == 200
+    assert response.json() == chart_payload
+
+
 def test_signal_best_snapshot_serves_stale_payload_with_freshness_metadata():
     payload = {
         "symbol": "AAA",

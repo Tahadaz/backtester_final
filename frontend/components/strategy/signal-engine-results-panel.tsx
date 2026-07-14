@@ -9,7 +9,10 @@ import {
   type FamilyCombinedSignal,
   type SignalEngineResult,
   type SignalRepresentative,
+  type SupportResistanceVariantsResponse,
+  type VariantSummary,
 } from "@/lib/api"
+import { useSupportResistanceVariants } from "@/hooks/use-api"
 import { formatNumber } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { signalVariantLabel } from "@/lib/signal-variant-label"
@@ -498,6 +501,206 @@ function FamilyResultCard({
   )
 }
 
+function srVariantHref({
+  variantId,
+  symbol,
+  horizon,
+  cooldownBars,
+  variant,
+}: {
+  variantId: string
+  symbol: string
+  horizon: string
+  cooldownBars: number
+  variant: string
+}) {
+  return `/signals/sr-variant/${encodeURIComponent(variantId)}?symbol=${encodeURIComponent(symbol)}&horizon=${encodeURIComponent(horizon)}&cooldown=${cooldownBars}&variant=${encodeURIComponent(variant)}`
+}
+
+function srFamilyHref({
+  symbol,
+  horizon,
+  cooldownBars,
+  variant,
+}: {
+  symbol: string
+  horizon: string
+  cooldownBars: number
+  variant: string
+}) {
+  return `/signals/sr-variants?symbol=${encodeURIComponent(symbol)}&horizon=${encodeURIComponent(horizon)}&cooldown=${cooldownBars}&variant=${encodeURIComponent(variant)}`
+}
+
+function SupportResistanceVariantRow({
+  item,
+  symbol,
+  horizon,
+  variant,
+  cooldownBars,
+  fallback,
+}: {
+  item: VariantSummary
+  symbol: string
+  horizon: string
+  variant: string
+  cooldownBars: number
+  fallback?: boolean
+}) {
+  const router = useRouter()
+  const objective = item.sr_objective_score ?? item.reliability_score
+
+  return (
+    <button
+      type="button"
+      onClick={() => router.push(srVariantHref({ variantId: item.variant_id, symbol, horizon, cooldownBars, variant }))}
+      className="flex w-full items-center justify-between gap-3 rounded-md border border-transparent px-2 py-1.5 text-left transition-colors hover:border-primary/40 hover:bg-muted/30"
+    >
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="truncate text-[11px] font-semibold">{item.description}</span>
+          {fallback ? (
+            <Badge variant="outline" className="h-5 shrink-0 border-amber-300 text-[9px] text-amber-800">
+              Meilleure disponible
+            </Badge>
+          ) : null}
+        </div>
+        <div className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">{item.variant_id}</div>
+        <div className="mt-1 flex flex-wrap gap-1.5 text-[9px] text-muted-foreground">
+          <span>S {item.support_level == null ? "--" : formatNumber(item.support_level, 2)}</span>
+          <span>R {item.resistance_level == null ? "--" : formatNumber(item.resistance_level, 2)}</span>
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <SignalBadge value={item.signal_value} label={item.signal_label} size="sm" />
+        <span className="font-mono text-[10px] text-muted-foreground">
+          SR {(objective * 100).toFixed(1)}%
+        </span>
+        <ExternalLink className="h-3 w-3 text-muted-foreground" />
+      </div>
+    </button>
+  )
+}
+
+function SupportResistanceResultCard({
+  data,
+  isLoading,
+  error,
+  symbol,
+  horizon,
+  variant,
+  cooldownBars,
+}: {
+  data: SupportResistanceVariantsResponse | undefined
+  isLoading: boolean
+  error: unknown
+  symbol: string
+  horizon: string
+  variant: string
+  cooldownBars: number
+}) {
+  const router = useRouter()
+  const representatives = data?.representatives ?? []
+  const bestAvailable = data?.all_variants.find((item) => item.variant_id === data.best_variant_id)
+    ?? data?.all_variants[0]
+    ?? null
+  const displayed = representatives.length > 0 ? representatives : bestAvailable ? [bestAvailable] : []
+
+  return (
+    <Card>
+      <CardHeader className="px-4 pb-2 pt-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-sm font-bold">
+              <Layers3 className="h-4 w-4 text-muted-foreground" />
+              Support / Resistance
+            </CardTitle>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Niveaux structurels et couples S/R robustes
+            </p>
+          </div>
+          {data ? (
+            <Badge variant="outline" className="shrink-0 text-[10px]">
+              {data.optimal_status === "ready" ? "Pret" : data.optimal_status}
+            </Badge>
+          ) : null}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3 px-4 pb-4">
+        {isLoading && !data ? (
+          <Skeleton className="h-40 w-full rounded-md" />
+        ) : error || !data ? (
+          <div className="rounded-md border border-dashed bg-muted/20 p-4 text-center text-xs text-muted-foreground">
+            Variantes S/R indisponibles.
+          </div>
+        ) : (
+          <>
+            <div className="rounded-md border border-border bg-card p-3">
+              <div className="grid grid-cols-4 gap-2 text-center">
+                {[
+                  ["Testees", data.tested_count],
+                  ["Viables", data.viable_count],
+                  ["Competitives", data.competitive_count],
+                  ["Reps", data.representative_count],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded border bg-muted/20 px-2 py-1.5">
+                    <div className="font-mono text-sm font-semibold">{value}</div>
+                    <div className="text-[9px] uppercase tracking-[0.08em] text-muted-foreground">{label}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
+                <div className="rounded border border-emerald-200 bg-emerald-50/40 px-2 py-1.5 dark:bg-emerald-950/20">
+                  <div className="text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">Support</div>
+                  <div className="font-mono font-semibold">{data.final_support == null ? "--" : formatNumber(data.final_support, 2)}</div>
+                </div>
+                <div className="rounded border border-red-200 bg-red-50/40 px-2 py-1.5 dark:bg-red-950/20">
+                  <div className="text-[9px] font-semibold uppercase tracking-wide text-red-700 dark:text-red-400">Resistance</div>
+                  <div className="font-mono font-semibold">{data.final_resistance == null ? "--" : formatNumber(data.final_resistance, 2)}</div>
+                </div>
+              </div>
+
+              {data.score_explanation ? (
+                <p className="mt-3 text-[11px] text-muted-foreground">{data.score_explanation}</p>
+              ) : null}
+
+              <div className="mt-3 space-y-1">
+                {displayed.map((item) => (
+                  <SupportResistanceVariantRow
+                    key={item.variant_id}
+                    item={item}
+                    symbol={symbol}
+                    horizon={horizon}
+                    variant={variant}
+                    cooldownBars={cooldownBars}
+                    fallback={representatives.length === 0}
+                  />
+                ))}
+                {displayed.length === 0 ? (
+                  <div className="rounded-md border border-dashed bg-muted/20 p-3 text-xs text-muted-foreground">
+                    Aucun couple S/R disponible.
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full gap-2 text-xs"
+              onClick={() => router.push(srFamilyHref({ symbol, horizon, cooldownBars, variant }))}
+            >
+              Voir toutes les variantes S/R
+              <ExternalLink className="h-3 w-3" />
+            </Button>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 export function SignalEngineResultsPanel({
   symbol,
   horizon,
@@ -513,6 +716,14 @@ export function SignalEngineResultsPanel({
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const requestTokenRef = useRef(0)
+  const supportResistance = useSupportResistanceVariants(
+    symbol,
+    horizon,
+    33,
+    cooldownBars,
+    variant,
+    Boolean(symbol),
+  )
 
   useEffect(() => {
     const token = ++requestTokenRef.current
@@ -672,6 +883,15 @@ export function SignalEngineResultsPanel({
             </Card>
           )
         })}
+        <SupportResistanceResultCard
+          data={supportResistance.data}
+          isLoading={supportResistance.isLoading}
+          error={supportResistance.error}
+          symbol={symbol}
+          horizon={horizon}
+          variant={variant}
+          cooldownBars={cooldownBars}
+        />
       </div>
     </div>
   )

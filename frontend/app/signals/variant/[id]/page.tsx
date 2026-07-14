@@ -23,6 +23,10 @@ import { cn } from "@/lib/utils"
 import { horizonLabel } from "@/lib/horizon"
 import { signalVariantLabel } from "@/lib/signal-variant-label"
 import { ICStatsChip } from "@/components/signals/ic-stats-chip"
+import {
+  TradesTable,
+  TradeLedgerTable,
+} from "@/components/strategy/trade-ledger-table"
 import type { VariantDetail, VariantSummary, VariantBacktest, PlotlyFigure } from "@/lib/api"
 
 type Tab = "comparaison" | "oos" | "fiabilite"
@@ -65,19 +69,8 @@ function formatNumber(n: number): string {
   return n.toFixed(2)
 }
 
-function formatTradePrice(n: number): string {
-  return n.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 6,
-  })
-}
-
 function formatHoldPeriodDays(n: number): string {
   return `${Number.isInteger(n) ? n : n.toFixed(1)} j`
-}
-
-function formatPercent(n: number): string {
-  return `${(n * 100).toFixed(2)}%`
 }
 
 function factorConditionLabel(condition: Record<string, unknown> | null | undefined): string | null {
@@ -949,137 +942,6 @@ function VariantDetailPanel({
   )
 }
 
-function TradesTable({ trades }: { trades: Record<string, unknown>[] }) {
-  if (trades.length === 0) {
-    return (
-      <Card>
-        <CardContent className="py-8 text-center text-xs text-muted-foreground">
-          Aucun trade pour cette fenetre.
-        </CardContent>
-      </Card>
-    )
-  }
-  return <TradeLedgerTable trades={trades} />
-}
-
-function TradeLedgerTable({ trades }: { trades: Record<string, unknown>[] }) {
-  return (
-    <Card>
-      <CardContent className="p-0 overflow-x-auto">
-        <div className="border-b bg-secondary/20 px-3 py-2 text-[11px] text-muted-foreground">
-          <span className="font-medium text-foreground">Audit:</span>{" "}
-          <span>`PnL (100k) = 100000 × Return cumule`.</span>{" "}
-          <span>`PnL realise cumule (1 unite)` suit separement le ledger des trades unitaires.</span>
-        </div>
-        <table className="w-full text-xs whitespace-nowrap">
-          <thead>
-            <tr className="border-b bg-secondary/30">
-              {[
-                "Date",
-                "Sens",
-                "Open (t+1)",
-                "CMP",
-                "Position",
-                "Return Cumule (%)",
-                "PnL Realise Cumule (1 unite)",
-              ].map((h) => (
-                <th
-                  key={h}
-                  className="px-3 py-2 text-left font-semibold uppercase tracking-wider text-muted-foreground"
-                >
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {trades.map((row, i) => {
-              const hasReturnCumule = row.return_cumule != null
-              const returnCumule = hasReturnCumule ? Number(row.return_cumule) : NaN
-              const hasPnlCumule = row.pnl_realise_cumule != null
-              const pnlRealiseCumule = hasPnlCumule ? Number(row.pnl_realise_cumule) : NaN
-              const side = String(row.side ?? "")
-              return (
-                <tr
-                  key={i}
-                  className="border-b border-border/40 hover:bg-secondary/20"
-                >
-                  <td className="px-3 py-1.5 font-mono">
-                    {String(row.date ?? "").slice(0, 10)}
-                  </td>
-                  <td className="px-3 py-1.5">
-                    <span
-                      className={cn(
-                        "font-semibold",
-                        side === "ACHAT"
-                          ? "text-emerald-600"
-                          : "text-red-600",
-                      )}
-                    >
-                      {side || "\u2014"}
-                    </span>
-                  </td>
-                  <td className="px-3 py-1.5 tabular-nums">
-                    {row.open_t_plus_1 != null || row.prix_execution != null
-                      ? formatTradePrice(Number(row.open_t_plus_1 ?? row.prix_execution))
-                      : "\u2014"}
-                  </td>
-                  <td className="px-3 py-1.5 tabular-nums">
-                    {row.cmp != null || row.close_du_jour != null
-                      ? formatTradePrice(Number(row.cmp ?? row.close_du_jour))
-                      : "\u2014"}
-                  </td>
-                  <td
-                    className={cn(
-                      "px-3 py-1.5 tabular-nums font-semibold text-center",
-                      Number(row.position ?? 0) > 0
-                        ? "text-emerald-600"
-                        : Number(row.position ?? 0) < 0
-                          ? "text-red-600"
-                          : "text-muted-foreground",
-                    )}
-                  >
-                    {row.position != null
-                      ? Number(row.position) > 0
-                        ? "+1"
-                        : Number(row.position) < 0
-                          ? "-1"
-                          : "0"
-                      : "\u2014"}
-                  </td>
-                  <td
-                    className={cn(
-                      "px-3 py-1.5 tabular-nums font-semibold",
-                      returnCumule > 0
-                        ? "text-emerald-600"
-                        : returnCumule < 0
-                          ? "text-red-600"
-                          : "text-muted-foreground",
-                    )}
-                  >
-                    {Number.isFinite(returnCumule) ? formatPercent(returnCumule) : "\u2014"}
-                  </td>
-                  <td
-                    className={cn(
-                      "px-3 py-1.5 tabular-nums font-semibold",
-                      pnlRealiseCumule > 0
-                        ? "text-emerald-600"
-                        : pnlRealiseCumule < 0
-                          ? "text-red-600"
-                          : "text-muted-foreground",
-                    )}
-                  >
-                    {Number.isFinite(pnlRealiseCumule) ? formatNumber(pnlRealiseCumule) : "\u2014"}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </CardContent>
-    </Card>
-  )
-}
 
 /* -- Tab 2: Fenetres OOS ------------------------------------------------- */
 

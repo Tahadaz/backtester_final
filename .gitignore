@@ -90,6 +90,7 @@ frontend-next-start*
 
 # ---- Local scratch / agent output ----
 scratch/
+frontend/output/
 old_support_resistance.py
 older_support_resistance.py
 .codex/worktrees/

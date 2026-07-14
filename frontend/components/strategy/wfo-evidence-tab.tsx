@@ -1,8 +1,8 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { Fragment, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Activity, AlertCircle, BarChart3, CheckCircle2, ExternalLink, Layers, RefreshCw, Settings, TrendingUp } from "lucide-react"
+import { Activity, AlertCircle, BarChart3, CheckCircle2, ChevronDown, ChevronRight, ExternalLink, Layers, RefreshCw, Settings, TrendingUp } from "lucide-react"
 import { useWfoSummary } from "@/hooks/use-wfo-summary"
 import {
   fetchWfoDetail,
@@ -24,6 +24,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { SignalBadge } from "@/components/ui/signal-badge"
 import { SignalScoreBar } from "./signal-score-bar"
+import { WfoFoldBacktestPanel } from "./wfo-fold-backtest-panel"
 
 type CategoryId = "tendance" | "momentum" | "oscillation" | "volume" | "support_resistance"
 
@@ -279,7 +280,20 @@ function RepresentativesTable({
   )
 }
 
-function FoldTable({ folds }: { folds: Array<Record<string, unknown>> }) {
+function FoldTable({
+  folds,
+  symbol,
+  horizon,
+  variant,
+  category,
+}: {
+  folds: Array<Record<string, unknown>>
+  symbol: string
+  horizon: string
+  variant: string
+  category: string
+}) {
+  const [expandedFold, setExpandedFold] = useState<number | null>(null)
   if (folds.length === 0) {
     return (
       <div className="rounded-md border border-dashed bg-muted/20 p-3 text-xs text-muted-foreground">
@@ -306,26 +320,51 @@ function FoldTable({ folds }: { folds: Array<Record<string, unknown>> }) {
         <tbody>
           {folds.map((fold, index) => {
             const profitable = Boolean(fold.oos_profitable)
+            const foldIndex = asNumber(fold.index) ?? index
+            const expanded = expandedFold === foldIndex
             return (
-              <tr
-                key={`${asString(fold.index) || index}`}
-                className={cn("border-b border-border/50", profitable ? "bg-green-50/30" : "bg-red-50/20")}
-              >
-                <td className="px-3 py-2 font-medium">#{asNumber(fold.index) != null ? Number(fold.index) + 1 : index + 1}</td>
-                <td className="px-3 py-2 font-mono text-[10px] text-muted-foreground">
-                  {formatWfoFoldRange(fold, "train")}
-                </td>
-                <td className="px-3 py-2 font-mono text-[10px] text-muted-foreground">
-                  {formatWfoFoldRange(fold, "oos")}
-                </td>
-                <td className="px-3 py-2 text-right font-mono">{decimalPct(fold.is_return)}</td>
-                <td className="px-3 py-2 text-right font-mono">{decimalPct(fold.oos_return)}</td>
-                <td className="px-3 py-2 text-right font-mono">{formatNumber(asNumber(fold.oos_sharpe), 2)}</td>
-                <td className="max-w-[220px] truncate px-3 py-2" title={asString(fold.winner_variant_id)}>
-                  {asString(fold.winner_description) || asString(fold.winner_variant_id) || "--"}
-                </td>
-                <td className="px-3 py-2 text-right font-mono">{decimalPct(fold.winner_prom, 3)}</td>
-              </tr>
+              <Fragment key={foldIndex}>
+                <tr
+                  className={cn(
+                    "cursor-pointer border-b border-border/50 transition-colors hover:bg-muted/40",
+                    profitable ? "bg-green-50/30" : "bg-red-50/20",
+                  )}
+                  onClick={() => setExpandedFold(expanded ? null : foldIndex)}
+                >
+                  <td className="px-3 py-2 font-medium">
+                    <span className="inline-flex items-center gap-1">
+                      {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                      #{foldIndex + 1}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 font-mono text-[10px] text-muted-foreground">
+                    {formatWfoFoldRange(fold, "train")}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-[10px] text-muted-foreground">
+                    {formatWfoFoldRange(fold, "oos")}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono">{decimalPct(fold.is_return)}</td>
+                  <td className="px-3 py-2 text-right font-mono">{decimalPct(fold.oos_return)}</td>
+                  <td className="px-3 py-2 text-right font-mono">{formatNumber(asNumber(fold.oos_sharpe), 2)}</td>
+                  <td className="max-w-[220px] truncate px-3 py-2" title={asString(fold.winner_variant_id)}>
+                    {asString(fold.winner_description) || asString(fold.winner_variant_id) || "--"}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono">{decimalPct(fold.winner_prom, 3)}</td>
+                </tr>
+                {expanded ? (
+                  <tr>
+                    <td colSpan={8} className="p-0">
+                      <WfoFoldBacktestPanel
+                        symbol={symbol}
+                        horizon={horizon}
+                        variant={variant}
+                        category={category}
+                        foldIndex={foldIndex}
+                      />
+                    </td>
+                  </tr>
+                ) : null}
+              </Fragment>
             )
           })}
         </tbody>
@@ -488,7 +527,24 @@ function SrWfoProcedureTable({ wfo }: { wfo: SrWfo }) {
   )
 }
 
-function SrWfoWindowsTable({ windows }: { windows: SrWfo["windows"] }) {
+function SrWfoWindowsTable({
+  windows,
+  symbol,
+  horizon,
+  variant,
+  timeframe,
+  costBps,
+  cooldownBars,
+}: {
+  windows: SrWfo["windows"]
+  symbol: string
+  horizon: string
+  variant: string
+  timeframe: string
+  costBps: number
+  cooldownBars: number
+}) {
+  const [expandedFold, setExpandedFold] = useState<number | null>(null)
   if (!windows.length) {
     return (
       <div className="rounded-md border border-dashed bg-muted/20 p-3 text-xs text-muted-foreground">
@@ -512,26 +568,56 @@ function SrWfoWindowsTable({ windows }: { windows: SrWfo["windows"] }) {
           </tr>
         </thead>
         <tbody>
-          {windows.map((win) => (
-            <tr key={win.window_index} className="border-b border-border/50">
-              <td className="px-3 py-2 font-medium">#{win.window_index + 1}</td>
-              <td className="px-3 py-2 font-mono text-[10px] text-muted-foreground">
-                {compactDate(win.train_start_date)} - {compactDate(win.train_end_date)}
-              </td>
-              <td className="px-3 py-2 font-mono text-[10px] text-muted-foreground">
-                {compactDate(win.test_start_date)} - {compactDate(win.test_end_date)}
-              </td>
-              <td className="max-w-[240px] truncate px-3 py-2" title={srWfoPairMetaLabel(win.selected_pair_meta)}>
-                {win.selected_pair_meta ? srWfoPairMetaLabel(win.selected_pair_meta) : "--"}
-              </td>
-              <td className="px-3 py-2 text-right font-mono">{formatNumber(win.train_objective, 3)}</td>
-              <td className="px-3 py-2 text-right font-mono">{formatNumber(win.test_metrics?.sharpe, 2)}</td>
-              <td className={cn("px-3 py-2 text-right font-mono", returnTone(win.test_metrics?.total_return))}>
-                {pct(win.test_metrics?.total_return != null ? win.test_metrics.total_return * 100 : null)}
-              </td>
-              <td className="px-3 py-2 text-right font-mono">{formatNumber(win.test_metrics?.n_trades, 0)}</td>
-            </tr>
-          ))}
+          {windows.map((win) => {
+            const expanded = expandedFold === win.window_index
+            return (
+              <Fragment key={win.window_index}>
+                <tr
+                  className="cursor-pointer border-b border-border/50 transition-colors hover:bg-muted/40"
+                  onClick={() => setExpandedFold(expanded ? null : win.window_index)}
+                >
+                  <td className="px-3 py-2 font-medium">
+                    <span className="inline-flex items-center gap-1">
+                      {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                      #{win.window_index + 1}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 font-mono text-[10px] text-muted-foreground">
+                    {compactDate(win.train_start_date)} - {compactDate(win.train_end_date)}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-[10px] text-muted-foreground">
+                    {compactDate(win.test_start_date)} - {compactDate(win.test_end_date)}
+                  </td>
+                  <td className="max-w-[240px] truncate px-3 py-2" title={srWfoPairMetaLabel(win.selected_pair_meta)}>
+                    {win.selected_pair_meta ? srWfoPairMetaLabel(win.selected_pair_meta) : "--"}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono">{formatNumber(win.train_objective, 3)}</td>
+                  <td className="px-3 py-2 text-right font-mono">{formatNumber(win.test_metrics?.sharpe, 2)}</td>
+                  <td className={cn("px-3 py-2 text-right font-mono", returnTone(win.test_metrics?.total_return))}>
+                    {pct(win.test_metrics?.total_return != null ? win.test_metrics.total_return * 100 : null)}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono">{formatNumber(win.test_metrics?.n_trades, 0)}</td>
+                </tr>
+                {expanded ? (
+                  <tr>
+                    <td colSpan={8} className="p-0">
+                      <WfoFoldBacktestPanel
+                        symbol={symbol}
+                        horizon={horizon}
+                        variant={variant}
+                        category="support_resistance"
+                        foldIndex={win.window_index}
+                        sr
+                        timeframe={timeframe}
+                        costBps={costBps}
+                        cooldownBars={cooldownBars}
+                      />
+                    </td>
+                  </tr>
+                ) : null}
+              </Fragment>
+            )
+          })}
         </tbody>
       </table>
     </div>
@@ -612,12 +698,24 @@ function SrWfoDetailPanel({
   touchStats,
   isLoading,
   error,
+  symbol,
+  horizon,
+  variant,
+  timeframe,
+  costBps,
+  cooldownBars,
 }: {
   detail: WfoCategoryDetail | null
   result: SrWfo | null
   touchStats: SrWfoResponse["line_touch_stats"] | undefined
   isLoading: boolean
   error: string | null
+  symbol: string
+  horizon: string
+  variant: string
+  timeframe: string
+  costBps: number
+  cooldownBars: number
 }) {
   if (isLoading) {
     return (
@@ -776,7 +874,15 @@ function SrWfoDetailPanel({
           <CardTitle className="text-xs font-semibold">Folds walk-forward</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 px-4 pb-4">
-          <SrWfoWindowsTable windows={result.windows} />
+          <SrWfoWindowsTable
+            windows={result.windows}
+            symbol={symbol}
+            horizon={horizon}
+            variant={variant}
+            timeframe={timeframe}
+            costBps={costBps}
+            cooldownBars={cooldownBars}
+          />
           <p className="text-[10px] italic text-muted-foreground">
             L&apos;objectif train sert uniquement a selectionner la paire S/R pour le test suivant ; ce n&apos;est pas un rendement in-sample comparable.
           </p>
@@ -924,7 +1030,13 @@ function WfoDetailPanel({
           <CardTitle className="text-xs font-semibold">Folds walk-forward</CardTitle>
         </CardHeader>
         <CardContent className="px-4 pb-4">
-          <FoldTable folds={folds} />
+          <FoldTable
+            folds={folds}
+            symbol={symbol}
+            horizon={horizon}
+            variant={variant}
+            category={detail.category}
+          />
         </CardContent>
       </Card>
     </div>
@@ -935,11 +1047,13 @@ export function WfoEvidenceTab({
   symbol,
   horizon,
   variant,
+  costBps = 10,
   cooldownBars = 0,
 }: {
   symbol: string
   horizon: string
   variant: string
+  costBps?: number
   cooldownBars?: number
 }) {
   const { data, isLoading, error, refresh } = useWfoSummary(symbol, horizon, variant)
@@ -1110,6 +1224,12 @@ export function WfoEvidenceTab({
             touchStats={undefined}
             isLoading={detailLoading}
             error={detailError}
+            symbol={symbol}
+            horizon={horizon}
+            variant={variant}
+            timeframe="1D"
+            costBps={costBps}
+            cooldownBars={cooldownBars}
           />
         ) : (
           <WfoDetailPanel
