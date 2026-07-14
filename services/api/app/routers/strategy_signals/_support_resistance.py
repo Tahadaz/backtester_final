@@ -22,6 +22,7 @@ from ...schemas.strategy_signals import (
     SupportResistanceRequest,
     SupportResistanceResponse,
     SupportResistanceVariantRequest,
+    SupportResistanceWfoFoldBacktestRequest,
     VariantBacktestRequest,
 )
 from core.quant_core.signal_engine.support_resistance import (
@@ -69,7 +70,14 @@ from core.quant_core.signal_engine.variant_detail import _compute_indicator
 from core.quant_core.signal_engine.indicator_series import compute_atr_series
 from core.quant_core.significance import sharpe_ratio
 from core.quant_core.horizons import canonical_horizon, LEGACY_HORIZON_ALIASES, HORIZON_SPECS
-from core.quant_core.signal_engine.sr_wfo import line_touch_stats, run_sr_wfo
+from core.quant_core.signal_engine.sr_wfo import (
+    _max_drawdown as _sr_wfo_max_drawdown,
+    _sharpe as _sr_wfo_sharpe,
+    _total_return as _sr_wfo_total_return,
+    line_touch_stats,
+    run_sr_wfo,
+    simulate_touch_pair,
+)
 from core.quant_core.signal_engine.sr_ict import (
     detect_fair_value_gaps,
     detect_liquidity_pools,
@@ -127,6 +135,9 @@ from ._shared import (
     _evidence_max_drawdown,
     _evidence_float,
 )
+
+_SR_WFO_FOLD_BACKTEST_CACHE: dict[tuple[Any, ...], tuple[float, dict[str, Any]]] = {}
+_SR_WFO_FOLD_BACKTEST_CACHE_TTL = 3600.0
 
 def _signal_snapshot_from_detail(family: str, detail: EnsemblePipelineDetail) -> dict[str, Any]:
     signal = detail.signal
@@ -4107,7 +4118,12 @@ def _sr_get_or_compute_wfo(
             },
             "line_touch_stats": {"support": {}, "resistance": {}},
         }
-        payload = {"response": response, "context": context}
+        payload = {
+            "response": response,
+            "context": context,
+            "pair_series": {},
+            "pair_meta": {},
+        }
         _SR_WFO_CACHE[cache_key] = (now, payload)
         return payload
 
@@ -4232,7 +4248,12 @@ def _sr_get_or_compute_wfo(
         "wfo": wfo_result,
         "line_touch_stats": touch_stats,
     }
-    payload = {"response": response, "context": context}
+    payload = {
+        "response": response,
+        "context": context,
+        "pair_series": pair_series,
+        "pair_meta": pair_meta,
+    }
     _SR_WFO_CACHE[cache_key] = (now, payload)
     return payload
 
@@ -4251,5 +4272,212 @@ def signal_support_resistance_wfo(
         cooldown_bars=body.cooldown_bars,
     )
     return payload["response"]
+
+
+def _sr_wfo_trades_to_fills(
+    trades: list[dict[str, Any]],
+    dates: pd.Index,
+    *,
+    window_index: int,
+) -> list[dict[str, Any]]:
+    """Map touch-pair round trips to the ledger/plot fill representation."""
+    fills: list[dict[str, Any]] = []
+    realized_cum = 0.0
+    return_cum = 0.0
+    for trade in trades:
+        entry_bar = int(trade.get("entry_bar") or 0)
+        exit_bar = int(trade.get("exit_bar") or entry_bar)
+        entry_price = float(trade.get("entry_price") or 0.0)
+        exit_price = float(trade.get("exit_price") or 0.0)
+        pnl_return = float(trade.get("pnl_return") or 0.0)
+        pnl_realized = pnl_return * entry_price
+        previous_return_cum = return_cum
+        realized_cum += pnl_realized
+        return_cum = (1.0 + return_cum) * (1.0 + pnl_return) - 1.0
+        common = {"oos_window": window_index, "cout": 0.0}
+        fills.append(
+            {
+                **common,
+                "bar_index": entry_bar,
+                "date": str(dates[entry_bar])[:10],
+                "side": "ACHAT",
+                "open_t_plus_1": round(entry_price, 4),
+                "prix_execution": round(entry_price, 4),
+                "close_du_jour": round(entry_price, 4),
+                "cmp": round(entry_price, 4),
+                "position": 1.0,
+                "return_cumule": round(previous_return_cum, 8),
+                "pnl_realise": 0.0,
+                "pnl_realise_cumule": round(realized_cum - pnl_realized, 4),
+                "pnl_latent": 0.0,
+            }
+        )
+        fills.append(
+            {
+                **common,
+                "bar_index": exit_bar,
+                "date": str(dates[exit_bar])[:10],
+                "side": "VENTE",
+                "open_t_plus_1": round(exit_price, 4),
+                "prix_execution": round(exit_price, 4),
+                "close_du_jour": round(exit_price, 4),
+                "cmp": round(entry_price, 4),
+                "position": 0.0,
+                "return_cumule": round(return_cum, 8),
+                "pnl_realise": round(pnl_realized, 4),
+                "pnl_realise_cumule": round(realized_cum, 4),
+                "pnl_latent": 0.0,
+            }
+        )
+    return fills
+
+
+@router.post("/signal/support-resistance/wfo/fold-backtest")
+def signal_support_resistance_wfo_fold_backtest(
+    body: SupportResistanceWfoFoldBacktestRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Replay the selected S/R pair over one WFO window's train and test phases."""
+    payload = _sr_get_or_compute_wfo(
+        db,
+        symbol=body.symbol,
+        horizon=body.horizon,
+        timeframe=body.timeframe,
+        cost_bps=body.cost_bps,
+        cooldown_bars=body.cooldown_bars,
+    )
+    wfo = payload["response"].get("wfo", {})
+    windows = wfo.get("windows") if isinstance(wfo, dict) else None
+    window = next(
+        (
+            candidate
+            for candidate in (windows if isinstance(windows, list) else [])
+            if isinstance(candidate, dict) and candidate.get("window_index") == body.window_index
+        ),
+        None,
+    )
+    if window is None:
+        raise HTTPException(status_code=404, detail=f"S/R WFO window {body.window_index} was not found")
+
+    pair_id = str(window.get("selected_pair_id") or "").strip()
+    if not pair_id:
+        return {"status": "no_winner", "fold_index": body.window_index, "periods": []}
+
+    params_echo = wfo.get("params_echo") if isinstance(wfo.get("params_echo"), dict) else {}
+    cost_bps = float(params_echo.get("cost_bps", body.cost_bps))
+    cooldown_bars = int(params_echo.get("cooldown_bars", body.cooldown_bars))
+    cache_key = (
+        body.symbol,
+        body.horizon,
+        body.timeframe,
+        body.window_index,
+        round(cost_bps, 4),
+        cooldown_bars,
+    )
+    now = time.monotonic()
+    cached = _SR_WFO_FOLD_BACKTEST_CACHE.get(cache_key)
+    if cached and (now - cached[0]) < _SR_WFO_FOLD_BACKTEST_CACHE_TTL:
+        return cached[1]
+
+    pair_series = payload.get("pair_series")
+    if not isinstance(pair_series, dict) or pair_id not in pair_series:
+        response = {
+            "status": "winner_unavailable",
+            "fold_index": body.window_index,
+            "pair_id": pair_id,
+            "periods": [],
+            "note": "The selected S/R pair series is unavailable.",
+        }
+        _SR_WFO_FOLD_BACKTEST_CACHE[cache_key] = (now, response)
+        return response
+
+    support_series, resistance_series = pair_series[pair_id]
+    context = payload["context"]
+    ohlcv = context["ohlcv"]
+    close = context["close"]
+    high = context["high"]
+    low = context["low"]
+    open_ = ohlcv["Open"].to_numpy(dtype="float64") if "Open" in ohlcv.columns else None
+    periods_per_year = float(context.get("periods_per_year") or 252.0)
+    periods: list[dict[str, Any]] = []
+    for phase, start_key, end_key in (
+        ("train", "train_start", "train_end"),
+        ("test", "test_start", "test_end"),
+    ):
+        start = int(window[start_key])
+        end = int(window[end_key])
+        sim = simulate_touch_pair(
+            close=close,
+            high=high,
+            low=low,
+            open_=open_,
+            support_series=support_series,
+            resistance_series=resistance_series,
+            start=start,
+            end=end,
+            cost_bps=cost_bps,
+            cooldown_bars=cooldown_bars,
+        )
+        returns = sim["returns"]
+        trades = sim["trades"]
+        raw_trades = (
+            [dict(trade) for trade in window.get("test_trades", [])]
+            if phase == "test" and isinstance(window.get("test_trades"), list)
+            else [dict(trade) for trade in trades]
+        )
+        fills = _sr_wfo_trades_to_fills(trades, ohlcv.index, window_index=body.window_index)
+        title = f"Fold #{body.window_index + 1} - {phase}"
+        equity_plot, drawdown_plot = _sr_plot_equity_drawdown(
+            returns=returns,
+            dates=[str(value)[:10] for value in ohlcv.index[start + 1 : end + 1]],
+            title_prefix=title,
+        )
+        total_return = _sr_wfo_total_return(returns)
+        period = {
+            "window_index": body.window_index,
+            "start_date": str(ohlcv.index[start])[:10],
+            "end_date": str(ohlcv.index[end])[:10],
+            "sharpe": _sr_wfo_sharpe(returns, periods_per_year=periods_per_year),
+            "pnl": round(100_000.0 * total_return, 2),
+            "pnl_100k": round(100_000.0 * total_return, 2),
+            "n_trades": len(trades),
+            "is_valid": True,
+            "plot": _sr_plot_price_levels(
+                ohlcv=ohlcv,
+                support_series=support_series,
+                resistance_series=resistance_series,
+                fills=fills,
+                title=title,
+                start=start,
+                end=end,
+            ),
+            "equity_plot": equity_plot,
+            "drawdown_plot": drawdown_plot,
+            "trades": fills,
+            "phase": phase,
+            "total_return": total_return,
+            "max_drawdown": _sr_wfo_max_drawdown(returns),
+            "raw_trades": raw_trades,
+        }
+        periods.append(period)
+
+    pair_meta = payload.get("pair_meta")
+    meta = pair_meta.get(pair_id, {}) if isinstance(pair_meta, dict) else {}
+    support_label = str(meta.get("support_label") or meta.get("support_method_id") or "Support")
+    support_line = str(meta.get("support_line_label") or meta.get("support_line_id") or "").strip()
+    resistance_label = str(meta.get("resistance_label") or meta.get("resistance_method_id") or "Resistance")
+    resistance_line = str(meta.get("resistance_line_label") or meta.get("resistance_line_id") or "").strip()
+    response = {
+        "status": "ok",
+        "fold_index": body.window_index,
+        "pair_id": pair_id,
+        "description": (
+            f"{support_label}{f' {support_line}' if support_line else ''} / "
+            f"{resistance_label}{f' {resistance_line}' if resistance_line else ''}"
+        ),
+        "periods": periods,
+    }
+    _SR_WFO_FOLD_BACKTEST_CACHE[cache_key] = (now, response)
+    return response
 
 

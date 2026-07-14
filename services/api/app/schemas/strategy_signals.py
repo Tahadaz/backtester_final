@@ -53,6 +53,10 @@ class SupportResistanceRequest(StrategySignalRequestBase):
     cooldown_bars: int = Field(default=0, ge=0)
 
 
+class SupportResistanceWfoFoldBacktestRequest(SupportResistanceRequest):
+    window_index: int = Field(..., ge=0)
+
+
 class SupportResistanceMethodDetailRequest(SupportResistanceRequest):
     method_id: str = Field(
         ...,

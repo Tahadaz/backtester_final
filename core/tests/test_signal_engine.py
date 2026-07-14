@@ -9,7 +9,12 @@ import pytest
 from quant_core.signal_engine.candidates import generate_candidates, variant_min_history
 from quant_core.signal_engine.domain import HORIZON_PARAMS, VariantDef
 from quant_core.signal_engine.ensemble import combine_family_signals, run_sma_ensemble, run_family_ensemble_full
-from quant_core.signal_engine.oos_eval import apply_cooldown, compute_signal_array, evaluate_variant_oos
+from quant_core.signal_engine.oos_eval import (
+    apply_cooldown,
+    compute_signal_array,
+    evaluate_variant_oos,
+    evaluate_variant_windows,
+)
 from quant_core.signal_engine.redundancy import reduce_redundancy
 from quant_core.signal_engine.robustness import score_variant_robustness
 from quant_core.signal_engine.survivor import filter_survivors
@@ -109,6 +114,16 @@ class TestSignalContract:
 # ===================================================================
 
 class TestOOSEval:
+    def test_arbitrary_windows_use_exclusive_bounds_and_preserve_dates(self):
+        close = _uptrend(120)
+        variant = _make_variant("price_vs_sma", window=5)
+
+        windows = evaluate_variant_windows(close, variant, [(10, 40), (40, 75)], cost_bps=10.0)
+
+        assert [(row.test_start, row.test_end) for row in windows] == [(10, 39), (40, 74)]
+        assert [row.n_bars for row in windows] == [29, 34]
+        assert all(row.is_valid for row in windows)
+
     def test_oos_eval_valid_windows(self):
         close = _uptrend(1500)
         v = _make_variant("price_vs_sma", window=20)

@@ -470,6 +470,83 @@ def test_sr_wfo_endpoint_completes_with_ict_methods_eligible(monkeypatch) -> Non
     assert payload["wfo"]["status"] in {"ok", "insufficient_history"}
 
 
+def test_sr_wfo_fold_backtest_replays_test_metrics_and_trades(monkeypatch) -> None:
+    from core.quant_core.signal_engine.sr_wfo import _max_drawdown, _sharpe, _total_return, simulate_touch_pair
+    from services.api.app.routers.strategy_signals import _support_resistance as sr_mod
+
+    ohlcv = _ohlcv()
+    close = ohlcv["Close"].to_numpy(dtype="float64")
+    high = ohlcv["High"].to_numpy(dtype="float64")
+    low = ohlcv["Low"].to_numpy(dtype="float64")
+    open_ = ohlcv["Open"].to_numpy(dtype="float64")
+    support = close - 0.5
+    resistance = close + 0.5
+    expected = simulate_touch_pair(
+        close=close,
+        high=high,
+        low=low,
+        open_=open_,
+        support_series=support,
+        resistance_series=resistance,
+        start=80,
+        end=100,
+        cost_bps=10.0,
+        cooldown_bars=0,
+    )
+    window = {
+        "window_index": 2,
+        "train_start": 40,
+        "train_end": 80,
+        "test_start": 80,
+        "test_end": 100,
+        "selected_pair_id": "pair-1",
+        "selected_pair_meta": {},
+        "test_metrics": {
+            "sharpe": _sharpe(expected["returns"]),
+            "total_return": _total_return(expected["returns"]),
+            "max_drawdown": _max_drawdown(expected["returns"]),
+            "n_trades": len(expected["trades"]),
+        },
+        "test_trades": expected["trades"],
+    }
+    fake_payload = {
+        "response": {"wfo": {"windows": [window], "params_echo": {"cost_bps": 10.0, "cooldown_bars": 0}}},
+        "context": {
+            "ohlcv": ohlcv,
+            "close": close,
+            "high": high,
+            "low": low,
+            "periods_per_year": 252.0,
+        },
+        "pair_series": {"pair-1": (support, resistance)},
+        "pair_meta": {
+            "pair-1": {
+                "support_label": "Support A",
+                "support_line_label": "S1",
+                "resistance_label": "Resistance B",
+                "resistance_line_label": "R1",
+            }
+        },
+    }
+    monkeypatch.setattr(sr_mod, "_sr_get_or_compute_wfo", lambda *_a, **_k: fake_payload)
+    sr_mod._SR_WFO_FOLD_BACKTEST_CACHE.clear()
+    client = TestClient(_app())
+
+    response = client.post(
+        "/strategy/signal/support-resistance/wfo/fold-backtest",
+        json={"symbol": "AAA", "horizon": "monthly", "timeframe": "1D", "window_index": 2},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    test_period = next(period for period in payload["periods"] if period["phase"] == "test")
+    assert test_period["sharpe"] == window["test_metrics"]["sharpe"]
+    assert test_period["total_return"] == window["test_metrics"]["total_return"]
+    assert test_period["max_drawdown"] == window["test_metrics"]["max_drawdown"]
+    assert test_period["n_trades"] == window["test_metrics"]["n_trades"]
+    assert test_period["raw_trades"] == window["test_trades"]
+
+
 def _ohlcv_hourly(n_bars: int = 2000) -> pd.DataFrame:
     # 1-hour bars spanning ~83 calendar days -> far denser than daily bars,
     # so periods_per_year computed empirically must be well above 252.

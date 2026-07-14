@@ -55,6 +55,7 @@ import type {
   UploadFormatReference,
   VariantBacktest,
   VariantDetail,
+  WfoFoldBacktest,
   IndicesCatalogRow,
   IndexMasterRow,
   SignalOverviewRow,
@@ -124,6 +125,8 @@ import {
   fetchUniverse,
   fetchVariantBacktest,
   fetchVariantDetail,
+  fetchWfoFoldBacktest,
+  fetchSrWfoFoldBacktest,
   listIndicesCatalog,
   listIndices,
   getPredictiveAbility,
@@ -675,6 +678,45 @@ export function useSupportResistanceVariantBacktest(
         variant,
       }),
     { revalidateOnFocus: false }
+  )
+}
+
+export type WfoFoldBacktestParams = {
+  symbol: string
+  horizon: string
+  variant: string
+  category: string
+  foldIndex: number
+  sr?: boolean
+  timeframe?: string
+  costBps?: number
+  cooldownBars?: number
+}
+
+export function useWfoFoldBacktest(params: WfoFoldBacktestParams | null) {
+  const key = params
+    ? `/strategy/wfo/fold-backtest?sr=${params.sr ? 1 : 0}&s=${params.symbol}&h=${params.horizon}&v=${params.variant}&c=${params.category}&f=${params.foldIndex}&tf=${params.timeframe ?? "1D"}&cost=${params.costBps ?? ""}&cd=${params.cooldownBars ?? ""}`
+    : null
+  return useSWR<WfoFoldBacktest>(
+    key,
+    () => params!.sr
+      ? fetchSrWfoFoldBacktest({
+          symbol: params!.symbol,
+          horizon: params!.horizon,
+          window_index: params!.foldIndex,
+          timeframe: params!.timeframe,
+          cost_bps: params!.costBps,
+          cooldown_bars: params!.cooldownBars,
+        })
+      : fetchWfoFoldBacktest({
+          symbol: params!.symbol,
+          horizon: params!.horizon,
+          category: params!.category,
+          variant: params!.variant,
+          fold_index: params!.foldIndex,
+          timeframe: params!.timeframe,
+        }),
+    { revalidateOnFocus: false },
   )
 }
 
