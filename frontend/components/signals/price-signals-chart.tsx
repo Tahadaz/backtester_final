@@ -249,8 +249,11 @@ function createTradeMarkers(
   const markers: ChartTradeMarker[] = []
   const length = Math.min(dates.length, close.length, position.length)
   for (let index = 1; index < length; index += 1) {
-    const prev = finiteValue(position[index - 1]) ?? 0
-    const cur = finiteValue(position[index]) ?? 0
+    const prevRaw = finiteValue(position[index - 1])
+    const curRaw = finiteValue(position[index])
+    if (prevRaw == null || curRaw == null) continue
+    const prev = prevRaw
+    const cur = curRaw
     const time = toTime(dates[index]!)
     if (cur === prev) continue
 

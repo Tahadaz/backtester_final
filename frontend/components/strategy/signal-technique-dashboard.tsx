@@ -1016,6 +1016,9 @@ export function SignalTechniqueDashboard({
                 {backtestRow?.side_policy ? ` / ${sidePolicyLabel(backtestRow.side_policy)}` : ""}
                 {backtestLoading ? " / calcul OOS automatique..." : ""}
                 {indicatorLoading ? " / chargement indicateurs..." : ""}
+                {backtestRow?.backtest_end_date && backtestRow?.price_extended_through
+                  ? ` / backtest jusqu'au ${backtestRow.backtest_end_date}, prix jusqu'au ${backtestRow.price_extended_through}`
+                  : ""}
               </p>
             </div>
             <div className="flex flex-wrap justify-end gap-2">

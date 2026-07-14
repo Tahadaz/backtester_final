@@ -5875,9 +5875,12 @@ export const SignalBacktestResultSchema = z.object({
   trades: z.array(z.record(z.unknown())).nullable().optional(),
   trade_ledger: z.array(z.record(z.unknown())).nullable().optional(),
   close_series: z.array(z.number()).nullable().optional(),
-  position_series: z.array(z.number()).nullable().optional(),
+  position_series: z.array(z.number().nullable()).nullable().optional(),
   score_series: z.array(z.number().nullable()).nullable().optional(),
   global_score_series: z.array(z.number().nullable()).nullable().optional(),
+  backtest_end_date: z.string().nullable().optional(),
+  price_extended_through: z.string().nullable().optional(),
+  price_extension_bars: z.number().nullable().optional(),
   signal_diagnostics: z.record(z.unknown()).nullable().optional(),
   metrics: BacktestMetricsSchema,
   mc: z.object({
