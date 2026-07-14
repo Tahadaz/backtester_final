@@ -6,6 +6,7 @@ import logging
 from datetime import date, datetime, timezone
 from typing import Any
 
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from core.quant_core.horizons import canonical_horizon
@@ -159,6 +160,62 @@ def _mark_snapshot_failed(
     row.computed_at = datetime.now(timezone.utc)
 
 
+def _mark_snapshot_unavailable(
+    db: Session,
+    *,
+    symbol: str,
+    horizon: str,
+    cooldown_bars: int,
+    reason: str,
+) -> None:
+    """Persist an expected coverage gap without classifying it as a failure."""
+    row = (
+        db.query(SignalBestEvidenceSnapshot)
+        .filter_by(symbol=symbol, horizon=horizon, cooldown_bars=cooldown_bars)
+        .first()
+    )
+    if row is None:
+        row = SignalBestEvidenceSnapshot(
+            symbol=symbol,
+            horizon=horizon,
+            cooldown_bars=cooldown_bars,
+            variant="expanded_ta_simple",
+        )
+        db.add(row)
+    row.status = "unavailable"
+    row.evidence_payload_jsonb = None
+    row.chart_payload_jsonb = None
+    row.upstream_rev = {}
+    row.data_as_of = None
+    row.market_data_as_of = None
+    row.error_message = reason[:4000]
+    row.computed_at = datetime.now(timezone.utc)
+
+
+def _snapshot_failure_result(
+    db: Session,
+    *,
+    symbol: str,
+    horizon: str,
+    cooldown_bars: int,
+    exc: Exception,
+) -> dict[str, Any]:
+    logger.exception("best signal evidence snapshot failed", extra={"symbol": symbol, "horizon": horizon})
+    try:
+        db.rollback()
+        _mark_snapshot_failed(
+            db,
+            symbol=symbol,
+            horizon=horizon,
+            cooldown_bars=cooldown_bars,
+            error_message=str(exc),
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+    return {"symbol": symbol, "horizon": horizon, "status": "failed", "error": str(exc)}
+
+
 def refresh_signal_best_evidence_for_symbol(
     symbol: str,
     horizon: str,
@@ -209,21 +266,58 @@ def refresh_signal_best_evidence_for_symbol(
             "status": "succeeded",
             "has_chart": chart_payload is not None,
         }
-    except Exception as exc:
-        logger.exception("best signal evidence snapshot failed", extra={"symbol": symbol_upper, "horizon": canonical_h})
-        try:
-            db.rollback()
-            _mark_snapshot_failed(
+    except HTTPException as exc:
+        if exc.status_code != 404:
+            return _snapshot_failure_result(
                 db,
                 symbol=symbol_upper,
                 horizon=canonical_h,
                 cooldown_bars=cooldown,
-                error_message=str(exc),
+                exc=exc,
+            )
+        reason = str(exc.detail)
+        logger.info(
+            "best signal evidence snapshot unavailable: %s/%s: %s",
+            symbol_upper,
+            canonical_h,
+            reason,
+        )
+        try:
+            db.rollback()
+            _mark_snapshot_unavailable(
+                db,
+                symbol=symbol_upper,
+                horizon=canonical_h,
+                cooldown_bars=cooldown,
+                reason=reason,
             )
             db.commit()
-        except Exception:
+        except Exception as persist_exc:
             db.rollback()
-        return {"symbol": symbol_upper, "horizon": canonical_h, "status": "failed", "error": str(exc)}
+            logger.exception(
+                "failed to persist unavailable best signal evidence snapshot",
+                extra={"symbol": symbol_upper, "horizon": canonical_h},
+            )
+            return {
+                "symbol": symbol_upper,
+                "horizon": canonical_h,
+                "status": "failed",
+                "error": f"failed to persist unavailable snapshot: {persist_exc}",
+            }
+        return {
+            "symbol": symbol_upper,
+            "horizon": canonical_h,
+            "status": "skipped",
+            "reason": reason,
+        }
+    except Exception as exc:
+        return _snapshot_failure_result(
+            db,
+            symbol=symbol_upper,
+            horizon=canonical_h,
+            cooldown_bars=cooldown,
+            exc=exc,
+        )
     finally:
         db.close()
 
@@ -251,13 +345,15 @@ def refresh_signal_best_evidence_snapshot(
         if item
     ]
     succeeded = sum(1 for item in results if item.get("status") == "succeeded")
-    failed = len(results) - succeeded
+    skipped = sum(1 for item in results if item.get("status") == "skipped")
+    failed = len(results) - succeeded - skipped
     return {
-        "status": "succeeded" if failed == 0 else "partial" if succeeded else "failed",
+        "status": "succeeded" if failed == 0 else "partial" if succeeded or skipped else "failed",
         "symbols": len(symbols),
         "horizons": horizons,
         "total": len(results),
         "succeeded": succeeded,
+        "skipped": skipped,
         "failed": failed,
         "results_sample": results[:20],
     }
