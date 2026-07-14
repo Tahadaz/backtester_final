@@ -51,24 +51,41 @@ jobs:
               -f infra/docker-compose.prod.yml \
               up -d --remove-orphans
 
-            # Dashboard snapshot mode serves persisted rows. Rebuild them with
-            # the freshly deployed image so payload-shape changes do not leave
-            # the dashboard returning 503 until the nightly refresh runs.
+            bash infra/scripts/docker_housekeeping.sh
+
+      # Dashboard snapshot mode serves persisted rows. Refreshing them is a
+      # best-effort warm-up: persisted rows remain available and the nightly
+      # refresh repairs a missed run, so a timeout must not mask smoke tests.
+      - name: Refresh dashboard snapshots (best-effort)
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.ORACLE_HOST }}
+          username: deploy
+          key: ${{ secrets.ORACLE_SSH_KEY }}
+          command_timeout: 25m
+          script: |
+            set -euo pipefail
+            cd /opt/bt
             IMAGE_TAG=${{ github.event.workflow_run.head_sha }} timeout --signal=TERM --kill-after=30s 20m \
               docker compose --env-file /etc/bt/env \
               -f infra/docker-compose.prod.yml \
               run --rm --no-deps quant_worker \
-              python - <<'PY'
+              python -u - <<'PY'
             import sys
             from services.worker.tasks.dashboard_snapshot import refresh_dashboard_snapshot
 
-            result = refresh_dashboard_snapshot()
-            print(result)
-            if not result or not all(result.values()):
+            results = {}
+            for horizon in ("weekly", "monthly", "quarterly"):
+                print(f"dashboard snapshot: starting {horizon}", flush=True)
+                result = refresh_dashboard_snapshot(horizon)
+                results.update(result)
+                print(f"dashboard snapshot: finished {horizon}: {result}", flush=True)
+
+            print(f"dashboard snapshot: final result: {results}", flush=True)
+            if not results or not all(results.values()):
                 sys.exit(1)
             PY
-
-            bash infra/scripts/docker_housekeeping.sh
 
       # Rebuild best-evidence snapshots so the signal-evidence tab serves fresh
       # data immediately after deploy rather than waiting until the next Monday
