@@ -5,6 +5,7 @@ import subprocess
 import uuid
 from uuid import UUID
 
+import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -17,7 +18,8 @@ from .. import models
 from ..config import settings
 from ..db import get_db
 from ..queue import get_queue
-from ..schemas.cross_asset_research import DataQualityRequest, RunCreate, StrategyCreate
+from ..schemas.cross_asset_research import CommodityCurveRequest, DataQualityRequest, RunCreate, StrategyCreate
+from ..services.cross_asset.commodity_data import commodity_curve_payload
 from ..services.cross_asset.orchestrator import (
     CrossAssetStrategy,
     dataset_hash,
@@ -36,6 +38,23 @@ def _git_commit() -> str:
         return subprocess.check_output(["git", "rev-parse", "HEAD"], text=True, timeout=2).strip()
     except Exception:
         return "unknown"
+
+
+@router.post("/commodity/curve")
+def commodity_curve(payload: CommodityCurveRequest) -> dict:
+    try:
+        result = commodity_curve_payload(payload.data, as_of=pd.Timestamp(payload.as_of).date(), data_tier=payload.data_tier)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return envelope(
+        inputs={"as_of": payload.as_of, "data_tier": payload.data_tier},
+        methodology={"carry": "front/deferred - 1, annualized; forecast feature only"},
+        warnings=result.pop("warnings"),
+        results=result,
+        interpretation="Raw unadjusted curve; carry is not realized P&L.",
+        units={"settle": "contract price", "carry": "decimal annualized"},
+        data_source=payload.data_tier,
+    )
 
 
 def _strategy(db: Session, strategy_id: UUID) -> CrossAssetStrategy:

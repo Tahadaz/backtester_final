@@ -8356,3 +8356,7 @@ export function getCrossAssetRobustness(runId: string): Promise<CrossAssetEnvelo
 export function getCrossAssetCurrentSignal(strategyId: string): Promise<CrossAssetEnvelope> {
   return crossAssetRequest(`/strategies/${strategyId}/current-signal`)
 }
+
+export function getCommodityCurve(data: Array<Record<string, unknown>>, asOf: string, dataTier: "fixture" | "proxy" | "validated" = "fixture"): Promise<CrossAssetEnvelope> {
+  return crossAssetRequest("/commodity/curve", { method: "POST", body: JSON.stringify({ data, as_of: asOf, data_tier: dataTier }) })
+}

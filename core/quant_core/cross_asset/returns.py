@@ -40,15 +40,52 @@ def _roll_return(front: pd.Series, roll_dates: list[date], next_on_roll: dict[da
 
 
 def futures_excess_return(
-    front: pd.Series,
+    front: pd.Series | pd.DataFrame,
     roll_dates: list[date],
     next_on_roll: dict[date, float],
     collateral_rate: pd.Series,
     daycount: float = 1 / 252,
 ) -> pd.Series:
+    if isinstance(front, pd.DataFrame):
+        raise ValueError("contract panel requires futures_return_legs with an explicit held_contract sequence")
     price_and_roll = front.astype(float).pct_change(fill_method=None) + _roll_return(front, roll_dates, next_on_roll)
     result = price_and_roll + collateral_rate.astype(float).shift(1) * daycount
     result.name = front.name
+    return result
+
+
+def futures_return_legs(
+    contract_prices: pd.DataFrame,
+    held_contract: pd.Series,
+    collateral_rate: pd.Series,
+    *,
+    daycount: float = 1 / 252,
+    fx_return: pd.Series | None = None,
+) -> pd.DataFrame:
+    """Reconstruct outright, roll, collateral and optional FX legs from held contracts."""
+    held = held_contract.reindex(contract_prices.index)
+    outright = pd.Series(index=contract_prices.index, dtype=float, name="outright")
+    roll = pd.Series(0.0, index=contract_prices.index, dtype=float, name="roll")
+    for position in range(1, len(contract_prices.index)):
+        timestamp = contract_prices.index[position]
+        previous_timestamp = contract_prices.index[position - 1]
+        previous_contract = held.iloc[position - 1]
+        current_contract = held.iloc[position]
+        if pd.isna(previous_contract) or pd.isna(current_contract):
+            continue
+        previous_price = contract_prices.at[previous_timestamp, previous_contract]
+        old_price_today = contract_prices.at[timestamp, previous_contract] if previous_contract in contract_prices else float("nan")
+        if pd.isna(previous_price) or pd.isna(old_price_today) or float(previous_price) == 0:
+            continue
+        outright.iloc[position] = float(old_price_today) / float(previous_price) - 1.0
+        if current_contract != previous_contract:
+            new_price_today = contract_prices.at[timestamp, current_contract]
+            if pd.notna(new_price_today) and float(old_price_today) != 0:
+                roll.iloc[position] = float(new_price_today) / float(old_price_today) - 1.0
+    collateral = collateral_rate.astype(float).shift(1).reindex(contract_prices.index) * daycount
+    fx_leg = fx_return.astype(float).reindex(contract_prices.index) if fx_return is not None else pd.Series(0.0, index=contract_prices.index)
+    result = pd.concat([outright, roll, collateral.rename("collateral"), fx_leg.rename("fx")], axis=1)
+    result["excess"] = result.sum(axis=1, min_count=4)
     return result
 
 

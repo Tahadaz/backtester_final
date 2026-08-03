@@ -23,6 +23,12 @@ class RunCreate(BaseModel):
     seed: int = 0
 
 
+class CommodityCurveRequest(BaseModel):
+    data: list[dict[str, Any]]
+    as_of: str
+    data_tier: str = Field(default="fixture", pattern=r"^(fixture|proxy|validated)$")
+
+
 class TransparencyEnvelope(BaseModel):
     inputs: dict[str, Any] = Field(default_factory=dict)
     methodology: dict[str, Any] = Field(default_factory=dict)

@@ -5,6 +5,7 @@ import pytest
 from quant_core.cross_asset.backtest import run_backtest
 from quant_core.cross_asset.dataquality import data_quality_report
 from quant_core.cross_asset.instruments import Instrument
+from quant_core.cross_asset.instruments import FuturesContract
 from quant_core.cross_asset.strategy_spec import Identity, PositionSpec, ResearchSource, SignalSpec, StrategyDefinition, Universe
 
 
@@ -26,3 +27,11 @@ def test_missing_values_warn_and_are_not_filled():
     report = data_quality_report(panel, [Instrument("A", "fx", "USD", "return")])
     assert report.instruments[0].missing_periods == 1
     assert "no forward-fill" in report.warnings[0]
+
+
+def test_missing_first_notice_metadata_blocks_contract_backtest():
+    panel = pd.DataFrame({"GCF25": [100.0, 101.0]}, index=pd.date_range("2025-01-01", periods=2))
+    contract = FuturesContract(symbol="GCF25", asset_class="commodity", currency="USD", quote_convention="USD/contract", root="GC", expiry=pd.Timestamp("2025-02-01").date(), first_notice=None, roll_rule="first_notice")
+    report = data_quality_report(panel, [contract])
+    assert report.blocks_backtest
+    assert "incomplete contract metadata" in report.warnings[0]

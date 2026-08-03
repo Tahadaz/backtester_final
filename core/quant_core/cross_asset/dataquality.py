@@ -73,7 +73,9 @@ def data_quality_report(
         missing = int(series.isna().sum())
         jumps = int((series.pct_change(fill_method=None).abs() > discontinuity_threshold).sum())
         metadata_complete = not isinstance(instrument, FuturesContract) or (
-            instrument.expiry is not None and bool(instrument.roll_rule)
+            instrument.expiry is not None
+            and bool(instrument.roll_rule)
+            and (instrument.first_notice is not None or instrument.roll_rule.startswith("n_days_before_expiry"))
         )
         reasons: list[str] = []
         if clean.empty:
@@ -84,6 +86,7 @@ def data_quality_report(
             reasons.append("duplicate dates")
         if not metadata_complete:
             reasons.append("incomplete contract metadata")
+            warnings.append(f"{instrument.symbol}: incomplete contract metadata")
         if len(clean):
             usable_ranges.append((pd.Timestamp(clean.index.min()), pd.Timestamp(clean.index.max())))
         if missing:
@@ -109,7 +112,12 @@ def data_quality_report(
     if no_overlap:
         warnings.append("instruments have no overlapping observations")
     fatal = duplicate_count > 0 or no_overlap or any(
-        item.reason and ("no observations" in item.reason or "all observations stale" in item.reason)
+        item.reason
+        and (
+            "no observations" in item.reason
+            or "all observations stale" in item.reason
+            or "incomplete contract metadata" in item.reason
+        )
         for item in qualities
     )
     return DataQualityReport(tuple(qualities), fatal, tuple(dict.fromkeys(warnings)))
