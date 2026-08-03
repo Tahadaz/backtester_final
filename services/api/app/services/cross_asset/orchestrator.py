@@ -57,11 +57,23 @@ def dataset_hash(value: Any) -> str:
 
 def panel_from_payload(value: list[dict[str, Any]] | dict[str, Any]) -> pd.DataFrame:
     if isinstance(value, list):
+        if not value:
+            from .datasources import assemble_fx_panel
+
+            live = assemble_fx_panel()
+            flattened = live.panel.copy()
+            flattened.columns = [f"{symbol}__{field}" for symbol, field in flattened.columns]
+            records = frame_to_records(flattened)
+            value.extend(records)
         frame = pd.DataFrame(value)
         if "date" not in frame:
             raise ValueError("fixture data requires a date field")
         frame["date"] = pd.to_datetime(frame["date"], errors="raise")
-        return frame.set_index("date").sort_index()
+        frame = frame.set_index("date").sort_index()
+        encoded = [column for column in frame.columns if "__" in str(column)]
+        if encoded and len(encoded) == len(frame.columns):
+            frame.columns = pd.MultiIndex.from_tuples([tuple(str(column).split("__", 1)) for column in frame.columns])
+        return frame
     frame = pd.DataFrame.from_dict(value, orient="index")
     frame.index = pd.to_datetime(frame.index, errors="raise")
     return frame.sort_index()

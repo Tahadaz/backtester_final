@@ -16,6 +16,7 @@ import {
   LogIn,
   LogOut,
   RefreshCw,
+  Repeat2,
   Settings,
   Target,
 } from "lucide-react"
@@ -30,6 +31,7 @@ const defaultNavItems = [
   { href: "/strategy", label: "Strategy", icon: Target },
   { href: "/backtest", label: "Backtest", icon: Gauge },
   { href: "/analytics", label: "Analytics", icon: ChartColumnIncreasing },
+  { href: "/cross-asset-research", label: "Cross-Asset Research", icon: Repeat2 },
   { href: "/glossary", label: "Glossaire", icon: BookOpen },
 ]
 

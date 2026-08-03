@@ -8308,3 +8308,51 @@ export async function triggerFactorSelectionRecalibration(
 ): Promise<{ status: string; job_id: string; symbol: string }> {
   return request(`/factor-selection/stocks/${symbol}/trigger-recalibration`, { method: "POST" })
 }
+
+export const CrossAssetClassSchema = z.enum(["fx", "commodity", "rates"])
+export type CrossAssetClass = z.infer<typeof CrossAssetClassSchema>
+
+export const CrossAssetEnvelopeSchema = z.object({
+  inputs: z.record(z.unknown()).default({}),
+  methodology: z.record(z.unknown()).default({}),
+  data_source: z.string(),
+  calculation_date: z.string(),
+  assumptions: z.array(z.string()).default([]),
+  units: z.record(z.string()).default({}),
+  warnings: z.array(z.string()).default([]),
+  results: z.unknown().nullable(),
+  interpretation: z.string(),
+})
+export type CrossAssetEnvelope = z.infer<typeof CrossAssetEnvelopeSchema>
+
+async function crossAssetRequest(path: string, options?: RequestInit): Promise<CrossAssetEnvelope> {
+  return CrossAssetEnvelopeSchema.parse(await request(`/cross-asset-research${path}`, options))
+}
+
+export function listCrossAssetStrategies(): Promise<CrossAssetEnvelope> {
+  return crossAssetRequest("/strategies")
+}
+
+export function createCrossAssetStrategy(spec: Record<string, unknown>): Promise<CrossAssetEnvelope> {
+  return crossAssetRequest("/strategies", { method: "POST", body: JSON.stringify({ spec }) })
+}
+
+export function createCrossAssetRun(strategyId: string, seed = 0): Promise<CrossAssetEnvelope> {
+  return crossAssetRequest("/runs", { method: "POST", body: JSON.stringify({ strategy_id: strategyId, data: [], seed }) })
+}
+
+export function getCrossAssetRun(runId: string): Promise<CrossAssetEnvelope> {
+  return crossAssetRequest(`/runs/${runId}`)
+}
+
+export function getCrossAssetStages(runId: string): Promise<CrossAssetEnvelope> {
+  return crossAssetRequest(`/runs/${runId}/stages`)
+}
+
+export function getCrossAssetRobustness(runId: string): Promise<CrossAssetEnvelope> {
+  return crossAssetRequest(`/runs/${runId}/robustness`)
+}
+
+export function getCrossAssetCurrentSignal(strategyId: string): Promise<CrossAssetEnvelope> {
+  return crossAssetRequest(`/strategies/${strategyId}/current-signal`)
+}
