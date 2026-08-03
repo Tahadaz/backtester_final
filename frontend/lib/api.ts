@@ -8381,3 +8381,7 @@ export function calculateBondAnalytics(body: Record<string, unknown>): Promise<O
 export function calculateBondScenarios(body: Record<string, unknown>): Promise<OffshoreLabEnvelope> {
   return request("/offshore-lab/bond/scenarios", { method: "POST", body: JSON.stringify(body) }).then((value) => OffshoreLabEnvelopeSchema.parse(value))
 }
+
+export function getRatesCurveLab(observations: Array<Record<string, unknown>>, trade: { long_notional?: number; long_yield_change_bp?: number; short_yield_change_bp?: number } = {}): Promise<CrossAssetEnvelope> {
+  return crossAssetRequest("/rates/curve-lab", { method: "POST", body: JSON.stringify({ observations, ...trade }) })
+}

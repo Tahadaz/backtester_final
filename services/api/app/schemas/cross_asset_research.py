@@ -29,6 +29,13 @@ class CommodityCurveRequest(BaseModel):
     data_tier: str = Field(default="fixture", pattern=r"^(fixture|proxy|validated)$")
 
 
+class RatesCurveLabRequest(BaseModel):
+    observations: list[dict[str, Any]]
+    long_notional: float = Field(default=1_000_000, gt=0)
+    long_yield_change_bp: float = 0.0
+    short_yield_change_bp: float = 0.0
+
+
 class TransparencyEnvelope(BaseModel):
     inputs: dict[str, Any] = Field(default_factory=dict)
     methodology: dict[str, Any] = Field(default_factory=dict)

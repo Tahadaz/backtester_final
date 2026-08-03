@@ -158,3 +158,31 @@ def assemble_rates_panel(
         if count:
             warnings.append(f"{symbol}.{field}: {int(count)} missing observations; no forward-fill applied")
     return FxPanelResult(panel, tuple(dict.fromkeys(warnings)), staleness, "fred")
+
+
+def _external_curve_csv(env_name: str, source_name: str) -> pd.DataFrame:
+    import requests
+    from io import StringIO
+
+    url = os.getenv(env_name)
+    if not url:
+        raise RuntimeError(f"{env_name} is required for {source_name} curve ingestion; no proxy fallback is permitted")
+    response = requests.get(url, timeout=30)
+    response.raise_for_status()
+    frame = pd.read_csv(StringIO(response.text))
+    required = {"date", "maturity_years", "yield"}
+    missing = sorted(required - set(frame.columns))
+    if missing:
+        raise RuntimeError(f"{source_name} curve CSV missing columns: {', '.join(missing)}")
+    frame["date"] = pd.to_datetime(frame["date"], errors="raise")
+    frame["maturity_years"] = pd.to_numeric(frame["maturity_years"], errors="raise")
+    frame["yield"] = pd.to_numeric(frame["yield"], errors="raise")
+    return frame.sort_values(["date", "maturity_years"])
+
+
+def load_ecb_aaa_curve() -> pd.DataFrame:
+    return _external_curve_csv("ECB_AAA_CURVE_CSV_URL", "ECB euro-area AAA")
+
+
+def load_bam_reference_curve() -> pd.DataFrame:
+    return _external_curve_csv("BAM_CURVE_CSV_URL", "BAM MAD reference")

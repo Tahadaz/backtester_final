@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from dataclasses import asdict
 import subprocess
 import uuid
 from uuid import UUID
@@ -18,8 +19,10 @@ from .. import models
 from ..config import settings
 from ..db import get_db
 from ..queue import get_queue
-from ..schemas.cross_asset_research import CommodityCurveRequest, DataQualityRequest, RunCreate, StrategyCreate
+from ..schemas.cross_asset_research import CommodityCurveRequest, DataQualityRequest, RatesCurveLabRequest, RunCreate, StrategyCreate
 from ..services.cross_asset.commodity_data import commodity_curve_payload
+from core.quant_core.cross_asset.curve_lab import curve_spreads, dv01_neutral_curve_trade, regime_history, roll_down_return
+from core.quant_core.fixed_income import BondDefinition, risk_measures
 from ..services.cross_asset.orchestrator import (
     CrossAssetStrategy,
     dataset_hash,
@@ -55,6 +58,34 @@ def commodity_curve(payload: CommodityCurveRequest) -> dict:
         units={"settle": "contract price", "carry": "decimal annualized"},
         data_source=payload.data_tier,
     )
+
+
+@router.post("/rates/curve-lab")
+def rates_curve_lab(payload: RatesCurveLabRequest) -> dict:
+    try:
+        frame = pd.DataFrame(payload.observations)
+        if "date" not in frame:
+            raise ValueError("curve observations require date")
+        frame["date"] = pd.to_datetime(frame["date"], errors="raise")
+        frame = frame.set_index("date").sort_index()
+        required = ["DGS2", "DGS5", "DGS10", "DGS30"]
+        missing = [column for column in required if column not in frame]
+        if missing:
+            raise ValueError(f"curve observations missing: {', '.join(missing)}")
+        frame[required] = frame[required].apply(pd.to_numeric, errors="raise")
+        spreads = curve_spreads(frame)
+        regimes = regime_history(frame["DGS2"], frame["DGS10"])
+        latest = frame.iloc[-1]
+        settlement = frame.index[-1].date()
+        two_year = BondDefinition(100, "USD", float(latest["DGS2"]), 2, settlement.replace(year=settlement.year + 2), "ACT/365F")
+        ten_year = BondDefinition(100, "USD", float(latest["DGS10"]), 2, settlement.replace(year=settlement.year + 10), "ACT/365F")
+        trade = dv01_neutral_curve_trade(two_year, ten_year, settlement=settlement, long_ytm=float(latest["DGS2"]), short_ytm=float(latest["DGS10"]), long_notional=payload.long_notional, long_yield_change_bp=payload.long_yield_change_bp, short_yield_change_bp=payload.short_yield_change_bp)
+        ten_risk = risk_measures(ten_year, settlement, float(latest["DGS10"]))
+        roll_down = roll_down_return({2: latest["DGS2"], 5: latest["DGS5"], 10: latest["DGS10"], 30: latest["DGS30"]}, maturity_years=10, horizon_years=1, modified_duration=ten_risk.modified_duration)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    history = [{"date": timestamp.isoformat(), "2s10s": float(spreads.at[timestamp, "2s10s"]), "5s30s": float(spreads.at[timestamp, "5s30s"]), "regime": regimes.at[timestamp]} for timestamp in frame.index]
+    return envelope(inputs={"long_notional": payload.long_notional, "observations": len(frame)}, methodology={"spreads": "long yield minus short yield", "neutrality": "opposite signed analytic DV01 from fixed_income.risk_measures"}, warnings=[], results={"snapshot": {key: float(latest[key]) for key in required}, "history": history, "trade": asdict(trade), "roll_down_10y_1y": roll_down}, interpretation="Residual DV01 is reported explicitly; nonzero residual means the curve trade retains level risk.", units={"yields": "decimal per annum", "spreads": "decimal", "dv01": "USD per bp", "pnl": "USD"}, data_source="fred")
 
 
 def _strategy(db: Session, strategy_id: UUID) -> CrossAssetStrategy:

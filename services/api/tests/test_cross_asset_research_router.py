@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+import pytest
 
 from services.api.app.main import app
 
@@ -37,3 +38,17 @@ def test_commodity_curve_is_fixture_labelled_and_never_claims_tradability():
     assert payload["data_source"] == "fixture"
     assert "non-tradable" in payload["warnings"][0]
     assert payload["results"]["carry"]["front_second"] > 0
+
+
+def test_rates_curve_lab_reports_spreads_regimes_and_residual_dv01():
+    client = TestClient(app)
+    observations = [
+        {"date": "2025-01-02", "DGS2": 0.043, "DGS5": 0.044, "DGS10": 0.046, "DGS30": 0.048},
+        {"date": "2025-02-03", "DGS2": 0.041, "DGS5": 0.043, "DGS10": 0.045, "DGS30": 0.047},
+    ]
+    response = client.post("/cross-asset-research/rates/curve-lab", json={"observations": observations, "long_notional": 1_000_000, "long_yield_change_bp": -5, "short_yield_change_bp": -10})
+    assert response.status_code == 200
+    result = response.json()["results"]
+    assert result["history"][-1]["2s10s"] == pytest.approx(0.004)
+    assert abs(result["trade"]["residual_dv01"]) < 1e-8
+    assert "residual" in response.json()["interpretation"].lower()
