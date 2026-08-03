@@ -8360,3 +8360,24 @@ export function getCrossAssetCurrentSignal(strategyId: string): Promise<CrossAss
 export function getCommodityCurve(data: Array<Record<string, unknown>>, asOf: string, dataTier: "fixture" | "proxy" | "validated" = "fixture"): Promise<CrossAssetEnvelope> {
   return crossAssetRequest("/commodity/curve", { method: "POST", body: JSON.stringify({ data, as_of: asOf, data_tier: dataTier }) })
 }
+
+export const OffshoreLabEnvelopeSchema = z.object({
+  inputs: z.record(z.unknown()),
+  methodology: z.string(),
+  data_source: z.literal("user-entered"),
+  calculation_date: z.string(),
+  assumptions: z.array(z.string()),
+  units: z.record(z.string()),
+  warnings: z.array(z.string()),
+  results: z.record(z.unknown()),
+  interpretation: z.string(),
+})
+export type OffshoreLabEnvelope = z.infer<typeof OffshoreLabEnvelopeSchema>
+
+export function calculateBondAnalytics(body: Record<string, unknown>): Promise<OffshoreLabEnvelope> {
+  return request("/offshore-lab/bond/analytics", { method: "POST", body: JSON.stringify(body) }).then((value) => OffshoreLabEnvelopeSchema.parse(value))
+}
+
+export function calculateBondScenarios(body: Record<string, unknown>): Promise<OffshoreLabEnvelope> {
+  return request("/offshore-lab/bond/scenarios", { method: "POST", body: JSON.stringify(body) }).then((value) => OffshoreLabEnvelopeSchema.parse(value))
+}

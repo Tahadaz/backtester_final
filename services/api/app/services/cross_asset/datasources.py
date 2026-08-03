@@ -33,6 +33,8 @@ FRED_RATE_SERIES = {
     "SEK": "IRSTCI01SEM156N",
 }
 
+FRED_TREASURY_SERIES = {2: "DGS2", 5: "DGS5", 10: "DGS10", 30: "DGS30"}
+
 
 @dataclass(frozen=True)
 class FxPanelResult:
@@ -122,3 +124,37 @@ def assemble_fx_panel(
     for (symbol, field), count in missing[missing > 0].items():
         warnings.append(f"{symbol}.{field}: {int(count)} missing observations; no forward-fill applied")
     return FxPanelResult(panel=panel, warnings=tuple(dict.fromkeys(warnings)), staleness_days=staleness)
+
+
+def assemble_rates_panel(
+    *,
+    start: date | None = None,
+    end: date | None = None,
+    fred_api_key: str | None = None,
+    rate_loader: Callable[[str, str, date, date], pd.Series] | None = None,
+) -> FxPanelResult:
+    key = fred_api_key or os.getenv("FRED_API_KEY")
+    if not key:
+        raise RuntimeError("FRED_API_KEY is required for DGS rates; no zero or stale fallback is permitted")
+    end_date = end or date.today()
+    start_date = start or (end_date - timedelta(days=365 * 15))
+    loader = rate_loader or _download_fred
+    cash = loader(FRED_RATE_SERIES["USD"], key, start_date, end_date)
+    columns: dict[tuple[str, str], pd.Series] = {}
+    warnings = ["Duration-approximated from constant-maturity par yields; not reconstructed from traded bonds or futures."]
+    staleness: dict[str, int | None] = {}
+    for maturity, series_id in FRED_TREASURY_SERIES.items():
+        symbol = f"DGS{maturity}"
+        par_yield = loader(series_id, key, start_date, end_date)
+        columns[(symbol, "par_yield")] = par_yield
+        columns[(symbol, "cash_rate")] = cash
+        clean = par_yield.dropna()
+        age = None if clean.empty else max(0, int((pd.Timestamp(end_date).normalize() - pd.Timestamp(clean.index.max()).normalize()).days))
+        staleness[symbol] = age
+        if age is None or age > 5:
+            warnings.append(f"{symbol}: {'unavailable' if age is None else f'stale by {age} calendar days'}")
+    panel = pd.concat(columns, axis=1).sort_index()
+    for (symbol, field), count in panel.isna().sum().items():
+        if count:
+            warnings.append(f"{symbol}.{field}: {int(count)} missing observations; no forward-fill applied")
+    return FxPanelResult(panel, tuple(dict.fromkeys(warnings)), staleness, "fred")

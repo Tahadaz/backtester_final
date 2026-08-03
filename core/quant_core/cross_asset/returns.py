@@ -132,5 +132,9 @@ def build_return(kind: ReturnKind, **kwargs: object) -> pd.Series:
     if kind == "futures_excess":
         return futures_excess_return(**kwargs)  # type: ignore[arg-type]
     if kind == "bond_duration":
-        raise NotImplementedError("bond_duration: Brief 4")
+        if not kwargs:
+            raise NotImplementedError("bond_duration: Brief 4 requires par_yield and maturity_years")
+        from .rates import bond_duration_return
+
+        return bond_duration_return(**kwargs)  # type: ignore[arg-type]
     raise ValueError(f"unsupported return kind: {kind}")

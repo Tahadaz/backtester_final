@@ -1,0 +1,4 @@
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+
+export function ShockScenarioTable({ rows = [] }: { rows?: Array<Record<string, unknown>> }) { return <Card><CardHeader><CardTitle>Yield shocks</CardTitle></CardHeader><CardContent className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Shock (bp)</TableHead><TableHead>Exact P&amp;L /100</TableHead><TableHead>Duration P&amp;L /100</TableHead><TableHead>Duration+convexity /100</TableHead><TableHead>Erreur /100</TableHead></TableRow></TableHeader><TableBody>{rows.map((row)=><TableRow key={String(row.shock_bp)}>{["shock_bp","exact_pnl_per_100","approx_pnl_duration","approx_pnl_duration_convexity","approx_error"].map((key)=><TableCell key={key} className="tabular-nums">{Number(row[key]).toFixed(4)}</TableCell>)}</TableRow>)}</TableBody></Table></CardContent></Card> }

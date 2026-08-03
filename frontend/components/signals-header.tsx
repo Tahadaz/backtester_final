@@ -13,6 +13,7 @@ import {
   Database,
   Gauge,
   LayoutDashboard,
+  Landmark,
   LogIn,
   LogOut,
   RefreshCw,
@@ -32,6 +33,7 @@ const defaultNavItems = [
   { href: "/backtest", label: "Backtest", icon: Gauge },
   { href: "/analytics", label: "Analytics", icon: ChartColumnIncreasing },
   { href: "/cross-asset-research", label: "Cross-Asset Research", icon: Repeat2 },
+  { href: "/offshore-lab", label: "Offshore Lab", icon: Landmark },
   { href: "/glossary", label: "Glossaire", icon: BookOpen },
 ]
 

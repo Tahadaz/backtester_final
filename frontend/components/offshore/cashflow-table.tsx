@@ -1,0 +1,4 @@
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+
+export function CashflowTable({ rows = [] }: { rows?: Array<Record<string, unknown>> }) { return <Card><CardHeader><CardTitle>Cash flows</CardTitle></CardHeader><CardContent><Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Type</TableHead><TableHead className="text-right">Montant (par 100)</TableHead></TableRow></TableHeader><TableBody>{rows.map((row,index)=><TableRow key={`${row.date}-${index}`}><TableCell>{String(row.date)}</TableCell><TableCell>{String(row.kind)}</TableCell><TableCell className="text-right tabular-nums">{Number(row.amount).toFixed(4)}</TableCell></TableRow>)}</TableBody></Table></CardContent></Card> }
