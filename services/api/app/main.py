@@ -12,6 +12,7 @@ from .freshness import FreshnessHeadersMiddleware
 from .routers import (
     analytics,
     bloomberg_bridge,
+    cross_asset_research,
     dashboard_data,
     dashboard_indices,
     data,
@@ -66,6 +67,7 @@ def create_app() -> FastAPI:
     app.include_router(market_data_indices.router, dependencies=[Depends(auth.require_api_key)])
     app.include_router(ops.router, dependencies=[Depends(auth.require_api_key)])
     app.include_router(bloomberg_bridge.app_router, dependencies=[Depends(auth.require_api_key)])
+    app.include_router(cross_asset_research.router, dependencies=[Depends(auth.require_api_key)])
     app.include_router(bloomberg_bridge.bridge_router)
     app.include_router(defaults.router, dependencies=[Depends(auth.require_api_key)])
     app.include_router(analytics.router, dependencies=[Depends(auth.require_api_key)])

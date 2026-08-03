@@ -34,6 +34,12 @@ def execute_strategy_backtest_run(*args, **kwargs):
     return _execute_strategy_backtest_run(*args, **kwargs)
 
 
+def execute_cross_asset_backtest(*args, **kwargs):
+    from .cross_asset.run_backtest import execute_cross_asset_backtest as _execute_cross_asset_backtest
+
+    return _execute_cross_asset_backtest(*args, **kwargs)
+
+
 def ingest_macro_series(*args, **kwargs):
     from .ingest_macro_series import ingest_macro_series as _ingest_macro_series
 
@@ -139,6 +145,7 @@ __all__ = [
     "refresh_single_symbol",
     "refresh_all_tracked_symbols",
     "execute_strategy_backtest_run",
+    "execute_cross_asset_backtest",
     "ingest_macro_series",
     "execute_fundamental_import",
     "refresh_yfinance_universe",
