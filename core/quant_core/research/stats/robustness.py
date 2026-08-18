@@ -95,14 +95,51 @@ def deflated_sharpe_ratio(
     returns: np.ndarray,
     n_variants: int = 1,
     periods_per_year: int = 252,
+    variant_sharpes: np.ndarray | list[float] | None = None,
 ) -> float:
     """DSR: PSR with benchmark = E[SR_max(n_variants)] from Harvey-Liu-Zhu.
 
     Bailey & López de Prado (2014) + Harvey, Liu & Zhu (2016).
     DSR < 0.5 means the observed Sharpe is likely due to selection bias.
+
+    The Harvey-Liu-Zhu term is the expected maximum of ``n_variants`` *standard
+    normal* draws -- a dimensionless multiplier, not a Sharpe. It becomes a
+    Sharpe benchmark only after scaling by ``sigma_SR``, the dispersion of the
+    trial Sharpes:
+
+        SR* = sigma_SR * E[max of N standard normals]
+
+    ``sigma_SR`` is the cross-sectional standard deviation of the Sharpes of the
+    variants actually tried; pass them as ``variant_sharpes`` (annualized). With
+    nothing to go on, it falls back to the analytic standard error of the Sharpe
+    estimator, sqrt((1 + SR^2/2) / T).
+
+    Prior to 2026-08-17 this function passed the raw Harvey-Liu-Zhu quantile
+    (~1.05 for N=4) straight in as a *per-period* benchmark, while
+    ``probabilistic_sharpe_ratio`` works in per-period units where a daily
+    Sharpe of 0.04 is excellent. The comparison was therefore between a daily
+    Sharpe and a number no daily Sharpe can reach, and the function returned 0.0
+    for every input -- including a strategy with an annualized Sharpe of 4.7.
     """
-    sr_max = harvey_liu_expected_max_sharpe(n_variants)
-    return probabilistic_sharpe_ratio(returns, sr_benchmark=sr_max, periods_per_year=periods_per_year)
+    if n_variants <= 1:
+        return probabilistic_sharpe_ratio(returns, sr_benchmark=0.0, periods_per_year=periods_per_year)
+
+    e_max = harvey_liu_expected_max_sharpe(n_variants)
+
+    if variant_sharpes is not None and len(variant_sharpes) > 1:
+        per_period = np.asarray(variant_sharpes, dtype=float) / math.sqrt(periods_per_year)
+        sigma_sr = float(np.std(per_period, ddof=1))
+    else:
+        T = len(returns)
+        if T < 5:
+            return float("nan")
+        sigma = float(np.std(returns, ddof=1))
+        sr_hat = float(np.mean(returns)) / sigma if sigma > 0 else 0.0
+        sigma_sr = math.sqrt(max((1.0 + 0.5 * sr_hat**2) / T, 1e-18))
+
+    return probabilistic_sharpe_ratio(
+        returns, sr_benchmark=sigma_sr * e_max, periods_per_year=periods_per_year
+    )
 
 
 def stationary_bootstrap_ci(
