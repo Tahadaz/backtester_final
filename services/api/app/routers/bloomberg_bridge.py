@@ -14,6 +14,9 @@ from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from core.quant_core.cross_asset.security_master import bloomberg_candidates
+from core.quant_core.cross_asset.universes import is_global_universe, resolve as resolve_universe
+
 from .. import auth, models
 from ..config import settings
 from ..db import get_db
@@ -116,10 +119,20 @@ def _append_job_event(
     )
 
 
-def _symbol_to_bloomberg_candidates(symbol: str) -> list[str]:
+def _symbol_to_bloomberg_candidates(symbol: str, universe: str = "masi") -> list[str]:
+    """Ordered Bloomberg tickers to probe for one symbol.
+
+    Global universes resolve through the security master; Moroccan and ad-hoc
+    universes keep the historical ``MA``/``MC`` suffix guess. Resolution is
+    universe-scoped rather than registry-first so that MASI job specs stay
+    byte-identical -- several canonical ids (``C``, ``S``, ``W``, ``G``, ``Z``)
+    are short enough to collide with an equity ticker.
+    """
     clean = symbol.strip().upper()
     if not clean:
         return []
+    if is_global_universe(universe):
+        return bloomberg_candidates(clean)
     return [f"{clean} MA Equity", f"{clean} MC Equity"]
 
 
@@ -128,9 +141,11 @@ def _build_job_spec(body: BloombergJobCreateIn) -> dict[str, Any]:
     if body.universe == "masi" and not symbols:
         symbols = [str(row.get("symbol") or "").strip().upper() for row in all_masi_tickers()]
         symbols = [symbol for symbol in symbols if symbol]
+    elif is_global_universe(body.universe) and not symbols:
+        symbols = list(resolve_universe(body.universe))
 
     security_candidates = [
-        {"symbol": symbol, "candidates": _symbol_to_bloomberg_candidates(symbol)}
+        {"symbol": symbol, "candidates": _symbol_to_bloomberg_candidates(symbol, body.universe)}
         for symbol in symbols
         if symbol
     ]

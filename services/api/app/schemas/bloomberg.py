@@ -12,7 +12,22 @@ BloombergKind = Literal["time_series", "reference", "bulk_table", "bql_table"]
 BloombergJobType = Literal["preflight", "discovery", "backfill", "refresh"]
 BloombergJobStatus = Literal["queued", "leased", "running", "succeeded", "failed", "cancelled", "expired"]
 BloombergFrequency = Literal["daily", "hourly", "minute"]
-BloombergUniverse = Literal["masi", "selected", "custom", "bonds"]
+BloombergUniverse = Literal[
+    # Moroccan / ad-hoc universes (unchanged)
+    "masi",
+    "selected",
+    "custom",
+    "bonds",
+    # Global cross-asset universes, resolved through
+    # quant_core.cross_asset.universes. Kept in sync by
+    # services/api/tests/test_bloomberg_global_universe.py.
+    "g10_fx",
+    "sovereign_rates",
+    "credit",
+    "commodities",
+    "equity_index",
+    "global_all",
+]
 BloombergMode = Literal["discovery_only", "discover_then_backfill", "backfill_missing", "refresh_latest"]
 DEFAULT_BLOOMBERG_OHLCV_FIELDS = ["PX_OPEN", "PX_HIGH", "PX_LOW", "PX_LAST", "VOLUME"]
 
