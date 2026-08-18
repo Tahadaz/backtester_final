@@ -2058,12 +2058,17 @@ class HistoricalTradeOpportunity(Base):
 
     id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     decision_date = Column(Date, nullable=False)
+    methodology_version = Column(String(80), nullable=False)
     symbol = Column(String, nullable=False)
     horizon = Column(String(16), nullable=False)
     variant = Column(String(64), nullable=False)
     accepted = Column(Boolean, nullable=False, server_default=text("false"))
+    status = Column(String(32), nullable=False)
+    actionable = Column(Boolean, nullable=False, server_default=text("false"))
+    reconstructed_dashboard_winner = Column(Boolean, nullable=False, server_default=text("false"))
     rank_json = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False, default=list)
-    opportunity_json = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False, default=dict)
+    decision_json = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False, default=dict)
+    opportunity_json = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=True)
     input_hash = Column(String(64), nullable=False)
     materialization_run_id = Column(
         UUID(as_uuid=True),
@@ -2075,11 +2080,22 @@ class HistoricalTradeOpportunity(Base):
 
     __table_args__ = (
         UniqueConstraint(
-            "decision_date", "symbol", "horizon", "variant",
+            "methodology_version", "decision_date", "symbol", "horizon", "variant",
             name="uq_historical_trade_opportunity_key",
+        ),
+        CheckConstraint(
+            "status IN ('no_price_data','no_score_data','stale_score','insufficient_history','evidence_unavailable','evaluated')",
+            name="ck_historical_trade_opportunity_status",
         ),
         Index("ix_historical_trade_opportunity_accepted_date", "accepted", "decision_date"),
         Index("ix_historical_trade_opportunity_symbol_horizon", "symbol", "horizon"),
+        Index("ix_historical_trade_opportunity_methodology_version", "methodology_version"),
+        Index("ix_historical_trade_opportunity_status", "status"),
+        Index("ix_historical_trade_opportunity_actionable", "actionable"),
+        Index(
+            "ix_historical_trade_opportunity_winner_date",
+            "reconstructed_dashboard_winner", "decision_date",
+        ),
     )
 
 

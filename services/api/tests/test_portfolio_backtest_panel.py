@@ -22,6 +22,7 @@ from __future__ import annotations
 import datetime as dt
 from datetime import datetime, timezone
 
+import pandas as pd
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import MetaData, Table, create_engine
@@ -102,6 +103,7 @@ def _snapshot_row(
     status: str = "succeeded",
     cooldown_bars: int = 0,
     variant: str = "expanded_ta_simple",
+    edge_score: float = 75.0,
 ) -> models.SignalBestEvidenceSnapshot:
     return models.SignalBestEvidenceSnapshot(
         id=row_id,
@@ -114,7 +116,10 @@ def _snapshot_row(
         scope="global",
         scope_key="global",
         side_policy="long_short",
-        evidence_payload_jsonb={"stitched_oos_backtest": {"trades": trades}} if trades is not None else None,
+        evidence_payload_jsonb={
+            "edge": {"edge_score": edge_score, "n": 60, "action_expected_return_net": 0.01},
+            "stitched_oos_backtest": {"trades": trades},
+        } if trades is not None else None,
         upstream_rev={},
         computed_at=dt.datetime(2025, 1, 1, tzinfo=timezone.utc),
         updated_at=dt.datetime(2025, 1, 1, tzinfo=timezone.utc),
@@ -226,12 +231,147 @@ class TestPortfolioBacktestUniverse:
         assert resp.status_code == 200
         assert resp.json()["symbols"] == []
 
+    def test_universe_enforces_configured_edge_floor(self) -> None:
+        client = _make_app([
+            _snapshot_row("LOW", _LONG_TRADES, row_id=1, edge_score=49.99),
+            _snapshot_row("PASS", _LONG_TRADES, row_id=2, edge_score=50.0),
+            _snapshot_row("HIGH", _LONG_TRADES, row_id=3, edge_score=75.0),
+        ])
+
+        default_response = client.get(
+            "/strategy/signal/portfolio-backtest/universe",
+            params={"horizon": "weekly", "long_only": True},
+        )
+        assert sorted(row["symbol"] for row in default_response.json()["symbols"]) == ["HIGH", "PASS"]
+
+        stricter_response = client.get(
+            "/strategy/signal/portfolio-backtest/universe",
+            params={"horizon": "weekly", "long_only": True, "min_edge_score": 80},
+        )
+        assert stricter_response.json()["symbols"] == []
+
+        relaxed_response = client.get(
+            "/strategy/signal/portfolio-backtest/universe",
+            params=[
+                ("horizon", "weekly"), ("long_only", "true"),
+                ("min_edge_score", "0"), ("required_edge_conditions", "sample_size"),
+            ],
+        )
+        assert sorted(row["symbol"] for row in relaxed_response.json()["symbols"]) == ["HIGH", "LOW", "PASS"]
+
+        no_gate_response = client.get(
+            "/strategy/signal/portfolio-backtest/universe",
+            params=[("horizon", "weekly"), ("min_edge_score", "0"), ("required_edge_conditions", "none")],
+        )
+        assert sorted(row["symbol"] for row in no_gate_response.json()["symbols"]) == ["HIGH", "LOW", "PASS"]
+
 
 # ---------------------------------------------------------------------------
 # Part B: Trades ledger + period
 # ---------------------------------------------------------------------------
 
 class TestPortfolioBacktestTrades:
+    def test_daily_mtm_curve_is_continuous_and_conserves_wealth(self, monkeypatch) -> None:
+        from services.api.app.routers.strategy_signals import _backtest as bt
+
+        dates = pd.date_range("2024-01-01", "2024-01-10", freq="D")
+        closes = [100.0 + i for i in range(10)]
+        daily = pd.DataFrame(
+            {
+                "Open": closes,
+                "High": closes,
+                "Low": closes,
+                "Close": closes,
+                "Volume": [1_000.0] * len(closes),
+            },
+            index=dates,
+        )
+
+        def fake_prices(_db, symbol, _timeframe):
+            return daily if symbol == "AAA" else pd.DataFrame()
+
+        monkeypatch.setattr(bt, "load_ohlcv_for_symbol", fake_prices)
+        trade = _stitched_trade(
+            "2024-01-01",
+            "2024-01-10",
+            action_return_net=0.09,
+            entry_price=100.0,
+            exit_price=109.0,
+            holding_period_bars=9,
+        )
+        client = _make_app([_snapshot_row("AAA", [trade], row_id=1)])
+        response = client.post(
+            "/strategy/signal/portfolio-backtest",
+            json={"horizon": "weekly", "initial_capital": 100_000.0},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        curve = data["equity_curve"]
+        assert [point["date"] for point in curve] == [date.strftime("%Y-%m-%d") for date in dates]
+        assert all(
+            curve[index]["date"] < curve[index + 1]["date"]
+            for index in range(len(curve) - 1)
+        )
+
+        executed = data["trades"][0]
+        quantity = executed["position_size"] / executed["open_price"]
+        expected_daily_change = quantity * 1.0
+        changes = [curve[index]["equity"] - curve[index - 1]["equity"] for index in range(1, len(curve))]
+        assert all(abs(change - expected_daily_change) < 1e-6 for change in changes)
+        assert changes[-1] < executed["pnl_mad"] / 2.0
+        assert curve[1]["equity"] > curve[0]["equity"]
+
+        realized = sum(row["pnl_mad"] for row in data["trades"] if row["executed"])
+        assert abs(curve[-1]["equity"] - (100_000.0 + realized)) < 1e-6
+        assert data["metrics"]["max_exposure_pct"] <= 100.0
+        assert all(row["exposition_pct"] <= 100.0 for row in data["ledger"])
+
+    def test_same_day_close_is_not_used_for_kelly_sizing(self) -> None:
+        trades = [
+            _stitched_trade("2024-01-01", "2024-01-02", action_return_net=0.10, exit_price=110.0),
+            _stitched_trade("2024-01-03", "2024-01-04", action_return_net=0.10, exit_price=110.0),
+            _stitched_trade("2024-01-05", "2024-01-06", action_return_net=0.10, exit_price=110.0),
+            _stitched_trade("2024-01-06", "2024-01-10", action_return_net=0.10, exit_price=110.0),
+        ]
+        client = _make_app([_snapshot_row("AAA", trades, row_id=1)])
+        response = client.post(
+            "/strategy/signal/portfolio-backtest",
+            json={"horizon": "weekly", "initial_capital": 100_000.0},
+        )
+
+        assert response.status_code == 200
+        executed = sorted(response.json()["trades"], key=lambda row: (row["open_date"], row["close_date"]))
+        same_day_open = next(
+            row for row in executed
+            if row["open_date"] == "2024-01-06" and row["close_date"] == "2024-01-10"
+        )
+        equity_before_open = 100_000.0 + sum(row["pnl_mad"] for row in executed[:3])
+        assert same_day_open["position_size"] == round(0.025 * equity_before_open)
+        # Including the third (same-day) winning close would produce 50% Kelly.
+        assert same_day_open["position_size"] < 0.05 * equity_before_open
+
+    def test_missing_symbol_prices_carry_lot_at_cost_with_warning(self, monkeypatch) -> None:
+        from services.api.app.routers.strategy_signals import _backtest as bt
+
+        monkeypatch.setattr(bt, "load_ohlcv_for_symbol", lambda *_args, **_kwargs: pd.DataFrame())
+        client = _make_app([
+            _snapshot_row(
+                "AAA",
+                [_stitched_trade("2024-01-01", "2024-01-10", action_return_net=0.09)],
+                row_id=1,
+            )
+        ])
+        response = client.post("/strategy/signal/portfolio-backtest", json={"horizon": "weekly"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["equity_curve"]) == 2
+        assert any(
+            "AAA: prix indisponibles" in warning and "au coût" in warning
+            for warning in data["warnings"]
+        )
+
     def test_trades_present_in_response(self) -> None:
         client = _make_app([_snapshot_row("ADI", _LONG_TRADES, row_id=1)])
         resp = client.post(

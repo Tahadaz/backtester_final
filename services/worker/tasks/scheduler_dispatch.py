@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 from redis import Redis
@@ -47,6 +47,9 @@ FUNDAMENTAL_REFRESH_JOB_TIMEOUT_SECONDS = 14400
 FUNDAMENTAL_BETA_REFRESH_JOB_TIMEOUT_SECONDS = 7200
 FUNDAMENTAL_CROSS_SECTION_JOB_TIMEOUT_SECONDS = 7200
 FUNDAMENTAL_REFRESH_NON_STOCK_SYMBOLS = ("INSTRUMENT", "MAJ", "MAJJ", "WORKSHEET")
+PIT_SEED_LOOKBACK_DAYS = 365 * 3
+PIT_SEED_CHUNK_DAYS = 90
+PIT_COVERAGE_OVERLAP_DAYS = 7
 
 
 def _redis() -> Redis:
@@ -489,33 +492,84 @@ def _dispatch_signal_history(db: Session) -> dict[str, Any]:
     return dispatch_score_history_for_all_symbols(db)
 
 
+def _pit_resolved_universe(db: Session) -> list[str]:
+    from services.api.app.services.market_universe import list_masi_signal_universe_symbols
+
+    return list_masi_signal_universe_symbols(db)
+
+
 def _dispatch_pit_opportunity_materialization(db: Session) -> dict[str, Any]:
-    from datetime import timedelta
     from core.quant_core.historical_portfolio import METHODOLOGY_VERSION
+    from services.api.app.services.historical_opportunity_store import opportunity_store_coverage
 
     today = _now().date()
-    config = {
-        "start_date": (today - timedelta(days=21)).isoformat(),
-        "end_date": today.isoformat(),
-        "symbols": [],
-        "cost_bps_per_side": 33.0,
-        "slippage_bps_per_side": 5.0,
-        "bootstrap_seed": 5107,
+    seed_start = today - timedelta(days=PIT_SEED_LOOKBACK_DAYS)
+    resolved_universe = _pit_resolved_universe(db)
+    coverage = opportunity_store_coverage(db, {
+        "start_date": "1990-01-01", "end_date": today.isoformat(), "symbols": resolved_universe,
+    })
+    interval_ends = [datetime.fromisoformat(item["end"]).date() for item in coverage["intervals"]]
+    last_covered_end = max(interval_ends, default=None)
+    if last_covered_end is None:
+        windows = []
+        chunk_start = seed_start
+        while chunk_start <= today:
+            chunk_end = min(today, chunk_start + timedelta(days=PIT_SEED_CHUNK_DAYS - 1))
+            windows.append((chunk_start, chunk_end))
+            chunk_start = chunk_end + timedelta(days=1)
+        mode = "seed_chunked"
+    else:
+        windows = [(max(last_covered_end - timedelta(days=PIT_COVERAGE_OVERLAP_DAYS), seed_start), today)]
+        mode = "incremental"
+
+    queue = _queue("score_history")
+    previous_job = None
+    run_ids: list[str] = []
+    job_ids: list[str] = []
+    for window_start, window_end in windows:
+        config = {
+            "start_date": window_start.isoformat(),
+            "end_date": window_end.isoformat(),
+            "symbols": resolved_universe,
+            "resolved_universe": resolved_universe,
+            "cost_bps_per_side": 33.0,
+            "slippage_bps_per_side": 5.0,
+            "bootstrap_seed": 5107,
+        }
+        row = models.HistoricalOpportunityMaterializationRun(
+            status="queued", methodology_version=METHODOLOGY_VERSION,
+            config_json=config, progress_json={"stage": "queued", "progress_pct": 0}, coverage_json={},
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        enqueue_kwargs: dict[str, Any] = {"job_timeout": "24h"}
+        if previous_job is not None:
+            enqueue_kwargs["depends_on"] = previous_job
+        job = queue.enqueue(
+            "services.worker.tasks.historical_portfolio_backtest.materialize_historical_opportunities",
+            str(row.id), **enqueue_kwargs,
+        )
+        row.rq_job_id = str(job.id)
+        db.commit()
+        previous_job = job
+        run_ids.append(str(row.id))
+        job_ids.append(str(job.id))
+
+    # Each ~90-day chunk is about 4x the old cron workload and safely below 24h. Independent
+    # runs expose coverage incrementally and preserve earlier chunks after a late failure;
+    # sequential dependencies keep DB/CPU load flat.
+    result = {
+        "mode": mode,
+        "enqueued_jobs": len(windows),
+        "materialization_run_ids": run_ids,
+        "job_ids": job_ids,
+        "window_start": windows[0][0].isoformat(),
+        "window_end": windows[-1][1].isoformat(),
     }
-    row = models.HistoricalOpportunityMaterializationRun(
-        status="queued", methodology_version=METHODOLOGY_VERSION,
-        config_json=config, progress_json={"stage": "queued", "progress_pct": 0}, coverage_json={},
-    )
-    db.add(row)
-    db.commit()
-    db.refresh(row)
-    job = _queue("score_history").enqueue(
-        "services.worker.tasks.historical_portfolio_backtest.materialize_historical_opportunities",
-        str(row.id), job_timeout="24h",
-    )
-    row.rq_job_id = str(job.id)
-    db.commit()
-    return {"enqueued_jobs": 1, "materialization_run_id": str(row.id), "job_id": str(job.id)}
+    if mode == "incremental":
+        result.update({"materialization_run_id": run_ids[0], "job_id": job_ids[0]})
+    return result
 
 
 def _dispatch_signal_backtests(db: Session, *, trigger_source: str) -> dict[str, Any]:

@@ -36,6 +36,7 @@ from core.quant_core.signal_engine.modes import (
 from core.quant_core.significance import sharpe_ratio
 from core.quant_core.risk import monte_carlo_equity_paths
 from core.quant_core.horizons import canonical_horizon, LEGACY_HORIZON_ALIASES
+from core.quant_core.edge_policy import DEFAULT_EDGE_CONDITIONS, EDGE_CONDITIONS, passes_edge_policy
 from ...market_data_loader import load_ohlcv_for_symbol
 from ._shared import (
     logger,
@@ -572,11 +573,18 @@ class _PortfolioBacktestRequest(_BaseModel):
     stop_loss_pct: _Optional[float] = None
     kelly_multiplier: float = 0.5
     long_only: bool = True
+    min_edge_score: float = 50.0
+    required_edge_conditions: list[str] = list(DEFAULT_EDGE_CONDITIONS)
     start_date: _Optional[str] = None
     end_date: _Optional[str] = None
 
 
-def _dashboard_best_signal_trades_by_symbol(db: Session, horizon: str) -> dict[str, list[dict]]:
+def _dashboard_best_signal_trades_by_symbol(
+    db: Session,
+    horizon: str,
+    min_edge_score: float = 50.0,
+    required_edge_conditions: list[str] | tuple[str, ...] = DEFAULT_EDGE_CONDITIONS,
+) -> dict[str, list[dict]]:
     """Per-symbol trades for the portfolio backtest.
 
     Reuses the same stitched-OOS-WFO trade reconstruction shown on the signal
@@ -597,6 +605,13 @@ def _dashboard_best_signal_trades_by_symbol(db: Session, horizon: str) -> dict[s
     trades_by_symbol: dict[str, list[dict]] = {}
     for row in rows:
         payload = row.evidence_payload_jsonb
+        edge = payload.get("edge") if isinstance(payload, dict) else None
+        if not isinstance(edge, dict) or not passes_edge_policy(
+            edge,
+            min_edge_score=min_edge_score,
+            required_conditions=required_edge_conditions,
+        ):
+            continue
         stitched = payload.get("stitched_oos_backtest") if isinstance(payload, dict) else None
         raw_trades = stitched.get("trades") if isinstance(stitched, dict) else None
         if not isinstance(raw_trades, list) or not raw_trades:
@@ -693,6 +708,96 @@ _PORTFOLIO_LEDGER_CAP = 4000
 _MASI_BENCHMARK_UNAVAILABLE_WARNING = "Indice MASI indisponible pour le benchmark"
 
 
+def _portfolio_mtm_equity_curve(
+    db: Session,
+    *,
+    trades: list[dict],
+    cash_by_date: dict[str, float],
+    fallback_curve: list[dict],
+    warnings: list[str],
+) -> list[dict]:
+    """Mark executed lots to market without changing event-driven cash accounting."""
+    executed = [trade for trade in trades if trade.get("executed")]
+    if not executed or not cash_by_date:
+        return fallback_curve
+
+    close_by_symbol: dict[str, pd.Series | None] = {}
+    for symbol in sorted({str(trade["symbol"]) for trade in executed}):
+        try:
+            ohlcv = _clean_ohlcv(load_ohlcv_for_symbol(db, symbol, "1D"))
+            if ohlcv is None or ohlcv.empty or "Close" not in ohlcv.columns:
+                raise ValueError("empty or malformed OHLCV series")
+            series = pd.to_numeric(ohlcv["Close"], errors="coerce").dropna().copy()
+            index = pd.to_datetime(series.index)
+            if index.tz is not None:
+                index = index.tz_localize(None)
+            series.index = index.normalize()
+            series = series[~series.index.duplicated(keep="last")].sort_index()
+            if series.empty:
+                raise ValueError("empty close series")
+            close_by_symbol[symbol] = series
+        except Exception:
+            logger.debug("portfolio MTM prices unavailable for %s", symbol, exc_info=True)
+            close_by_symbol[symbol] = None
+            warnings.append(
+                f"{symbol}: prix indisponibles — position évaluée au coût dans la courbe"
+            )
+
+    available = [series for series in close_by_symbol.values() if series is not None]
+    if not available:
+        return fallback_curve
+
+    event_dates = sorted(pd.Timestamp(date) for date in cash_by_date if date)
+    if not event_dates:
+        return fallback_curve
+    start_ts, end_ts = event_dates[0], event_dates[-1]
+
+    # Trading dates drive the curve; event dates are retained so every cash
+    # debit/credit and TP/SL-clamped close is represented exactly.
+    grid = set(event_dates)
+    for series in available:
+        grid.update(series.index[(series.index >= start_ts) & (series.index <= end_ts)])
+    grid_dates = sorted(grid)
+
+    cash_series = pd.Series(
+        [cash_by_date[date] for date in cash_by_date],
+        index=pd.to_datetime(list(cash_by_date)),
+        dtype=float,
+    )
+    cash_series = cash_series[~cash_series.index.duplicated(keep="last")].sort_index()
+    cash_on_grid = cash_series.reindex(cash_series.index.union(grid_dates)).ffill().reindex(grid_dates)
+
+    curve: list[dict] = []
+    for date, cash in cash_on_grid.items():
+        equity = float(cash)
+        for trade in executed:
+            open_ts = pd.Timestamp(trade["open_date"])
+            close_date = trade.get("close_date")
+            close_ts = pd.Timestamp(close_date) if close_date else None
+            # Curve points reflect end-of-day state. On a close date the lot is
+            # already realized in cash, which makes the clamped return win.
+            if date < open_ts or (close_ts is not None and date >= close_ts):
+                continue
+
+            cost = float(trade["position_size"])
+            open_price = float(trade.get("open_price", 0.0))
+            series = close_by_symbol.get(str(trade["symbol"]))
+            if series is None or open_price <= 0:
+                equity += cost
+                continue
+
+            holding_prices = series[(series.index >= open_ts) & (series.index <= date)]
+            if holding_prices.empty:
+                equity += cost
+                continue
+            close_price = float(holding_prices.iloc[-1])
+            direction = int(trade.get("direction", 1))
+            equity += cost * (1.0 + direction * (close_price / open_price - 1.0))
+
+        curve.append({"date": date.strftime("%Y-%m-%d"), "equity": equity})
+    return curve
+
+
 def _portfolio_benchmark(
     db: Session,
     *,
@@ -785,9 +890,18 @@ def _portfolio_benchmark(
 def get_portfolio_backtest_universe(
     horizon: str = "weekly",
     long_only: bool = True,
+    min_edge_score: float = Query(50.0, ge=0.0, le=100.0),
+    required_edge_conditions: list[str] = Query(default=list(DEFAULT_EDGE_CONDITIONS)),
     db: Session = Depends(get_db),
 ):
-    trades_by_symbol = _dashboard_best_signal_trades_by_symbol(db, horizon)
+    if required_edge_conditions == ["none"]:
+        required_edge_conditions = []
+    invalid = sorted(set(required_edge_conditions) - set(EDGE_CONDITIONS))
+    if invalid:
+        raise HTTPException(status_code=422, detail=f"Unknown Edge conditions: {invalid}")
+    trades_by_symbol = _dashboard_best_signal_trades_by_symbol(
+        db, horizon, min_edge_score, required_edge_conditions,
+    )
 
     symbols_out: list[dict] = []
     all_open_dates: list[str] = []
@@ -834,13 +948,18 @@ def run_portfolio_backtest(
     every symbol's trades enter the replay, and each OPEN event is sized with
     a Kelly fraction estimated only from that symbol's trades already CLOSED
     strictly before that date (or a small starter fraction while history is
-    thin). Equity-curve points are stamped at CLOSE events processed in
-    chronological order, so the curve is monotonic in time and never credits
-    profits from trades that haven't closed yet.
+    thin). Cash is accounted for at OPEN/CLOSE events, while the returned
+    equity curve marks every open lot to market on the daily trading grid.
     """
     from datetime import date as _date
 
-    trades_by_symbol = _dashboard_best_signal_trades_by_symbol(db, body.horizon)
+    min_edge_score = min(100.0, max(0.0, float(body.min_edge_score)))
+    invalid = sorted(set(body.required_edge_conditions) - set(EDGE_CONDITIONS))
+    if invalid:
+        raise HTTPException(status_code=422, detail=f"Unknown Edge conditions: {invalid}")
+    trades_by_symbol = _dashboard_best_signal_trades_by_symbol(
+        db, body.horizon, min_edge_score, body.required_edge_conditions,
+    )
     if body.symbols:
         sym_set = set(body.symbols)
         trades_by_symbol = {sym: t for sym, t in trades_by_symbol.items() if sym in sym_set}
@@ -921,7 +1040,7 @@ def run_portfolio_backtest(
 
     cash = body.initial_capital
     open_positions: dict[tuple[str, int], float] = {}  # (symbol, idx) -> entry cost
-    closed_history: dict[str, list[float]] = {sym: [] for sym in symbol_trades}
+    closed_history: dict[str, list[tuple[str, float]]] = {sym: [] for sym in symbol_trades}
     last_kelly_pct: dict[str, float] = {}
 
     # Per-trade result records, seeded in open_date order for stable output ordering.
@@ -946,8 +1065,8 @@ def run_portfolio_backtest(
             }
 
     equity_curve: list[dict] = []
+    cash_by_date: dict[str, float] = {}
     exposure_samples: list[float] = []
-    all_event_dates: list[str] = []
 
     # Accounting-style ledger — two rows per executed trade (open + close),
     # built chronologically alongside the replay so capital/exposure are
@@ -963,10 +1082,13 @@ def run_portfolio_backtest(
     for event_date, _rank, symbol, idx, event_type in events:
         key = (symbol, idx)
         t = trades_by_key[key]
-        all_event_dates.append(event_date)
 
         if event_type == "open":
-            prior_closed = closed_history[symbol]
+            prior_closed = [
+                pnl_return
+                for close_date, pnl_return in closed_history[symbol]
+                if close_date < event_date
+            ]
             if len(prior_closed) < _PORTFOLIO_STARTER_TRADE_COUNT:
                 fraction = 0.05 * body.kelly_multiplier
             else:
@@ -1026,7 +1148,7 @@ def run_portfolio_backtest(
             record = trade_records[key]
             # Every closed trade (executed or not) counts toward the symbol's
             # walk-forward realized-return history used for later sizing.
-            closed_history[symbol].append(float(t.get("pnl_return", 0.0)))
+            closed_history[symbol].append((event_date, float(t.get("pnl_return", 0.0))))
 
             if record["executed"]:
                 pos_size = open_positions.pop(key, 0.0)
@@ -1037,7 +1159,7 @@ def run_portfolio_backtest(
                 equity_curve.append({"date": event_date, "equity": cash + sum(open_positions.values())})
 
                 cumulative_realized_pnl += pnl_mad
-                qty = trade_quantity.pop(key, None)
+                qty = trade_quantity.get(key)
                 exposure_now_close = sum(open_positions.values())
                 capital_now_close = cash + exposure_now_close
                 exposition_pct_close = (
@@ -1063,6 +1185,8 @@ def run_portfolio_backtest(
         exposure_now = sum(open_positions.values())
         equity_now = cash + exposure_now
         exposure_samples.append((exposure_now / equity_now * 100.0) if equity_now > 0 else 0.0)
+        if event_date:
+            cash_by_date[event_date] = cash
 
     # Collapse equity curve to monotonically non-decreasing dates, keeping the
     # last value for any repeated date.
@@ -1077,9 +1201,17 @@ def run_portfolio_backtest(
     trade_results = list(trade_records.values())
     trade_results.sort(key=lambda r: (r["open_date"], r["symbol"]))
 
+    equity_curve = _portfolio_mtm_equity_curve(
+        db,
+        trades=trade_results,
+        cash_by_date=cash_by_date,
+        fallback_curve=equity_curve,
+        warnings=warnings,
+    )
+
     if open_positions:
         warnings.append(f"{len(open_positions)} position(s) never closed at end of replay")
-    final_equity = cash + sum(open_positions.values())
+    final_equity = equity_curve[-1]["equity"] if equity_curve else cash + sum(open_positions.values())
     executed = [t for t in trade_results if t["executed"]]
     n_trades_exec = len(executed)
     total_ret = (
@@ -1109,10 +1241,7 @@ def run_portfolio_backtest(
             curve_df["date"] = pd.to_datetime(curve_df["date"])
             series = curve_df.set_index("date")["equity"]
             series = series[~series.index.duplicated(keep="last")].sort_index()
-            axis = pd.to_datetime(sorted(set(all_event_dates)))
-            unioned = series.reindex(series.index.union(axis)).ffill()
-            on_axis = unioned.reindex(axis)
-            weekly = on_axis.groupby(on_axis.index.to_period("W")).last()
+            weekly = series.groupby(series.index.to_period("W")).last()
             weekly_rets = weekly.pct_change().dropna()
             if len(weekly_rets) >= 8:
                 sigma = float(weekly_rets.std(ddof=1))
@@ -1221,8 +1350,15 @@ def run_portfolio_backtest(
 
     ledger_out = ledger[:_PORTFOLIO_LEDGER_CAP]
 
+    equity_curve_out = equity_curve
+    if len(equity_curve_out) > 600:
+        step = math.ceil(len(equity_curve_out) / 600)
+        equity_curve_out = equity_curve_out[::step]
+        if equity_curve_out[-1]["date"] != equity_curve[-1]["date"]:
+            equity_curve_out.append(equity_curve[-1])
+
     return {
-        "equity_curve": equity_curve,
+        "equity_curve": equity_curve_out,
         "metrics": {
             "total_return": round(total_ret, 4),
             "cagr": round(cagr, 4) if cagr is not None else None,

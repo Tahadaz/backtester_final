@@ -362,6 +362,18 @@ def list_signal_universe_symbols(db: Session) -> list[str]:
     return [row.symbol for row in list_signal_universe(db)]
 
 
+def list_masi_signal_universe_symbols(db: Session) -> list[str]:
+    """Canonical active MASI cash-equity universe with canonical daily data."""
+
+    return sorted(
+        {
+            row.symbol
+            for row in list_signal_universe(db)
+            if row.is_active is not False and row.has_canonical_data and is_masi_dashboard_member(row)
+        }
+    )
+
+
 def dashboard_group_label(row: MarketUniverseInstrument) -> str:
     if row.sector:
         return row.sector

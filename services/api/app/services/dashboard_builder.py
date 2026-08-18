@@ -181,13 +181,9 @@ def _bucket_to_signal_label(bucket: Any) -> str:
 
 
 def _is_actionable_edge_bucket(bucket: Any, direction: Any) -> bool:
-    bucket_key = str(bucket or "").strip().lower()
-    direction_key = str(direction or "").strip().lower()
-    if bucket_key in {"hold", "unavailable", "indisponible", ""}:
-        return False
-    return (bucket_key in {"buy", "strong_buy"} and direction_key == "long") or (
-        bucket_key in {"sell", "strong_sell"} and direction_key == "short"
-    )
+    from core.quant_core.signal_ranking import is_actionable_edge_bucket
+
+    return is_actionable_edge_bucket(bucket, direction)
 
 
 def _signal_type_label(signal_type: str, score_pct: float) -> str:
@@ -1296,30 +1292,9 @@ def _signal_method_label(source: str, variant: str) -> str:
 
 
 def _best_signal_rank(edge: dict[str, Any]) -> tuple[int, float, float, float] | None:
-    direction = str(edge.get("direction") or "none")
-    if not _is_actionable_edge_bucket(edge.get("bucket"), direction):
-        return None
-    n = _safe_float(edge.get("n")) or 0.0
-    if n < 30:
-        return None
-    gates = edge.get("gates") if isinstance(edge.get("gates"), dict) else {}
-    if gates and not bool(gates.get("n", False)):
-        return None
+    from core.quant_core.signal_ranking import best_signal_rank
 
-    expected = _safe_float(edge.get("action_expected_return_net"))
-    if expected is None:
-        expected = _safe_float(edge.get("expected_return_net"))
-    if expected is None or expected <= 0:
-        return None
-
-    lower = _safe_float(edge.get("action_expected_return_net_ci_lower"))
-    if lower is None:
-        lower = _safe_float(edge.get("expected_return_net_ci_lower"))
-    penalized = lower if lower is not None else expected * 0.5
-    edge_score = _safe_float(edge.get("edge_score"))
-    rank_score = edge_score if edge_score is not None else penalized
-    proven = bool(edge.get("proven_edge_net"))
-    return (2 if proven else 1, rank_score, penalized, expected)
+    return best_signal_rank(edge)
 
 
 def _build_best_signal_payload(db: Session, symbol: str, horizon: str) -> dict[str, Any] | None:
