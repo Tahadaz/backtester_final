@@ -27,7 +27,9 @@ from .signal_engine.modes import TECHNICAL_SIGNAL_MODE_NAMES
 
 CAPACITY_SCENARIOS = (0.01, 0.025, 0.05, 0.10)
 DECISION_HORIZONS = ("weekly", "monthly", "quarterly")
-METHODOLOGY_VERSION = "pit-dashboard-opportunity-portfolio-v1"
+METHODOLOGY_VERSION = "pit-dashboard-opportunity-portfolio-edge-policy-v5"
+V4_METHODOLOGY_VERSION = "pit-dashboard-opportunity-portfolio-edge-policy-v4"
+V5_DECISION_EDGE_COST_BPS = 33.0
 
 
 def _ts(value: Any) -> pd.Timestamp:
@@ -122,6 +124,28 @@ class PortfolioBacktestConfig:
             raise ValueError("max_position_fraction must be in (0, 1]")
         if self.minimum_kelly_observations < 1:
             raise ValueError("minimum_kelly_observations must be positive")
+
+
+@dataclass(frozen=True)
+class ExecutionCapabilities:
+    allow_long: bool = True
+    allow_short: bool = False
+    short_signal_closes_long: bool = True
+    allow_same_bar_reversal: bool = False
+
+
+class UnsupportedCapabilityError(RuntimeError):
+    pass
+
+
+def validate_execution_capabilities(capabilities: ExecutionCapabilities) -> ExecutionCapabilities:
+    if capabilities.allow_short:
+        raise UnsupportedCapabilityError("short execution not implemented")
+    return capabilities
+
+
+def execution_capabilities_for(symbol: str, universe: str) -> ExecutionCapabilities:
+    return validate_execution_capabilities(ExecutionCapabilities())
 
 
 def half_kelly_from_selection_sample(
@@ -476,7 +500,9 @@ def portfolio_statistics(
     frame = pd.DataFrame(curve)
     frame["date"] = pd.to_datetime(frame["date"])
     equity = frame.set_index("date")["equity"].astype(float)
-    daily = equity.pct_change().dropna()
+    if not np.isfinite(equity.to_numpy()).all() or (equity <= 0).any():
+        return {"available": False, "reason": "invalid_equity_curve"}
+    daily = equity.pct_change(fill_method=None).dropna()
     days = int((equity.index[-1] - equity.index[0]).days)
     total_return = float(equity.iloc[-1] / equity.iloc[0] - 1.0) if equity.iloc[0] > 0 else None
     cagr = None
@@ -560,7 +586,12 @@ def benchmark_curves(curve: Sequence[Mapping[str, Any]], masi: pd.Series) -> dic
     frame.index = pd.to_datetime(frame.pop("date"))
     index = pd.Series(masi, dtype=float).copy()
     index.index = pd.DatetimeIndex([_ts(value) for value in index.index])
-    joined = pd.concat([frame[["equity", "exposure"]], index.rename("masi")], axis=1).sort_index().ffill().dropna()
+    strategy = frame[["equity", "exposure"]].sort_index()
+    # Forward-fill MASI only to the strategy's own observation dates.  Concatenating both
+    # complete indices would leak MASI dates before/after the requested backtest window into
+    # the benchmark payload and therefore into the chart.
+    expanded_index = index.reindex(index.index.union(strategy.index)).sort_index().ffill()
+    joined = strategy.join(expanded_index.reindex(strategy.index).rename("masi")).dropna()
     if len(joined) < 2:
         return {"available": False, "reason": "insufficient_overlap"}
     initial = float(joined["equity"].iloc[0])
@@ -655,8 +686,15 @@ def snapshot_audit(
 ) -> dict[str, Any]:
     """Compare only literally persisted snapshot dates with reconstruction."""
 
+    def comparison_tuple(row: HistoricalOpportunity) -> tuple[Any, ...]:
+        return (
+            row.variant, row.direction, row.bucket,
+            (row.entry_lag_bars, row.entry_price_kind, row.exit_lag_bars, row.exit_price_kind,
+             str(row.provenance.get("return_calc_method") or "open_to_exit_ladder")),
+        )
+
     recon = {
-        (_iso(row.decision_date), row.horizon, row.symbol.upper()): row.variant
+        (_iso(row.decision_date), row.horizon, row.symbol.upper()): comparison_tuple(row)
         for row in reconstructed
     }
     rows: list[dict[str, Any]] = []
@@ -667,28 +705,63 @@ def snapshot_audit(
             continue
         payload = snapshot.get("payload") or snapshot.get("payload_jsonb") or {}
         stocks = payload.get("stocks") if isinstance(payload, Mapping) else []
-        literal: dict[str, str] = {}
+        literal: dict[str, tuple[Any, ...]] = {}
         for stock in stocks if isinstance(stocks, list) else []:
             best = stock.get("best_signal") if isinstance(stock, Mapping) else None
-            if isinstance(best, Mapping) and best.get("variant"):
-                literal[str(stock.get("symbol") or "").upper()] = str(best["variant"])
+            if isinstance(best, Mapping) and best.get("variant") and best.get("direction") in {"long", "short"}:
+                literal[str(stock.get("symbol") or "").upper()] = (
+                    str(best["variant"]), str(best.get("direction")), best.get("bucket"),
+                    (best.get("entry_lag_bars"), best.get("entry_price_kind"), best.get("exit_lag_bars"),
+                     best.get("exit_price_kind"), best.get("return_calc_method")),
+                )
         date_key = _iso(snapshot_date)
-        symbols = sorted(set(literal) | {key[2] for key in recon if key[:2] == (date_key, horizon)})
+        symbols = sorted(literal)
         for symbol in symbols:
             rebuilt = recon.get((date_key, horizon, symbol))
             shown = literal.get(symbol)
             rows.append({
                 "as_of_date": date_key, "horizon": horizon, "symbol": symbol,
-                "snapshot_variant": shown, "reconstructed_variant": rebuilt,
+                "snapshot_variant": shown[0] if shown else None,
+                "reconstructed_variant": rebuilt[0] if rebuilt else None,
+                "snapshot_direction": shown[1] if shown else None,
+                "reconstructed_direction": rebuilt[1] if rebuilt else None,
                 "matches": shown == rebuilt,
+                "direction_matches": bool(shown and rebuilt and shown[1] == rebuilt[1]),
+                "mismatch_reason": (
+                    None if shown == rebuilt
+                    else "missing_reconstructable_input" if rebuilt is None
+                    else "documented_substitute_divergence"
+                ),
             })
     dates = sorted({row["as_of_date"] for row in rows})
+    n = len(rows)
+    full_matches = sum(row["matches"] for row in rows)
+    direction_matches = sum(row["direction_matches"] for row in rows)
+
+    def wilson_90(successes: int, total: int) -> list[float] | None:
+        if total <= 0:
+            return None
+        z = 1.6448536269514722
+        p = successes / total
+        denominator = 1 + z * z / total
+        center = (p + z * z / (2 * total)) / denominator
+        half = z * math.sqrt(p * (1 - p) / total + z * z / (4 * total * total)) / denominator
+        return [max(0.0, center - half), min(1.0, center + half)]
+
     return {
         "label": "short-window DashboardSnapshot audit",
         "statistically_equivalent_to_reconstruction": False,
         "coverage_start": dates[0] if dates else None, "coverage_end": dates[-1] if dates else None,
         "snapshot_dates": dates, "comparisons": rows,
         "discrepancy_count": sum(not row["matches"] for row in rows),
+        "eligible_observation_count": n,
+        "full_tuple_match_count": full_matches,
+        "direction_match_count": direction_matches,
+        "full_tuple_match_proportion": full_matches / n if n else None,
+        "direction_match_proportion": direction_matches / n if n else None,
+        "full_tuple_match_wilson_90": wilson_90(full_matches, n),
+        "direction_match_wilson_90": wilson_90(direction_matches, n),
+        "precision_note": "limited precision" if n < 30 else "diagnostic only",
     }
 
 

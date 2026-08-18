@@ -4,6 +4,7 @@ import pandas as pd
 import pytest
 
 from core.quant_core.historical_portfolio import (
+    ExecutionCapabilities,
     HistoricalOpportunity,
     PortfolioBacktestConfig,
     SelectionObservation,
@@ -11,12 +12,37 @@ from core.quant_core.historical_portfolio import (
     combine_sleeves_equal_risk,
     half_kelly_from_selection_sample,
     nested_capacity_frontier,
+    portfolio_statistics,
     reconstruct_point_in_time,
     simulate_sleeve,
     snapshot_audit,
     stationary_bootstrap_drawdown_risk,
+    UnsupportedCapabilityError,
+    V5_DECISION_EDGE_COST_BPS,
+    validate_execution_capabilities,
 )
 from core.quant_core.signal_engine.modes import TECHNICAL_SIGNAL_MODE_NAMES
+from services.api.app.config import settings
+
+
+def test_v5_decision_cost_and_execution_capability_guards() -> None:
+    assert float(settings.EDGE_COST_BPS_PER_SIDE) == V5_DECISION_EDGE_COST_BPS
+    with pytest.raises(UnsupportedCapabilityError, match="short execution not implemented"):
+        validate_execution_capabilities(ExecutionCapabilities(allow_short=True))
+
+
+def test_portfolio_statistics_rejects_nonfinite_equity_instead_of_forward_filling() -> None:
+    curve = [
+        {"date": "2024-01-01", "equity": 100_000.0, "exposure": 0.0},
+        {"date": "2024-01-02", "equity": float("nan"), "exposure": 0.0},
+        {"date": "2024-01-03", "equity": 101_000.0, "exposure": 0.0},
+    ]
+
+    stats = portfolio_statistics(
+        curve, [], [], PortfolioBacktestConfig(bootstrap_samples=100), 0.0, 0.0,
+    )
+
+    assert stats == {"available": False, "reason": "invalid_equity_curve"}
 
 
 def _prices(periods: int = 340, *, volume: float = 1_000_000.0) -> pd.DataFrame:
@@ -37,10 +63,11 @@ def _observations() -> tuple[SelectionObservation, ...]:
 def _opportunity(decision: str, *, symbol: str = "AAA", horizon: str = "weekly", exit_lag: int = 5) -> HistoricalOpportunity:
     return HistoricalOpportunity(
         decision_date=decision, symbol=symbol, horizon=horizon,
-        variant="expanded_ta_simple", direction="long", rank=(1.0,),
+        variant="expanded_ta_simple", direction="long", bucket="strong_buy", rank=(1.0,),
         training_end="2024-02-01", selection_sample_end="2024-02-10",
         proof_sample_end="2024-02-10", entry_lag_bars=1, exit_lag_bars=exit_lag,
-        selection_observations=_observations(), provenance={"selector": "test"},
+        selection_observations=_observations(),
+        provenance={"selector": "test", "return_calc_method": "open_to_exit_ladder"},
     )
 
 
@@ -149,6 +176,26 @@ def test_exposure_matched_masi_uses_lagged_historical_exposure() -> None:
     assert out["exposure_matched_masi"]["total_return"] == pytest.approx(0.10)
 
 
+def test_masi_benchmarks_use_only_strategy_dates() -> None:
+    curve = [
+        {"date": "2024-01-02", "equity": 100.0, "exposure": 0.5},
+        {"date": "2024-01-03", "equity": 101.0, "exposure": 0.5},
+    ]
+    masi = pd.Series(
+        [90.0, 100.0, 110.0, 120.0],
+        index=pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-03", "2024-01-04"]),
+    )
+
+    out = benchmark_curves(curve, masi)
+
+    assert [point["date"] for point in out["full_investment_masi"]["curve"]] == [
+        "2024-01-02", "2024-01-03",
+    ]
+    assert [point["date"] for point in out["exposure_matched_masi"]["curve"]] == [
+        "2024-01-02", "2024-01-03",
+    ]
+
+
 def test_combined_sleeve_preserves_strategy_exposure() -> None:
     sleeves = {
         "weekly": {"equity_curve": [
@@ -172,7 +219,11 @@ def test_bootstrap_is_deterministic_and_snapshot_audit_uses_existing_dates_only(
     audit = snapshot_audit(
         [_opportunity("2024-03-01")],
         [{"as_of_date": "2024-03-01", "horizon": "weekly", "payload_jsonb": {
-            "stocks": [{"symbol": "AAA", "best_signal": {"variant": "expanded_ta_simple"}}]
+            "stocks": [{"symbol": "AAA", "best_signal": {
+                "variant": "expanded_ta_simple", "direction": "long", "bucket": "strong_buy",
+                "entry_lag_bars": 1, "entry_price_kind": "open", "exit_lag_bars": 5,
+                "exit_price_kind": "open", "return_calc_method": "open_to_exit_ladder",
+            }}]
         }}],
     )
     assert audit["snapshot_dates"] == ["2024-03-01"]

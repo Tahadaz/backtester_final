@@ -1,0 +1,7 @@
+[
+  {"name":"long","edge":{"bucket":"strong_buy","direction":"long","n":30,"gates":{"n":true},"action_expected_return_net":0.02,"action_expected_return_net_ci_lower":0.005,"edge_score":75,"proven_edge_net":true},"rank":[2,75.0,0.005,0.02],"reasons":[]},
+  {"name":"short","edge":{"bucket":"sell","direction":"short","n":31,"gates":{"n":true},"expected_return_net":0.01,"expected_return_net_ci_lower":null,"edge_score":null,"proven_edge_net":false},"rank":[1,0.005,0.005,0.01],"reasons":[]},
+  {"name":"neutral","edge":{"bucket":"hold","direction":"none","n":100,"gates":{"n":true},"expected_return_net":0.1},"rank":null,"reasons":["neutral_bucket"]},
+  {"name":"small_n","edge":{"bucket":"buy","direction":"long","n":29,"gates":{"n":true},"expected_return_net":0.1},"rank":null,"reasons":["insufficient_dashboard_sample"]},
+  {"name":"negative","edge":{"bucket":"buy","direction":"long","n":30,"gates":{"n":true},"expected_return_net":0.0},"rank":null,"reasons":["non_positive_expectancy"]}
+]
