@@ -1233,6 +1233,57 @@ class BloombergJobEvent(Base):
     )
 
 
+class BloombergBridgeCredential(Base):
+    """Long-lived per-terminal bridge key, issued by consuming an enrollment token.
+
+    Only the SHA-256 of the key is stored; the plaintext is shown once, inside the
+    connector script the operator downloads from the app.
+    """
+    __tablename__ = "bloomberg_bridge_credential"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    bridge_id = Column(String(128), nullable=False)
+    label = Column(String(200), nullable=True)
+    key_prefix = Column(String(16), nullable=False)
+    key_hash = Column(String(64), nullable=False, unique=True)
+    created_by = Column(String(200), nullable=True)
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_bloomberg_bridge_credential_bridge_id", "bridge_id"),
+    )
+
+
+class BloombergBridgeEnrollment(Base):
+    """Single-use, short-lived token that lets a Bloomberg computer self-provision.
+
+    The app mints one of these; the operator runs the downloaded connector on the
+    Bloomberg computer; the connector exchanges the token for a
+    :class:`BloombergBridgeCredential` and then polls the job queue.
+    """
+    __tablename__ = "bloomberg_bridge_enrollment"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    bridge_id = Column(String(128), nullable=False)
+    label = Column(String(200), nullable=True)
+    token_prefix = Column(String(16), nullable=False)
+    token_hash = Column(String(64), nullable=False, unique=True)
+    created_by = Column(String(200), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    consumed_at = Column(DateTime(timezone=True), nullable=True)
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
+    credential_id = Column(UUID(as_uuid=True), ForeignKey("bloomberg_bridge_credential.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_bloomberg_bridge_enrollment_expires_at", "expires_at"),
+    )
+
+
 class StockFactorRelevance(Base):
     """Stores the active factors selected for a specific stock by the Phase 3 econometric pipeline.
     

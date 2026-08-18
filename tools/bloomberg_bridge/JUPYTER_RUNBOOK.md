@@ -1,5 +1,11 @@
 # Bloomberg Jupyter Bridge Runbook
 
+> **This is now the fallback path.** The supported route is to open the deployed
+> app on the Bloomberg computer and use **Data → Bloomberg → Connexion d'un poste
+> Bloomberg**, which hands you a single pasteable Jupyter line that configures
+> and connects the terminal by itself. See `README.md` and `/glossary#bloomberg-connexion`.
+> Use the manual notebook below only when that fails.
+
 Use this when the Bloomberg computer has Jupyter but you do not want to run an EXE, Docker, or a standalone `.py` script.
 
 ## Before going to the Bloomberg computer

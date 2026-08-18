@@ -69,6 +69,13 @@ async function buildUpstreamHeaders(req: NextRequest, pathParts: string[]): Prom
 
   if (contentType) headers.set("content-type", contentType)
   if (accept) headers.set("accept", accept)
+  // The upstream Host is the internal service name, so anything that has to echo
+  // the app's public URL back (the Bloomberg connector commands) needs the
+  // browser-facing host forwarded explicitly.
+  const forwardedHost = req.headers.get("x-forwarded-host") ?? req.headers.get("host")
+  const forwardedProto = req.headers.get("x-forwarded-proto") ?? req.nextUrl.protocol.replace(":", "")
+  if (forwardedHost) headers.set("x-forwarded-host", forwardedHost)
+  if (forwardedProto) headers.set("x-forwarded-proto", forwardedProto)
   if (authorization) headers.set("authorization", authorization)
   if (cookie) headers.set("cookie", cookie)
   if (ifNoneMatch) headers.set("if-none-match", ifNoneMatch)

@@ -4,20 +4,29 @@ import datetime as dt
 import gzip
 import hashlib
 import json
+import re
+import secrets
 from io import BytesIO
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
 import pandas as pd
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, UploadFile
+from fastapi.responses import PlainTextResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from core.quant_core.cross_asset.security_master import bloomberg_candidates
 from core.quant_core.cross_asset.universes import is_global_universe, resolve as resolve_universe
 
 from .. import auth, models
+from ..bloomberg_connector import (
+    bridge_source,
+    powershell_one_liner,
+    python_one_liner,
+    render_powershell_connector,
+    render_python_connector,
+)
 from ..config import settings
 from ..db import get_db
 from ..masi_tickers import all_masi_tickers
@@ -26,7 +35,14 @@ from ..schemas.bloomberg import (
     BloombergBatchOut,
     BloombergBridgeStatusOut,
     BloombergBridgeManifest,
+    BloombergConnectorInstructions,
+    BloombergCredentialOut,
     DEFAULT_BLOOMBERG_OHLCV_FIELDS,
+    BloombergEnrollIn,
+    BloombergEnrollOut,
+    BloombergEnrollmentCreateIn,
+    BloombergEnrollmentCreateOut,
+    BloombergEnrollmentOut,
     BloombergHeartbeatIn,
     BloombergJobClaimOut,
     BloombergJobCreateIn,
@@ -39,12 +55,45 @@ from ..schemas.bloomberg import (
 from ..storage import put_bytes, s3_client
 
 
+APP_NAME = "Moroccan Market Signal Backtester"
+
+
+def _hash_secret(value: str) -> str:
+    return hashlib.sha256(value.strip().encode("utf-8")).hexdigest()
+
+
+def require_bridge_credential(
+    x_bloomberg_bridge_key: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> None:
+    """Accept either the shared bridge key or a per-terminal enrolled credential."""
+    if auth.matches_static_bloomberg_bridge_key(x_bloomberg_bridge_key):
+        return
+    if x_bloomberg_bridge_key:
+        credential = (
+            db.query(models.BloombergBridgeCredential)
+            .filter(
+                models.BloombergBridgeCredential.key_hash == _hash_secret(x_bloomberg_bridge_key),
+                models.BloombergBridgeCredential.revoked_at.is_(None),
+            )
+            .one_or_none()
+        )
+        if credential is not None:
+            credential.last_used_at = _utcnow()
+            db.commit()
+            return
+    raise HTTPException(status_code=401, detail="missing or invalid Bloomberg bridge key")
+
+
 bridge_router = APIRouter(
     prefix="/bridge/bloomberg",
     tags=["bloomberg-bridge"],
-    dependencies=[Depends(auth.require_bloomberg_bridge_key)],
+    dependencies=[Depends(require_bridge_credential)],
 )
 app_router = APIRouter(prefix="/bloomberg", tags=["bloomberg"])
+# Reached directly from the Bloomberg computer (outside the browser session), so
+# it carries no app API key. Every route authenticates on the enrollment token.
+connect_router = APIRouter(prefix="/bridge/bloomberg", tags=["bloomberg-bridge"])
 
 _DATE_COLUMNS = ("date", "datetime", "timestamp", "time")
 _SECURITY_COLUMNS = ("security", "ticker", "symbol", "instrument")
@@ -994,3 +1043,327 @@ def download_bloomberg_series(series_id: UUID, db: Session = Depends(get_db)) ->
     safe_field = "".join(ch if ch.isalnum() else "_" for ch in row.field).strip("_")
     filename = f"bloomberg-series-{safe_security}-{safe_field}.parquet"
     return _stream_object(row.object_key, filename)
+
+
+# ---------------------------------------------------------------------------
+# Self-service terminal enrollment
+#
+# The whole point of this block: an operator sitting at the Bloomberg computer
+# opens the deployed app in a browser, clicks once, and gets a pasteable command
+# that already contains this app's URL, a single-use token and the terminal name.
+# Nothing is transported by hand.
+# ---------------------------------------------------------------------------
+
+
+_BRIDGE_ID_SAFE = re.compile(r"[^a-z0-9-]+")
+
+
+def _slugify_bridge_id(value: str) -> str:
+    slug = _BRIDGE_ID_SAFE.sub("-", value.strip().lower()).strip("-")
+    return slug[:96] or "bloomberg-terminal"
+
+
+def _public_endpoint(request: Request) -> str:
+    configured = settings.PUBLIC_APP_URL
+    if configured:
+        return configured
+    proto = (request.headers.get("x-forwarded-proto") or request.url.scheme or "https").split(",")[0].strip()
+    host = (
+        request.headers.get("x-forwarded-host")
+        or request.headers.get("host")
+        or request.url.netloc
+    ).split(",")[0].strip()
+    return f"{proto}://{host}".rstrip("/")
+
+
+def _enrollment_status(row: models.BloombergBridgeEnrollment, now: dt.datetime) -> str:
+    if row.revoked_at is not None:
+        return "revoked"
+    if row.consumed_at is not None:
+        return "connected"
+    if _coerce_aware(row.expires_at) is not None and _coerce_aware(row.expires_at) < now:
+        return "expired"
+    return "pending"
+
+
+def _enrollment_out(row: models.BloombergBridgeEnrollment) -> BloombergEnrollmentOut:
+    out = BloombergEnrollmentOut.model_validate(row)
+    out.status = _enrollment_status(row, _utcnow())
+    return out
+
+
+def _unique_bridge_id(db: Session, base: str) -> str:
+    candidate = base
+    suffix = 2
+    while (
+        db.query(models.BloombergBridgeCredential.id)
+        .filter(
+            models.BloombergBridgeCredential.bridge_id == candidate,
+            models.BloombergBridgeCredential.revoked_at.is_(None),
+        )
+        .first()
+        is not None
+    ):
+        candidate = f"{base}-{suffix}"
+        suffix += 1
+    return candidate
+
+
+def _instructions(
+    *, endpoint: str, token: str, bridge_id: str, expires_at: dt.datetime
+) -> BloombergConnectorInstructions:
+    return BloombergConnectorInstructions(
+        endpoint=endpoint,
+        bridge_id=bridge_id,
+        expires_at=expires_at,
+        powershell_command=powershell_one_liner(endpoint=endpoint, token=token),
+        jupyter_command=python_one_liner(endpoint=endpoint, token=token),
+        powershell_download_url=f"{endpoint}/bridge/bloomberg/connect.ps1?token={token}&download=1",
+        python_download_url=f"{endpoint}/bridge/bloomberg/connect.py?token={token}&download=1",
+    )
+
+
+@app_router.post(
+    "/enrollments",
+    response_model=BloombergEnrollmentCreateOut,
+    status_code=201,
+    dependencies=[Depends(auth.rate_limit_trigger)],
+)
+def create_bloomberg_enrollment(
+    body: BloombergEnrollmentCreateIn,
+    request: Request,
+    x_app_user_email: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> BloombergEnrollmentCreateOut:
+    now = _utcnow()
+    base_id = _slugify_bridge_id(body.bridge_id or body.label or "bloomberg-terminal")
+    bridge_id = _unique_bridge_id(db, base_id)
+    token = f"bbe_{secrets.token_urlsafe(32)}"
+    expires_at = now + dt.timedelta(minutes=body.ttl_minutes)
+
+    row = models.BloombergBridgeEnrollment(
+        id=uuid4(),
+        bridge_id=bridge_id,
+        label=(body.label or None),
+        token_prefix=token[:12],
+        token_hash=_hash_secret(token),
+        created_by=(x_app_user_email or "app")[:200],
+        expires_at=expires_at,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+
+    endpoint = _public_endpoint(request)
+    return BloombergEnrollmentCreateOut(
+        enrollment=_enrollment_out(row),
+        enroll_token=token,
+        instructions=_instructions(
+            endpoint=endpoint, token=token, bridge_id=bridge_id, expires_at=expires_at
+        ),
+    )
+
+
+@app_router.get("/enrollments", response_model=list[BloombergEnrollmentOut])
+def list_bloomberg_enrollments(
+    limit: int = Query(default=25, ge=1, le=200),
+    db: Session = Depends(get_db),
+) -> list[BloombergEnrollmentOut]:
+    rows = (
+        db.query(models.BloombergBridgeEnrollment)
+        .order_by(models.BloombergBridgeEnrollment.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return [_enrollment_out(row) for row in rows]
+
+
+@app_router.post("/enrollments/{enrollment_id}/revoke", response_model=BloombergEnrollmentOut)
+def revoke_bloomberg_enrollment(
+    enrollment_id: UUID, db: Session = Depends(get_db)
+) -> BloombergEnrollmentOut:
+    row = (
+        db.query(models.BloombergBridgeEnrollment)
+        .filter(models.BloombergBridgeEnrollment.id == enrollment_id)
+        .one_or_none()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Bloomberg enrollment not found")
+    if row.revoked_at is None:
+        row.revoked_at = _utcnow()
+        db.commit()
+        db.refresh(row)
+    return _enrollment_out(row)
+
+
+@app_router.get("/credentials", response_model=list[BloombergCredentialOut])
+def list_bloomberg_credentials(
+    include_revoked: bool = Query(default=False),
+    db: Session = Depends(get_db),
+) -> list[BloombergCredentialOut]:
+    query = db.query(models.BloombergBridgeCredential)
+    if not include_revoked:
+        query = query.filter(models.BloombergBridgeCredential.revoked_at.is_(None))
+    rows = query.order_by(models.BloombergBridgeCredential.created_at.desc()).all()
+    return [BloombergCredentialOut.model_validate(row) for row in rows]
+
+
+@app_router.post("/credentials/{credential_id}/revoke", response_model=BloombergCredentialOut)
+def revoke_bloomberg_credential(
+    credential_id: UUID, db: Session = Depends(get_db)
+) -> BloombergCredentialOut:
+    row = (
+        db.query(models.BloombergBridgeCredential)
+        .filter(models.BloombergBridgeCredential.id == credential_id)
+        .one_or_none()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Bloomberg credential not found")
+    if row.revoked_at is None:
+        row.revoked_at = _utcnow()
+        db.commit()
+        db.refresh(row)
+    return BloombergCredentialOut.model_validate(row)
+
+
+# --- Routes the Bloomberg computer calls directly (enrollment-token auth) ----
+
+
+def _resolve_enrollment(db: Session, token: str | None) -> models.BloombergBridgeEnrollment:
+    if not token or not token.strip():
+        raise HTTPException(status_code=401, detail="Enrollment token is required")
+    row = (
+        db.query(models.BloombergBridgeEnrollment)
+        .filter(models.BloombergBridgeEnrollment.token_hash == _hash_secret(token))
+        .one_or_none()
+    )
+    if row is None:
+        raise HTTPException(status_code=401, detail="Unknown enrollment token")
+    if row.revoked_at is not None:
+        raise HTTPException(status_code=403, detail="Enrollment token was revoked")
+    expires_at = _coerce_aware(row.expires_at)
+    if expires_at is not None and expires_at < _utcnow():
+        raise HTTPException(
+            status_code=403,
+            detail="Enrollment token has expired. Generate a new connection code in the app.",
+        )
+    return row
+
+
+def _script_response(body: str, *, filename: str, download: bool) -> PlainTextResponse:
+    headers = {"Cache-Control": "no-store"}
+    if download:
+        headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return PlainTextResponse(body, media_type="text/plain; charset=utf-8", headers=headers)
+
+
+@connect_router.get("/connect.ps1", response_class=PlainTextResponse)
+def bloomberg_connect_powershell(
+    request: Request,
+    token: str = Query(...),
+    download: bool = Query(default=False),
+    db: Session = Depends(get_db),
+) -> PlainTextResponse:
+    enrollment = _resolve_enrollment(db, token)
+    body = render_powershell_connector(
+        endpoint=_public_endpoint(request),
+        token=token,
+        bridge_id=enrollment.bridge_id,
+        app_name=APP_NAME,
+    )
+    return _script_response(body, filename="connect-bloomberg.ps1", download=download)
+
+
+@connect_router.get("/connect.py", response_class=PlainTextResponse)
+def bloomberg_connect_python(
+    request: Request,
+    token: str = Query(...),
+    download: bool = Query(default=False),
+    db: Session = Depends(get_db),
+) -> PlainTextResponse:
+    enrollment = _resolve_enrollment(db, token)
+    body = render_python_connector(
+        endpoint=_public_endpoint(request),
+        token=token,
+        bridge_id=enrollment.bridge_id,
+        app_name=APP_NAME,
+    )
+    return _script_response(body, filename="connect_bloomberg.py", download=download)
+
+
+@connect_router.get("/connector/bridge.py", response_class=PlainTextResponse)
+def bloomberg_connector_source(
+    token: str = Query(...),
+    db: Session = Depends(get_db),
+) -> PlainTextResponse:
+    _resolve_enrollment(db, token)
+    try:
+        body = bridge_source()
+    except OSError as exc:  # pragma: no cover - only if the image is built wrong
+        raise HTTPException(status_code=500, detail="Bridge listener source is unavailable") from exc
+    return _script_response(body, filename="bridge.py", download=False)
+
+
+@connect_router.post("/enroll", response_model=BloombergEnrollOut)
+def enroll_bloomberg_bridge(
+    body: BloombergEnrollIn,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> BloombergEnrollOut:
+    """Exchange a single-use enrollment token for a long-lived terminal key."""
+    enrollment = _resolve_enrollment(db, body.token)
+    now = _utcnow()
+
+    # A re-run of the connector within the token's validity window rotates the key
+    # rather than failing, so an interrupted first attempt is recoverable.
+    if enrollment.credential_id is not None:
+        previous = (
+            db.query(models.BloombergBridgeCredential)
+            .filter(models.BloombergBridgeCredential.id == enrollment.credential_id)
+            .one_or_none()
+        )
+        if previous is not None and previous.revoked_at is None:
+            previous.revoked_at = now
+
+    bridge_key = f"bbk_{secrets.token_urlsafe(36)}"
+    label_bits = [part for part in (enrollment.label, body.hostname) if part]
+    credential = models.BloombergBridgeCredential(
+        id=uuid4(),
+        bridge_id=enrollment.bridge_id,
+        label=(" / ".join(label_bits) or None),
+        key_prefix=bridge_key[:12],
+        key_hash=_hash_secret(bridge_key),
+        created_by=enrollment.created_by,
+    )
+    db.add(credential)
+    db.flush()
+
+    enrollment.consumed_at = enrollment.consumed_at or now
+    enrollment.credential_id = credential.id
+
+    status_row = (
+        db.query(models.BloombergBridgeStatus)
+        .filter(models.BloombergBridgeStatus.bridge_id == enrollment.bridge_id)
+        .one_or_none()
+    )
+    if status_row is None:
+        db.add(
+            models.BloombergBridgeStatus(
+                bridge_id=enrollment.bridge_id,
+                status="online",
+                capabilities_json={},
+                preflight_json={},
+                last_seen_at=now,
+            )
+        )
+    else:
+        status_row.status = "online"
+        status_row.last_seen_at = now
+        status_row.error_message = None
+
+    db.commit()
+    return BloombergEnrollOut(
+        bridge_id=enrollment.bridge_id,
+        bridge_key=bridge_key,
+        endpoint_hint=_public_endpoint(request),
+    )

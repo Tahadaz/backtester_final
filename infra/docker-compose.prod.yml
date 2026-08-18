@@ -139,6 +139,9 @@ services:
       INTERNAL_JWT_SECRET: ${INTERNAL_JWT_SECRET:-}
       BLOOMBERG_BRIDGE_API_KEY: ${BLOOMBERG_BRIDGE_API_KEY:-}
       BLOOMBERG_BRIDGE_MAX_UPLOAD_BYTES: ${BLOOMBERG_BRIDGE_MAX_UPLOAD_BYTES:-268435456}
+      # Baked into the Bloomberg connector commands handed to the Terminal
+      # computer. Falls back to the forwarded request host when unset.
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-${NEXTAUTH_URL:-https://rdtalpha.xyz}}
       SENTRY_DSN: ${SENTRY_DSN:-}
       PYTHONPATH: /repo
     depends_on:

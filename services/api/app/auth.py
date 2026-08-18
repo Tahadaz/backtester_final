@@ -122,16 +122,22 @@ def require_admin(
 require_api_key = require_auth
 
 
-def require_bloomberg_bridge_key(
-    x_bloomberg_bridge_key: str | None = Header(default=None),
-) -> None:
-    """Authenticate the dedicated Bloomberg bridge ingestion surface."""
+def matches_static_bloomberg_bridge_key(candidate: str | None) -> bool:
+    """True when ``candidate`` equals the shared ``BLOOMBERG_BRIDGE_API_KEY``.
+
+    The shared key predates per-terminal enrollment and stays supported so already
+    provisioned bridges keep working after an upgrade.
+    """
     bridge_key = settings.BLOOMBERG_BRIDGE_API_KEY.strip()
-    if not bridge_key:
-        raise HTTPException(status_code=503, detail="Bloomberg bridge is not configured")
-    if x_bloomberg_bridge_key and hmac.compare_digest(x_bloomberg_bridge_key, bridge_key):
-        return
-    raise HTTPException(status_code=401, detail="missing or invalid Bloomberg bridge key")
+    if not bridge_key or not candidate:
+        return False
+    return hmac.compare_digest(candidate, bridge_key)
+
+
+# The Bloomberg bridge surface authenticates in
+# ``routers.bloomberg_bridge.require_bridge_credential``: it accepts this shared
+# key *or* a per-terminal enrolled credential, and the latter needs a database
+# session, which this module deliberately does not depend on.
 
 
 # ---------------------------------------------------------------------------

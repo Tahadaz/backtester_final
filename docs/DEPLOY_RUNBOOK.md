@@ -91,7 +91,8 @@ Notes:
 - Use the public IP shown by `curl https://api.ipify.org` from the client network, not the workstation's private `10.x` or `172.x` intranet address.
 - `API_KEY` protects API routes. The Next.js server injects it when browser code calls `/api/...`.
 - `ADMIN_API_KEY` is required for admin-only snapshot, batch, and edge warmup endpoints.
-- `BLOOMBERG_BRIDGE_API_KEY` only authorizes `/bridge/bloomberg/*` ingestion calls from the Bloomberg bridge.
+- `BLOOMBERG_BRIDGE_API_KEY` only authorizes `/bridge/bloomberg/*` ingestion calls from the Bloomberg bridge. It is now a legacy fallback: terminals normally self-enroll from **Data → Bloomberg** and receive their own revocable key, so this shared key can be left unset on new installs.
+- `PUBLIC_APP_URL` is baked into the Bloomberg connector commands handed to the Terminal computer. It defaults to `NEXTAUTH_URL`; set it explicitly if the app is reached on a different public hostname, otherwise the generated command points at the wrong domain.
 - `NEXTAUTH_SECRET`, `API_KEY`, `ADMIN_API_KEY`, `INTERNAL_JWT_SECRET`, `BLOOMBERG_BRIDGE_API_KEY`, and `MINIO_ROOT_PASSWORD` can be generated with `openssl rand -hex 32`.
 
 ## Oracle VM Checklist

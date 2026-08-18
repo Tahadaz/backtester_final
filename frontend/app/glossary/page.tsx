@@ -1193,6 +1193,221 @@ function ExplanationFigures({ lang }: { lang: GlossaryLanguage }) {
   )
 }
 
+type BloombergStep = {
+  title: LocalizedCopy
+  body: LocalizedCopy
+  hint?: LocalizedCopy
+}
+
+type LocalizedCopy = { fr: string; en: string }
+
+const bloombergSteps: BloombergStep[] = [
+  {
+    title: {
+      fr: "Asseyez-vous devant le poste qui a le Terminal Bloomberg",
+      en: "Sit at the computer that has the Bloomberg Terminal",
+    },
+    body: {
+      fr: "C'est la seule contrainte de toute la procédure. Bloomberg ne répond qu'en local, sur la machine où le Terminal tourne : aucun serveur distant, aucun onglet de navigateur seul ne peut lire ses données. Ouvrez Bloomberg et connectez-vous normalement (biométrie / B-Unit) avant de commencer.",
+      en: "This is the only real constraint. Bloomberg only answers locally, on the machine where the Terminal runs: no remote server and no browser tab on its own can read its data. Open Bloomberg and log in as usual (biometrics / B-Unit) before you start.",
+    },
+  },
+  {
+    title: {
+      fr: "Ouvrez l'application déployée dans le navigateur de ce poste",
+      en: "Open the deployed app in that computer's browser",
+    },
+    body: {
+      fr: "Connectez-vous à l'application comme d'habitude, puis allez sur Données → onglet Bloomberg. Tout le reste se fait depuis cette page : rien à transporter sur clé USB, rien à installer à l'avance.",
+      en: "Sign in to the app as usual, then go to Data → Bloomberg tab. Everything else happens from that page: nothing to carry on a USB stick, nothing to install ahead of time.",
+    },
+    hint: { fr: "Données → Bloomberg", en: "Data → Bloomberg" },
+  },
+  {
+    title: {
+      fr: "Générez un code de connexion",
+      en: "Generate a connection code",
+    },
+    body: {
+      fr: "Dans la carte « Connexion d'un poste Bloomberg », donnez un nom au poste (par exemple « Salle des marchés ») et cliquez sur Générer un code de connexion. L'application crée un code à usage unique, valable une heure, et l'insère automatiquement dans une commande prête à coller — l'URL de l'application et le nom du poste y sont déjà.",
+      en: "In the “Connect a Bloomberg terminal” card, name the machine (for example “Trading floor”) and click Generate a connection code. The app mints a single-use code, valid for one hour, and drops it into a ready-to-paste command that already carries the app URL and the terminal name.",
+    },
+  },
+  {
+    title: {
+      fr: "Collez la commande sur le poste Bloomberg",
+      en: "Paste the command on the Bloomberg computer",
+    },
+    body: {
+      fr: "Choisissez l'onglet PowerShell ou Jupyter selon ce que le poste autorise, cliquez sur Copier la commande, puis collez-la dans une fenêtre PowerShell (menu Démarrer → PowerShell) ou dans une cellule Jupyter, et exécutez. Si le copier-coller est bloqué, utilisez Télécharger le script et lancez le fichier obtenu.",
+      en: "Pick the PowerShell or Jupyter tab depending on what the machine allows, click Copy command, then paste it into a PowerShell window (Start menu → PowerShell) or a Jupyter cell and run it. If copy-paste is blocked, use Download script and run the downloaded file instead.",
+    },
+    hint: {
+      fr: "PowerShell si autorisé, sinon Jupyter",
+      en: "PowerShell if allowed, otherwise Jupyter",
+    },
+  },
+  {
+    title: {
+      fr: "Laissez le script travailler",
+      en: "Let the script do the work",
+    },
+    body: {
+      fr: "Il trouve Python, installe ce qui manque (requests, pandas, pyarrow, xbbg), télécharge le connecteur depuis l'application, échange le code contre une clé propre à ce poste, et se met à écouter. Vous n'avez ni clé à taper ni fichier à modifier. Comptez une à trois minutes la première fois.",
+      en: "It locates Python, installs what is missing (requests, pandas, pyarrow, xbbg), downloads the connector from the app, exchanges the code for a key specific to this machine, and starts listening. No key to type, no file to edit. Allow one to three minutes on the first run.",
+    },
+  },
+  {
+    title: {
+      fr: "Vérifiez que le poste apparaît comme connecté",
+      en: "Check that the terminal shows as connected",
+    },
+    body: {
+      fr: "La carte passe de « En attente du poste Bloomberg » à « connecté » toute seule, et le poste apparaît dans la liste des postes enregistrés. À partir de là, tout se pilote depuis l'application : Discovery, Backfill, Refresh.",
+      en: "The card flips from “Waiting for the Bloomberg computer” to “connected” on its own, and the machine appears in the registered-terminals list. From then on everything is driven from the app: Discovery, Backfill, Refresh.",
+    },
+  },
+  {
+    title: {
+      fr: "Gardez la fenêtre ouverte",
+      en: "Keep the window open",
+    },
+    body: {
+      fr: "La fenêtre PowerShell (ou la cellule Jupyter) doit rester ouverte tant que vous lancez des jobs. La fermer déconnecte simplement le poste ; il se reconnecte en relançant la même commande, sans nouveau code, tant que la clé locale est en place.",
+      en: "The PowerShell window (or Jupyter cell) must stay open while you run jobs. Closing it simply disconnects the terminal; re-running the same command reconnects it without a new code, as long as the local key is still there.",
+    },
+  },
+]
+
+const bloombergTroubleshooting: Array<{ symptom: LocalizedCopy; fix: LocalizedCopy }> = [
+  {
+    symptom: { fr: "« No usable Python found »", en: "“No usable Python found”" },
+    fix: {
+      fr: "Le poste n'a pas de Python accessible en ligne de commande. Utilisez l'onglet Jupyter : la même connexion se fait depuis une cellule du notebook Bloomberg.",
+      en: "The machine has no Python on the command line. Use the Jupyter tab: the same connection runs from a notebook cell instead.",
+    },
+  },
+  {
+    symptom: { fr: "« No module named xbbg »", en: "“No module named xbbg”" },
+    fix: {
+      fr: "L'environnement Python n'a pas l'accès Bloomberg. L'installation a été bloquée par la politique du poste : demandez à l'IT d'activer l'API Python Bloomberg pour cet environnement.",
+      en: "That Python environment has no Bloomberg access. The install was blocked by machine policy: ask IT to enable the Bloomberg Python API for that environment.",
+    },
+  },
+  {
+    symptom: { fr: "Erreur blpapi ou « session failed »", en: "blpapi error or “session failed”" },
+    fix: {
+      fr: "Le Terminal Bloomberg est fermé ou déconnecté. Ouvrez-le, connectez-vous, puis relancez la commande.",
+      en: "The Bloomberg Terminal is closed or logged out. Open it, log in, then re-run the command.",
+    },
+  },
+  {
+    symptom: { fr: "« Enrollment token has expired »", en: "“Enrollment token has expired”" },
+    fix: {
+      fr: "Le code dure une heure. Regénérez-en un dans l'application et recollez la nouvelle commande.",
+      en: "Codes last one hour. Generate a new one in the app and paste the new command.",
+    },
+  },
+  {
+    symptom: { fr: "Le poste reste « En attente »", en: "The terminal stays “Waiting”" },
+    fix: {
+      fr: "La commande n'a pas encore fini, ou le réseau de la banque bloque le domaine de l'application. Vérifiez que la page s'ouvre bien dans le navigateur de ce poste.",
+      en: "The command has not finished yet, or the bank network blocks the app domain. Check that the page itself opens in that machine's browser.",
+    },
+  },
+  {
+    symptom: { fr: "Les jobs restent en file d'attente", en: "Jobs stay queued" },
+    fix: {
+      fr: "La fenêtre du connecteur a été fermée. Relancez la même commande sur le poste Bloomberg.",
+      en: "The connector window was closed. Re-run the same command on the Bloomberg computer.",
+    },
+  },
+]
+
+function BloombergConnectionGuide({ lang }: { lang: GlossaryLanguage }) {
+  return (
+    <section id="bloomberg-connexion" className="scroll-mt-24 space-y-3">
+      <div>
+        <h2 className="text-base font-semibold tracking-tight">
+          {lang === "fr" ? "Connecter un poste Bloomberg" : "Connect a Bloomberg terminal"}
+        </h2>
+        <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+          {lang === "fr"
+            ? "Procédure complète, à faire une seule fois par poste, entièrement depuis l'application déployée."
+            : "Full procedure, done once per machine, entirely from the deployed app."}
+        </p>
+      </div>
+
+      <div className="rounded-lg border border-line bg-bg2 p-4 text-sm leading-relaxed text-muted-foreground">
+        <p>
+          <strong className="text-foreground">
+            {lang === "fr" ? "Ce qu'il faut comprendre d'abord : " : "What to understand first: "}
+          </strong>
+          {lang === "fr"
+            ? "Bloomberg n'expose ses données qu'en local, sur la machine où tourne le Terminal. Un onglet de navigateur ne peut donc pas les lire, et le serveur de l'application non plus. Un petit programme doit tourner sur ce poste — mais c'est l'application qui le fabrique, le configure et le distribue. Vous ne transportez ni fichier, ni clé, ni configuration."
+            : "Bloomberg only exposes its data locally, on the machine running the Terminal. A browser tab therefore cannot read it, and neither can the app server. One small program has to run on that machine — but the app builds, configures and hands it out. You carry no file, no key, no configuration."}
+        </p>
+      </div>
+
+      <ol className="space-y-2.5">
+        {bloombergSteps.map((step, index) => (
+          <li
+            key={step.title.en}
+            className="flex gap-3 rounded-lg border border-line bg-card p-4 shadow-xs"
+          >
+            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[oklch(0.94_0.04_260_/_0.55)] text-xs font-semibold text-[oklch(0.30_0.14_260)]">
+              {index + 1}
+            </span>
+            <div className="min-w-0 space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-sm font-semibold tracking-tight">{step.title[lang]}</h3>
+                {step.hint ? (
+                  <Badge variant="outline" className="text-[10px] font-medium">
+                    {step.hint[lang]}
+                  </Badge>
+                ) : null}
+              </div>
+              <p className="text-sm leading-relaxed text-muted-foreground">{step.body[lang]}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Link
+          href="/data"
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-background px-3 text-xs font-medium text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
+        >
+          <Database className="h-3.5 w-3.5" />
+          {lang === "fr" ? "Ouvrir Données → Bloomberg" : "Open Data → Bloomberg"}
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
+      </div>
+
+      <div className="rounded-lg border border-line bg-card p-4 shadow-xs">
+        <h3 className="text-sm font-semibold tracking-tight">
+          {lang === "fr" ? "Si quelque chose bloque" : "If something goes wrong"}
+        </h3>
+        <dl className="mt-3 space-y-2.5">
+          {bloombergTroubleshooting.map((row) => (
+            <div key={row.symptom.en} className="grid gap-1 sm:grid-cols-[minmax(0,15rem)_minmax(0,1fr)] sm:gap-3">
+              <dt className="font-mono text-xs text-foreground">{row.symptom[lang]}</dt>
+              <dd className="text-sm leading-relaxed text-muted-foreground">{row.fix[lang]}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+
+      <div className="rounded-lg border border-line bg-bg2 p-4 text-xs leading-relaxed text-muted-foreground">
+        <strong className="text-foreground">{lang === "fr" ? "Sécurité. " : "Security. "}</strong>
+        {lang === "fr"
+          ? "Le connecteur ne fait que des appels sortants en HTTPS vers l'application : rien n'est ouvert en entrée sur le poste. L'application ne reçoit jamais l'identifiant Bloomberg du poste, seulement les données demandées. Chaque poste a sa propre clé, révocable à tout moment depuis la liste des postes enregistrés, et le code de connexion expire au bout d'une heure. La redistribution des données Bloomberg reste soumise au contrat de licence du Terminal : vérifiez la portée autorisée avant tout usage en production."
+          : "The connector only makes outbound HTTPS calls to the app: nothing is opened inbound on the machine. The app never receives the Bloomberg login, only the requested data. Each machine gets its own key, revocable at any time from the registered-terminals list, and the connection code expires after one hour. Redistributing Bloomberg data remains governed by the Terminal licence agreement: confirm the permitted scope before any production use."}
+      </div>
+    </section>
+  )
+}
+
 function AppGuideCard({
   entry,
   icon: Icon,
@@ -1527,6 +1742,8 @@ export default function GlossaryPage() {
             </div>
             <ScoreScale lang={lang} />
           </section>
+
+          <BloombergConnectionGuide lang={lang} />
 
           <ExplanationFigures lang={lang} />
 

@@ -3268,6 +3268,89 @@ export async function deleteBloombergSeries(seriesId: string): Promise<Bloomberg
   return BloombergDeleteResultSchema.parse(row)
 }
 
+export const BloombergEnrollmentSchema = z.object({
+  id: z.string(),
+  bridge_id: z.string(),
+  label: z.string().nullable().optional(),
+  token_prefix: z.string(),
+  created_by: z.string().nullable().optional(),
+  expires_at: z.string(),
+  consumed_at: z.string().nullable().optional(),
+  revoked_at: z.string().nullable().optional(),
+  credential_id: z.string().nullable().optional(),
+  created_at: z.string(),
+  status: z.string().default("pending"),
+})
+export type BloombergEnrollment = z.infer<typeof BloombergEnrollmentSchema>
+
+export const BloombergConnectorInstructionsSchema = z.object({
+  endpoint: z.string(),
+  bridge_id: z.string(),
+  expires_at: z.string(),
+  powershell_command: z.string(),
+  jupyter_command: z.string(),
+  powershell_download_url: z.string(),
+  python_download_url: z.string(),
+})
+export type BloombergConnectorInstructions = z.infer<typeof BloombergConnectorInstructionsSchema>
+
+export const BloombergEnrollmentCreateSchema = z.object({
+  enrollment: BloombergEnrollmentSchema,
+  enroll_token: z.string(),
+  instructions: BloombergConnectorInstructionsSchema,
+})
+export type BloombergEnrollmentCreate = z.infer<typeof BloombergEnrollmentCreateSchema>
+
+export const BloombergCredentialSchema = z.object({
+  id: z.string(),
+  bridge_id: z.string(),
+  label: z.string().nullable().optional(),
+  key_prefix: z.string(),
+  created_by: z.string().nullable().optional(),
+  last_used_at: z.string().nullable().optional(),
+  revoked_at: z.string().nullable().optional(),
+  created_at: z.string(),
+})
+export type BloombergCredential = z.infer<typeof BloombergCredentialSchema>
+
+export async function createBloombergEnrollment(body: {
+  label?: string | null
+  bridge_id?: string | null
+  ttl_minutes?: number
+}): Promise<BloombergEnrollmentCreate> {
+  const row = await request<unknown>("/bloomberg/enrollments", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+  return BloombergEnrollmentCreateSchema.parse(row)
+}
+
+export async function listBloombergEnrollments(limit = 25): Promise<BloombergEnrollment[]> {
+  const rows = await request<unknown[]>(`/bloomberg/enrollments?limit=${limit}`)
+  return z.array(BloombergEnrollmentSchema).parse(rows)
+}
+
+export async function revokeBloombergEnrollment(enrollmentId: string): Promise<BloombergEnrollment> {
+  const row = await request<unknown>(
+    `/bloomberg/enrollments/${encodeURIComponent(enrollmentId)}/revoke`,
+    { method: "POST" },
+  )
+  return BloombergEnrollmentSchema.parse(row)
+}
+
+export async function listBloombergCredentials(): Promise<BloombergCredential[]> {
+  const rows = await request<unknown[]>("/bloomberg/credentials")
+  return z.array(BloombergCredentialSchema).parse(rows)
+}
+
+export async function revokeBloombergCredential(credentialId: string): Promise<BloombergCredential> {
+  const row = await request<unknown>(
+    `/bloomberg/credentials/${encodeURIComponent(credentialId)}/revoke`,
+    { method: "POST" },
+  )
+  return BloombergCredentialSchema.parse(row)
+}
+
 export async function getBloombergSeriesPreview(
   seriesId: string,
   limit = 50,

@@ -107,6 +107,9 @@ class Settings(BaseModel):
     BLOOMBERG_BRIDGE_MAX_UPLOAD_BYTES: int = int(
         os.getenv("BLOOMBERG_BRIDGE_MAX_UPLOAD_BYTES", "268435456")
     )
+    # Baked into the Bloomberg connector scripts handed to the Terminal computer.
+    # Left empty, the public URL is derived from the incoming request instead.
+    PUBLIC_APP_URL: str = os.getenv("PUBLIC_APP_URL", "").strip().rstrip("/")
 
     # Phase 0 — snapshot-cutover scaffolding.
     # ``legacy`` keeps the live-compute path; ``shadow`` serves legacy AND queries

@@ -218,3 +218,75 @@ class BloombergJobEventOut(BaseModel):
 class BloombergJobClaimOut(BaseModel):
     job: BloombergJobOut | None = None
     server_time: datetime.datetime
+
+
+# ---------------------------------------------------------------------------
+# Self-service terminal enrollment
+# ---------------------------------------------------------------------------
+
+
+class BloombergEnrollmentCreateIn(BaseModel):
+    bridge_id: str | None = Field(default=None, max_length=128)
+    label: str | None = Field(default=None, max_length=200)
+    ttl_minutes: int = Field(default=60, ge=5, le=1440)
+
+
+class BloombergEnrollmentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    bridge_id: str
+    label: str | None = None
+    token_prefix: str
+    created_by: str | None = None
+    expires_at: datetime.datetime
+    consumed_at: datetime.datetime | None = None
+    revoked_at: datetime.datetime | None = None
+    credential_id: UUID | None = None
+    created_at: datetime.datetime
+    status: str = "pending"
+
+
+class BloombergConnectorInstructions(BaseModel):
+    """Everything the operator needs, already filled in with this app's URL."""
+
+    endpoint: str
+    bridge_id: str
+    expires_at: datetime.datetime
+    powershell_command: str
+    jupyter_command: str
+    powershell_download_url: str
+    python_download_url: str
+
+
+class BloombergEnrollmentCreateOut(BaseModel):
+    enrollment: BloombergEnrollmentOut
+    # Returned exactly once, at creation time.
+    enroll_token: str
+    instructions: BloombergConnectorInstructions
+
+
+class BloombergEnrollIn(BaseModel):
+    token: str = Field(min_length=8, max_length=200)
+    bridge_id: str | None = Field(default=None, max_length=128)
+    hostname: str | None = Field(default=None, max_length=200)
+
+
+class BloombergEnrollOut(BaseModel):
+    bridge_id: str
+    bridge_key: str
+    endpoint_hint: str | None = None
+    poll_seconds: float = 10.0
+
+
+class BloombergCredentialOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    bridge_id: str
+    label: str | None = None
+    key_prefix: str
+    created_by: str | None = None
+    last_used_at: datetime.datetime | None = None
+    revoked_at: datetime.datetime | None = None
+    created_at: datetime.datetime

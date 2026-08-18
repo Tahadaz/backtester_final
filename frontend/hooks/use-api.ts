@@ -72,6 +72,8 @@ import type {
   FactorSelectionStage1Row,
   BloombergBatch,
   BloombergBridgeStatus,
+  BloombergCredential,
+  BloombergEnrollment,
   BloombergJob,
   BloombergSeries,
   OpsSchedulerStatus,
@@ -138,6 +140,8 @@ import {
   getFactorSelectionStage1Cache,
   listBloombergBatches,
   listBloombergBridges,
+  listBloombergCredentials,
+  listBloombergEnrollments,
   listBloombergJobs,
   listBloombergSeries,
 } from "@/lib/api"
@@ -432,6 +436,22 @@ export function useBloombergBridges() {
     "/bloomberg/bridges",
     () => listBloombergBridges(),
     { refreshInterval: 10000, revalidateOnFocus: true }
+  )
+}
+
+export function useBloombergEnrollments() {
+  return useSWR<BloombergEnrollment[]>(
+    "/bloomberg/enrollments",
+    () => listBloombergEnrollments(),
+    { refreshInterval: 10000, revalidateOnFocus: true }
+  )
+}
+
+export function useBloombergCredentials() {
+  return useSWR<BloombergCredential[]>(
+    "/bloomberg/credentials",
+    () => listBloombergCredentials(),
+    { refreshInterval: 15000, revalidateOnFocus: true }
   )
 }
 

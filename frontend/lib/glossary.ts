@@ -103,6 +103,7 @@ export const glossaryCategories: GlossaryCategory[] = [
 
 export const quickGlossaryLinks: GlossaryLink[] = [
   { label: { fr: "Tableau de Bord", en: "Dashboard" }, href: "#dashboard" },
+  { label: { fr: "Connexion Bloomberg", en: "Bloomberg setup" }, href: "#bloomberg-connexion" },
   { label: { fr: "Figures", en: "Figures" }, href: "#figures-explication" },
   { label: { fr: "Score global", en: "Global score" }, href: "#score-composite" },
   { label: { fr: "Méthode scoring", en: "Scoring method" }, href: "#scoring-methodology" },
@@ -1284,6 +1285,31 @@ export const glossaryEntries: GlossaryEntry[] = [
     appLinks: [backtestLink],
   },
   {
+    id: "bloomberg-bridge",
+    categoryId: "data",
+    title: { fr: "Passerelle Bloomberg", en: "Bloomberg bridge" },
+    plain: {
+      fr: "Petit programme qui tourne sur le poste ayant le Terminal Bloomberg et relaie ses données vers l'application déployée. Bloomberg ne répond qu'en local: ni un onglet de navigateur ni le serveur de l'app ne peuvent l'interroger directement.",
+      en: "Small program running on the computer that has the Bloomberg Terminal, relaying its data to the deployed app. Bloomberg only answers locally: neither a browser tab nor the app server can query it directly.",
+    },
+    details: [
+      {
+        fr: "Installation entièrement pilotée depuis Données → Bloomberg: l'app génère un code à usage unique et une commande prête à coller, déjà remplie avec son URL et le nom du poste.",
+        en: "Setup is driven entirely from Data → Bloomberg: the app mints a single-use code and a ready-to-paste command already filled with its URL and the terminal name.",
+      },
+      {
+        fr: "Le connecteur ne fait que des appels sortants en HTTPS et n'envoie jamais l'identifiant Bloomberg à l'application. Chaque poste a sa propre clé, révocable.",
+        en: "The connector only makes outbound HTTPS calls and never sends the Bloomberg login to the app. Each machine gets its own revocable key.",
+      },
+      {
+        fr: "Une fois connecté, les jobs Discovery, Backfill et Refresh se lancent depuis l'application.",
+        en: "Once connected, Discovery, Backfill, and Refresh jobs are launched from the app.",
+      },
+    ],
+    aliases: ["bloomberg", "terminal", "blpapi", "xbbg", "bridge", "passerelle", "connecteur"],
+    appLinks: [{ label: { fr: "Guide pas à pas", en: "Step-by-step guide" }, href: "#bloomberg-connexion" }, dataLink],
+  },
+  {
     id: "adv20",
     categoryId: "data",
     title: { fr: "ADV20", en: "ADV20" },
@@ -1642,6 +1668,28 @@ export const glossaryEntries: GlossaryEntry[] = [
       },
     ],
     aliases: ["reverse dcf", "croissance implicite", "implied growth"],
+    appLinks: [fundamentalsLink],
+  },
+  {
+    id: "implied-growth-path",
+    categoryId: "fundamentals",
+    title: { fr: "Croissance exigée par le marché", en: "Market-implied growth path" },
+    plain: {
+      fr: "On inverse le modèle H (Fuller & Hsia): au lieu de projeter un prix à partir d'une hypothèse de croissance, on part du cours actuel et on résout la croissance des bénéfices à l'an 1 qui, en décroissant linéairement vers la croissance terminale sur l'horizon de fade, justifie exactement ce prix. C'est le pendant du reverse DCF, mais sur les bénéfices (PER) plutôt que sur les flux de trésorerie (FCF yield), avec un chemin par période explicite plutôt qu'une hypothèse de perpétuité unique.",
+      en: "The H-model (Fuller & Hsia) run backwards: instead of projecting a price from a growth assumption, you start from today's price and solve for the year-1 earnings growth rate that, fading linearly to the terminal growth rate over the fade horizon, exactly justifies that price. It mirrors the reverse DCF, but on earnings (P/E) rather than free cash flow (FCF yield), producing an explicit per-period path instead of a single perpetuity assumption.",
+    },
+    details: [
+      {
+        fr: "Lecture: comparer la croissance implicite (colonne « Implicite dans le cours ») à la croissance du modèle maison. Si le marché exige plus que ce que le modèle projette, le titre paraît cher; s'il exige moins, cela suggère une valorisation prudente. Les lignes trimestrielles/semestrielles sont des interpolations géométriques des taux annuels, pas des estimations indépendantes.",
+        en: "Reading: compare the implied growth (\"Implicite dans le cours\" column) to the house model's growth. If the market requires more than the model projects, the stock looks expensive; if it requires less, that suggests a conservative valuation. Quarterly/semiannual rows are geometric interpolations of the annual rates, not independent estimates.",
+      },
+      {
+        fr: "Distinct du reverse DCF: celui-ci inverse une perpétuité simple sur le FCF (g = WACC − FCF yield), sans chemin explicite. Le modèle H inverse ici un P/E justifié avec fade de croissance sur l'horizon choisi, en s'appuyant sur les mêmes hypothèses que le reste de l'app (coût des fonds propres, payout, croissance terminale).",
+        en: "Distinct from the reverse DCF: that method inverts a simple FCF perpetuity (g = WACC − FCF yield) with no explicit path. This H-model inversion instead solves a justified P/E with growth fading over the chosen horizon, reusing the same assumptions as the rest of the app (cost of equity, payout, terminal growth).",
+      },
+    ],
+    formula: "gS = gL + [P(Ke−gL)/D − (1+gL)] / H, avec D = payout x EPS, H = fade_years / 2",
+    aliases: ["croissance exigée par le marché", "modèle H", "implied growth path", "h-model"],
     appLinks: [fundamentalsLink],
   },
   {

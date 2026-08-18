@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react"
 import {
   useBloombergBatches,
   useBloombergBridges,
+  useBloombergCredentials,
+  useBloombergEnrollments,
   useBloombergJobs,
   useBloombergSeries,
   useMarketCatalog,
@@ -20,12 +22,17 @@ import {
   enqueueAllMacroIngest,
   enqueueMacroIngest,
   createBloombergJob,
+  createBloombergEnrollment,
   deleteBloombergBatch,
   deleteBloombergSeries,
+  revokeBloombergCredential,
+  revokeBloombergEnrollment,
 } from "@/lib/api"
 import type {
   BloombergBatch,
   BloombergBridgeStatus,
+  BloombergCredential,
+  BloombergEnrollmentCreate,
   BloombergJob,
   BloombergJobCreateInput,
   BloombergSeries,
@@ -80,17 +87,21 @@ import { cn } from "@/lib/utils"
 import {
   CheckCircle2,
   BarChart3,
+  BookOpen,
   Coins,
+  Copy,
   Database,
   Download,
   Eye,
   FileSpreadsheet,
   Globe,
   Landmark,
+  Loader2,
   Package,
   Pencil,
   Plus,
   Play,
+  Plug,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -1059,6 +1070,274 @@ function PrivateDataPage() {
   )
 }
 
+/**
+ * Terminal onboarding, driven entirely from this page.
+ *
+ * A browser tab cannot read Bloomberg — `blpapi` only answers on localhost of the
+ * machine running the Terminal — so one small local listener is unavoidable. What
+ * this card removes is everything around it: no file to carry over, no key to
+ * type, no script to edit. The app mints a single-use code and hands back a
+ * command that already contains its own URL, the code and the terminal name.
+ */
+function BloombergConnectCard() {
+  const { data: enrollments, mutate: mutateEnrollments } = useBloombergEnrollments()
+  const { data: credentials, mutate: mutateCredentials } = useBloombergCredentials()
+  const [label, setLabel] = useState("")
+  const [isCreating, setIsCreating] = useState(false)
+  const [issued, setIssued] = useState<BloombergEnrollmentCreate | null>(null)
+  const [flavour, setFlavour] = useState<"powershell" | "jupyter">("powershell")
+
+  const pendingEnrollment = (enrollments ?? []).find((row) => row.status === "pending")
+  // The freshly issued token stops being usable once its terminal has enrolled.
+  const issuedIsConnected = issued
+    ? (enrollments ?? []).some(
+        (row) => row.id === issued.enrollment.id && row.status === "connected",
+      )
+    : false
+
+  const command =
+    flavour === "powershell" ? issued?.instructions.powershell_command : issued?.instructions.jupyter_command
+  const downloadUrl =
+    flavour === "powershell"
+      ? issued?.instructions.powershell_download_url
+      : issued?.instructions.python_download_url
+
+  async function handleCreate() {
+    setIsCreating(true)
+    try {
+      const created = await createBloombergEnrollment({ label: label.trim() || null })
+      setIssued(created)
+      mutateEnrollments()
+      toast.success(`Code de connexion cree pour "${created.enrollment.bridge_id}"`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Creation du code impossible")
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
+  async function copyToClipboard(value: string) {
+    try {
+      await navigator.clipboard.writeText(value)
+      toast.success("Commande copiee")
+    } catch {
+      toast.error("Copie impossible, selectionnez le texte manuellement")
+    }
+  }
+
+  async function handleRevokeEnrollment(enrollmentId: string) {
+    try {
+      await revokeBloombergEnrollment(enrollmentId)
+      if (issued?.enrollment.id === enrollmentId) setIssued(null)
+      mutateEnrollments()
+      toast.success("Code revoque")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Revocation impossible")
+    }
+  }
+
+  async function handleRevokeCredential(credential: BloombergCredential) {
+    const ok = window.confirm(
+      `Deconnecter definitivement le poste "${credential.bridge_id}" ? Il faudra un nouveau code pour le reconnecter.`,
+    )
+    if (!ok) return
+    try {
+      await revokeBloombergCredential(credential.id)
+      mutateCredentials()
+      toast.success("Poste deconnecte")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Deconnexion impossible")
+    }
+  }
+
+  return (
+    <Card className="claude-card">
+      <CardHeader className="px-5 pb-3 pt-4">
+        <CardTitle className="flex flex-wrap items-center justify-between gap-3 text-sm font-semibold">
+          <span className="flex items-center gap-2">
+            <Plug className="h-4 w-4" />
+            Connexion d&apos;un poste Bloomberg
+          </span>
+          <a
+            href="/glossary#bloomberg-connexion"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+          >
+            <BookOpen className="h-3.5 w-3.5" />
+            Guide pas a pas
+          </a>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4 px-5 pb-5">
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          A faire <strong>depuis le poste qui a le Terminal Bloomberg</strong>, avec Bloomberg ouvert et
+          connecte. Generez un code ci-dessous, puis collez la commande dans PowerShell ou dans une
+          cellule Jupyter de ce poste. Tout le reste (installation, cle, enregistrement) est automatique.
+        </p>
+
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="min-w-56 flex-1 space-y-1.5">
+            <Label className="text-xs">Nom du poste</Label>
+            <Input
+              value={label}
+              onChange={(event) => setLabel(event.target.value)}
+              placeholder="Salle des marches"
+              className="h-9"
+            />
+          </div>
+          <Button type="button" onClick={handleCreate} disabled={isCreating} className="h-9 gap-1.5">
+            {isCreating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+            Generer un code de connexion
+          </Button>
+        </div>
+
+        {issued ? (
+          <div className="space-y-3 rounded-lg border border-line bg-bg2 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="inline-flex rounded-md border border-line bg-background p-0.5">
+                {(
+                  [
+                    { key: "powershell", label: "PowerShell" },
+                    { key: "jupyter", label: "Jupyter" },
+                  ] as const
+                ).map((option) => (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => setFlavour(option.key)}
+                    className={cn(
+                      "h-7 rounded px-3 text-xs font-semibold transition-colors",
+                      flavour === option.key
+                        ? "bg-bg3 text-foreground"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <Badge variant={issuedIsConnected ? "default" : "outline"} className="gap-1 text-[10px]">
+                {issuedIsConnected ? (
+                  <CheckCircle2 className="h-3 w-3" />
+                ) : (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                )}
+                {issuedIsConnected
+                  ? `${issued.enrollment.bridge_id} connecte`
+                  : "En attente du poste Bloomberg"}
+              </Badge>
+            </div>
+
+            <pre className="max-h-40 overflow-auto rounded-md border border-line bg-background p-3 text-[11px] leading-relaxed">
+              <code className="whitespace-pre-wrap break-all">{command}</code>
+            </pre>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1.5 text-xs"
+                onClick={() => command && copyToClipboard(command)}
+              >
+                <Copy className="h-3.5 w-3.5" />
+                Copier la commande
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1.5 text-xs"
+                onClick={() => downloadUrl && window.open(downloadUrl, "_blank")}
+              >
+                <Download className="h-3.5 w-3.5" />
+                Telecharger le script
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-8 gap-1.5 text-xs text-muted-foreground"
+                onClick={() => handleRevokeEnrollment(issued.enrollment.id)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Annuler ce code
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Valable jusqu&apos;a {new Date(issued.instructions.expires_at).toLocaleString("fr-FR")}
+              </span>
+            </div>
+          </div>
+        ) : pendingEnrollment ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-line bg-bg2 px-4 py-3 text-xs text-muted-foreground">
+            <span>
+              Un code est deja en attente pour <strong>{pendingEnrollment.bridge_id}</strong> (
+              {pendingEnrollment.token_prefix}…). Le code complet n&apos;est affiche qu&apos;une fois.
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-7 gap-1.5 text-xs"
+              onClick={() => handleRevokeEnrollment(pendingEnrollment.id)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Revoquer
+            </Button>
+          </div>
+        ) : null}
+
+        {(credentials ?? []).length > 0 ? (
+          <div className="space-y-2">
+            <div className="sub">Postes enregistres</div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Poste</TableHead>
+                  <TableHead>Enregistre</TableHead>
+                  <TableHead>Derniere activite</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(credentials ?? []).map((credential) => (
+                  <TableRow key={credential.id}>
+                    <TableCell className="font-medium">
+                      {credential.bridge_id}
+                      {credential.label ? (
+                        <span className="ml-2 text-xs text-muted-foreground">{credential.label}</span>
+                      ) : null}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {dateOnly(credential.created_at)}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {credential.last_used_at
+                        ? new Date(credential.last_used_at).toLocaleString("fr-FR")
+                        : "jamais"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 gap-1.5 text-xs"
+                        onClick={() => handleRevokeCredential(credential)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Deconnecter
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  )
+}
+
 function BloombergBridgePanel({
   batches,
   bridges,
@@ -1187,6 +1466,8 @@ function BloombergBridgePanel({
 
   return (
     <div className="space-y-4">
+      <BloombergConnectCard />
+
       <Card className="claude-card">
         <CardHeader className="px-5 pb-3 pt-4">
           <CardTitle className="flex items-center justify-between gap-3 text-sm font-semibold">

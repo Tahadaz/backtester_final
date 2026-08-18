@@ -25,6 +25,111 @@ def _env(name: str, default: str | None = None) -> str | None:
     return value if value not in (None, "") else default
 
 
+# ---------------------------------------------------------------------------
+# Local credential store
+#
+# Written once by ``enroll`` so the operator never types or pastes a bridge key.
+# ---------------------------------------------------------------------------
+
+
+def _config_dir() -> Path:
+    override = _env("BT_BLOOMBERG_CONFIG_DIR")
+    if override:
+        return Path(override)
+    local_appdata = _env("LOCALAPPDATA")
+    if local_appdata:
+        return Path(local_appdata) / "bt-bloomberg-bridge"
+    return Path.home() / ".bt-bloomberg-bridge"
+
+
+def _config_path() -> Path:
+    return _config_dir() / "config.json"
+
+
+def _load_config() -> dict[str, Any]:
+    path = _config_path()
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_config(config: dict[str, Any]) -> Path:
+    path = _config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+    try:  # best effort on Windows ACL-restricted profiles
+        path.chmod(0o600)
+    except Exception:
+        pass
+    return path
+
+
+def _enroll(endpoint: str, token: str, bridge_id: str | None) -> dict[str, Any]:
+    """Exchange an enrollment token for this terminal's long-lived bridge key."""
+    import socket
+
+    base = endpoint.rstrip("/")
+    payload: dict[str, Any] = {"token": token}
+    if bridge_id:
+        payload["bridge_id"] = bridge_id
+    try:
+        payload["hostname"] = socket.gethostname()
+    except Exception:
+        pass
+    response = requests.post(f"{base}/bridge/bloomberg/enroll", json=payload, timeout=60)
+    if response.status_code >= 400:
+        raise RuntimeError(f"enrollment failed: {response.status_code} {response.text}")
+    return response.json()
+
+
+def _bridge_key_works(endpoint: str, bridge_key: str) -> bool:
+    try:
+        response = requests.get(
+            f"{endpoint.rstrip('/')}/bridge/bloomberg/health",
+            headers={"X-Bloomberg-Bridge-Key": bridge_key},
+            timeout=20,
+        )
+        return response.status_code < 400
+    except Exception:
+        return False
+
+
+def cmd_enroll(args: argparse.Namespace) -> int:
+    endpoint = (args.endpoint or _env("BT_BLOOMBERG_ENDPOINT") or "").rstrip("/")
+    token = args.enroll_token or _env("BT_BLOOMBERG_ENROLL_TOKEN")
+    if not endpoint:
+        raise SystemExit("--endpoint or BT_BLOOMBERG_ENDPOINT is required")
+    if not token:
+        raise SystemExit("--enroll-token or BT_BLOOMBERG_ENROLL_TOKEN is required")
+
+    config = _load_config()
+    existing_key = config.get("bridge_key")
+    if (
+        not args.force
+        and existing_key
+        and config.get("endpoint") == endpoint
+        and _bridge_key_works(endpoint, str(existing_key))
+    ):
+        print(f"already enrolled as '{config.get('bridge_id')}' (use --force to re-enroll)")
+        return 0
+
+    result = _enroll(endpoint, token, args.bridge_id or _env("BT_BLOOMBERG_BRIDGE_ID"))
+    config.update(
+        {
+            "endpoint": result.get("endpoint_hint") or endpoint,
+            "bridge_id": result["bridge_id"],
+            "bridge_key": result["bridge_key"],
+            "enrolled_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        }
+    )
+    path = _save_config(config)
+    print(f"enrolled as '{config['bridge_id']}'; credential saved to {path}")
+    return 0
+
+
 def _request_id(prefix: str) -> str:
     return f"{prefix}-{dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
 
@@ -89,11 +194,35 @@ def _upload(endpoint: str, bridge_key: str, manifest: dict[str, Any], payload: b
 
 
 def _common_config(args: argparse.Namespace) -> tuple[str, str, str]:
-    endpoint = args.endpoint or _env("BT_BLOOMBERG_ENDPOINT")
-    bridge_key = args.bridge_key or _env("BT_BLOOMBERG_BRIDGE_KEY")
-    bridge_id = args.bridge_id or _env("BT_BLOOMBERG_BRIDGE_ID", "bloomberg-terminal")
+    stored = _load_config()
+    endpoint = args.endpoint or _env("BT_BLOOMBERG_ENDPOINT") or stored.get("endpoint")
+    bridge_key = args.bridge_key or _env("BT_BLOOMBERG_BRIDGE_KEY") or stored.get("bridge_key")
+    bridge_id = (
+        args.bridge_id
+        or _env("BT_BLOOMBERG_BRIDGE_ID")
+        or stored.get("bridge_id")
+        or "bloomberg-terminal"
+    )
+    if endpoint and not bridge_key:
+        # Connector handed us a token instead of a key: provision on the spot.
+        token = _env("BT_BLOOMBERG_ENROLL_TOKEN")
+        if token:
+            result = _enroll(endpoint.rstrip("/"), token, bridge_id)
+            bridge_key = result["bridge_key"]
+            bridge_id = result["bridge_id"]
+            _save_config(
+                {
+                    "endpoint": endpoint.rstrip("/"),
+                    "bridge_id": bridge_id,
+                    "bridge_key": bridge_key,
+                    "enrolled_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+                }
+            )
     if not endpoint or not bridge_key:
-        raise SystemExit("BT_BLOOMBERG_ENDPOINT and BT_BLOOMBERG_BRIDGE_KEY are required")
+        raise SystemExit(
+            "No Bloomberg bridge credential. Run 'enroll --enroll-token ...' first, "
+            "or set BT_BLOOMBERG_ENDPOINT and BT_BLOOMBERG_BRIDGE_KEY."
+        )
     return endpoint.rstrip("/"), bridge_key, bridge_id or "bloomberg-terminal"
 
 
@@ -120,9 +249,15 @@ def _spool(spool_dir: Path, manifest: dict[str, Any], payload: bytes, filename: 
 
 
 def _emit_or_upload(args: argparse.Namespace, frame: pd.DataFrame, *, source: str, kind: str, fields: list[str]) -> int:
-    endpoint = args.endpoint or _env("BT_BLOOMBERG_ENDPOINT")
-    bridge_key = args.bridge_key or _env("BT_BLOOMBERG_BRIDGE_KEY")
-    bridge_id = args.bridge_id or _env("BT_BLOOMBERG_BRIDGE_ID", "bloomberg-terminal")
+    stored = _load_config()
+    endpoint = args.endpoint or _env("BT_BLOOMBERG_ENDPOINT") or stored.get("endpoint")
+    bridge_key = args.bridge_key or _env("BT_BLOOMBERG_BRIDGE_KEY") or stored.get("bridge_key")
+    bridge_id = (
+        args.bridge_id
+        or _env("BT_BLOOMBERG_BRIDGE_ID")
+        or stored.get("bridge_id")
+        or "bloomberg-terminal"
+    )
     request_id = args.request_id or _request_id(source)
 
     payload = _to_parquet_bytes(frame)
@@ -789,8 +924,9 @@ def cmd_listen(args: argparse.Namespace) -> int:
 
 
 def cmd_flush_spool(args: argparse.Namespace) -> int:
-    endpoint = args.endpoint or _env("BT_BLOOMBERG_ENDPOINT")
-    bridge_key = args.bridge_key or _env("BT_BLOOMBERG_BRIDGE_KEY")
+    stored = _load_config()
+    endpoint = args.endpoint or _env("BT_BLOOMBERG_ENDPOINT") or stored.get("endpoint")
+    bridge_key = args.bridge_key or _env("BT_BLOOMBERG_BRIDGE_KEY") or stored.get("bridge_key")
     if not endpoint or not bridge_key:
         raise SystemExit("BT_BLOOMBERG_ENDPOINT and BT_BLOOMBERG_BRIDGE_KEY are required")
 
@@ -824,7 +960,8 @@ def cmd_flush_spool(args: argparse.Namespace) -> int:
 def _add_common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--endpoint", default=_env("BT_BLOOMBERG_ENDPOINT"))
     parser.add_argument("--bridge-key", default=_env("BT_BLOOMBERG_BRIDGE_KEY"))
-    parser.add_argument("--bridge-id", default=_env("BT_BLOOMBERG_BRIDGE_ID", "bloomberg-terminal"))
+    # No literal default: an empty value lets the enrolled config.json win.
+    parser.add_argument("--bridge-id", default=_env("BT_BLOOMBERG_BRIDGE_ID"))
     parser.add_argument("--request-id")
     parser.add_argument("--spool-dir", default=str(DEFAULT_SPOOL_DIR))
     parser.add_argument("--upload", action="store_true")
@@ -867,6 +1004,12 @@ def build_parser() -> argparse.ArgumentParser:
     _add_common(bql)
     bql.add_argument("--query", required=True)
     bql.set_defaults(func=cmd_bql)
+
+    enroll = sub.add_parser("enroll")
+    _add_common(enroll)
+    enroll.add_argument("--enroll-token", default=_env("BT_BLOOMBERG_ENROLL_TOKEN"))
+    enroll.add_argument("--force", action="store_true")
+    enroll.set_defaults(func=cmd_enroll)
 
     listen = sub.add_parser("listen")
     _add_common(listen)

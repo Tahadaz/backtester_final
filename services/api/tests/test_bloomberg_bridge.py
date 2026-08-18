@@ -69,6 +69,8 @@ def client_and_storage(monkeypatch):
     models.BloombergJob.__table__.create(engine)
     models.BloombergBridgeStatus.__table__.create(engine)
     models.BloombergJobEvent.__table__.create(engine)
+    models.BloombergBridgeCredential.__table__.create(engine)
+    models.BloombergBridgeEnrollment.__table__.create(engine)
 
     objects: dict[str, bytes] = {}
     monkeypatch.setattr(
@@ -81,6 +83,7 @@ def client_and_storage(monkeypatch):
     app = FastAPI()
     app.include_router(bloomberg_bridge.bridge_router)
     app.include_router(bloomberg_bridge.app_router)
+    app.include_router(bloomberg_bridge.connect_router)
 
     def _override_db():
         db = SessionLocal()
@@ -258,6 +261,69 @@ def test_bloomberg_job_queue_and_cancel_do_not_require_admin_key(client_and_stor
     cancelled = client.post(f"/bloomberg/jobs/{created.json()['id']}/cancel")
     assert cancelled.status_code == 200
     assert cancelled.json()["status"] == "cancelled"
+
+
+def test_enrollment_flow_provisions_a_terminal_from_the_app(client_and_storage) -> None:
+    client, _objects = client_and_storage
+
+    created = client.post(
+        "/bloomberg/enrollments",
+        json={"label": "Salle des marches", "ttl_minutes": 30},
+    )
+    assert created.status_code == 201
+    body = created.json()
+    token = body["enroll_token"]
+    bridge_id = body["enrollment"]["bridge_id"]
+    assert body["enrollment"]["status"] == "pending"
+    assert bridge_id == "salle-des-marches"
+
+    # The app hands out ready-to-run commands that already carry the token.
+    instructions = body["instructions"]
+    assert token in instructions["powershell_command"]
+    assert token in instructions["jupyter_command"]
+    assert instructions["powershell_command"].startswith("powershell -ExecutionPolicy Bypass")
+
+    # The Bloomberg computer fetches its connector with the token alone.
+    script = client.get(f"/bridge/bloomberg/connect.ps1?token={token}")
+    assert script.status_code == 200
+    assert bridge_id in script.text
+    assert client.get("/bridge/bloomberg/connect.ps1?token=nope").status_code == 401
+
+    listener = client.get(f"/bridge/bloomberg/connector/bridge.py?token={token}")
+    assert listener.status_code == 200
+    assert "def cmd_listen" in listener.text
+
+    enrolled = client.post("/bridge/bloomberg/enroll", json={"token": token})
+    assert enrolled.status_code == 200
+    bridge_key = enrolled.json()["bridge_key"]
+    assert enrolled.json()["bridge_id"] == bridge_id
+
+    # The issued key now authenticates the bridge surface on its own.
+    assert (
+        client.get("/bridge/bloomberg/health", headers={"X-Bloomberg-Bridge-Key": bridge_key}).status_code
+        == 200
+    )
+    assert client.get("/bloomberg/enrollments").json()[0]["status"] == "connected"
+    credentials = client.get("/bloomberg/credentials").json()
+    assert [row["bridge_id"] for row in credentials] == [bridge_id]
+
+    revoked = client.post(f"/bloomberg/credentials/{credentials[0]['id']}/revoke")
+    assert revoked.status_code == 200
+    assert (
+        client.get("/bridge/bloomberg/health", headers={"X-Bloomberg-Bridge-Key": bridge_key}).status_code
+        == 401
+    )
+
+
+def test_revoked_enrollment_token_cannot_provision(client_and_storage) -> None:
+    client, _objects = client_and_storage
+
+    created = client.post("/bloomberg/enrollments", json={"label": "poste-test"}).json()
+    token = created["enroll_token"]
+    assert client.post(f"/bloomberg/enrollments/{created['enrollment']['id']}/revoke").status_code == 200
+
+    denied = client.post("/bridge/bloomberg/enroll", json={"token": token})
+    assert denied.status_code == 403
 
 
 def test_bloomberg_series_and_batch_can_be_deleted_in_order(client_and_storage) -> None:
