@@ -55,7 +55,7 @@ Applies to every `SENT_*` derived series (per-topic, per-region, per-symbol) bef
 
 ## Gate 2 — Nowcast gate (Plan B, phase B3)
 
-Applies to the Morocco CPI nowcast (and any future nowcast series built the same way). Full harness design in `../macro-nowcast-layer/03-inflation-nowcast.md`.
+Applies to the Morocco CPI nowcast (and any future nowcast series built the same way). Full harness design in `../macro-nowcast-layer/02-inflation-nowcast.md`.
 
 | Criterion | Threshold |
 |---|---|
@@ -75,7 +75,7 @@ Applies to the BAM policy-rate direction classifier. Full design in `../macro-no
 | Calibration | Leave-one-out (LOO) cross-validated log-loss **<** climatology baseline (a model that always predicts the historical unconditional hike/hold/cut frequencies) |
 | Discrimination | **≥ 60%** directional hit-rate on non-hold meetings only (i.e., excluding meetings where the base rate itself didn't move — a "hold" prediction on a "hold" meeting is not evidence of directional skill) |
 
-**Both must pass.** LOO-CV (not k-fold) is used because the sample is small (~48 meetings) and meetings are not exchangeable across time in a way that would make a random k-fold split meaningful — LOO with profile-likelihood confidence intervals is the honest-uncertainty choice for a sample this size, per the design note in the original plan (`hey-so-i-was-rustling-zebra.md`, phase B4). Climatology, not a coin flip, is the baseline, because rate meetings are not 50/50 events (holds dominate) — beating a coin flip is a much weaker bar than beating the empirical base rate.
+**Both must pass.** LOO-CV (not k-fold) is used because the sample is small (~48 meetings) and meetings are not exchangeable across time in a way that would make a random k-fold split meaningful — LOO with profile-likelihood confidence intervals is the honest-uncertainty choice for a sample this size (design rationale in `../macro-nowcast-layer/03-rate-classifier.md`). Climatology, not a coin flip, is the baseline, because rate meetings are not 50/50 events (holds dominate) — beating a coin flip is a much weaker bar than beating the empirical base rate.
 
 ## Gate 4 — Event-study promotion gates (Plan C, phase C4)
 

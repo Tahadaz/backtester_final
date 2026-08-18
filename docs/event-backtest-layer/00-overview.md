@@ -19,12 +19,28 @@ This is Plan C of the alt-data initiative. Shared foundation (PIT event store, v
 
 An **event study** measures the abnormal return around a dated, discrete event — not a continuous signal. Given a set of `(symbol, event_date)` pairs, it asks: relative to a benchmark expectation, how did the stock move in the days before/after the event, on average, across all events of this type? The output is an average-abnormal-return curve (AAR by relative day) and its cumulative form (CAAR), with a significance test that accounts for event-induced variance.
 
-This is a fundamentally different research primitive from what the repo already has:
+This is a fundamentally different research primitive from what the repo already has.
 
-- **What exists today**: `services/api/app/routers/analytics.py::_build_macro_backtest_replay` (signature: `stock_prices`, `close_col`, `open_col`, `stock_close`, `aligned_factors`, `signal`, `spec`, `forward_returns`, `return_method`, `cost_bps`, `signal_threshold`). It consumes a **continuous** `{-1,0,+1}` position signal aligned to every session date, converts it to positions (`position[signal > threshold] = 1.0`, etc.), applies `cost_bps` on each position change, compounds `strategy_returns = position * forward_return - position_change * cost_rate` into an equity curve, tracks drawdown, and emits a trade ledger (`ACHAT`/`VENTE` rows with `prix_execution`, `equity`, `cout`). This is a **replay backtest of a signal that is already defined on every day** — it has no concept of "the 5 days before and 10 days after a sparse, dated event" and no abnormal-return/benchmark-adjustment math. It is the execution/P&L engine this layer reuses, not the event-study engine.
-- **What is genuinely new**: there is no generic event-window utility anywhere in the repo — nothing computes AR, CAR, CAAR, a BMP-style significance test, or a thin-trading-aware event-day snap. `core/quant_core/research/event_study.py` (Phase C1, see [01-methodology.md](01-methodology.md)) is that missing primitive.
+**What exists today** — `services/api/app/routers/analytics.py::_build_macro_backtest_replay` (verified signature: keyword-only `stock_prices`, `close_col`, `open_col`, `stock_close`, `aligned_factors`, `signal`, `spec`, `forward_returns`, `return_method`, `cost_bps`, `signal_threshold=0.0`). Its flow:
 
-The two pieces compose: an event-study result answers "is this event type associated with a statistically real abnormal return, and in which direction?" (research question); the event-conditioned strategy runner (Phase C3) turns a validated event type into a signal series and feeds it into the **existing, unmodified** `_build_macro_backtest_replay` to answer "what would trading this look like, net of costs?" (P&L question). Both questions require the multiple-testing discipline in [04-multiple-testing.md](04-multiple-testing.md) before either result is trusted.
+1. Consumes a **continuous** `{-1,0,+1}` position signal aligned to every session date.
+2. Converts it to positions (`position[signal > threshold] = 1.0`, `position[signal < -threshold] = -1.0`).
+3. Applies `cost_bps` on each position change and compounds `strategy_returns = position * forward_return − position_change * cost_rate` into an equity curve with drawdown.
+4. Emits a trade ledger (`ACHAT`/`VENTE` rows with `prix_execution`, `equity`, `cout`) using the open-to-open execution helpers `_macro_execution_price_series` / `_next_index_dates`.
+
+That is a **replay backtest of a signal already defined on every day**. It has no concept of "the 5 sessions before and 10 sessions after a sparse, dated event," and no abnormal-return or benchmark-adjustment math. It is the execution/P&L engine this layer *reuses*, not the event-study engine.
+
+**What is genuinely new** — no generic event-window utility exists anywhere in the repo: nothing computes AR, CAR, CAAR, a BMP-style significance test, or a thin-trading-aware event-day snap. `core/quant_core/research/event_study.py` (Phase C1, see [01-methodology.md](01-methodology.md)) is that missing primitive.
+
+**How the two compose**:
+
+| Question | Answered by | Phase |
+|---|---|---|
+| "Is this event type associated with a statistically real abnormal return, and in which direction?" | `run_event_study` (AR/CAR/CAAR + BMP + bootstrap) | C1 |
+| "What would trading this look like, net of costs?" | `events_to_signal_series` → existing, unmodified `_build_macro_backtest_replay` (replay) and `run_wfo_engine` (parameter sweep) | C3 |
+| "Which results do we believe at all?" | Pre-registered grid + two-pass BH-FDR + promotion gates | C4 |
+
+Both empirical questions require the multiple-testing discipline in [04-multiple-testing.md](04-multiple-testing.md) before any result is trusted.
 
 ## The four v1 event types
 

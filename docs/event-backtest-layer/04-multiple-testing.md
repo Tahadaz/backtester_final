@@ -4,7 +4,21 @@ New flat module, `core/quant_core/research/event_study_registry.py`. Owns the **
 
 ## Why pre-registration matters here specifically
 
-Several of this layer's event types are structurally tiny samples: roughly 48 BAM policy meetings per decade (macro release events on `BAM_POLICY_RATE`), a bounded number of Morocco-relevant geopolitical shocks passing the Goldstein ≤ −5 filter, and PEAD events limited to whatever subset of MASI names has reliable earnings-date coverage. With `event_type × window × benchmark` combinations multiplying out, an unconstrained researcher testing many window/benchmark choices against a handful of dozens of events will find a "significant" CAAR somewhere by chance alone with high probability — this is the exact failure mode the rest of the repo already defends against for macro factors (`docs/factor-layer/11-pre-registration.md`) and is documented as risk #4 in [`../alt-data-foundation/00-overview.md`](../alt-data-foundation/00-overview.md#top-5-risks--mitigations). The discipline is identical here: decide the full grid once, before looking at results, hash it so it cannot be quietly edited after an unfavorable run, and apply FDR control across the whole grid rather than picking the best-looking cell.
+Several of this layer's event types are structurally tiny samples:
+
+- ~48 BAM policy meetings per decade (macro release events on `BAM_POLICY_RATE`);
+- ~120 CPI prints per decade for the inflation-release cells;
+- a bounded handful of Morocco-relevant geopolitical shocks passing the Goldstein ≤ −5 filter;
+- PEAD events limited to whatever subset of MASI names has reliable earnings-date coverage.
+
+With `event_type × window × benchmark` combinations multiplying out to 60 cells, an unconstrained researcher probing window/benchmark choices against a few dozen events will find a "significant" CAAR somewhere by chance alone with high probability. Concretely: at α = 0.05, 60 independent true-null tests yield at least one false positive ~95% of the time. This is the exact failure mode the rest of the repo already defends against for macro factors (`docs/factor-layer/11-pre-registration.md`) and is documented as risk #4 in [`../alt-data-foundation/00-overview.md`](../alt-data-foundation/00-overview.md#top-5-risks--mitigations).
+
+The discipline is identical here:
+
+1. Decide the full grid **once**, before looking at any results.
+2. Hash it so it cannot be quietly edited after an unfavorable run.
+3. Apply FDR control across the whole grid rather than reporting the best-looking cell.
+4. Treat "nothing survives" as a valid, publishable outcome (the factor-layer's "null result is a deliverable" posture, `docs/factor-layer/01-overview-and-research-question.md`).
 
 ## The frozen grid
 
@@ -29,10 +43,20 @@ Extending the grid (new event type, new window, new benchmark) is a deliberate, 
 
 ## FDR policy
 
-Two BH-FDR passes, using the existing `core/quant_core/research/stats/fdr.py::benjamini_hochberg(p_values, q)` and `bh_adjusted_pvalues(p_values)` (both verified present, signatures unchanged — no new FDR math needed, this layer is pure reuse):
+Two BH-FDR passes, reusing the verified functions in `core/quant_core/research/stats/fdr.py` — no new FDR math is written for this layer:
 
-1. **Within event-type family, q = 0.10** (research display): for each `event_type`, gather the p-values of its `4 windows × 3 benchmarks = 12` cells, run `benjamini_hochberg(p_values, q=0.10)`. This is the looser, exploratory threshold shown on the `/sentiment-events` "Études d'événements" panel for every event type, including ones not yet promotion-eligible — it lets a researcher see "this looks directionally interesting" without claiming it clears the bar to trade.
-2. **Across the full grid, q = 0.05** (promotion candidates): run `benjamini_hochberg(p_values, q=0.05)` once over all 60 cells' p-values together. Only cells rejected at this stricter, grid-wide level are eligible to proceed to the promotion gate below. This is deliberately stricter than the per-family pass — a cell can look "significant" within its own family's looser correction and still fail the grid-wide one, and only the grid-wide pass has any bearing on promotion.
+- `benjamini_hochberg(p_values: list[float], q: float = 0.10) -> list[bool]` — the BH rejection procedure;
+- `bh_adjusted_pvalues(p_values: list[float]) -> list[float]` — BH-adjusted q-values for display;
+- (`harvey_liu_sharpe_haircut` also lives in this module; it is a factor-layer tool and is **not** part of this policy.)
+
+The p-value entering both passes for a cell is the two-sided BMP p-value on the **full-window CAR** (`EventStudyResult.bmp_p`, see [01-methodology.md](01-methodology.md)) — per-relative-day p-values are display-only and never FDR-tested (that would multiply the grid by 16–26 relative days).
+
+| Pass | Scope | Level | Purpose |
+|---|---|---|---|
+| 1 — within family | per `event_type`: its 4 windows × 3 benchmarks = 12 cells | q = 0.10 | Research display on the "Études d'événements" panel — "directionally interesting", no claim to tradability |
+| 2 — across grid | all 60 cells together | q = 0.05 | Promotion candidates only |
+
+Pass 2 is deliberately stricter: a cell can pass its own family's looser correction and still fail grid-wide, and **only the grid-wide pass has any bearing on promotion**.
 
 The UI **always** shows all three of: raw p-value, BH-adjusted q-value (both passes, labeled separately), and `n_events` for every cell — never just a pass/fail badge — so a viewer can see how thin a "significant" result's underlying sample actually is (this mirrors the existing factor-layer convention of never hiding `n_obs` behind a significance star).
 

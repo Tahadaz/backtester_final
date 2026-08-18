@@ -72,21 +72,50 @@ class EventStudyResult:
 
 ### Why BMP (Boehmer-Musumeci-Poulsen 1991) instead of a plain cross-sectional t-test
 
-A plain t-test on AR/CAR across events assumes each event's abnormal-return variance is the same as the (typically calm) estimation-window variance. Real events — earnings surprises, macro releases, geopolitical shocks — usually **increase** return variance around the event itself ("event-induced variance"). Using the calm-period variance in the denominator of a t-test understates the true standard error and inflates significance (false positives). BMP standardizes each event's AR by *that event's own* estimation-window standard deviation before cross-sectional averaging, and additionally corrects the resulting statistic for cross-sectional variance of the standardized residuals rather than assuming they are homoskedastic. This is standard practice in the event-study literature specifically because it defends against exactly the small, heteroskedastic-sample scenario this repo is in (thin MASI names, tiny event counts). The BMP t-stat is computed both per relative day (for the AAR curve) and for the full-window CAR (for the promotion gate in [04-multiple-testing.md](04-multiple-testing.md)).
+- A plain t-test on AR/CAR across events implicitly assumes each event's abnormal-return variance equals its (typically calm) estimation-window variance.
+- Real events — earnings surprises, macro releases, geopolitical shocks — usually **increase** return variance around the event itself ("event-induced variance"). Using calm-period variance in the t-test denominator understates the true standard error and inflates significance (false positives).
+- BMP fixes this in two steps:
+  1. Standardize each event's AR by *that event's own* estimation-window standard deviation before cross-sectional averaging (so a noisy name cannot dominate the mean).
+  2. Divide the cross-sectional mean of standardized residuals by their **cross-sectional** standard deviation on the event day itself — so any event-induced variance shows up in the denominator instead of being ignored.
+- This is standard event-study practice precisely because it defends against the scenario this repo is in: thin MASI names, heteroskedastic returns, tiny event counts.
+- The BMP t-stat is computed both per relative day (for the AAR curve) and for the full-window CAR (input to the promotion gate in [04-multiple-testing.md](04-multiple-testing.md)).
 
 ### Block bootstrap
 
-In addition to the BMP asymptotic test, `run_event_study` computes a block-bootstrap CI on the full-window CAR: resample events (not days) with replacement, `bootstrap_iters` (2000) times, using contiguous blocks of consecutive event_ids by event_date to preserve any residual cross-event correlation (macro/geopolitical events cluster in time far more than PEAD events); recompute mean CAR each draw; report the empirical 2.5/97.5 percentile as `bootstrap_ci["car_full_window"]`. This is the CI used by the promotion gate ("bootstrap CI excludes 0"), independent of the BMP test's asymptotic assumptions.
+In addition to the BMP asymptotic test, `run_event_study` computes a block-bootstrap CI on the full-window CAR:
+
+1. Sort events by `event_date`; form contiguous blocks of consecutive events. Blocks — not individual events — are the resampling unit, to preserve residual cross-event correlation (macro/geopolitical events cluster in time far more than PEAD events).
+2. Resample blocks with replacement until the original event count is matched; recompute the mean CAR. Repeat `bootstrap_iters` (2000) times.
+3. Report the empirical 2.5/97.5 percentiles as `bootstrap_ci["car_full_window"]`.
+
+This CI backs the promotion gate ("bootstrap CI excludes 0") independently of the BMP test's asymptotic assumptions — with n_events in the 30–60 range, agreement between the two is itself informative and disagreement is a red flag reported in the verdict artifact.
 
 ## Thin-trading handling (MASI-critical)
 
 MASI names, especially outside the top-liquidity tier, trade thinly: many sessions have zero volume, and the closing price is mechanically carried forward unchanged by the exchange feed. Naive daily-return event studies on this market silently compute near-zero "abnormal returns" that are actually just missing trades, not evidence of no reaction.
 
-**Definitions**:
-- **Stale bar**: a session where `Volume == 0` **OR** the close is unchanged for **≥ 3 consecutive bars**. Either condition alone marks the bar stale.
-- **Trade-to-trade return**: returns are computed only between consecutive *non-stale* bars — i.e., a return spanning a run of stale bars compounds across the gap (`r = close_t / close_{t-k} − 1` where `t-k` is the last non-stale bar before `t`, not `close_t / close_{t-1}`). This avoids manufacturing a sequence of zero returns during a stale run followed by one artificially large return when trading resumes.
-- **Event-day snap**: day 0 in the event window is **not** the raw event/availability date. Per the PIT 18:00 Africa/Casablanca rule (see [`../alt-data-foundation/01-pit-event-store.md`](../alt-data-foundation/01-pit-event-store.md)), the availability timestamp resolves to a calendar date D (or D+1 if after 18:00). Day 0 is then snapped forward to the **first traded (non-stale) session on or after D** — i.e., the first session where the stock actually has a real print. This keeps the event window anchored to when the market could plausibly have reacted, not to a stale carry-forward print.
-- **Drop rule**: for a given event, compute the stale-bar fraction over `estimation_window ∪ event_window` (session-index space, post-snap). If that fraction `≥ max_stale_fraction` (0.3 default), the event is **dropped** from `run_event_study`'s output and counted under `drop_reasons["stale_fraction_exceeded"]`. This is a hard cutoff, not a weighting — mixing heavily-stale and liquid events in the same CAAR would bias the pooled estimate toward whichever thin-trading artifact happens to dominate the small sample.
+**Stale bar** — a session is stale when either condition holds (each alone is sufficient):
+
+- `Volume == 0`, or
+- the close is unchanged for ≥ 3 consecutive bars (the whole unchanged run is stale, i.e. bars 2..k of a k-bar unchanged run with k ≥ 3).
+
+**Trade-to-trade returns** — returns are computed only between consecutive *non-stale* bars:
+
+- A return spanning a run of stale bars compounds across the gap: `r = close_t / close_{t-k} − 1`, where `t-k` is the last non-stale bar before `t` — **not** `close_t / close_{t-1}`.
+- Rationale: naive daily returns manufacture a sequence of exact zeros during the stale run followed by one artificially large return when trading resumes; both distort AR estimates and the estimation-window variance that BMP divides by.
+- Relative-day columns in the AR matrix are indexed by **traded sessions**, so a symbol's day +3 may be further away in calendar time than another symbol's — this is intended and is what makes CAAR comparable across liquidity tiers.
+
+**Event-day snap** — day 0 is *not* the raw event/availability date:
+
+1. Per the PIT 18:00 Africa/Casablanca rule ([`../alt-data-foundation/01-pit-event-store.md`](../alt-data-foundation/01-pit-event-store.md)), the availability timestamp resolves to calendar date D (or D+1 if at/after 18:00).
+2. Day 0 then snaps forward to the **first traded (non-stale) session on or after D** — the first session where the stock has a real print.
+3. This anchors the event window to when the market could plausibly have reacted, not to a stale carry-forward print. The snap distance (in sessions) is recorded per event for diagnostics.
+
+**Drop rule**:
+
+- For each event, compute the stale-bar fraction over `estimation_window ∪ event_window` (session-index space, post-snap).
+- If the fraction `≥ max_stale_fraction` (0.3 default), the event is **dropped** and counted under `drop_reasons["stale_fraction_exceeded"]`.
+- This is a hard cutoff, not a down-weighting: mixing heavily-stale and liquid events in one CAAR biases the pooled estimate toward whichever thin-trading artifact dominates the small sample.
 
 ## Test plan
 

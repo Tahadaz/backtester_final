@@ -11,6 +11,17 @@ def geopolitical_events(db: Session, *, cameo_roots: tuple[int, ...] = (14, 15, 
 
 Every adapter accepts `as_of` so historical replays can be rebuilt with only the data that would have been visible at that date (research-mode PIT discipline), defaulting to "everything available now" for live use.
 
+**Canonical output schema** (enforced by a shared `_validate_events_frame()` helper every adapter calls before returning):
+
+| Column | Type | Semantics |
+|---|---|---|
+| `symbol` | str | MASI ticker the event applies to (post fan-out for non-symbol-scoped sources) |
+| `event_date` | date | PIT availability date, after the 18:00 rule, **before** the trading-day snap |
+| `sign` | float, nullable | `+1` / `-1`; `NaN` = unsigned/pooled |
+| `event_id` | str | Stable, unique; conventions listed per adapter below |
+
+An adapter with no available upstream data returns an **empty DataFrame with exactly these columns** — never `None`, never an exception — so downstream code (C3 runner, C4 suite) needs no per-source special-casing.
+
 ## 1. PEAD / company events
 
 **Source table**: `FundamentalCatalyst` (`services/api/app/models.py:1061`, verified live columns):
@@ -40,34 +51,68 @@ This is documented explicitly so the C2 implementer does not spend time hunting 
 
 ## 2. Macro release events
 
-**Source**: `macro_release ⋈ nowcast_value` (both tables defined in macro-nowcast-layer's Phase B / the shared PIT event store — see [`../alt-data-foundation/01-pit-event-store.md`](../alt-data-foundation/01-pit-event-store.md) for DDL; not yet present in `models.py` as of this writing, since Plan B has not shipped). Join key: `series_id`, matching `macro_release.period` to the most recent `nowcast_value.target_period == period` with `nowcast_value.as_of_date < macro_release.release_time` (PIT — the nowcast used to compute the surprise must have been made *before* the release, never using the release itself as an input).
+**Source**: `macro_release ⋈ nowcast_value` — both tables are defined in the shared PIT event store ([`../alt-data-foundation/01-pit-event-store.md`](../alt-data-foundation/01-pit-event-store.md) for DDL) and populated by macro-nowcast-layer phases B2/B3/B5. They are **not yet present in `services/api/app/models.py`** as of this writing (Plan B has not shipped); the adapter is written against the F1 schema.
 
-- `surprise = macro_release.actual_value − nowcast_value.value`; standardize by the nowcast's own reported `std` (or an expanding realized-surprise std if `std` is null) to get `surprise_z`.
-- Filter `abs(surprise_z) >= min_abs_z` (0.5 default).
-- `sign = sign(surprise_z)`.
-- **Universe**: this adapter does not take a `symbol` from the release itself (macro releases are not symbol-scoped) — it fans one release event out to every symbol in the configured universe: rate-sensitive baskets (banks, real estate, insurance — the same channel tags used by `FactorSignalSpec.channel_filter` in `core/quant_core/research/factors/signals.py`) plus MASI itself as an index-level event. `event_id = f"macro:{series_id}:{period}:{symbol}"`.
-- Depends on macro-nowcast-layer **B5** (surprise engine) existing — before that, `nowcast_value` has no rows and this adapter returns an empty frame (not an error), so C2/C3/C4 development is not blocked, only this one source's live data is.
+**Join rule (PIT-critical)**:
+
+- Join key `series_id`; match `macro_release.period` to `nowcast_value.target_period == period`.
+- Of the matching nowcasts, take the most recent one with `nowcast_value.as_of_date < macro_release.release_time` — the nowcast used to compute the surprise must have been produced *before* the release, never using the release itself as an input.
+- Only `macro_release.status = 'released'` rows qualify (never `'scheduled'`); on revisions, use the **first** vintage (`min(vintage)`) — the market reacted to the initial print, not the revised history.
+
+**Surprise and filter**:
+
+- `surprise = macro_release.actual_value − nowcast_value.value`.
+- Standardize by the nowcast's own reported `std`; if `std` is null, fall back to an expanding std of realized surprises for that `series_id`. Result: `surprise_z`.
+- Keep only `abs(surprise_z) >= min_abs_z` (0.5 default); `sign = sign(surprise_z)`.
+
+**Universe fan-out**: macro releases are not symbol-scoped, so one release event fans out to every symbol in the configured universe — rate-sensitive baskets (banks, real estate, insurance; the same channel tags used by `FactorSignalSpec.channel_filter` in `core/quant_core/research/factors/signals.py`) plus MASI itself as an index-level event. `event_id = f"macro:{series_id}:{period}:{symbol}"`.
+
+**Dependency**: macro-nowcast-layer **B5** (surprise engine). Before B5 lands, `nowcast_value` has no rows and this adapter returns a schema-correct empty frame (not an error) — C2/C3/C4 development is not blocked, only this source's live data is.
 
 ## 3. Sentiment shock events
 
-**Source**: `alt_sentiment_daily` (shared PIT event store; not yet present as of this writing, ships with sentiment-layer **A5**). Filter `abs(shock_z) >= min_abs_shock_z` (2.0 default) **and** `n_items >= min_n_items` (5 default) — the `n_items` floor exists because `shock_z` on a 1–2 article day is noise, not a shock, regardless of its magnitude.
+**Source**: `alt_sentiment_daily` (shared PIT event store; not yet present in `models.py` as of this writing — ships with sentiment-layer **A5**, which computes `shock_z` as the z-score of the day's weighted sentiment vs. its trailing 60-day window, see `../sentiment-layer/04-aggregation-and-factors.md`).
 
-- `subject_type IN ('symbol', 'topic_region')`. When `subject_type='symbol'`, `subject_key` is the MASI ticker directly (per-symbol shock). When `subject_type='topic_region'` (e.g. `subject_key='macro:ma'`), the adapter fans the event out to the same rate-sensitive-basket + MASI universe used by the macro-release adapter, since an index-level sentiment shock is not symbol-specific.
-- `sign = sign(shock_z)`.
-- `event_id = f"sentiment:{subject_type}:{subject_key}:{date.isoformat()}"`.
-- Depends on sentiment-layer **A5**; empty frame until then.
+**Filters** (conjunctive):
+
+- `abs(shock_z) >= min_abs_shock_z` (2.0 default) — a genuine two-sigma sentiment day, not routine flow;
+- `n_items >= min_n_items` (5 default) — the floor exists because `shock_z` on a 1–2 article day is noise, not a shock, regardless of magnitude.
+
+**Subject handling**:
+
+- `subject_type='symbol'`: `subject_key` is the MASI ticker directly — a per-symbol shock, no fan-out.
+- `subject_type='topic_region'` (e.g. `subject_key='macro:ma'`): index-level shock, fanned out to the same rate-sensitive-basket + MASI universe as the macro-release adapter.
+- `sign = sign(shock_z)`; `event_id = f"sentiment:{subject_type}:{subject_key}:{date.isoformat()}"`.
+
+**PIT grade caveat**: sentiment aggregates built from LLM scores over pre-training-cutoff text carry `pit_grade='upper_bound'` (see [`../alt-data-foundation/00-overview.md`](../alt-data-foundation/00-overview.md#research-findings-baked-into-the-design)). The adapter propagates the worst `pit_grade` among contributing rows into the events frame as a diagnostic column, and the C4 verdict artifact labels any cell whose events are majority-upper-bound accordingly — such cells can never clear promotion, matching Plan A's rule that only live-collected scores are promotion-eligible.
+
+**Dependency**: sentiment-layer **A5**; schema-correct empty frame until then.
 
 ## 4. Geopolitical events
 
-**Source**: GDELT Events 2.0 (`fetch_gdelt_events_window()`, delivered by sentiment-layer **A1** for Plan C's use — see `../sentiment-layer/01-data-sources.md`), not the GDELT DOC/news API used elsewhere in Plan A.
+**Source**: GDELT Events 2.0 via `fetch_gdelt_events_window()`, delivered by sentiment-layer **A1** for Plan C's use (see `../sentiment-layer/01-data-sources.md`). Note this is the Events **CSV export**, not the GDELT DOC/news API used elsewhere in Plan A — the DOC API has no CAMEO/Goldstein fields.
 
-- Filter: CAMEO event root code `IN (14, 15, 16, 17, 18, 19, 20)` (Protest, Coerce, Assault, Fight, Use unconventional mass violence, and the two "engage in..." roots bordering conflict — i.e. the CAMEO "conflict" quad, roots 14–20 per the standard CAMEO/Goldstein taxonomy) **and** `Goldstein <= -5.0` (materially escalatory on the Goldstein scale, which runs roughly −10..+10). `GEO = 'MO'` (Morocco-located events) **or** a curated global-systemic actor list (major-power conflict, oil-chokepoint disruption — the same list used to scope the GDELT global slice in `../sentiment-layer/01-data-sources.md`).
-- **Dedup**: at most 1 event per calendar day per bucket (Morocco-local vs. global-systemic are separate buckets) — GDELT emits many near-duplicate rows for the same real-world event across sources; keep the most-negative-Goldstein row of the day as the representative.
-- **Sign**: always `-1` (unsigned risk-off assumption — this event type has no notion of a "positive" geopolitical shock at these CAMEO/Goldstein thresholds by construction).
-- **Universe fan-out**: same rate-sensitive/MASI pattern as macro and sentiment adapters for Morocco-local events; MASI-only for global-systemic events (no plausible single-sector channel).
-- `event_id = f"geo:{bucket}:{date.isoformat()}"`.
-- Depends on sentiment-layer **A1** (GDELT connector must exist and expose the Events export, not just the DOC API); empty frame until then.
+**Filters** (all conjunctive):
+
+| Filter | Value | Rationale |
+|---|---|---|
+| CAMEO event root code | `IN (14, 15, 16, 17, 18, 19, 20)` | The conflict end of the CAMEO taxonomy: Protest (14), Exhibit force posture (15), Reduce relations (16), Coerce (17), Assault (18), Fight (19), Use unconventional mass violence (20) |
+| Goldstein score | `<= -5.0` | Materially escalatory on the −10..+10 Goldstein scale; screens out routine diplomatic friction |
+| Geography | `GEO = 'MO'` (Morocco-located) **or** curated global-systemic actor list | Global-systemic = major-power conflict, oil-chokepoint disruption — the same list scoping the GDELT global slice in `../sentiment-layer/01-data-sources.md` |
+
+**Dedup**: at most 1 event per calendar day per bucket (Morocco-local vs. global-systemic are separate buckets). GDELT emits many near-duplicate rows for the same real-world event across news sources; keep the most-negative-Goldstein row of the day as the representative.
+
+**Sign**: always `-1` — unsigned risk-off assumption. By construction there is no "positive geopolitical shock" at these CAMEO/Goldstein thresholds.
+
+**Universe fan-out**: Morocco-local events fan out to the rate-sensitive baskets + MASI (same pattern as adapters 2–3); global-systemic events map to MASI only (no plausible single-sector channel). `event_id = f"geo:{bucket}:{date.isoformat()}"`.
+
+**Dependency**: sentiment-layer **A1** — the GDELT connector must exist and expose the Events export, not just the DOC API. Schema-correct empty frame until then.
 
 ## PIT snapping — tested per adapter
 
-Every adapter's `event_date` is the **availability** timestamp before the 18:00 Africa/Casablanca snap rule, exactly as for the shared PIT store: `published_at`/`release_time`/`as_of_date`/GDELT event date `< 18:00` → assigned to that day, else day+1. The snap-to-day-0 (first *traded* session on/after this date) happens inside `run_event_study`, not in the adapters — adapters emit the raw availability date, `event_study.py` owns the thin-trading-aware snap (see [01-methodology.md](01-methodology.md)). Each adapter's test suite (`core/tests/test_event_sources.py`) includes a fixture asserting the pre-snap `event_date` is computed correctly from a raw timestamp straddling 18:00, independent of whatever `run_event_study` later does with it — this keeps the PIT-cutoff logic and the thin-trading snap logic independently testable and not conflated.
+Division of responsibility between adapters and the engine:
+
+- **Adapters own the 18:00 rule**: each adapter's `event_date` is the availability date after applying the 18:00 Africa/Casablanca cutoff, exactly as for the shared PIT store — availability timestamp (`published_at` / `release_time` / `as_of_date` / GDELT event date) before 18:00 → assigned to that day, at/after 18:00 → next day.
+- **`event_study.py` owns the trading snap**: the snap of day 0 to the first *traded* (non-stale) session on/after `event_date` happens inside `run_event_study`, never in the adapters (see [01-methodology.md](01-methodology.md)). Adapters emit calendar dates; the engine maps them to session indices.
+
+Each adapter's test suite (`core/tests/test_event_sources.py`) includes a fixture asserting the pre-snap `event_date` is computed correctly from a raw timestamp straddling 18:00 — one case at 17:59, one at 18:00 — independent of whatever `run_event_study` later does with it. This keeps the PIT-cutoff logic and the thin-trading snap logic independently testable and never conflated.

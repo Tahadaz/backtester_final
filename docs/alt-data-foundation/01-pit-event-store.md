@@ -191,7 +191,7 @@ CREATE INDEX ix_macro_release_status               ON macro_release (status, rel
 
 ### `nowcast_value`
 
-Model outputs. `as_of_date` is the PIT contract: a nowcast row must only have used data available on or before that date, enforced by the feature-assembly layer (`../macro-nowcast-layer/03-inflation-nowcast.md`), not by the DB.
+Model outputs. `as_of_date` is the PIT contract: a nowcast row must only have used data available on or before that date, enforced by the feature-assembly layer (`../macro-nowcast-layer/02-inflation-nowcast.md`), not by the DB.
 
 ```sql
 CREATE TABLE nowcast_value (
