@@ -16,9 +16,12 @@ import { useMarketCatalog, useStockOhlcvHistory } from "@/hooks/use-api"
 import { formatNumber } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import {
+  ApiError,
+  getHistoricalPortfolioSnapshot,
   createHistoricalPortfolioBacktest,
   createHistoricalOpportunityMaterialization,
   getHistoricalPortfolioBacktestResult,
+  getHistoricalPortfolioDecisions,
   getHistoricalPortfolioBacktestStatus,
   getHistoricalOpportunityCoverage,
   getHistoricalOpportunityMaterialization,
@@ -33,6 +36,7 @@ import {
   type HistoricalPortfolioRunStatus,
   type HistoricalOpportunityCoverage,
   type HistoricalOpportunityMaterialization,
+  type HistoricalDecisionRow,
 } from "@/lib/api"
 
 type Props = {
@@ -40,6 +44,16 @@ type Props = {
 }
 
 const LEDGER_PAGE_SIZE = 200
+const EDGE_CONDITION_OPTIONS = [
+  ["sample_size", "Échantillon ≥ 30"],
+  ["positive_expectancy", "Espérance nette positive"],
+  ["positive_ci_lower", "Borne basse nette positive"],
+  ["hit_rate_ci", "Borne du taux de réussite > 50 %"],
+  ["mc_luck", "Test Monte-Carlo réussi"],
+  ["label_shuffle", "Test de permutation réussi"],
+  ["freshness", "Fraîcheur réussie"],
+  ["proven_edge", "Edge net prouvé"],
+] as const
 
 function StatCard({
   label,
@@ -362,6 +376,11 @@ function PortfolioAccountingLedger({
 function SnapshotAuditLegacyPanel({ horizon }: Props) {
   const [initialCapital, setInitialCapital] = useState(100_000)
   const [longOnly, setLongOnly] = useState(true)
+  const [minEdgeScore, setMinEdgeScore] = useState(50)
+  const [requiredEdgeConditions, setRequiredEdgeConditions] = useState<string[]>([
+    "sample_size",
+    "positive_expectancy",
+  ])
   // Off by default: exit-policy research found no TP/SL variant beats the plain
   // signal-flip exit out-of-sample (docs/plans/exit_policy_wfo_treatment_plan.md).
   // Kept as opt-in overrides for manual experimentation.
@@ -444,7 +463,12 @@ function SnapshotAuditLegacyPanel({ horizon }: Props) {
     setSelectedStock(null)
     setLedgerSymbolFilter("__all__")
     setUniverseLoading(true)
-    getPortfolioBacktestUniverse({ horizon, long_only: longOnly })
+    getPortfolioBacktestUniverse({
+      horizon,
+      long_only: longOnly,
+      min_edge_score: minEdgeScore,
+      required_edge_conditions: requiredEdgeConditions,
+    })
       .then((res) => {
         if (cancelled) return
         // Defensive frontend dedupe: keep first occurrence of each symbol
@@ -474,7 +498,7 @@ function SnapshotAuditLegacyPanel({ horizon }: Props) {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [horizon, longOnly])
+  }, [horizon, longOnly, minEdgeScore, requiredEdgeConditions.join("|")])
 
   // Fullscreen via the browser Fullscreen API — state stays in sync with the
   // native fullscreenchange event so Esc (or any other exit path) flips the
@@ -618,6 +642,8 @@ function SnapshotAuditLegacyPanel({ horizon }: Props) {
         stop_loss_pct: slEnabled ? slPct / 100 : null,
         kelly_multiplier: 0.5,
         long_only: longOnly,
+        min_edge_score: minEdgeScore,
+        required_edge_conditions: requiredEdgeConditions,
         start_date: startDate || undefined,
         end_date: endDate || undefined,
       })
@@ -770,6 +796,51 @@ function SnapshotAuditLegacyPanel({ horizon }: Props) {
                   Long &amp; Short
                 </ToggleGroupItem>
               </ToggleGroup>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Edge minimum</Label>
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                value={minEdgeScore}
+                onChange={(e) => setMinEdgeScore(Math.min(100, Math.max(0, Number(e.target.value) || 0)))}
+                className="h-8 w-24 font-mono text-xs"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Conditions requises</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8 text-xs">
+                    {requiredEdgeConditions.length} condition{requiredEdgeConditions.length === 1 ? "" : "s"}
+                    <ChevronDown className="ml-1 h-3.5 w-3.5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-72 space-y-2 p-3">
+                  {EDGE_CONDITION_OPTIONS.map(([value, label]) => (
+                    <label key={value} className="flex cursor-pointer items-center gap-2 text-xs">
+                      <Checkbox
+                        checked={requiredEdgeConditions.includes(value)}
+                        onCheckedChange={(checked) => {
+                          setRequiredEdgeConditions((current) =>
+                            checked
+                              ? Array.from(new Set([...current, value]))
+                              : current.filter((item) => item !== value),
+                          )
+                        }}
+                      />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                  <p className="text-[11px] text-muted-foreground">
+                    Toutes les conditions cochées doivent être vraies.
+                  </p>
+                </PopoverContent>
+              </Popover>
             </div>
 
             <div className="space-y-1">
@@ -1381,7 +1452,157 @@ function pct(value: unknown): string {
   return typeof value === "number" && Number.isFinite(value) ? `${(value * 100).toFixed(2)}%` : "Indisponible"
 }
 
-export function PortfolioBacktestPanel({ horizon }: Props) {
+function pctOrDash(value: unknown): string {
+  return typeof value === "number" && Number.isFinite(value) ? `${(value * 100).toFixed(2)}%` : "—"
+}
+
+type PitEquityPoint = {
+  date: string
+  equity: number
+  exposure?: number
+}
+
+type PitBenchmarkCurve = {
+  curve?: Array<{ date: string; equity: number }>
+  total_return?: number
+}
+
+type PitHorizon = "weekly" | "monthly" | "quarterly"
+const PIT_HORIZONS: Array<{ value: PitHorizon; label: string }> = [
+  { value: "weekly", label: "Hebdomadaire" },
+  { value: "monthly", label: "Mensuel" },
+  { value: "quarterly", label: "Trimestriel" },
+]
+
+function pitPageHorizon(value: string): PitHorizon {
+  if (value === "monthly") return "monthly"
+  if (value === "quarterly" || value === "long") return "quarterly"
+  return "weekly"
+}
+
+function pitBenchmarksForCurve(
+  curve: PitEquityPoint[],
+  benchmarks: Record<string, any> | null | undefined,
+): Record<string, any> | null {
+  if (curve.length < 2) return null
+  const literal = benchmarks?.full_investment_masi as PitBenchmarkCurve | undefined
+  const literalByDate = new Map((literal?.curve ?? []).map((point) => [point.date, point.equity]))
+  const aligned = curve.flatMap((point) => {
+    const masiEquity = literalByDate.get(point.date)
+    return typeof masiEquity === "number" && Number.isFinite(masiEquity) ? [{ point, masiEquity }] : []
+  })
+  if (aligned.length < 2) return null
+  const fullCurve = aligned.map(({ point, masiEquity }) => ({ date: point.date, equity: masiEquity }))
+  let matchedEquity = aligned[0].masiEquity
+  const matchedCurve = [{ date: aligned[0].point.date, equity: matchedEquity }]
+  for (let index = 1; index < aligned.length; index += 1) {
+    const masiReturn = aligned[index].masiEquity / aligned[index - 1].masiEquity - 1
+    const priorExposure = Number(aligned[index - 1].point.exposure ?? 0)
+    matchedEquity *= 1 + masiReturn * priorExposure
+    matchedCurve.push({ date: aligned[index].point.date, equity: matchedEquity })
+  }
+  const totalReturn = (points: Array<{ equity: number }>) => points.at(-1)!.equity / points[0].equity - 1
+  return {
+    available: true,
+    full_investment_masi: { curve: fullCurve, total_return: totalReturn(fullCurve) },
+    exposure_matched_masi: { curve: matchedCurve, total_return: totalReturn(matchedCurve) },
+  }
+}
+
+function pitEquityFigure(
+  curve: PitEquityPoint[],
+  benchmarks: Record<string, any> | null | undefined,
+) {
+  if (curve.length < 2) return null
+  const normalized = (points: Array<{ date: string; equity: number }>) => {
+    const start = points.find((point) => Number.isFinite(point.equity) && point.equity > 0)?.equity
+    if (start == null) return []
+    return points.map((point) => ((point.equity / start) - 1) * 100)
+  }
+  const traces: Array<Record<string, unknown>> = [{
+    x: curve.map((point) => point.date),
+    y: normalized(curve),
+    type: "scatter",
+    mode: "lines",
+    name: "Portefeuille PIT",
+    line: { color: "rgb(79,70,229)", width: 2.4 },
+    fill: "tozeroy",
+    fillcolor: "rgba(79,70,229,0.08)",
+    hovertemplate: "%{x|%d/%m/%Y} — %{y:.2f}%<extra>Portefeuille PIT</extra>",
+  }]
+  const addBenchmark = (key: string, name: string, color: string, dash?: string) => {
+    const payload = benchmarks?.[key] as PitBenchmarkCurve | undefined
+    const points = Array.isArray(payload?.curve) ? payload.curve : []
+    if (points.length < 2) return
+    traces.push({
+      x: points.map((point) => point.date),
+      y: normalized(points),
+      type: "scatter",
+      mode: "lines",
+      name,
+      line: { color, width: 1.6, ...(dash ? { dash } : {}) },
+      hovertemplate: `%{x|%d/%m/%Y} — %{y:.2f}%<extra>${name}</extra>`,
+    })
+  }
+  addBenchmark("full_investment_masi", "MASI investi", "rgb(100,116,139)")
+  addBenchmark("exposure_matched_masi", "MASI à exposition égale", "rgb(14,165,233)", "dot")
+  return {
+    data: traces,
+    layout: {
+      margin: { t: 24, b: 42, l: 56, r: 20 },
+      height: 360,
+      yaxis: { title: "Rendement cumulé", ticksuffix: "%", gridcolor: "rgba(0,0,0,0.06)", zeroline: true },
+      xaxis: { type: "date", gridcolor: "rgba(0,0,0,0.06)" },
+      showlegend: true,
+      legend: { orientation: "h", x: 0, y: 1.1, font: { size: 11 } },
+      hovermode: "x unified",
+      plot_bgcolor: "transparent",
+      paper_bgcolor: "transparent",
+    },
+  }
+}
+
+function pitExposureFigure(curve: PitEquityPoint[]) {
+  const points = curve.filter((point) => typeof point.exposure === "number" && Number.isFinite(point.exposure))
+  if (points.length < 2) return null
+  return {
+    data: [{
+      x: points.map((point) => point.date),
+      y: points.map((point) => Number(point.exposure) * 100),
+      type: "scatter",
+      mode: "lines",
+      name: "Exposition",
+      line: { color: "rgb(16,185,129)", width: 1.8 },
+      fill: "tozeroy",
+      fillcolor: "rgba(16,185,129,0.10)",
+      hovertemplate: "%{x|%d/%m/%Y} — %{y:.1f}%<extra>Exposition</extra>",
+    }],
+    layout: {
+      margin: { t: 12, b: 40, l: 52, r: 16 },
+      height: 220,
+      yaxis: { title: "Capital exposé", ticksuffix: "%", range: [0, 100], gridcolor: "rgba(0,0,0,0.06)" },
+      xaxis: { type: "date", gridcolor: "rgba(0,0,0,0.06)" },
+      showlegend: false,
+      plot_bgcolor: "transparent",
+      paper_bgcolor: "transparent",
+    },
+  }
+}
+
+function pitMoney(value: unknown): string {
+  return typeof value === "number" && Number.isFinite(value)
+    ? `${value.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} MAD`
+    : "—"
+}
+
+type CoverageGapDetail = {
+  code: string
+  missing_ranges: Array<{ start: string; end: string }>
+  covered_intervals: Array<{ start: string; end: string }>
+  materialization_in_progress: string | null
+}
+
+function PointInTimePortfolioBacktestPanel({ horizon }: Props) {
   const [view, setView] = useState<"reconstructed" | "audit">("reconstructed")
   const [startDate, setStartDate] = useState("2021-01-01")
   const [endDate, setEndDate] = useState(() => new Date().toISOString().slice(0, 10))
@@ -1391,8 +1612,53 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
   const [result, setResult] = useState<HistoricalPortfolioRunResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [coverage, setCoverage] = useState<HistoricalOpportunityCoverage | null>(null)
+  const [coverageNonce, setCoverageNonce] = useState(0)
+  const [coverageGap, setCoverageGap] = useState<CoverageGapDetail | null>(null)
   const [materialization, setMaterialization] = useState<HistoricalOpportunityMaterialization | null>(null)
+  const [decisions, setDecisions] = useState<HistoricalDecisionRow[]>([])
+  const [selectedDecisionKey, setSelectedDecisionKey] = useState<string | null>(null)
+  const [snapshotComputedAt, setSnapshotComputedAt] = useState<string | null>(null)
+  const [snapshotLoading, setSnapshotLoading] = useState(true)
+  const [pitLedgerPage, setPitLedgerPage] = useState(1)
+  const [selectedHorizons, setSelectedHorizons] = useState<PitHorizon[]>([pitPageHorizon(horizon)])
+  const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(new Set())
+  const [universeQuery, setUniverseQuery] = useState("")
+  const [pitSelectedStock, setPitSelectedStock] = useState<string | null>(null)
+  const [showLegacyCompatibility, setShowLegacyCompatibility] = useState(false)
+  const pitUniverseInitialized = useRef(false)
 
+  useEffect(() => {
+    setSelectedHorizons([pitPageHorizon(horizon)])
+    setPitSelectedStock(null)
+    setPitLedgerPage(1)
+  }, [horizon])
+
+  // Show the persisted canonical backtest immediately on mount (like the fundamental
+  // value-strategy snapshot) — no launch, no wait. A background run refreshes it.
+  useEffect(() => {
+    let stopped = false
+    setSnapshotLoading(true)
+    void getHistoricalPortfolioSnapshot(pitPageHorizon(horizon))
+      .then((snap) => {
+        if (stopped) return
+        if (snap.snapshot_available && snap.result) {
+          setResult(snap.result)
+          setRunId(snap.result.run_id)
+          setSnapshotComputedAt(snap.computed_at ?? null)
+          if (typeof snap.result.config.start_date === "string") setStartDate(snap.result.config.start_date)
+          if (typeof snap.result.config.end_date === "string") setEndDate(snap.result.config.end_date)
+        }
+        if (snap.computing) {
+          setRunId(snap.computing.run_id)
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => { if (!stopped) setSnapshotLoading(false) })
+    return () => { stopped = true }
+  }, [horizon])
+
+  // coverageNonce also refetches after a launch or a finished run, so the panel never keeps
+  // showing a stale "store empty" from before a materialization it did not start itself.
   useEffect(() => {
     let stopped = false
     setCoverage(null)
@@ -1400,7 +1666,20 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
       .then((next) => { if (!stopped) setCoverage(next) })
       .catch(() => { if (!stopped) setCoverage(null) })
     return () => { stopped = true }
-  }, [startDate, endDate])
+  }, [startDate, endDate, coverageNonce])
+
+  useEffect(() => {
+    const universe = coverage?.requested_symbols ?? []
+    if (!universe.length) return
+    if (!pitUniverseInitialized.current) {
+      pitUniverseInitialized.current = true
+      setSelectedSymbols(new Set(universe))
+      return
+    }
+    setSelectedSymbols((current) => {
+      return new Set([...current].filter((symbol) => universe.includes(symbol)))
+    })
+  }, [coverage?.requested_symbols])
 
   useEffect(() => {
     if (!materialization || !["queued", "running"].includes(materialization.status)) return
@@ -1428,7 +1707,10 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
         if (stopped) return
         setStatus(next)
         if (next.status === "succeeded") {
-          setResult(await getHistoricalPortfolioBacktestResult(runId))
+          const completed = await getHistoricalPortfolioBacktestResult(runId)
+          setResult(completed)
+          if (typeof completed.config.start_date === "string") setStartDate(completed.config.start_date)
+          if (typeof completed.config.end_date === "string") setEndDate(completed.config.end_date)
         } else if (next.status === "failed") {
           setError(next.error_message || "Le calcul a échoué.")
         }
@@ -1441,17 +1723,56 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
     return () => { stopped = true; window.clearInterval(timer) }
   }, [runId, result])
 
+  useEffect(() => {
+    if (!result) return
+    let stopped = false
+    const load = async () => {
+      const collected: HistoricalDecisionRow[] = []
+      for (const selectedHorizon of selectedHorizons) {
+        let page = 1
+        while (true) {
+          const response = await getHistoricalPortfolioDecisions({
+            start_date: startDate, end_date: endDate, horizon: selectedHorizon, page, page_size: 200,
+          })
+          collected.push(...response.items)
+          if (response.items.length === 0 || response.items.length >= response.total || page * 200 >= response.total) break
+          page += 1
+        }
+      }
+      if (!stopped) {
+        setDecisions(collected)
+        const winner = collected.find((item) => item.reconstructed_dashboard_winner)
+        setSelectedDecisionKey(winner ? `${winner.decision_date}|${winner.symbol}|${winner.horizon}` : null)
+      }
+    }
+    void load().catch((cause) => { if (!stopped) setError(cause instanceof Error ? cause.message : "Décisions PIT indisponibles") })
+    return () => { stopped = true }
+  }, [result, startDate, endDate, selectedHorizons])
+
   const launch = async () => {
     setError(null)
+    setCoverageGap(null)
     setResult(null)
     setStatus(null)
+    setCoverageNonce((value) => value + 1)
     try {
       const created = await createHistoricalPortfolioBacktest({
         start_date: startDate, end_date: endDate, capacity_fraction: capacity,
-        initial_capital: 100_000, allow_partial_fills: true,
+        initial_capital: 100_000, allow_partial_fills: true, horizons: selectedHorizons,
+        symbols: selectedSymbols.size === (coverage?.requested_symbols.length ?? 0)
+          ? []
+          : [...selectedSymbols].sort(),
       })
       setRunId(created.run_id)
     } catch (cause) {
+      const detail = cause instanceof ApiError ? (cause.detail as CoverageGapDetail | undefined) : undefined
+      if (detail?.code === "pit_coverage_incomplete") {
+        setCoverageGap(detail)
+        if (detail.materialization_in_progress) {
+          setMaterialization(await getHistoricalOpportunityMaterialization(detail.materialization_in_progress))
+        }
+        return
+      }
       setError(cause instanceof Error ? cause.message : "Impossible de créer le calcul")
     }
   }
@@ -1460,16 +1781,186 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
     setError(null)
     try {
       setMaterialization(await createHistoricalOpportunityMaterialization({ start_date: startDate, end_date: endDate }))
+      setCoverageGap(null)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Impossible de lancer le pré-calcul PIT")
     }
   }
 
   const selectedScenario = result?.equity_curves?.[String(capacity)]
-  const combined = selectedScenario?.combined
-  const stats = result?.statistics?.combined ?? combined?.statistics ?? {}
+  const resultHorizons = (Array.isArray(result?.config?.horizons)
+    ? result.config.horizons
+    : PIT_HORIZONS.map((item) => item.value)) as PitHorizon[]
+  const horizonSelectionMatches = resultHorizons.length === selectedHorizons.length
+    && selectedHorizons.every((item) => resultHorizons.includes(item))
+  const projectedSleeve = selectedHorizons.length === 1
+    ? selectedScenario?.sleeves?.[selectedHorizons[0]]
+    : null
+  const displayedPortfolio = horizonSelectionMatches ? selectedScenario?.combined : projectedSleeve
+  const baseStats = displayedPortfolio?.statistics ?? {}
+  const rawCombinedCurve = (Array.isArray(displayedPortfolio?.equity_curve)
+    ? displayedPortfolio.equity_curve
+    : []) as PitEquityPoint[]
+  const resultStartDate = typeof result?.config?.start_date === "string" ? result.config.start_date : startDate
+  const resultEndDate = typeof result?.config?.end_date === "string" ? result.config.end_date : endDate
+  const combinedCurve = rawCombinedCurve.filter(
+    (point) => point.date >= resultStartDate && point.date <= resultEndDate,
+  )
+  const displayedBenchmarks = useMemo(
+    () => pitBenchmarksForCurve(combinedCurve, result?.benchmark_curves),
+    [combinedCurve, result?.benchmark_curves],
+  )
+  const stats = {
+    ...baseStats,
+    full_investment_masi_return: displayedBenchmarks?.full_investment_masi?.total_return,
+    exposure_matched_masi_return: displayedBenchmarks?.exposure_matched_masi?.total_return,
+    excess_return_vs_full_investment_masi: typeof baseStats.absolute_return === "number"
+      && typeof displayedBenchmarks?.full_investment_masi?.total_return === "number"
+      ? baseStats.absolute_return - displayedBenchmarks.full_investment_masi.total_return : undefined,
+    excess_return_vs_exposure_matched_masi: typeof baseStats.absolute_return === "number"
+      && typeof displayedBenchmarks?.exposure_matched_masi?.total_return === "number"
+      ? baseStats.absolute_return - displayedBenchmarks.exposure_matched_masi.total_return : undefined,
+  }
+  const equityFigure = useMemo(
+    () => pitEquityFigure(combinedCurve, displayedBenchmarks),
+    [combinedCurve, displayedBenchmarks],
+  )
+  const exposureFigure = useMemo(() => pitExposureFigure(combinedCurve), [combinedCurve])
+  const sleeves = Object.fromEntries(Object.entries(selectedScenario?.sleeves ?? {}).filter(
+    ([sleeveHorizon]) => selectedHorizons.includes(sleeveHorizon as PitHorizon),
+  )) as Record<string, any>
+  const pitTrades = ((Array.isArray(result?.trades) ? result.trades : []) as Array<Record<string, any>>).filter(
+    (trade) => selectedHorizons.includes(trade.horizon as PitHorizon)
+      && String(trade.decision_date ?? trade.entry_date ?? "") >= resultStartDate
+      && String(trade.decision_date ?? trade.entry_date ?? "") <= resultEndDate,
+  )
+  const displayedPitTrades = pitSelectedStock
+    ? pitTrades.filter((trade) => trade.symbol === pitSelectedStock)
+    : pitTrades
+  const visiblePitTrades = displayedPitTrades.slice(0, pitLedgerPage * LEDGER_PAGE_SIZE)
+  const resultUniverse = ((result?.config?.symbols as string[] | undefined)?.length
+    ? result?.config?.symbols
+    : result?.config?.resolved_universe ?? []) as string[]
+  const perStockRows = useMemo(() => resultUniverse.map((symbol) => {
+    const trades = pitTrades.filter((trade) => trade.symbol === symbol)
+    const closed = trades.filter((trade) => typeof trade.net_return === "number")
+    const wins = closed.filter((trade) => Number(trade.net_return) > 0)
+    const losses = closed.filter((trade) => Number(trade.net_return) <= 0)
+    const kellyValues = trades
+      .map((trade) => trade.kelly_fraction)
+      .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+    return {
+      symbol,
+      trades: trades.length,
+      closed: closed.length,
+      open: trades.filter((trade) => trade.status === "open_at_end" || trade.status === "open").length,
+      hitRate: closed.length ? wins.length / closed.length : null,
+      averageReturn: closed.length
+        ? closed.reduce((total, trade) => total + Number(trade.net_return), 0) / closed.length : null,
+      averageWin: wins.length
+        ? wins.reduce((total, trade) => total + Number(trade.net_return), 0) / wins.length : null,
+      averageLoss: losses.length
+        ? losses.reduce((total, trade) => total + Number(trade.net_return), 0) / losses.length : null,
+      kelly: kellyValues.length
+        ? kellyValues.reduce((total, value) => total + value, 0) / kellyValues.length : null,
+      pnl: trades.reduce((total, trade) => total + (typeof trade.realized_pnl === "number" ? trade.realized_pnl : 0), 0),
+    }
+  }), [resultUniverse, pitTrades])
+  const pitSelectedStockStats = perStockRows.find((row) => row.symbol === pitSelectedStock) ?? null
+  const pitChartTrades = useMemo((): PortfolioBacktestTrade[] => pitTrades.flatMap((trade) => {
+    if (
+      typeof trade.exit_date !== "string" || typeof trade.exit_price !== "number"
+      || typeof trade.realized_pnl !== "number" || typeof trade.net_return !== "number"
+    ) return []
+    return [{
+      symbol: String(trade.symbol), direction: trade.direction === "short" ? -1 : 1,
+      open_date: String(trade.entry_date), close_date: trade.exit_date,
+      open_price: Number(trade.entry_price), close_price: trade.exit_price,
+      pnl_return: trade.net_return, effective_return: trade.net_return,
+      tp_applied: false, sl_applied: false, position_size: Number(trade.entry_notional ?? 0),
+      pnl_mad: trade.realized_pnl, executed: true, skip_reason: null,
+    }]
+  }), [pitTrades])
+  const { data: pitOhlcvData, isLoading: pitOhlcvLoading } = useStockOhlcvHistory(pitSelectedStock)
+  const pitStockPricePlot = useMemo(() => pitSelectedStock && (pitOhlcvData?.bars.length ?? 0) > 0
+    ? buildStockPricePlot(
+      pitOhlcvData!.bars, pitChartTrades, pitSelectedStock,
+      { start: combinedCurve[0]?.date ?? null, end: combinedCurve.at(-1)?.date ?? null },
+    ) : null,
+  [pitSelectedStock, pitOhlcvData, pitChartTrades, combinedCurve])
+  const pitStockEquityPlot = useMemo(
+    () => pitSelectedStock ? buildStockEquityPlot(pitChartTrades, pitSelectedStock) : null,
+    [pitSelectedStock, pitChartTrades],
+  )
+  const initialCapital = typeof result?.config?.initial_capital === "number" ? result.config.initial_capital : 100_000
+  const pitLedgerRows = useMemo((): PortfolioBacktestLedgerRow[] => {
+    const curveByDate = new Map(combinedCurve.map((point) => [point.date, point]))
+    const events = displayedPitTrades.flatMap((trade) => {
+      const quantity = Number(trade.entry_notional ?? 0) / Number(trade.entry_price ?? 1)
+      const entry = {
+        date: String(trade.entry_date), symbol: String(trade.symbol), side: "Achat",
+        quantity, prix_execution: Number(trade.entry_price ?? 0), cmp: Number(trade.entry_price ?? 0),
+        montant: Number(trade.entry_notional ?? 0) + Number(trade.entry_cost ?? 0), pnl_realise: null as number | null,
+      }
+      if (typeof trade.exit_date !== "string" || typeof trade.exit_price !== "number") return [entry]
+      return [entry, {
+        date: trade.exit_date, symbol: String(trade.symbol), side: "Vente",
+        quantity, prix_execution: trade.exit_price, cmp: Number(trade.entry_price ?? 0),
+        montant: quantity * trade.exit_price - Number(trade.exit_cost ?? 0),
+        pnl_realise: typeof trade.realized_pnl === "number" ? trade.realized_pnl : null,
+      }]
+    }).sort((left, right) => left.date.localeCompare(right.date) || left.symbol.localeCompare(right.symbol))
+    let cumulativePnl = 0
+    return events.map((event) => {
+      cumulativePnl += event.pnl_realise ?? 0
+      const mark = curveByDate.get(event.date)
+      return {
+        ...event, pnl_realise_cumule: cumulativePnl,
+        capital: Number(mark?.equity ?? initialCapital),
+        exposition_pct: Number(mark?.exposure ?? 0) * 100,
+      }
+    })
+  }, [combinedCurve, displayedPitTrades, initialCapital])
+  const filteredUniverse = (coverage?.requested_symbols ?? []).filter((symbol) =>
+    symbol.toLowerCase().includes(universeQuery.trim().toLowerCase()),
+  )
+  const finalEquity = combinedCurve.at(-1)?.equity
   const audit = result?.snapshot_audit
   const progress = typeof status?.progress?.progress_pct === "number" ? status.progress.progress_pct : null
+  const coverageIntervals = coverage?.intervals ?? []
+  const coverageMinStart = coverageIntervals.reduce(
+    (earliest, interval) => earliest == null || interval.start < earliest ? interval.start : earliest,
+    null as string | null,
+  )
+  const coverageMaxEnd = coverageIntervals.reduce(
+    (latest, interval) => latest == null || interval.end > latest ? interval.end : latest,
+    null as string | null,
+  )
+  const requestedRangeCovered = coverageIntervals.some(
+    (interval) => interval.start <= startDate && interval.end >= endDate,
+  )
+  const coverageMessage = coverage == null
+    ? "Vérification de la couverture PIT…"
+    : coverageIntervals.length === 0
+      ? "Store PIT vide — pré-calculez la période avant de lancer (section Avancé)"
+      : requestedRangeCovered
+        ? `✓ Opportunités historiques pré-calculées (${coverageMinStart} → ${coverageMaxEnd}) — prêt à lancer`
+        : `Couverture PIT : ${coverageMinStart} → ${coverageMaxEnd} — les dates manquantes doivent être pré-calculées avant le lancement`
+  const decisionGroups = useMemo(() => {
+    const groups = new Map<string, HistoricalDecisionRow[]>()
+    for (const item of decisions) {
+      const key = `${item.decision_date}|${item.symbol}|${item.horizon}`
+      groups.set(key, [...(groups.get(key) ?? []), item])
+    }
+    return groups
+  }, [decisions])
+  const selectedDecisions = selectedDecisionKey ? decisionGroups.get(selectedDecisionKey) ?? [] : []
+  const executionEvents = Array.isArray(result?.diagnostics?.execution_events_v1)
+    ? result?.diagnostics?.execution_events_v1 as Array<Record<string, any>>
+    : []
+  const selectedExecution = selectedDecisionKey
+    ? executionEvents.find((item) => `${item.decision_date}|${item.symbol}|${item.horizon}` === selectedDecisionKey && item.scenario === "baseline")
+    : null
 
   return (
     <div className="space-y-4">
@@ -1478,7 +1969,8 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
         <p className="mt-1 text-xs">
           Reconstitution hebdomadaire des opportunités avec les huit variantes WFO, informations arrêtées à chaque date,
           entrée J+1, sortie J+ sélectionnée, demi-Kelly sans échantillon de départ synthétique, coûts, glissement et ADV20.
-          L&apos;ancien calcul fondé sur la sélection actuelle n&apos;est plus présenté comme un backtest historique.
+          Méthodologie statistique dashboard v5 figée : cette reconstruction contrôle le point-in-time et l&apos;exécution,
+          mais ne constitue pas une preuve de validité statistique de l&apos;edge.
         </p>
       </div>
 
@@ -1488,9 +1980,16 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
       </div>
 
       <Card>
-        <CardHeader><CardTitle className="text-sm">Lancer un calcul persistant en arrière-plan</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-sm">Backtest historique persistant</CardTitle></CardHeader>
         <CardContent className="space-y-3">
-          <div className="grid gap-3 sm:grid-cols-5">
+          {snapshotComputedAt ? (
+            <p className="text-xs text-muted-foreground">
+              Résultat affiché : reconstruction du {snapshotComputedAt.slice(0, 10)}. Les paramètres ci-dessous relancent un calcul de rafraîchissement.
+            </p>
+          ) : snapshotLoading ? (
+            <p className="text-xs text-muted-foreground">Chargement du dernier backtest…</p>
+          ) : null}
+          <div className="grid gap-3 sm:grid-cols-4">
             <Label>Début<Input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></Label>
             <Label>Fin<Input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} /></Label>
             <Label>Capacité
@@ -1499,19 +1998,104 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
                 <option value={0.05}>5% ADV20</option><option value={0.1}>10% ADV20</option>
               </select>
             </Label>
-            <div className="flex items-end"><Button variant="outline" className="w-full" disabled={!startDate || !endDate || materialization?.status === "running" || materialization?.status === "queued"} onClick={materialize}>{coverage?.available ? "Actualiser le PIT" : "Pré-calculer le PIT"}</Button></div>
-            <div className="flex items-end"><Button className="w-full" disabled={!coverage?.available || status?.status === "running" || status?.status === "queued"} onClick={launch}>Backtest rapide</Button></div>
+            <div className="flex items-end"><Button className="w-full" variant="outline" disabled={!startDate || !endDate || selectedHorizons.length === 0 || selectedSymbols.size === 0 || status?.status === "running" || status?.status === "queued"} onClick={launch}>{result ? "Recalculer" : "Lancer le backtest"}</Button></div>
           </div>
+          <div className="space-y-2">
+            <Label>Horizons inclus dans ce backtest</Label>
+            <div className="flex flex-wrap gap-2">
+              {PIT_HORIZONS.map((item) => {
+                const checked = selectedHorizons.includes(item.value)
+                return <Button
+                  key={item.value}
+                  type="button"
+                  size="sm"
+                  variant={checked ? "default" : "outline"}
+                  onClick={() => {
+                    setSelectedHorizons((current) => checked
+                      ? (current.length > 1 ? current.filter((value) => value !== item.value) : current)
+                      : PIT_HORIZONS.map((option) => option.value).filter((value) => [...current, item.value].includes(value)))
+                    setPitSelectedStock(null)
+                    setPitLedgerPage(1)
+                  }}
+                >{item.label}</Button>
+              })}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              L&apos;horizon actif de la page est sélectionné par défaut. Vous pouvez en combiner plusieurs avant de relancer.
+            </p>
+          </div>
+          <details className="rounded-md border p-3">
+            <summary className="cursor-pointer text-sm font-medium">
+              Univers sélectionné ({selectedSymbols.size}/{coverage?.requested_symbols.length ?? 0})
+            </summary>
+            <div className="mt-3 space-y-2">
+              <div className="flex flex-wrap gap-2">
+                <Input className="max-w-xs" placeholder="Filtrer un ticker" value={universeQuery} onChange={(event) => setUniverseQuery(event.target.value)} />
+                <Button size="sm" variant="outline" type="button" onClick={() => setSelectedSymbols(new Set(coverage?.requested_symbols ?? []))}>Tout sélectionner</Button>
+              </div>
+              <ScrollArea className="h-44 rounded-md border p-2">
+                <div className="grid gap-2 sm:grid-cols-3 md:grid-cols-5">
+                  {filteredUniverse.map((symbol) => <Label key={symbol} className="flex items-center gap-2 font-mono text-xs">
+                    <Checkbox
+                      checked={selectedSymbols.has(symbol)}
+                      onCheckedChange={(next) => setSelectedSymbols((current) => {
+                        const updated = new Set(current)
+                        if (next) updated.add(symbol)
+                        else if (updated.size > 1) updated.delete(symbol)
+                        return updated
+                      })}
+                    />
+                    {symbol}
+                  </Label>)}
+                </div>
+              </ScrollArea>
+            </div>
+          </details>
           <p className="text-xs text-muted-foreground">
-            Store PIT: {coverage?.available ? "couverture disponible — le backtest réutilise les opportunités stockées" : "couverture absente pour cette période"}.
+            {coverageMessage}.
             {materialization ? ` Pré-calcul ${materialization.status}${typeof materialization.progress.progress_pct === "number" ? ` (${materialization.progress.progress_pct}%)` : ""}.` : ""}
           </p>
           {status ? <p className="text-xs text-muted-foreground">Run {status.run_id} — {status.status}{progress != null ? ` (${progress}%)` : ""}. Un résultat partiel n&apos;est jamais affiché.</p> : null}
+          {coverageGap ? (
+            <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+              <p className="font-semibold">Ces dates ne sont pas encore pré-calculées</p>
+              <p className="mt-1">
+                Période(s) manquante(s) :{" "}
+                {coverageGap.missing_ranges.map((range) => `${range.start} → ${range.end}`).join(", ")}.
+              </p>
+              {coverageGap.materialization_in_progress ? (
+                <p className="mt-1">Un pré-calcul est déjà en cours — patientez puis relancez le backtest.</p>
+              ) : (
+                <div className="mt-2">
+                  <p>Lancez le pré-calcul de cette période uniquement, puis relancez le backtest.</p>
+                  <Button className="mt-2" size="sm" variant="outline" onClick={materialize}>
+                    Pré-calculer la période manquante
+                  </Button>
+                </div>
+              )}
+            </div>
+          ) : null}
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          <details className="text-xs text-muted-foreground">
+            <summary>Avancé : gestion manuelle du store PIT</summary>
+            <div className="mt-2 space-y-2">
+              <Button variant="outline" disabled={!startDate || !endDate || materialization?.status === "running" || materialization?.status === "queued"} onClick={materialize}>
+                {coverage?.available ? "Actualiser le PIT" : "Pré-calculer le PIT"}
+              </Button>
+              {materialization ? <p>Pré-calcul {materialization.status}{typeof materialization.progress.progress_pct === "number" ? ` (${materialization.progress.progress_pct}%)` : ""}.</p> : null}
+              {error ? <p className="text-destructive">{error}</p> : null}
+            </div>
+          </details>
         </CardContent>
       </Card>
 
-      {view === "reconstructed" && result ? (
+      {view === "reconstructed" && result && !displayedPortfolio ? (
+        <Card><CardContent className="pt-4 text-sm text-muted-foreground">
+          Ce résultat ne contient pas cette combinaison d&apos;horizons. Relancez le backtest pour calculer exactement {selectedHorizons.map((item) => PIT_HORIZONS.find((option) => option.value === item)?.label).join(" + ")}.
+        </CardContent></Card>
+      ) : null}
+
+      {view === "reconstructed" && result && displayedPortfolio ? (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
             <StatCard label="Rendement absolu" value={pct(stats.absolute_return)} />
@@ -1526,12 +2110,226 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
             <StatCard label="ES 10j 95%" value={pct(stats.expected_shortfall_10d_95)} />
             <StatCard label="Trades" value={String(stats.trade_count ?? 0)} />
             <StatCard label="Coût" value={typeof stats.cost_impact_mad === "number" ? `${stats.cost_impact_mad.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} MAD` : "Indisponible"} />
+            <StatCard label="Capital initial" value={pitMoney(initialCapital)} />
+            <StatCard label="Capital final" value={pitMoney(finalEquity)} />
+            <StatCard label="Hit-rate" value={pct(stats.hit_rate)} />
+            <StatCard label="Exposition max." value={pct(stats.maximum_exposure)} />
+            <StatCard label="Turnover" value={pct(stats.turnover)} />
+            <StatCard label="Rejets" value={String(stats.rejected_trade_count ?? 0)} />
           </div>
+
+          <Card className="claude-card">
+            <CardHeader className="pb-1">
+              <CardTitle className="text-sm">Courbe d&apos;équité vs MASI · {startDate} → {endDate}</CardTitle>
+            </CardHeader>
+            <CardContent className="bt-chart">
+              {equityFigure ? (
+                <PlotlyChart figure={equityFigure as never} />
+              ) : (
+                <p className="p-4 text-sm text-muted-foreground">
+                  La capacité sélectionnée ne contient pas assez de points pour tracer la courbe.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          {exposureFigure ? (
+            <Card className="claude-card">
+              <CardHeader className="pb-1"><CardTitle className="text-sm">Exposition historique du portefeuille</CardTitle></CardHeader>
+              <CardContent className="bt-chart"><PlotlyChart figure={exposureFigure as never} /></CardContent>
+            </Card>
+          ) : null}
+
+          <Card className="claude-card">
+            <CardHeader className="pb-1"><CardTitle className="text-sm">Détail des sleeves</CardTitle></CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto rounded-md border border-line">
+                <table className="claude-table">
+                  <thead><tr>
+                    <th>Horizon</th><th className="r">Rendement</th><th className="r">CAGR</th>
+                    <th className="r">Sharpe</th><th className="r">Drawdown</th><th className="r">Exposition moy.</th>
+                    <th className="r">Trades</th><th className="r">Coûts</th>
+                  </tr></thead>
+                  <tbody>
+                    {Object.entries(sleeves).map(([sleeveHorizon, payload]) => {
+                      const sleeveStats = payload?.statistics ?? {}
+                      return <tr key={sleeveHorizon}>
+                        <td className="font-medium capitalize">{sleeveHorizon}</td>
+                        <td className="r font-mono">{pct(sleeveStats.absolute_return)}</td>
+                        <td className="r font-mono">{pct(sleeveStats.cagr)}</td>
+                        <td className="r font-mono">{typeof sleeveStats.sharpe === "number" ? sleeveStats.sharpe.toFixed(2) : "—"}</td>
+                        <td className="r font-mono text-red-600">{pct(sleeveStats.max_drawdown)}</td>
+                        <td className="r font-mono">{pct(sleeveStats.average_exposure)}</td>
+                        <td className="r font-mono">{String(sleeveStats.trade_count ?? 0)}</td>
+                        <td className="r font-mono">{pitMoney(sleeveStats.cost_impact_mad)}</td>
+                      </tr>
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="claude-card">
+            <CardHeader className="pb-1">
+              <div className="flex items-center justify-between gap-3">
+                <CardTitle className="text-sm">Résultats par valeur · univers du run</CardTitle>
+                <span className="text-xs text-muted-foreground">{resultUniverse.length} valeur(s)</span>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="max-h-80 overflow-auto rounded-md border border-line">
+                <table className="claude-table">
+                  <thead><tr><th>Ticker</th><th className="r">½-Kelly</th><th className="r">Trades</th><th className="r">Ouverts</th><th className="r">Win Rate</th><th className="r">Moy. gain</th><th className="r">Moy. perte</th><th className="r">PnL (MAD)</th></tr></thead>
+                  <tbody>{perStockRows.map((row) => <tr
+                    key={row.symbol}
+                    className={cn("cursor-pointer", pitSelectedStock === row.symbol && "bg-muted")}
+                    onClick={() => { setPitSelectedStock((current) => current === row.symbol ? null : row.symbol); setPitLedgerPage(1) }}
+                  >
+                    <td className="font-mono font-medium">{row.symbol}</td>
+                    <td className="r font-mono">{pctOrDash(row.kelly)}</td>
+                    <td className="r font-mono">{row.trades}</td>
+                    <td className="r font-mono text-muted-foreground">{row.open}</td>
+                    <td className="r font-mono">{pctOrDash(row.hitRate)}</td>
+                    <td className="r font-mono text-emerald-600">{pctOrDash(row.averageWin)}</td>
+                    <td className="r font-mono text-red-600">{pctOrDash(row.averageLoss)}</td>
+                    <td className={cn("r font-mono", row.pnl >= 0 ? "text-emerald-600" : "text-red-600")}>{pitMoney(row.pnl)}</td>
+                  </tr>)}</tbody>
+                </table>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">Cliquez sur une valeur pour filtrer le journal des trades ci-dessous.</p>
+            </CardContent>
+          </Card>
+
+          {pitSelectedStock && pitSelectedStockStats ? (
+            <>
+              <div className="flex items-center gap-2">
+                <Button type="button" variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-xs" onClick={() => { setPitSelectedStock(null); setPitLedgerPage(1) }}>
+                  <ArrowLeft className="h-3.5 w-3.5" /> Retour à l&apos;univers
+                </Button>
+                <span className="font-mono text-sm font-semibold">{pitSelectedStock}</span>
+                <span className="text-xs text-muted-foreground">{selectedHorizons.join(" + ")}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
+                <StatCard label="Trades" value={String(pitSelectedStockStats.trades)} />
+                <StatCard label="Win Rate" value={pctOrDash(pitSelectedStockStats.hitRate)} tone={(pitSelectedStockStats.hitRate ?? 0) >= 0.5 ? "pos" : "neg"} />
+                <StatCard label="Moy. gain" value={pctOrDash(pitSelectedStockStats.averageWin)} tone="pos" />
+                <StatCard label="Moy. perte" value={pctOrDash(pitSelectedStockStats.averageLoss)} tone="neg" />
+                <StatCard label="½-Kelly moyen" value={pctOrDash(pitSelectedStockStats.kelly)} />
+                <StatCard label="PnL total" value={pitMoney(pitSelectedStockStats.pnl)} tone={pitSelectedStockStats.pnl >= 0 ? "pos" : "neg"} />
+              </div>
+              <Card className="claude-card">
+                <CardHeader className="pb-1"><CardTitle className="text-sm">Prix &amp; trades exécutés — {pitSelectedStock}</CardTitle></CardHeader>
+                <CardContent className="bt-chart">
+                  {pitOhlcvLoading ? <Skeleton className="h-[360px] rounded" />
+                    : pitStockPricePlot ? <PlotlyChart figure={pitStockPricePlot as never} />
+                      : <p className="p-4 text-sm text-muted-foreground">
+                          {pitSelectedStockStats.closed === 0
+                            ? `Aucun trade clôturé pour ${pitSelectedStock} sur les horizons sélectionnés.`
+                            : `Données de prix indisponibles pour ${pitSelectedStock}.`}
+                        </p>}
+                </CardContent>
+              </Card>
+              {pitStockEquityPlot ? <Card className="claude-card">
+                <CardHeader className="pb-1"><CardTitle className="text-sm">PnL réalisé cumulé — {pitSelectedStock}</CardTitle></CardHeader>
+                <CardContent className="bt-chart"><PlotlyChart figure={pitStockEquityPlot as never} /></CardContent>
+              </Card> : null}
+            </>
+          ) : null}
+
+          <Card className="claude-card">
+            <CardHeader className="pb-1">
+              <div className="flex items-center justify-between gap-3">
+                <CardTitle className="text-sm">Trades exécutés{pitSelectedStock ? ` · ${pitSelectedStock}` : ""}</CardTitle>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">{displayedPitTrades.length} trade(s)</span>
+                  {pitSelectedStock ? <Button size="sm" variant="ghost" onClick={() => { setPitSelectedStock(null); setPitLedgerPage(1) }}>Toutes les valeurs</Button> : null}
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {displayedPitTrades.length ? (
+                <>
+                  <div className="overflow-x-auto rounded-md border border-line">
+                    <table className="claude-table">
+                      <thead><tr>
+                        <th>Ticker</th><th>Horizon</th><th>Variante</th><th>Décision</th><th>Entrée</th><th>Sortie</th>
+                        <th className="r">Prix entrée</th><th className="r">Prix sortie</th><th className="r">Notionnel</th>
+                        <th className="r">Rendement net</th><th className="r">PnL réalisé</th><th>Motif sortie</th>
+                      </tr></thead>
+                      <tbody>
+                        {visiblePitTrades.map((trade, index) => {
+                          const pnl = typeof trade.realized_pnl === "number" ? trade.realized_pnl : null
+                          return <tr key={`${trade.symbol}-${trade.horizon}-${trade.entry_date}-${index}`}>
+                            <td className="font-mono font-medium">{String(trade.symbol ?? "—")}</td>
+                            <td className="capitalize">{String(trade.horizon ?? "—")}</td>
+                            <td className="font-mono text-xs">{String(trade.variant ?? "—")}</td>
+                            <td>{String(trade.decision_date ?? "—")}</td><td>{String(trade.entry_date ?? "—")}</td>
+                            <td>{String(trade.exit_date ?? (trade.status === "open_at_end" ? "Ouvert" : "—"))}</td>
+                            <td className="r font-mono">{typeof trade.entry_price === "number" ? trade.entry_price.toFixed(2) : "—"}</td>
+                            <td className="r font-mono">{typeof trade.exit_price === "number" ? trade.exit_price.toFixed(2) : "—"}</td>
+                            <td className="r font-mono">{pitMoney(trade.entry_notional)}</td>
+                            <td className={cn("r font-mono", typeof trade.net_return === "number" && trade.net_return >= 0 ? "text-emerald-600" : "text-red-600")}>{pct(trade.net_return)}</td>
+                            <td className={cn("r font-mono", pnl != null && pnl >= 0 ? "text-emerald-600" : "text-red-600")}>{pitMoney(pnl)}</td>
+                            <td>{String(trade.exit_reason ?? trade.status ?? "—")}</td>
+                          </tr>
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  {visiblePitTrades.length < displayedPitTrades.length ? (
+                    <div className="mt-2 text-right">
+                      <Button size="sm" variant="outline" onClick={() => setPitLedgerPage((page) => page + 1)}>
+                        Voir plus ({displayedPitTrades.length - visiblePitTrades.length} restants)
+                      </Button>
+                    </div>
+                  ) : null}
+                </>
+              ) : <p className="text-sm text-muted-foreground">Aucun trade exécuté pour cette capacité.</p>}
+            </CardContent>
+          </Card>
+
+          <Card className="claude-card">
+            <CardHeader className="pb-1">
+              <CardTitle className="text-sm">Relevé de compte{pitSelectedStock ? ` — ${pitSelectedStock}` : " (mouvements exécutés)"}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <PortfolioAccountingLedger rows={pitLedgerRows} showSymbol={!pitSelectedStock} />
+              {selectedHorizons.length > 1 ? <p className="mt-2 text-[11px] text-muted-foreground">
+                Les mouvements conservent leur notionnel de sleeve; le capital et l&apos;exposition affichés correspondent à la courbe combinée equal-risk.
+              </p> : null}
+            </CardContent>
+          </Card>
+
           <Card><CardContent className="pt-4 text-xs text-muted-foreground">
-            <p>Couverture: {String(result.provenance.coverage_start ?? "—")} → {String(result.provenance.coverage_end ?? "—")} · Décisions hebdomadaires · Sleeves hebdomadaire, mensuelle et trimestrielle séparées · Portefeuille combiné à allocation rolling equal-risk.</p>
-            <p className="mt-1">Benchmark: MASI pleinement investi et MASI à exposition historique égale. Capacité affichée: {(capacity * 100).toLocaleString("fr-FR")}% ADV20. Coûts: 33 pb/côté + glissement 5 pb/côté.</p>
-            <p className="mt-1">Risque: drawdown roulant 12 mois au 95e percentile d&apos;un bootstrap stationnaire; frontière de capacité choisie dans des folds externes imbriqués. Les métriques sans historique suffisant restent indisponibles.</p>
+            <p>Période effectivement tracée: {combinedCurve[0]?.date ?? startDate} → {combinedCurve.at(-1)?.date ?? endDate} · Horizons: {selectedHorizons.map((item) => PIT_HORIZONS.find((option) => option.value === item)?.label).join(", ")}.</p>
+            <p className="mt-1"><strong>MASI investi</strong> applique 100% des rendements quotidiens des cours de clôture MASI stockés. <strong>MASI à exposition égale</strong> utilise exactement les mêmes cours MASI, mais multiplie chaque rendement par l&apos;exposition du portefeuille observée la veille. Ce n&apos;est donc pas un indice synthétique différent.</p>
+            <p className="mt-1">Capacité affichée: {(capacity * 100).toLocaleString("fr-FR")}% ADV20. Coûts: 33 pb/côté + glissement 5 pb/côté.</p>
+            <p className="mt-1">Diagnostics: rendement, CAGR, volatilité, Sharpe, drawdown, exposition, hit-rate, turnover et VaR/ES calculés sur la courbe réalisée. Les métriques sans historique suffisant restent indisponibles.</p>
           </CardContent></Card>
+          <Card>
+            <CardHeader><CardTitle className="text-sm">Décisions PIT et exécution</CardTitle></CardHeader>
+            <CardContent className="space-y-3 text-xs">
+              <select className="h-9 w-full rounded-md border bg-background px-2" value={selectedDecisionKey ?? ""} onChange={(event) => setSelectedDecisionKey(event.target.value || null)}>
+                <option value="">Sélectionner une semaine / valeur</option>
+                {Array.from(decisionGroups.keys()).map((key) => <option key={key} value={key}>{key.replaceAll("|", " · ")}</option>)}
+              </select>
+              {selectedExecution ? <p>
+                Action: <strong>{String(selectedExecution.execution_action)}</strong> · motif {String(selectedExecution.reason)} · éligible nouvelle entrée {selectedExecution.execution_eligible ? "oui" : "non"}
+              </p> : null}
+              {selectedDecisions.map((item) => (
+                <details key={item.variant} className="rounded border p-2" open={item.reconstructed_dashboard_winner}>
+                  <summary className="cursor-pointer">
+                    {item.variant} · {item.status} · {item.actionable ? "actionnable" : "non actionnable"} · {item.reconstructed_dashboard_winner ? "gagnant dashboard" : "audit"}
+                  </summary>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    <pre className="overflow-auto rounded bg-muted p-2">{JSON.stringify(item.decision.category_scores, null, 2)}</pre>
+                    <pre className="overflow-auto rounded bg-muted p-2">{JSON.stringify({ reasons: item.decision.actionability_reasons, rank: item.rank, evidence: item.decision.evidence }, null, 2)}</pre>
+                  </div>
+                </details>
+              ))}
+            </CardContent>
+          </Card>
           {result.warnings.map((warning, index) => <p key={index} className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">{warning}</p>)}
         </div>
       ) : null}
@@ -1545,7 +2343,7 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
                 <p className="font-medium">Fenêtre courte: {audit?.coverage_start ?? "indisponible"} → {audit?.coverage_end ?? "indisponible"}</p>
                 <p className="text-xs text-muted-foreground">Cet audit DashboardSnapshot n&apos;est pas statistiquement équivalent au backtest reconstruit de longue période. Aucune date sans snapshot n&apos;est inventée.</p>
                 <p>{audit?.snapshot_dates?.length ?? 0} date(s) de snapshot · {audit?.comparisons?.length ?? 0} comparaison(s) · {audit?.discrepancy_count ?? 0} écart(s).</p>
-                <p>Portefeuille littéral modélisé: {audit?.portfolio?.opportunity_count ?? 0} opportunité(s) · rendement {pct(audit?.portfolio?.combined?.statistics?.absolute_return)} · historique insuffisant affiché comme indisponible.</p>
+                <p>Opportunités littérales auditées: {audit?.literal_opportunity_count ?? 0}. Les snapshots servent uniquement à l&apos;audit de fidélité et ne produisent aucune seconde courbe.</p>
                 {(audit?.comparisons ?? []).slice(0, 200).map((row: any, index: number) => (
                   <div key={`${row.as_of_date}-${row.horizon}-${row.symbol}-${index}`} className="grid grid-cols-5 gap-2 border-t py-1 text-xs">
                     <span>{row.as_of_date}</span><span>{row.horizon}</span><span>{row.symbol}</span>
@@ -1558,7 +2356,18 @@ export function PortfolioBacktestPanel({ horizon }: Props) {
           </CardContent>
         </Card>
       ) : null}
-      <details className="text-xs text-muted-foreground"><summary>Ancien calcul de compatibilité (non point-in-time)</summary><div className="mt-2"><SnapshotAuditLegacyPanel horizon={horizon} /></div></details>
+
+      <details
+        className="rounded-md border p-3 text-xs text-muted-foreground"
+        onToggle={(event) => setShowLegacyCompatibility(event.currentTarget.open)}
+      >
+        <summary className="cursor-pointer font-medium">Ancien calcul de compatibilité (non point-in-time)</summary>
+        {showLegacyCompatibility ? <div className="mt-3"><SnapshotAuditLegacyPanel horizon={horizon} /></div> : null}
+      </details>
     </div>
   )
+}
+
+export function PortfolioBacktestPanel({ horizon }: Props) {
+  return <PointInTimePortfolioBacktestPanel horizon={horizon} />
 }

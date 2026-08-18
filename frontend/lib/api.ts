@@ -1265,11 +1265,13 @@ export const PARAM_DEFAULTS: Record<string, string> = {
 
 export class ApiError extends Error {
   status: number
+  detail?: unknown
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, detail?: unknown) {
     super(message)
     this.name = "ApiError"
     this.status = status
+    this.detail = detail
   }
 }
 
@@ -1290,7 +1292,13 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const text = await res.text().catch(() => "Unknown error")
-    throw new ApiError(`${res.status}: ${text}`, res.status)
+    let detail: unknown
+    try {
+      detail = (JSON.parse(text) as { detail?: unknown }).detail
+    } catch {
+      detail = undefined
+    }
+    throw new ApiError(`${res.status}: ${text}`, res.status, detail)
   }
 
   if (res.status === 204) {
@@ -7536,6 +7544,8 @@ export async function runPortfolioBacktest(body: {
   stop_loss_pct?: number | null
   kelly_multiplier?: number
   long_only?: boolean
+  min_edge_score?: number
+  required_edge_conditions?: string[]
   start_date?: string
   end_date?: string
 }): Promise<PortfolioBacktestResult> {
@@ -7561,10 +7571,20 @@ export interface PortfolioBacktestUniverseResult {
 export async function getPortfolioBacktestUniverse(params: {
   horizon?: string
   long_only?: boolean
+  min_edge_score?: number
+  required_edge_conditions?: string[]
 }): Promise<PortfolioBacktestUniverseResult> {
   const qs = new URLSearchParams()
   if (params.horizon) qs.set("horizon", params.horizon)
   if (params.long_only != null) qs.set("long_only", String(params.long_only))
+  if (params.min_edge_score != null) qs.set("min_edge_score", String(params.min_edge_score))
+  if (params.required_edge_conditions?.length === 0) {
+    qs.append("required_edge_conditions", "none")
+  } else {
+    for (const condition of params.required_edge_conditions ?? []) {
+      qs.append("required_edge_conditions", condition)
+    }
+  }
   const q = qs.toString()
   const data = await request<PortfolioBacktestUniverseResult>(
     `/strategy/signal/portfolio-backtest/universe${q ? `?${q}` : ""}`,
@@ -7598,6 +7618,9 @@ export type HistoricalPortfolioRunResult = {
   validation: Record<string, any>
   snapshot_audit: Record<string, any>
   warnings: string[]
+  winner_semantics?: string | null
+  barrier_scenario?: Record<string, any> | null
+  liquidation_diagnostics?: Record<string, any> | null
 }
 
 export type HistoricalOpportunityMaterialization = {
@@ -7623,14 +7646,48 @@ export type HistoricalOpportunityCoverage = {
   materialization_run_ids: string[]
 }
 
+export type HistoricalDecisionRow = {
+  id: number
+  methodology_version: string
+  decision_date: string
+  symbol: string
+  horizon: string
+  variant: string
+  status: string
+  actionable: boolean
+  reconstructed_dashboard_winner: boolean
+  accepted: boolean
+  rank: number[]
+  decision: Record<string, any>
+  opportunity: Record<string, any> | null
+  input_hash: string
+  materialization_run_id: string
+}
+
+export type HistoricalDecisionPage = {
+  items: HistoricalDecisionRow[]
+  page: number
+  page_size: number
+  total: number
+  winner_semantics: string
+}
+
 export async function createHistoricalPortfolioBacktest(body: {
   start_date: string
   end_date: string
   symbols?: string[]
+  horizons?: Array<"weekly" | "monthly" | "quarterly">
   initial_capital?: number
   capacity_fraction?: 0.01 | 0.025 | 0.05 | 0.1
   allow_partial_fills?: boolean
-}): Promise<{ run_id: string; status: "queued" | "succeeded"; reused: boolean }> {
+  min_edge_score?: number
+  required_edge_conditions?: string[]
+}): Promise<{
+  run_id: string
+  status: "queued" | "succeeded"
+  reused: boolean
+  materialization_run_id?: string | null
+}> {
   return request("/strategy/signal/historical-portfolio-backtests", {
     method: "POST",
     body: JSON.stringify(body),
@@ -7643,6 +7700,33 @@ export async function getHistoricalPortfolioBacktestStatus(runId: string): Promi
 
 export async function getHistoricalPortfolioBacktestResult(runId: string): Promise<HistoricalPortfolioRunResult> {
   return request(`/strategy/signal/historical-portfolio-backtests/${encodeURIComponent(runId)}/result`)
+}
+
+export interface HistoricalPortfolioSnapshot {
+  snapshot_available: boolean
+  computed_at?: string | null
+  computing?: { run_id: string; status: string; progress: Record<string, unknown> } | null
+  result: HistoricalPortfolioRunResult | null
+}
+
+export async function getHistoricalPortfolioSnapshot(horizon?: "weekly" | "monthly" | "quarterly"): Promise<HistoricalPortfolioSnapshot> {
+  const query = horizon ? `?horizon=${encodeURIComponent(horizon)}` : ""
+  return request(`/strategy/signal/historical-portfolio-backtests/snapshot${query}`)
+}
+
+export async function getHistoricalPortfolioDecisions(params: {
+  start_date: string
+  end_date: string
+  symbol?: string
+  horizon?: string
+  page?: number
+  page_size?: number
+}): Promise<HistoricalDecisionPage> {
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value != null && value !== "") query.set(key, String(value))
+  }
+  return request(`/strategy/signal/historical-portfolio-backtests/decisions?${query}`)
 }
 
 export async function getHistoricalOpportunityCoverage(body: {
