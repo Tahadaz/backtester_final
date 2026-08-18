@@ -1,9 +1,11 @@
+## Orientation
+
+`README.md` has the repo map, local runtime, and endpoints. Read it rather than re-deriving the layout.
+
 ## graphify
 
-This project has a graphify knowledge graph at graphify-out/.
+A knowledge graph of this repo lives at `graphify-out/`.
 
-Rules:
-- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
-- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
-- For cross-module "how does X relate to Y" questions, prefer `graphify query "<question>"`, `graphify path "<A>" "<B>"`, or `graphify explain "<concept>"` over grep — these traverse the graph's EXTRACTED + INFERRED edges instead of scanning files
-- After modifying code files in this session, run `graphify update .` to keep the graph current (AST-only, no API cost)
+- `graphify query "<question>"`, `graphify path "A" "B"`, and `graphify explain "X"` are **local** BFS traversals over `graph.json` — no LLM, token-budgeted (`--budget`, default 2000). Worth reaching for on cross-module "how does X reach Y" questions where grep would need several passes.
+- Do **not** read `graphify-out/GRAPH_REPORT.md` (917 KB) or `graph.json` (38 MB) directly. They do not fit in context.
+- The graph was last built 2026-07-28 and is stale relative to the working tree. `graphify update .` re-extracts from AST with no API cost.
