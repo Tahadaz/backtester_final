@@ -6,7 +6,7 @@ import os
 import unicodedata
 import uuid
 from collections import Counter, defaultdict
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from math import isfinite
 from statistics import median
 from typing import Any, Callable, Literal
@@ -81,6 +81,18 @@ VALUATION_SCENARIOS = ("bear", "base", "bull")
 FUNDAMENTAL_LIVE_QUOTE_MAX_AGE_SECONDS = 6 * 60 * 60
 AssumptionOverrideLoader = Callable[[str, str], dict[str, float] | None]
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ResearchOverlayPrefetch:
+    """Bulk-loaded inputs used to derive research overlays without per-symbol SQL."""
+
+    rating_inputs: dict[tuple[uuid.UUID, str], tuple[float | None, float | None]]
+    verification_reasons: dict[tuple[uuid.UUID, str], str | None]
+    data_cutoffs: dict[tuple[uuid.UUID, str], dt.date | None]
+    horizon_predictions: dict[tuple[uuid.UUID, str], list[dict[str, Any]]]
+    revision_targets: dict[str, list[tuple[uuid.UUID, float]]]
+    base_ensembles: dict[tuple[uuid.UUID, str], models.FundamentalEnsembleResult]
 
 
 def normalize_period_label(period_type: str | None, period_label: str | None) -> str:
@@ -554,6 +566,188 @@ def derive_revision_direction(
     return "="
 
 
+def load_research_overlay_prefetch(
+    db: Session,
+    *,
+    import_ids_by_symbol: dict[str, uuid.UUID | None],
+) -> ResearchOverlayPrefetch:
+    """Load every universe-overlay input in a bounded number of queries."""
+
+    normalized = {
+        str(symbol).strip().upper(): import_id
+        for symbol, import_id in import_ids_by_symbol.items()
+        if symbol and import_id is not None
+    }
+    symbols = sorted(normalized)
+    import_ids = sorted(set(normalized.values()), key=str)
+    wanted_pairs = {(import_id, symbol) for symbol, import_id in normalized.items()}
+    rating_inputs: dict[tuple[uuid.UUID, str], tuple[float | None, float | None]] = {}
+    verification_reasons: dict[tuple[uuid.UUID, str], str | None] = {}
+    data_cutoffs: dict[tuple[uuid.UUID, str], dt.date | None] = {}
+    horizon_predictions: dict[tuple[uuid.UUID, str], list[dict[str, Any]]] = {}
+    revision_targets: dict[str, list[tuple[uuid.UUID, float]]] = defaultdict(list)
+    base_ensembles: dict[tuple[uuid.UUID, str], models.FundamentalEnsembleResult] = {}
+    if not symbols:
+        return ResearchOverlayPrefetch(
+            rating_inputs=rating_inputs,
+            verification_reasons=verification_reasons,
+            data_cutoffs=data_cutoffs,
+            horizon_predictions=horizon_predictions,
+            revision_targets=dict(revision_targets),
+            base_ensembles=base_ensembles,
+        )
+
+    valuation_rows = (
+        db.query(models.FundamentalValuationResult)
+        .filter(
+            models.FundamentalValuationResult.symbol.in_(symbols),
+            models.FundamentalValuationResult.import_id.in_(import_ids),
+            models.FundamentalValuationResult.scenario == "base",
+        )
+        .all()
+    )
+    costs_by_pair: dict[tuple[uuid.UUID, str], list[float]] = defaultdict(list)
+    yields_by_pair: dict[tuple[uuid.UUID, str], list[float]] = defaultdict(list)
+    for row in valuation_rows:
+        key = (row.import_id, str(row.symbol).upper())
+        if key not in wanted_pairs:
+            continue
+        inputs = row.inputs_json or {}
+        cost = _positive_num(inputs.get("cost_of_equity"))
+        if cost is not None:
+            costs_by_pair[key].append(cost)
+        dividend_yield = _num(inputs.get("dividend_yield"))
+        if dividend_yield is not None and dividend_yield >= 0:
+            yields_by_pair[key].append(dividend_yield)
+    for key in wanted_pairs:
+        costs = costs_by_pair.get(key, [])
+        dividend_yields = yields_by_pair.get(key, [])
+        rating_inputs[key] = (
+            float(median(costs)) if costs else None,
+            float(median(dividend_yields)) if dividend_yields else 0.0,
+        )
+
+    snapshot_rows = (
+        db.query(
+            models.FundamentalLatestSnapshot.import_id,
+            models.FundamentalLatestSnapshot.symbol,
+            models.FundamentalLatestSnapshot.latest_statement_year,
+            models.FundamentalLatestSnapshot.as_of_date,
+            models.FundamentalLatestSnapshot.model_eligibility_json,
+        )
+        .filter(
+            models.FundamentalLatestSnapshot.symbol.in_(symbols),
+            models.FundamentalLatestSnapshot.import_id.in_(import_ids),
+        )
+        .all()
+    )
+    statement_years: dict[tuple[uuid.UUID, str], int | None] = {}
+    for import_id, symbol, statement_year, as_of_date, eligibility_payload in snapshot_rows:
+        key = (import_id, str(symbol).upper())
+        if key not in wanted_pairs:
+            continue
+        statement_years[key] = statement_year
+        data_cutoffs[key] = as_of_date
+        raw_predictions = dict(eligibility_payload or {}).get("horizon_predictions")
+        horizon_predictions[key] = [dict(item) for item in raw_predictions if isinstance(item, dict)] if isinstance(raw_predictions, list) else []
+
+    if _table_exists(db, models.FundamentalDataVerification):
+        verification_rows = (
+            db.query(models.FundamentalDataVerification)
+            .filter(
+                models.FundamentalDataVerification.symbol.in_(symbols),
+                models.FundamentalDataVerification.import_id.in_(import_ids),
+            )
+            .all()
+        )
+        for row in verification_rows:
+            key = (row.import_id, str(row.symbol).upper())
+            if key in wanted_pairs and statement_years.get(key) == row.statement_year:
+                verification_reasons[key] = _data_unverified_reason(row)
+    for key in wanted_pairs:
+        verification_reasons.setdefault(key, None)
+        horizon_predictions.setdefault(key, [])
+
+    period_rows = (
+        db.query(
+            models.FundamentalPeriodMetric.import_id,
+            models.FundamentalPeriodMetric.symbol,
+            func.max(models.FundamentalPeriodMetric.period_end_date),
+        )
+        .filter(
+            models.FundamentalPeriodMetric.symbol.in_(symbols),
+            models.FundamentalPeriodMetric.import_id.in_(import_ids),
+            models.FundamentalPeriodMetric.metric_value.isnot(None),
+            models.FundamentalPeriodMetric.period_end_date.isnot(None),
+        )
+        .group_by(models.FundamentalPeriodMetric.import_id, models.FundamentalPeriodMetric.symbol)
+        .all()
+    )
+    period_cutoffs: dict[tuple[uuid.UUID, str], dt.date] = {
+        (import_id, str(symbol).upper()): cutoff
+        for import_id, symbol, cutoff in period_rows
+        if cutoff is not None
+    }
+    annual_rows = (
+        db.query(
+            models.FundamentalAnnualMetric.import_id,
+            models.FundamentalAnnualMetric.symbol,
+            models.FundamentalAnnualMetric.statement_year,
+            models.FundamentalAnnualMetric.as_of_date,
+        )
+        .filter(
+            models.FundamentalAnnualMetric.symbol.in_(symbols),
+            models.FundamentalAnnualMetric.import_id.in_(import_ids),
+            models.FundamentalAnnualMetric.metric_value.isnot(None),
+        )
+        .order_by(
+            models.FundamentalAnnualMetric.statement_year.desc(),
+            models.FundamentalAnnualMetric.as_of_date.desc().nullslast(),
+        )
+        .all()
+    )
+    annual_cutoffs: dict[tuple[uuid.UUID, str], dt.date] = {}
+    for import_id, symbol, statement_year, as_of_date in annual_rows:
+        key = (import_id, str(symbol).upper())
+        if key in wanted_pairs and key not in annual_cutoffs:
+            annual_cutoffs[key] = as_of_date or dt.date(int(statement_year), 12, 31)
+    for key in wanted_pairs:
+        data_cutoffs[key] = period_cutoffs.get(key) or data_cutoffs.get(key) or annual_cutoffs.get(key)
+
+    revision_rows = (
+        db.query(models.FundamentalEnsembleResult, models.FundamentalImport)
+        .join(models.FundamentalImport, models.FundamentalEnsembleResult.import_id == models.FundamentalImport.id)
+        .filter(
+            models.FundamentalEnsembleResult.symbol.in_(symbols),
+            models.FundamentalEnsembleResult.scenario == "base",
+            models.FundamentalImport.status.in_(SUCCEEDED_IMPORT_STATUSES),
+        )
+        .order_by(
+            models.FundamentalEnsembleResult.symbol.asc(),
+            models.FundamentalImport.completed_at.desc().nullslast(),
+            models.FundamentalImport.imported_at.desc().nullslast(),
+            models.FundamentalImport.created_at.desc(),
+        )
+        .all()
+    )
+    for ensemble, _import_row in revision_rows:
+        key = (ensemble.import_id, str(ensemble.symbol).upper())
+        if key in wanted_pairs:
+            base_ensembles[key] = ensemble
+        target = _positive_num(ensemble.fair_value_base)
+        if target is not None:
+            revision_targets[str(ensemble.symbol).upper()].append((ensemble.import_id, target))
+
+    return ResearchOverlayPrefetch(
+        rating_inputs=rating_inputs,
+        verification_reasons=verification_reasons,
+        data_cutoffs=data_cutoffs,
+        horizon_predictions=horizon_predictions,
+        revision_targets=dict(revision_targets),
+        base_ensembles=base_ensembles,
+    )
+
+
 def derive_research_overlay(
     db: Session,
     *,
@@ -563,15 +757,29 @@ def derive_research_overlay(
     import_row: models.FundamentalImport | None,
     current_price: Any = None,
     free_float_pct: float | None = None,
+    prefetched: ResearchOverlayPrefetch | None = None,
 ) -> dict[str, Any]:
-    headline_ensemble = _base_ensemble_for_overlay(db, symbol=symbol, ensemble=ensemble, import_row=import_row)
+    if prefetched is not None:
+        candidate_import_id = ensemble.import_id if ensemble is not None else import_row.id if import_row is not None else None
+        candidate_key = (candidate_import_id, symbol.upper()) if candidate_import_id is not None else None
+        headline_ensemble = (
+            ensemble
+            if ensemble is not None and str(ensemble.scenario or "base").lower() == "base"
+            else prefetched.base_ensembles.get(candidate_key)
+        )
+    else:
+        headline_ensemble = _base_ensemble_for_overlay(db, symbol=symbol, ensemble=ensemble, import_row=import_row)
     import_id = headline_ensemble.import_id if headline_ensemble is not None else import_row.id if import_row is not None else None
-    cost_of_equity, dividend_yield = _rating_inputs_from_valuation_rows(
-        db,
-        symbol=symbol,
-        import_id=import_id,
-        scenario="base",
-    )
+    prefetch_key = (import_id, symbol.upper()) if import_id is not None else None
+    if prefetched is not None:
+        cost_of_equity, dividend_yield = prefetched.rating_inputs.get(prefetch_key, (None, 0.0))
+    else:
+        cost_of_equity, dividend_yield = _rating_inputs_from_valuation_rows(
+            db,
+            symbol=symbol,
+            import_id=import_id,
+            scenario="base",
+        )
     recommendation = derive_recommendation(
         headline_ensemble,
         current_price=current_price,
@@ -579,7 +787,9 @@ def derive_research_overlay(
         forward_dividend_yield=dividend_yield,
     )
     verification_reason = None
-    if import_id is not None:
+    if prefetched is not None:
+        verification_reason = prefetched.verification_reasons.get(prefetch_key)
+    elif import_id is not None:
         snapshot_year_row = (
             db.query(models.FundamentalLatestSnapshot.latest_statement_year)
             .filter(
@@ -599,7 +809,7 @@ def derive_research_overlay(
     if verification_reason is not None:
         recommendation = "NR"
     target_price = _num(headline_ensemble.fair_value_base) if headline_ensemble is not None and recommendation != "NR" else None
-    as_of_date = _overlay_data_cutoff(db, symbol=symbol, import_id=import_id)
+    as_of_date = prefetched.data_cutoffs.get(prefetch_key) if prefetched is not None else _overlay_data_cutoff(db, symbol=symbol, import_id=import_id)
     valuation_date = None
     if headline_ensemble is not None and headline_ensemble.computed_at is not None:
         valuation_date = headline_ensemble.computed_at.date()
@@ -607,18 +817,37 @@ def derive_research_overlay(
         when = import_row.completed_at or import_row.imported_at or import_row.created_at
         valuation_date = when.date() if when else None
     target_date = _add_years(as_of_date, 1) if as_of_date is not None else None
-    horizon_predictions = _horizon_predictions_from_snapshot_payload(db, symbol=symbol, import_id=import_id, current_price=current_price)
-    return {
-        "recommendation": recommendation,
-        "target_price": target_price,
-        "conviction": derive_conviction(headline_ensemble),
-        "revision_direction": derive_revision_direction(
+    if prefetched is not None:
+        horizon_predictions = [dict(item) for item in prefetched.horizon_predictions.get(prefetch_key, [])]
+        override_price = _positive_num(current_price)
+        if override_price is not None:
+            for item in horizon_predictions:
+                target = _positive_num(item.get("forward_target"))
+                if target is not None:
+                    item["upside"] = target / override_price - 1.0
+        revision_direction = "="
+        current_target = _positive_num(target_price)
+        if current_target is not None:
+            for candidate_import_id, previous_target in prefetched.revision_targets.get(symbol.upper(), []):
+                if import_id is not None and candidate_import_id == import_id:
+                    continue
+                change = current_target / previous_target - 1.0
+                revision_direction = "up" if change > 0.02 else "down" if change < -0.02 else "="
+                break
+    else:
+        horizon_predictions = _horizon_predictions_from_snapshot_payload(db, symbol=symbol, import_id=import_id, current_price=current_price)
+        revision_direction = derive_revision_direction(
             db,
             symbol=symbol,
             scenario="base",
             current_import_id=headline_ensemble.import_id if headline_ensemble is not None else import_row.id if import_row is not None else None,
             target_price=target_price,
-        ),
+        )
+    return {
+        "recommendation": recommendation,
+        "target_price": target_price,
+        "conviction": derive_conviction(headline_ensemble),
+        "revision_direction": revision_direction,
         "analyst": "Systeme quantitatif",
         "as_of_date": as_of_date.isoformat() if as_of_date else None,
         "valuation_date": valuation_date.isoformat() if valuation_date else None,
@@ -4635,6 +4864,7 @@ def recompute_symbol_valuations(
     overrides_loader: AssumptionOverrideLoader | None = None,
     computed_at: dt.datetime | None = None,
     shared_context: dict[str, Any] | None = None,
+    include_sensitivity_grids: bool = True,
 ) -> list[models.FundamentalValuationResult]:
     symbol = symbol.upper()
     scenario = _scenario_key(scenario)
@@ -4843,15 +5073,17 @@ def recompute_symbol_valuations(
     )
     eligibility["available_horizons"] = sorted(horizon_set)
     eligibility["horizon_predictions"] = sanitize_json_compatible(horizon_predictions)
-    sensitivity_grids = compute_default_sensitivity_grids(
-        snapshot=target_snapshot,
-        history=history,
-        peer_snapshots=peer_snapshots,
-        sectors=sectors,
-        base_assumptions=assumptions,
-        scenario=scenario,
-        integrity=integrity,
-    )
+    sensitivity_grids = None
+    if include_sensitivity_grids:
+        sensitivity_grids = compute_default_sensitivity_grids(
+            snapshot=target_snapshot,
+            history=history,
+            peer_snapshots=peer_snapshots,
+            sectors=sectors,
+            base_assumptions=assumptions,
+            scenario=scenario,
+            integrity=integrity,
+        )
     snapshot_row.metrics_json = sanitize_json_compatible(target_snapshot.metrics)
     snapshot_row.coverage_json = sanitize_json_compatible(target_snapshot.coverage)
     snapshot_row.source_json = sanitize_json_compatible(target_snapshot.source)
@@ -4926,6 +5158,7 @@ def recompute_symbol_valuations_all_scenarios(
     symbol: str,
     scenarios: Iterable[str] = VALUATION_SCENARIOS,
     overrides_loader: AssumptionOverrideLoader | None = None,
+    include_sensitivity_grids: bool = True,
 ) -> list[models.FundamentalValuationResult]:
     rows: list[models.FundamentalValuationResult] = []
     loader = overrides_loader or make_bulk_overrides_loader(db, [symbol])
@@ -4951,6 +5184,7 @@ def recompute_symbol_valuations_all_scenarios(
                 overrides_loader=loader,
                 computed_at=run_ts,
                 shared_context=context,
+                include_sensitivity_grids=include_sensitivity_grids,
             )
         )
     refresh_canonical_snapshot_flags(db, symbols=[symbol.upper()])

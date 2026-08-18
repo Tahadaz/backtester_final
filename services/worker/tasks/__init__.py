@@ -52,6 +52,12 @@ def execute_fundamental_import(*args, **kwargs):
     return _execute_fundamental_import(*args, **kwargs)
 
 
+def refresh_fundamental_valuations(*args, **kwargs):
+    from .refresh_fundamental_valuations import refresh_fundamental_valuations as _refresh_fundamental_valuations
+
+    return _refresh_fundamental_valuations(*args, **kwargs)
+
+
 def refresh_yfinance_universe(*args, **kwargs):
     from .refresh_yfinance_fundamentals import refresh_yfinance_universe as _refresh_yfinance_universe
 
@@ -148,6 +154,7 @@ __all__ = [
     "execute_cross_asset_backtest",
     "ingest_macro_series",
     "execute_fundamental_import",
+    "refresh_fundamental_valuations",
     "refresh_yfinance_universe",
     "refresh_yfinance_for_symbol",
     "refresh_stockanalysis_universe",

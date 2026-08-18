@@ -775,9 +775,18 @@ def test_stock_detail_recomputes_newer_snapshot_instead_of_reusing_stale_valuati
 
         captured: dict[str, object] = {}
 
-        def fake_recompute_symbol_valuations_all_scenarios(db, *, import_id, symbol, scenarios=fundamentals_router.VALUATION_SCENARIOS, overrides_loader=None):
+        def fake_recompute_symbol_valuations_all_scenarios(
+            db,
+            *,
+            import_id,
+            symbol,
+            scenarios=fundamentals_router.VALUATION_SCENARIOS,
+            overrides_loader=None,
+            include_sensitivity_grids=True,
+        ):
             captured["import_id"] = import_id
             captured["scenarios"] = tuple(scenarios)
+            captured["include_sensitivity_grids"] = include_sensitivity_grids
             run_ts = dt.datetime(2026, 5, 3, tzinfo=dt.timezone.utc)
             fair_values = {"bear": 210.0, "base": 222.0, "bull": 240.0}
             for scenario in scenarios:
@@ -824,27 +833,105 @@ def test_stock_detail_recomputes_newer_snapshot_instead_of_reusing_stale_valuati
                 )
 
         monkeypatch.setattr(fundamentals_router, "recompute_symbol_valuations_all_scenarios", fake_recompute_symbol_valuations_all_scenarios)
+        enqueued: list[list[str]] = []
+        monkeypatch.setattr(
+            fundamentals_router,
+            "_enqueue_fundamental_valuation_refresh",
+            lambda symbols: enqueued.append(list(symbols)) or "refresh-job",
+        )
 
         with TestClient(app) as client:
             universe = client.get("/fundamentals/universe?scenario=base")
-            batch = client.post("/fundamentals/snapshot/batch?scenario=base", json={"symbols": ["AAA"]})
             detail = client.get("/fundamentals/stocks/AAA?scenario=base")
+            batch = client.post("/fundamentals/snapshot/batch?scenario=base", json={"symbols": ["AAA"]})
 
         assert universe.status_code == 200
         universe_row = next(item for item in universe.json() if item["symbol"] == "AAA")
-        assert universe_row["ensemble"]["fair_value_base"] == 222.0
+        assert universe_row["ensemble"]["fair_value_base"] == 120.0
+        assert universe_row["valuation_pending"] is True
+        assert enqueued == [["AAA"]]
         assert batch.status_code == 200
         assert batch.json()["AAA"]["fair_value"] == 222.0
         assert detail.status_code == 200
         payload = detail.json()
         assert captured["import_id"] == newer_import_id
         assert captured["scenarios"] == tuple(fundamentals_router.VALUATION_SCENARIOS)
+        assert captured["include_sensitivity_grids"] is False
         assert payload["latest_statement_year"] == 2025
         assert payload["ensemble"]["fair_value_base"] == 222.0
         assert payload["ensemble"]["fair_value_base"] != 120.0
         assert payload["valuations"][0]["fair_value"] == 222.0
     finally:
         engine.dispose()
+
+
+def test_ensure_latest_can_report_stale_without_recomputing(monkeypatch) -> None:
+    _app, engine, SessionLocal = _client_and_session()
+    try:
+        _seed_auto_scenarios(SessionLocal)
+        db = SessionLocal()
+        try:
+            snapshot = fundamentals_service.latest_snapshot_rows_by_symbol(db, symbols=["AAA"])["AAA"]
+            base = (
+                db.query(models.FundamentalEnsembleResult)
+                .filter_by(import_id=snapshot.import_id, symbol="AAA", scenario="base")
+                .one()
+            )
+            base.fair_value_base = None
+            base.model_dispersion_base = 5.0
+            db.commit()
+
+            def fail_recompute(*_args, **_kwargs):
+                raise AssertionError("recompute must not run on the universe read path")
+
+            monkeypatch.setattr(fundamentals_router, "recompute_symbol_valuations_all_scenarios", fail_recompute)
+            pending = fundamentals_router._ensure_latest_symbol_valuations(
+                db,
+                import_id=snapshot.import_id,
+                symbol="AAA",
+                scenario="base",
+                recompute_inline=False,
+            )
+
+            assert pending is True
+            assert base.fair_value_base is None
+        finally:
+            db.close()
+    finally:
+        engine.dispose()
+
+
+def test_identical_active_valuation_refresh_job_is_not_enqueued_twice(monkeypatch) -> None:
+    symbols = ["BBB", "AAA", "AAA"]
+    normalized = ["AAA", "BBB"]
+    digest = fundamentals_router.hashlib.sha256("\n".join(normalized).encode("utf-8")).hexdigest()[:24]
+    expected_job_id = f"fundamental-valuations-{digest}"
+
+    class ActiveJob:
+        id = expected_job_id
+
+        @staticmethod
+        def get_status(refresh=False):
+            assert refresh is False
+            return "started"
+
+    class FakeQueue:
+        def __init__(self) -> None:
+            self.enqueues = 0
+
+        def fetch_job(self, job_id):
+            assert job_id == expected_job_id
+            return ActiveJob()
+
+        def enqueue(self, *_args, **_kwargs):
+            self.enqueues += 1
+            raise AssertionError("active identical job must be reused")
+
+    queue = FakeQueue()
+    monkeypatch.setattr(fundamentals_router, "get_queue", lambda: queue)
+
+    assert fundamentals_router._enqueue_fundamental_valuation_refresh(symbols) == expected_job_id
+    assert queue.enqueues == 0
 
 
 def test_targeted_bvc_period_type_defaults_include_all_periods() -> None:

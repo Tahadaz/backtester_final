@@ -224,6 +224,7 @@ class FundamentalUniverseRow(BaseModel):
     technical: TechnicalContextOut | None = None
     data_source: str | None = None
     imported_at: str | None = None
+    valuation_pending: bool = False
 
 
 class AnnualMetricOut(BaseModel):

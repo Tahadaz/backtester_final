@@ -209,6 +209,11 @@ export function UniverseScreen({
                     <span className="flex min-w-0 items-center gap-1.5">
                       <span className={cn("font-mono text-xs font-bold", active && "text-primary")}>{row.symbol}</span>
                       <span className="text-[10px]">{revisionArrow(row.revision_direction)}</span>
+                      {row.valuation_pending ? (
+                        <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-medium text-amber-700 dark:text-amber-300">
+                          calcul en cours…
+                        </span>
+                      ) : null}
                     </span>
                     <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
                       {row.sector ?? row.display_name ?? "-"}

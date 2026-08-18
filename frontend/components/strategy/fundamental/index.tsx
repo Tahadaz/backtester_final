@@ -83,6 +83,24 @@ export function SignalFundamentalView({
   })
 
   const rows = useMemo(() => (universeRows ?? []).filter(isMasiFundamentalRow), [universeRows])
+  const pendingUniverseRefreshKeyRef = useRef<string | null>(null)
+  useEffect(() => {
+    const pendingKey = (universeRows ?? [])
+      .filter((row) => row.valuation_pending)
+      .map((row) => row.symbol)
+      .sort()
+      .join("|")
+    if (!pendingKey) {
+      pendingUniverseRefreshKeyRef.current = null
+      return
+    }
+    if (pendingUniverseRefreshKeyRef.current === pendingKey) return
+    pendingUniverseRefreshKeyRef.current = pendingKey
+    const timer = window.setTimeout(() => {
+      void mutateUniverse()
+    }, 8_000)
+    return () => window.clearTimeout(timer)
+  }, [mutateUniverse, universeRows])
   const ratingAssumptions = useMemo(() => {
     const out: Record<string, unknown> = {}
     for (const key of ["rating_buy_excess_return", "rating_accumulate_excess_return", "rating_reduce_excess_return", "rating_sell_excess_return"]) {

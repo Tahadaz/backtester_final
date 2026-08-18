@@ -6757,6 +6757,7 @@ export const FundamentalUniverseRowSchema = z.object({
   technical: FundamentalTechnicalContextSchema.nullable().optional(),
   data_source: z.string().nullable().optional(),
   imported_at: z.string().nullable().optional(),
+  valuation_pending: z.boolean().optional(),
 })
 export type FundamentalUniverseRow = z.infer<typeof FundamentalUniverseRowSchema>
 

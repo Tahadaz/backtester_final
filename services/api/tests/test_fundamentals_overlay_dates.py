@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from services.api.app import models
-from services.api.app.services.fundamentals import derive_research_overlay
+from services.api.app.services.fundamentals import derive_research_overlay, load_research_overlay_prefetch
 
 
 @compiles(JSONB, "sqlite")
@@ -28,6 +28,7 @@ def test_overlay_dates_separate_data_cutoff_valuation_and_target() -> None:
         models.Dataset.__table__,
         models.FundamentalImport.__table__,
         models.FundamentalSourceDocument.__table__,
+        models.FundamentalAnnualMetric.__table__,
         models.FundamentalLatestSnapshot.__table__,
         models.FundamentalPeriodMetric.__table__,
         models.FundamentalValuationResult.__table__,
@@ -97,10 +98,33 @@ def test_overlay_dates_separate_data_cutoff_valuation_and_target() -> None:
         db.commit()
 
         overlay = derive_research_overlay(db, symbol="AAA", scenario="base", ensemble=ensemble, import_row=run, current_price=100.0)
+        statements: list[str] = []
+
+        def record_statement(_conn, _cursor, statement, _parameters, _context, _executemany):
+            statements.append(statement)
+
+        event.listen(engine, "before_cursor_execute", record_statement)
+        prefetched = load_research_overlay_prefetch(db, import_ids_by_symbol={"AAA": run.id})
+        one_symbol_query_count = len(statements)
+        statements.clear()
+        load_research_overlay_prefetch(db, import_ids_by_symbol={"AAA": run.id, "BBB": run.id})
+        two_symbol_query_count = len(statements)
+        event.remove(engine, "before_cursor_execute", record_statement)
+        bulk_overlay = derive_research_overlay(
+            db,
+            symbol="AAA",
+            scenario="base",
+            ensemble=ensemble,
+            import_row=run,
+            current_price=100.0,
+            prefetched=prefetched,
+        )
 
         assert overlay["as_of_date"] == "2026-06-30"
         assert overlay["valuation_date"] == "2026-08-10"
         assert overlay["target_date"] == "2027-06-30"
+        assert bulk_overlay == overlay
+        assert two_symbol_query_count == one_symbol_query_count
     finally:
         db.close()
         engine.dispose()

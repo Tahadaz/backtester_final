@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import datetime as dt
+import logging
 import os
 import types
 import uuid
@@ -101,6 +102,7 @@ from ..services.fundamentals import (
     latest_integrity_report,
     latest_snapshot_rows_by_symbol,
     lightweight_enriched_snapshots_by_symbol,
+    load_research_overlay_prefetch,
     make_bulk_overrides_loader,
     market_price_context_by_symbol,
     methodology_payload,
@@ -123,6 +125,7 @@ from ..services.market_universe import list_signal_universe
 from ..storage import put_bytes
 
 router = APIRouter(prefix="/fundamentals", tags=["fundamentals"])
+logger = logging.getLogger(__name__)
 
 RATE_SENSITIVE_MODELS = frozenset({"fcff_dcf", "fcfe_dcf", "ddm", "residual_income"})
 REQUIRED_COVERAGE_METRICS = ("Current_Price", "PER", "Price_to_Book", "ROE", "Debt_to_Equity", "FCF_Yield")
@@ -718,6 +721,7 @@ def _headline_overlay(
     current_price: Any,
     market_implied_scenario: str | None = None,
     free_float_pct: float | None = None,
+    prefetched: Any = None,
 ) -> dict[str, Any]:
     overlay = derive_research_overlay(
         db,
@@ -727,6 +731,7 @@ def _headline_overlay(
         import_row=import_row,
         current_price=current_price,
         free_float_pct=free_float_pct,
+        prefetched=prefetched,
     )
     if base_ensemble is None:
         overlay.update(
@@ -968,6 +973,8 @@ def _latest_available_valuation_bundle(
     db: Session,
     symbols: list[str],
     scenario: str,
+    *,
+    exclude_import_ids_by_symbol: dict[str, uuid.UUID] | None = None,
 ) -> tuple[dict[str, models.FundamentalEnsembleResult], dict[str, list[models.FundamentalValuationResult]]]:
     normalized_symbols = sorted({symbol.strip().upper() for symbol in symbols if symbol and symbol.strip()})
     if not normalized_symbols:
@@ -993,6 +1000,8 @@ def _latest_available_valuation_bundle(
     import_id_by_symbol: dict[str, uuid.UUID] = {}
     for ensemble, _import_row in ensemble_rows:
         if ensemble.symbol in ensemble_by_symbol:
+            continue
+        if (exclude_import_ids_by_symbol or {}).get(ensemble.symbol) == ensemble.import_id:
             continue
         ensemble_by_symbol[ensemble.symbol] = ensemble
         import_id_by_symbol[ensemble.symbol] = ensemble.import_id
@@ -1062,12 +1071,15 @@ def _ensure_latest_symbol_valuations(
     import_id: uuid.UUID,
     symbol: str,
     scenario: str,
-) -> None:
+    recompute_inline: bool = True,
+    include_sensitivity_grids: bool = True,
+) -> bool:
     symbol = symbol.upper()
     if scenario != "auto":
         _scenario_or_422(scenario)
     scenarios = list(VALUATION_SCENARIOS)
-    _lock_symbol_valuation_refresh(db, import_id=import_id, symbol=symbol)
+    if recompute_inline:
+        _lock_symbol_valuation_refresh(db, import_id=import_id, symbol=symbol)
     existing_rows = (
         db.query(models.FundamentalEnsembleResult)
         .filter(
@@ -1091,16 +1103,71 @@ def _ensure_latest_symbol_valuations(
     if existing_rows and not _scenario_rows_are_coherent(existing_by_scenario):
         needed = list(scenarios)
     if not needed:
-        return
+        return False
+    if not recompute_inline:
+        return True
     overrides_loader = make_bulk_overrides_loader(db, [symbol])
-    recompute_symbol_valuations_all_scenarios(
-        db,
-        import_id=import_id,
-        symbol=symbol,
-        scenarios=scenarios,
-        overrides_loader=overrides_loader,
-    )
+    recompute_kwargs: dict[str, Any] = {
+        "import_id": import_id,
+        "symbol": symbol,
+        "scenarios": scenarios,
+        "overrides_loader": overrides_loader,
+    }
+    if not include_sensitivity_grids:
+        recompute_kwargs["include_sensitivity_grids"] = False
+    recompute_symbol_valuations_all_scenarios(db, **recompute_kwargs)
     db.commit()
+    return False
+
+
+def _rq_job_is_active(queue: object, job_id: str) -> bool:
+    fetch_job = getattr(queue, "fetch_job", None)
+    if not callable(fetch_job):
+        return False
+    try:
+        job = fetch_job(job_id)
+    except Exception:
+        return False
+    if job is None:
+        return False
+    get_status = getattr(job, "get_status", None)
+    if not callable(get_status):
+        return True
+    try:
+        return str(get_status(refresh=False) or "").strip().lower() in {"queued", "started", "deferred", "scheduled"}
+    except Exception:
+        return True
+
+
+def _enqueue_fundamental_valuation_refresh(symbols: list[str]) -> str | None:
+    normalized = sorted({str(symbol).strip().upper() for symbol in symbols if symbol and str(symbol).strip()})
+    if not normalized:
+        return None
+    digest = hashlib.sha256("\n".join(normalized).encode("utf-8")).hexdigest()[:24]
+    job_id = f"fundamental-valuations-{digest}"
+    try:
+        queue = get_queue()
+        if _rq_job_is_active(queue, job_id):
+            return job_id
+        fetch_job = getattr(queue, "fetch_job", None)
+        old_job = fetch_job(job_id) if callable(fetch_job) else None
+        if old_job is not None:
+            delete = getattr(old_job, "delete", None)
+            if callable(delete):
+                delete()
+        job = queue.enqueue(
+            "services.worker.tasks.refresh_fundamental_valuations.refresh_fundamental_valuations",
+            normalized,
+            job_id=job_id,
+            job_timeout=int(settings.RUN_JOB_TIMEOUT_SECONDS),
+            result_ttl=int(settings.RUN_JOB_RESULT_TTL_SECONDS),
+            failure_ttl=int(settings.RUN_JOB_FAILURE_TTL_SECONDS),
+        )
+        return str(job.id)
+    except Exception:
+        # A read endpoint must remain available if Redis is temporarily down.
+        logger.warning("Unable to enqueue stale fundamental valuations", exc_info=True)
+        return None
 
 
 def _stale_valuation_ensemble(row: models.FundamentalEnsembleResult) -> bool:
@@ -2211,13 +2278,17 @@ def get_fundamental_universe(
     market_context = market_price_context_by_symbol(db, all_symbols)
     tech = technical_context(db, all_symbols)
     import_ids = sorted({row.import_id for row in snapshots})
+    pending_symbols: set[str] = set()
     for row in snapshots:
-        _ensure_latest_symbol_valuations(
+        if _ensure_latest_symbol_valuations(
             db,
             import_id=row.import_id,
             symbol=row.symbol,
             scenario=scenario,
-        )
+            recompute_inline=False,
+        ):
+            pending_symbols.add(row.symbol)
+    _enqueue_fundamental_valuation_refresh(sorted(pending_symbols))
     scenario_filter_valuation = models.FundamentalValuationResult.scenario.in_(list(VALUATION_SCENARIOS))
     scenario_filter_ensemble = models.FundamentalEnsembleResult.scenario.in_(list(VALUATION_SCENARIOS))
     valuations = (
@@ -2237,12 +2308,38 @@ def get_fundamental_universe(
     fallback_symbols = [
         row.symbol
         for row in snapshots
-        if (row.import_id, row.symbol, scenario) not in ensemble_by_symbol
+        if row.symbol in pending_symbols or (row.import_id, row.symbol, scenario) not in ensemble_by_symbol
     ]
+    pending_import_ids = {row.symbol: row.import_id for row in snapshots if row.symbol in pending_symbols}
     fallback_ensembles_by_scenario: dict[str, dict[str, models.FundamentalEnsembleResult]] = {}
     fallback_valuations_by_scenario: dict[str, dict[str, list[models.FundamentalValuationResult]]] = {}
     for fallback_scenario in sorted({scenario, HEADLINE_SCENARIO}):
-        fallback_ensembles_by_scenario[fallback_scenario], fallback_valuations_by_scenario[fallback_scenario] = _latest_available_valuation_bundle(db, fallback_symbols, fallback_scenario)
+        fallback_ensembles_by_scenario[fallback_scenario], fallback_valuations_by_scenario[fallback_scenario] = _latest_available_valuation_bundle(
+            db,
+            fallback_symbols,
+            fallback_scenario,
+            exclude_import_ids_by_symbol=pending_import_ids,
+        )
+
+    overlay_ensemble_by_symbol: dict[str, models.FundamentalEnsembleResult | None] = {}
+    for snapshot_row in snapshots:
+        current_base = ensemble_by_symbol.get((snapshot_row.import_id, snapshot_row.symbol, HEADLINE_SCENARIO))
+        overlay_ensemble_by_symbol[snapshot_row.symbol] = (
+            fallback_ensembles_by_scenario.get(HEADLINE_SCENARIO, {}).get(snapshot_row.symbol)
+            if snapshot_row.symbol in pending_symbols
+            else current_base
+        ) or current_base
+    overlay_prefetch = load_research_overlay_prefetch(
+        db,
+        import_ids_by_symbol={
+            row.symbol: (
+                overlay_ensemble_by_symbol[row.symbol].import_id
+                if overlay_ensemble_by_symbol.get(row.symbol) is not None
+                else import_by_symbol[row.symbol].id if import_by_symbol.get(row.symbol) is not None else None
+            )
+            for row in snapshots
+        },
+    )
 
     output = []
     for row in snapshots:
@@ -2258,13 +2355,18 @@ def get_fundamental_universe(
         coherent_candidates, scenario_trio_stale = _coherent_scenario_rows(candidates)
         market_implied_scenario = _auto_scenario_from_ensembles(coherent_candidates, current_price=metrics.get("Current_Price"))
         selected_scenario = HEADLINE_SCENARIO if scenario_trio_stale else scenario
-        ensemble = coherent_candidates.get(selected_scenario)
+        ensemble = None if row.symbol in pending_symbols else coherent_candidates.get(selected_scenario)
         valuation_rows = valuations_by_symbol.get((row.import_id, row.symbol, selected_scenario), [])
         if ensemble is None:
             ensemble = fallback_ensembles_by_scenario.get(selected_scenario, {}).get(row.symbol)
             valuation_rows = fallback_valuations_by_scenario.get(selected_scenario, {}).get(row.symbol, [])
+        if ensemble is None and row.symbol in pending_symbols:
+            # With no older successful vintage, still expose the latest persisted
+            # row while the worker repairs it instead of blanking the response.
+            ensemble = candidates.get(selected_scenario)
+            valuation_rows = valuations_by_symbol.get((row.import_id, row.symbol, selected_scenario), [])
         import_row = import_by_symbol.get(row.symbol)
-        base_ensemble = coherent_candidates.get(HEADLINE_SCENARIO)
+        base_ensemble = overlay_ensemble_by_symbol.get(row.symbol)
         overlay = _headline_overlay(
             db,
             symbol=row.symbol,
@@ -2273,6 +2375,7 @@ def get_fundamental_universe(
             import_row=import_row,
             current_price=metrics.get("Current_Price"),
             market_implied_scenario=market_implied_scenario,
+            prefetched=overlay_prefetch,
         )
         output.append(
             FundamentalUniverseRow(
@@ -2298,6 +2401,7 @@ def get_fundamental_universe(
                 screens=screens,
                 **overlay,
                 scenario_trio_stale=scenario_trio_stale,
+                valuation_pending=row.symbol in pending_symbols,
                 scenario_probabilities=_scenario_probabilities_payload(DEFAULT_ASSUMPTIONS),
                 coverage=coverage,
                 model_eligibility=dict(row.model_eligibility_json or {}),
@@ -2667,6 +2771,7 @@ def get_fundamental_stock_detail(
         import_id=import_row.id if import_row else snapshot.import_id,
         symbol=symbol,
         scenario=scenario,
+        include_sensitivity_grids=False,
     )
     db.refresh(snapshot)
     scenario_ensembles, scenario_trio_stale = _ensembles_by_scenario(

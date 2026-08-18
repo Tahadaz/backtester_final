@@ -552,6 +552,7 @@ function HypothesesSection({
   const { data: scenarioAssumptionRows } = useSWR(
     detail.symbol ? ["fundamental-resolved-assumptions", detail.symbol] : null,
     async () => Promise.all(SCENARIOS.map(async (item) => [item, await getFundamentalResolvedAssumptions(detail.symbol, item)] as const)),
+    { revalidateOnFocus: false, dedupingInterval: 60_000 },
   )
   const scenarioAssumptions = new Map(scenarioAssumptionRows ?? [])
   const draftPayload = editableAssumptionDraft(methodology, draft)
