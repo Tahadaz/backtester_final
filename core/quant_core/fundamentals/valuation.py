@@ -2328,6 +2328,67 @@ def _justified_growth(sustainable_growth: float, terminal_growth: float, fade_ye
     return terminal_growth + h_period * (sustainable_growth - terminal_growth) / max(1, int(fade_years))
 
 
+def _market_implied_growth_path(
+    price: float | None,
+    eps: float | None,
+    payout: float | None,
+    cost_of_equity: float,
+    terminal_growth: float,
+    fade_years: int,
+) -> dict[str, Any]:
+    """Invert the H-model (Fuller & Hsia 1984) on trailing earnings to back out the
+    per-period earnings-growth path the market price already assumes.
+
+    Fixes payout, cost of equity (Ke), and terminal growth (gL) - the same
+    assumptions already used for the justified-multiples formulas - and solves in
+    closed form for the single starting growth rate gS that reprices the H-model
+    to the observed price:
+
+        D0 = payout x eps
+        H = fade_years / 2 (floored at 1.0)
+        gS = gL + [price x (Ke - gL) / D0 - (1 + gL)] / H
+
+    Growth then fades linearly from gS (year_offset=1) to gL (year_offset=fade_years).
+    If gS >= Ke the value is kept (not capped) and the exceeds flag is set - the
+    market is pricing in unsustainable (non-Gordon) growth, which is itself signal.
+    """
+    g_terminal = float(terminal_growth)
+    fade = max(1, int(fade_years))
+    h_period = max(1.0, fade / 2.0)
+    result: dict[str, Any] = {
+        "g_start": None,
+        "g_terminal": g_terminal,
+        "fade_years": fade,
+        "path": None,
+        "reason": None,
+        "g_start_exceeds_cost_of_equity": False,
+    }
+    if eps is None or eps <= 0:
+        result["reason"] = "eps_unavailable"
+        return result
+    if payout is None or payout <= 0:
+        result["reason"] = "payout_unavailable"
+        return result
+    ke = float(cost_of_equity)
+    if ke - g_terminal <= 1e-6:
+        result["reason"] = "ke_below_terminal_growth"
+        return result
+    if price is None or price <= 0:
+        result["reason"] = "price_unavailable"
+        return result
+    d0 = payout * eps
+    g_start = g_terminal + (price * (ke - g_terminal) / d0 - (1.0 + g_terminal)) / h_period
+    denom = max(fade - 1, 1)
+    path = [
+        {"year_offset": t, "growth": g_start - (g_start - g_terminal) * (t - 1) / denom}
+        for t in range(1, fade + 1)
+    ]
+    result["g_start"] = g_start
+    result["path"] = path
+    result["g_start_exceeds_cost_of_equity"] = g_start >= ke
+    return result
+
+
 def _selected_ratio_keys(
     assumptions: dict[str, Any],
     assumption_key: str,
@@ -3004,6 +3065,21 @@ def _justified_multiples(
         warnings.append("justified_growth_capped_below_cost_of_equity")
     if cost <= growth:
         warnings.append("cost_of_equity_not_above_justified_growth")
+    # Trailing EPS has no dedicated snapshot metric; derive it from PER (= price / EPS),
+    # which is already the most robust trailing-earnings proxy available on the snapshot
+    # and is consistent with how this function sources justified P/E above.
+    per_for_eps = _positive(snapshot.metrics.get("PER"))
+    trailing_eps = current_price / per_for_eps if current_price and per_for_eps else None
+    market_implied_growth_path = _market_implied_growth_path(
+        price=current_price,
+        eps=trailing_eps,
+        payout=payout,
+        cost_of_equity=cost,
+        terminal_growth=terminal_growth,
+        fade_years=fade_years,
+    )
+    if market_implied_growth_path["g_start_exceeds_cost_of_equity"]:
+        warnings.append("implied_start_growth_exceeds_cost_of_equity")
     implied_prices: dict[str, float] = {}
     implied_prices_raw: dict[str, float] = {}
     justified_multiples: dict[str, float] = {}
@@ -3062,6 +3138,7 @@ def _justified_multiples(
             "justified_multiples": justified_multiples,
             "multiple_deltas": multiple_deltas,
             "normalized_earnings_basis": midcycle_basis,
+            "market_implied_growth_path": market_implied_growth_path,
         },
         warnings=warnings,
         methodology="Justified P/B and P/E from ROE, payout, growth, and cost of equity.",

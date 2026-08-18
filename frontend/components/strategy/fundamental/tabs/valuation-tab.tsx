@@ -19,6 +19,7 @@ import { asNumber, asRecord, boundedMask, comparableMetricLabel, confidenceClass
 import { ComparableBenchmarkPanel } from "../panels/comparables"
 import { CostOfCapitalBuildUp } from "../panels/cost-of-capital"
 import { DcfMethodView } from "../panels/dcf-method-view"
+import { ImpliedGrowthCard } from "../panels/implied-growth-card"
 import { ModelStoryPanel } from "../panels/model-story"
 import { ModelSensitivityPanel, SensitivityHeatmap } from "../panels/sensitivity"
 import { FundCard, ModelValueGrid, StatTile, StatementEvidenceCard } from "../shared/cards"
@@ -561,6 +562,7 @@ export function ValuationTab({
   const activeModelRow = subTabRows.find((valuation) => valuation.model === activeModel) ?? subTabRows[0] ?? null
   const activeModelIncluded = activeModelRow ? activeModelRow.family !== "diagnostic" && !excludedModelIds.has(activeModelRow.model) : false
   const activeModelWeight = activeModelRow && activeModelIncluded ? selectionSummary.effectiveWeights.get(activeModelRow.model) ?? null : null
+  const justifiedRow = visibleValuations.find((valuation) => valuation.model === "justified_multiples") ?? null
 
   return (
     <div className="fund-gap">
@@ -627,6 +629,8 @@ export function ValuationTab({
       />
 
       <AssumptionStrip detail={detail} onNavigate={onNavigate} />
+
+      <ImpliedGrowthCard detail={detail} row={justifiedRow} selectedHorizon={selectedHorizon} />
 
       <div className="valuation-method-section">
         <div className="valuation-method-section-header">

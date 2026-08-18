@@ -599,6 +599,131 @@ def test_justified_pb_uses_trailing_roe_not_spot() -> None:
     assert justified.outputs["justified_multiples"]["implied_pb"] != pytest.approx(spot_pb)
 
 
+def test_justified_market_implied_growth_path_happy_path_matches_h_model_inversion() -> None:
+    snapshot = _valuation_snapshot("IMPG1")
+    snapshot.metrics.update({"Current_Price": 100.0, "PER": 6.0, "Dividend_Payout": 0.4, "ROE": 0.16})
+    history = _rows("IMPG1", {2022: {"ROE": 0.16}, 2023: {"ROE": 0.16}, 2024: {"ROE": 0.16}})
+
+    _eligibility, valuations = compute_symbol_valuations(
+        snapshot=snapshot,
+        history=history,
+        peer_snapshots=[snapshot],
+        sectors={"IMPG1": "Industrie"},
+        assumptions={"cost_of_equity": 0.11, "terminal_growth": 0.03, "fade_years": 5.0},
+    )
+    justified = next(row for row in valuations if row.model == "justified_multiples")
+    growth_path = justified.outputs["market_implied_growth_path"]
+
+    payout = 0.4
+    eps = 100.0 / 6.0
+    d0 = payout * eps
+    gl = 0.03  # raw terminal_growth assumption (gL), NOT the blended justified-multiples growth
+    h = 5.0 / 2.0
+    gs = gl + (100.0 * (0.11 - gl) / d0 - (1.0 + gl)) / h
+
+    assert growth_path["reason"] is None
+    assert growth_path["fade_years"] == 5
+    assert growth_path["g_terminal"] == pytest.approx(gl)
+    assert growth_path["g_start"] == pytest.approx(gs)
+    assert growth_path["g_start_exceeds_cost_of_equity"] is False
+
+    path = growth_path["path"]
+    assert [row["year_offset"] for row in path] == [1, 2, 3, 4, 5]
+    assert path[0]["growth"] == pytest.approx(gs)
+    assert path[-1]["growth"] == pytest.approx(gl)
+    assert path[2]["growth"] == pytest.approx((gs + gl) / 2.0)  # linear fade midpoint
+
+
+def test_justified_market_implied_growth_path_eps_unavailable() -> None:
+    snapshot = _valuation_snapshot("IMPG2")
+    snapshot.metrics.update({"Current_Price": 100.0, "Dividend_Payout": 0.4, "ROE": 0.16})
+    snapshot.metrics.pop("PER", None)
+    history = _rows("IMPG2", {2022: {"ROE": 0.16}, 2023: {"ROE": 0.16}, 2024: {"ROE": 0.16}})
+
+    _eligibility, valuations = compute_symbol_valuations(
+        snapshot=snapshot,
+        history=history,
+        peer_snapshots=[snapshot],
+        sectors={"IMPG2": "Industrie"},
+        assumptions={"cost_of_equity": 0.11, "terminal_growth": 0.03, "fade_years": 5.0},
+    )
+    justified = next(row for row in valuations if row.model == "justified_multiples")
+    growth_path = justified.outputs["market_implied_growth_path"]
+
+    assert growth_path["reason"] == "eps_unavailable"
+    assert growth_path["g_start"] is None
+    assert growth_path["path"] is None
+
+
+def test_justified_market_implied_growth_path_ke_below_terminal_growth() -> None:
+    snapshot = _valuation_snapshot("IMPG3")
+    snapshot.metrics.update({"Current_Price": 100.0, "PER": 9.5, "Dividend_Payout": 0.4, "ROE": 0.16})
+    history = _rows("IMPG3", {2022: {"ROE": 0.16}, 2023: {"ROE": 0.16}, 2024: {"ROE": 0.16}})
+
+    _eligibility, valuations = compute_symbol_valuations(
+        snapshot=snapshot,
+        history=history,
+        peer_snapshots=[snapshot],
+        sectors={"IMPG3": "Industrie"},
+        assumptions={"cost_of_equity": 0.03, "terminal_growth": 0.05, "fade_years": 5.0},
+    )
+    justified = next(row for row in valuations if row.model == "justified_multiples")
+    growth_path = justified.outputs["market_implied_growth_path"]
+
+    assert growth_path["reason"] == "ke_below_terminal_growth"
+    assert growth_path["g_start"] is None
+    assert growth_path["path"] is None
+
+
+def test_justified_market_implied_growth_path_flags_when_start_growth_exceeds_cost_of_equity() -> None:
+    snapshot = _valuation_snapshot("IMPG4")
+    snapshot.metrics.update({"Current_Price": 100.0, "PER": 14.0, "Dividend_Payout": 0.4, "ROE": 0.16})
+    history = _rows("IMPG4", {2022: {"ROE": 0.16}, 2023: {"ROE": 0.16}, 2024: {"ROE": 0.16}})
+
+    _eligibility, valuations = compute_symbol_valuations(
+        snapshot=snapshot,
+        history=history,
+        peer_snapshots=[snapshot],
+        sectors={"IMPG4": "Industrie"},
+        assumptions={"cost_of_equity": 0.11, "terminal_growth": 0.03, "fade_years": 5.0},
+    )
+    justified = next(row for row in valuations if row.model == "justified_multiples")
+    growth_path = justified.outputs["market_implied_growth_path"]
+
+    assert growth_path["reason"] is None
+    assert growth_path["g_start"] is not None
+    assert growth_path["g_start"] >= 0.11
+    assert growth_path["g_start_exceeds_cost_of_equity"] is True
+    assert "implied_start_growth_exceeds_cost_of_equity" in justified.warnings
+
+
+def test_justified_market_implied_growth_path_round_trip_recovers_price() -> None:
+    snapshot = _valuation_snapshot("IMPG5")
+    snapshot.metrics.update({"Current_Price": 100.0, "PER": 6.0, "Dividend_Payout": 0.4, "ROE": 0.16})
+    history = _rows("IMPG5", {2022: {"ROE": 0.16}, 2023: {"ROE": 0.16}, 2024: {"ROE": 0.16}})
+
+    _eligibility, valuations = compute_symbol_valuations(
+        snapshot=snapshot,
+        history=history,
+        peer_snapshots=[snapshot],
+        sectors={"IMPG5": "Industrie"},
+        assumptions={"cost_of_equity": 0.11, "terminal_growth": 0.03, "fade_years": 5.0},
+    )
+    justified = next(row for row in valuations if row.model == "justified_multiples")
+    growth_path = justified.outputs["market_implied_growth_path"]
+
+    payout = justified.inputs["payout"]
+    eps = 100.0 / 6.0
+    d0 = payout * eps
+    ke = 0.11
+    gl = growth_path["g_terminal"]
+    gs = growth_path["g_start"]
+    h = 5.0 / 2.0
+    rebuilt_price = d0 * ((1.0 + gl) + h * (gs - gl)) / (ke - gl)
+
+    assert rebuilt_price == pytest.approx(100.0, rel=1e-6)
+
+
 def test_multiple_ratio_masks_filter_relative_and_justified_models() -> None:
     snapshot = _valuation_snapshot("MASK")
     snapshot.metrics.update({"Current_Price": 100.0, "MarketCap_Calc": 1000.0, "Shares_Outstanding": 10.0, "PER": 10.0, "Price_to_Book": 1.0, "Dividend_Payout": 0.50})

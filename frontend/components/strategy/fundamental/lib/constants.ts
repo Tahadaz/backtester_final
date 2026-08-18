@@ -84,6 +84,7 @@ export const SEVERE_VALUATION_WARNING_LABELS_FR: Record<string, string> = {
 
 export const VALUATION_WARNING_LABELS_FR: Record<string, string> = {
   ...SEVERE_VALUATION_WARNING_LABELS_FR,
+  implied_start_growth_exceeds_cost_of_equity: "Croissance implicite > coût des fonds propres",
   capex_pct_from_peer_median: "Capex : proxy médiane secteur",
   capex_pct_unavailable_no_history_no_peer: "Capex : historique et proxy secteur indisponibles",
   cash_flow_statement_missing_driver_fallback: "Cash-flow : proxy faute de tableau de flux",
