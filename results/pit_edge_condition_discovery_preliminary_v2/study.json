@@ -1,0 +1,1038 @@
+{
+  "status": "preliminary",
+  "approval_eligible": false,
+  "methodology": "pit-dashboard-opportunity-portfolio-edge-policy-v4",
+  "run_statuses": {
+    "succeeded": 4,
+    "running": 1,
+    "queued": 8
+  },
+  "candidate_rows": 3992,
+  "decision_dates": 50,
+  "symbols": 45,
+  "cost_bps_per_side": 33.0,
+  "slippage_bps_per_side": 5.0,
+  "features": [
+    "edge_score",
+    "expected_return_net",
+    "ci_lower_net",
+    "hit_ci_lower",
+    "proof_n",
+    "mc_luck_pvalue_net_adj",
+    "label_shuffle_pvalue_net_adj",
+    "component_sample_n",
+    "component_bootstrap_er",
+    "component_wilson",
+    "component_mc_luck",
+    "component_label_shuffle",
+    "component_freshness",
+    "signal_strength",
+    "stock_return_20",
+    "stock_return_60",
+    "stock_return_120",
+    "stock_volatility_20",
+    "stock_volatility_60",
+    "stock_drawdown_60",
+    "stock_ma_distance_50",
+    "stock_ma_distance_200",
+    "stock_adv20",
+    "masi_return_20",
+    "masi_return_60",
+    "masi_return_120",
+    "masi_volatility_20",
+    "masi_volatility_60",
+    "masi_drawdown_60",
+    "masi_ma_distance_50",
+    "masi_ma_distance_200"
+  ],
+  "config": {
+    "min_train_dates": 26,
+    "outer_test_dates": 13,
+    "inner_validation_fraction": 0.25,
+    "min_inner_trades": 8,
+    "min_outer_trades": 15,
+    "max_rules": 2,
+    "top_atomic_rules": 20,
+    "bootstrap_samples": 500,
+    "bootstrap_block_dates": 4,
+    "seed": 5107,
+    "multiple_testing_q": 0.1
+  },
+  "horizons": [
+    {
+      "horizon": "weekly",
+      "status": "preliminary",
+      "candidate_rows": 1556,
+      "decision_dates": 50,
+      "outer_trade_count": 190,
+      "outer_fold_count": 2,
+      "outer_mean_net_return": -0.004114223413775226,
+      "outer_mean_net_return_ci95": [
+        -0.008625030114230447,
+        0.0009213414696237312
+      ],
+      "outer_mean_masi_alpha": -0.004589538902230117,
+      "outer_mean_masi_alpha_ci95": [
+        -0.005510736450688101,
+        -0.003600146231859923
+      ],
+      "positive_alpha_fold_fraction": 0.0,
+      "leave_one_symbol_out_positive_fraction": 0.0,
+      "leave_one_symbol_out_alpha": {
+        "ADH": -0.00425941213681178,
+        "ADI": -0.004174327998968547,
+        "AFI": -0.0044985028066648735,
+        "AFM": -0.0045095162135462335,
+        "AKT": -0.0051492172040497695,
+        "ARD": -0.0045043053031598316,
+        "ATH": -0.004568638331576963,
+        "ATL": -0.004553840430349111,
+        "BCI": -0.0048786232916778124,
+        "BCP": -0.004403234686306809,
+        "BOA": -0.00466453449721342,
+        "CDM": -0.004518681982112384,
+        "CIH": -0.004636726329215234,
+        "CMA": -0.004037371910460394,
+        "CMT": -0.004367586957368232,
+        "COL": -0.004611698062802165,
+        "CRS": -0.00618060378386483,
+        "CSR": -0.004421729943778889,
+        "DHO": -0.005044620856391771,
+        "DWY": -0.004479691239349966,
+        "DYT": -0.0046316927025634265,
+        "FBR": -0.005046495843330792,
+        "HPS": -0.004341534124713155,
+        "IAM": -0.004562285015420835,
+        "IMO": -0.004151019061248255,
+        "JET": -0.0044628750847919086,
+        "LBV": -0.004574014849474379,
+        "LHM": -0.004519092596021177,
+        "MDP": -0.004451163417161133,
+        "MIC": -0.004731124079851666,
+        "MNG": -0.004656215246316758,
+        "MSA": -0.0051771623397122695,
+        "MUT": -0.004287254919080769,
+        "NKL": -0.004646256002797018,
+        "RDS": -0.0022899457788346364,
+        "RIS": -0.004925587684719238,
+        "SID": -0.0050194592160422,
+        "SMI": -0.004616327068949422,
+        "SNA": -0.004893850824941554,
+        "SOT": -0.004691889333749615,
+        "STR": -0.005267719157687298,
+        "TGC": -0.004362636782019884,
+        "TMA": -0.004488874595250025,
+        "TQM": -0.0046547058381229516
+      },
+      "final_policy": {
+        "rules": [
+          {
+            "feature": "masi_return_120",
+            "operator": "<=",
+            "threshold": 0.07201380260810408
+          },
+          {
+            "feature": "stock_ma_distance_200",
+            "operator": ">=",
+            "threshold": 0.10165939196644991
+          }
+        ],
+        "trade_count": 17,
+        "mean_net_return": 0.028571999539715013,
+        "mean_masi_alpha": 0.01876035250998806,
+        "alpha_pvalue": 0.0,
+        "alpha_qvalue": 0.0,
+        "multiple_testing_passed": true,
+        "searched_policy_count": 549,
+        "rejected_rule_examples": [
+          {
+            "rules": [
+              {
+                "feature": "masi_volatility_60",
+                "operator": ">=",
+                "threshold": 0.07068222983956368
+              },
+              {
+                "feature": "stock_ma_distance_200",
+                "operator": ">=",
+                "threshold": 0.10165939196644991
+              }
+            ],
+            "trade_count": 37,
+            "mean_net_return": 0.017780611218953902,
+            "mean_masi_alpha": 0.012956994846844452,
+            "alpha_qvalue": 0.0021175071103878944,
+            "rejection_reasons": [
+              "lower_ranked"
+            ]
+          },
+          {
+            "rules": [
+              {
+                "feature": "hit_ci_lower",
+                "operator": ">=",
+                "threshold": 0.5113914120594985
+              },
+              {
+                "feature": "masi_volatility_20",
+                "operator": ">=",
+                "threshold": 0.06866716209727278
+              }
+            ],
+            "trade_count": 8,
+            "mean_net_return": 0.04538384670058368,
+            "mean_masi_alpha": 0.0376262238423021,
+            "alpha_qvalue": 0.16875419840783296,
+            "rejection_reasons": [
+              "multiple_testing"
+            ]
+          },
+          {
+            "rules": [
+              {
+                "feature": "masi_volatility_60",
+                "operator": ">=",
+                "threshold": 0.07068222983956368
+              },
+              {
+                "feature": "stock_ma_distance_50",
+                "operator": ">=",
+                "threshold": 0.06179525641434802
+              }
+            ],
+            "trade_count": 13,
+            "mean_net_return": 0.034625349564528146,
+            "mean_masi_alpha": 0.029834158462967,
+            "alpha_qvalue": 1.0,
+            "rejection_reasons": [
+              "multiple_testing"
+            ]
+          },
+          {
+            "rules": [
+              {
+                "feature": "stock_drawdown_60",
+                "operator": ">=",
+                "threshold": 0.0
+              },
+              {
+                "feature": "stock_return_60",
+                "operator": "<=",
+                "threshold": 0.23469387755102034
+              }
+            ],
+            "trade_count": 18,
+            "mean_net_return": 0.03364455215392174,
+            "mean_masi_alpha": 0.029693655122092804,
+            "alpha_qvalue": 1.0,
+            "rejection_reasons": [
+              "multiple_testing"
+            ]
+          },
+          {
+            "rules": [
+              {
+                "feature": "stock_ma_distance_50",
+                "operator": ">=",
+                "threshold": 0.09243578425599708
+              },
+              {
+                "feature": "stock_return_60",
+                "operator": "<=",
+                "threshold": 0.23469387755102034
+              }
+            ],
+            "trade_count": 20,
+            "mean_net_return": 0.028792437755444423,
+            "mean_masi_alpha": 0.02963725851706973,
+            "alpha_qvalue": 1.0,
+            "rejection_reasons": [
+              "multiple_testing"
+            ]
+          },
+          {
+            "rules": [
+              {
+                "feature": "label_shuffle_pvalue_net_adj",
+                "operator": "<=",
+                "threshold": 0.32
+              },
+              {
+                "feature": "stock_drawdown_60",
+                "operator": ">=",
+                "threshold": -0.02033368070227176
+              }
+            ],
+            "trade_count": 9,
+            "mean_net_return": 0.029109637687442083,
+            "mean_masi_alpha": 0.027292749410023322,
+            "alpha_qvalue": 0.3870314762966126,
+            "rejection_reasons": [
+              "multiple_testing"
+            ]
+          },
+          {
+            "rules": [
+              {
+                "feature": "masi_drawdown_60",
+                "operator": ">=",
+                "threshold": 0.0
+              },
+              {
+                "feature": "stock_ma_distance_50",
+                "operator": ">=",
+                "threshold": 0.09243578425599708
+              }
+            ],
+            "trade_count": 11,
+            "mean_net_return": 0.02135921557252214,
+            "mean_masi_alpha": 0.026151036176658073,
+            "alpha_qvalue": 1.0,
+            "rejection_reasons": [
+              "multiple_testing"
+            ]
+          },
+          {
+            "rules": [
+              {
+                "feature": "stock_drawdown_60",
+                "operator": ">=",
+                "threshold": -0.006355329803154158
+              },
+              {
+                "feature": "masi_return_120",
+                "operator": "<=",
+                "threshold": 0.07201380260810408
+              }
+            ],
+            "trade_count": 8,
+            "mean_net_return": 0.03292780690751826,
+            "mean_masi_alpha": 0.024557565184078575,
+            "alpha_qvalue": 0.3870314762966126,
+            "rejection_reasons": [
+              "multiple_testing"
+            ]
+          },
+          {
+            "rules": [
+              {
+                "feature": "stock_drawdown_60",
+                "operator": ">=",
+                "threshold": 0.0
+              },
+              {
+                "feature": "masi_volatility_60",
+                "operator": ">=",
+                "threshold": 0.07068222983956368
+              }
+            ],
+            "trade_count": 9,
+            "mean_net_return": 0.03031755005376406,
+            "mean_masi_alpha": 0.022921701151644165,
+            "alpha_qvalue": 1.0,
+            "rejection_reasons": [
+              "multiple_testing"
+            ]
+          },
+          {
+            "rules": [
+              {
+                "feature": "masi_return_120",
+                "operator": "<=",
+                "threshold": 0.07201380260810408
+              },
+              {
+                "feature": "stock_return_60",
+                "operator": ">=",
+                "threshold": 0.07974795441890266
+              }
+            ],
+            "trade_count": 16,
+            "mean_net_return": 0.03231618994935413,
+            "mean_masi_alpha": 0.02272305175962655,
+            "alpha_qvalue": 0.48247011975615217,
+            "rejection_reasons": [
+              "multiple_testing"
+            ]
+          }
+        ]
+      },
+      "folds": [
+        {
+          "fold": 0,
+          "train_end": "2024-01-19",
+          "test_start": "2024-01-26",
+          "test_end": "2024-04-26",
+          "status": "evaluated",
+          "rules": [
+            {
+              "feature": "stock_return_120",
+              "operator": ">=",
+              "threshold": 0.14462354188759277
+            },
+            {
+              "feature": "masi_return_60",
+              "operator": "<=",
+              "threshold": 0.020880432114027236
+            }
+          ],
+          "trade_count": 0,
+          "mean_net_return": null,
+          "mean_masi_alpha": null
+        },
+        {
+          "fold": 1,
+          "train_end": "2024-04-26",
+          "test_start": "2024-05-03",
+          "test_end": "2024-07-10",
+          "status": "evaluated",
+          "rules": [
+            {
+              "feature": "masi_return_20",
+              "operator": "<=",
+              "threshold": 0.007571391679599193
+            }
+          ],
+          "trade_count": 190,
+          "mean_net_return": -0.004114223413775226,
+          "mean_masi_alpha": -0.004589538902230117
+        }
+      ],
+      "diagnostics": {
+        "hit_rate": 0.3263157894736842,
+        "payoff_ratio": 1.426749118995227,
+        "trade_return_curve_max_drawdown": -0.7084989200144096,
+        "trades_per_year": 1652.3214285714287,
+        "market_exposure_day_fraction": 1.0,
+        "largest_symbol_trade_share": 0.03684210526315789
+      },
+      "validation_status": "rejected"
+    },
+    {
+      "horizon": "monthly",
+      "status": "preliminary",
+      "candidate_rows": 1255,
+      "decision_dates": 50,
+      "outer_trade_count": 52,
+      "outer_fold_count": 2,
+      "outer_mean_net_return": 0.10248417151260171,
+      "outer_mean_net_return_ci95": [
+        0.01965550364522472,
+        0.2546001712797883
+      ],
+      "outer_mean_masi_alpha": 0.09102121574608006,
+      "outer_mean_masi_alpha_ci95": [
+        0.013424995551077009,
+        0.22127369246480988
+      ],
+      "positive_alpha_fold_fraction": 0.5,
+      "leave_one_symbol_out_positive_fraction": 1.0,
+      "leave_one_symbol_out_alpha": {
+        "ADH": 0.07335597808633612,
+        "ADI": 0.09240515539724432,
+        "ATW": 0.09522112407213924,
+        "BCP": 0.10223479657456554,
+        "CDM": 0.11065295948243933,
+        "JET": 0.06620515617214186
+      },
+      "final_policy": {
+        "rules": [
+          {
+            "feature": "masi_volatility_20",
+            "operator": ">=",
+            "threshold": 0.08424044653540981
+          },
+          {
+            "feature": "stock_adv20",
+            "operator": ">=",
+            "threshold": 14869696.76
+          }
+        ],
+        "trade_count": 9,
+        "mean_net_return": 0.08958622455878608,
+        "mean_masi_alpha": 0.053956485786805966,
+        "alpha_pvalue": 8.431421355055924e-09,
+        "alpha_qvalue": 1.4445835254995817e-06,
+        "multiple_testing_passed": true,
+        "searched_policy_count": 514,
+        "rejected_rule_examples": [
+          {
+            "rules": [
+              {
+                "feature": "stock_drawdown_60",
+                "operator": ">=",
+                "threshold": -0.01063125345044691
+              },
+              {
+                "feature": "stock_adv20",
+                "operator": ">=",
+                "threshold": 14869696.76
+              }
+            ],
+            "trade_count": 10,
+            "mean_net_return": 0.07245176179919473,
+            "mean_masi_alpha": 0.04849466692202066,
+            "alpha_qvalue": 0.056344852657640915,
+            "rejection_reasons": [
+              "lower_ranked"
+            ]
+          },
+          {
+            "rules": [
+              {
+                "feature": "stock_drawdown_60",
+                "operator": ">=",
+                "threshold": -0.01063125345044691
+              },
+              {
+                "feature": "stock_adv20",
+                "operator": ">=",
+                "threshold": 10639864.35
+              }
+            ],
+            "trade_count": 10,
+            "mean_net_return": 0.07245176179919473,
+            "mean_masi_alpha": 0.04849466692202066,
+            "alpha_qvalue": 0.056344852657640915,
+            "rejection_reasons": [
+              "lower_ranked"
+            ]
+          },
+          {
+            "rules": [
+              {
+                "feature": "masi_volatility_20",
+                "operator": ">=",
+                "threshold": 0.10093941557206308
+              },
+              {
+                "feature": "stock_volatility_60",
+                "operator": "<=",
+                "threshold": 0.20799241634893056
+              }
+            ],
+            "trade_count": 9,
+            "mean_net_return": 0.05405730778241157,
+            "mean_masi_alpha": 0.03154851374628484,
+            "alpha_qvalue": 5.527688348367084e-05,
+            "rejection_reasons": [
+              "lower_ranked"
+            ]
+          },
+          {
+            "rules": [
+              {
+                "feature": "stock_drawdown_60",
+                "operator": ">=",
+                "threshold": -0.01063125345044691
+              },
+              {
+                "feature": "masi_volatility_60",
+                "operator": ">=",
+                "threshold": 0.07141041243135542
+              }
+            ],
+            "trade_count": 12,
+            "mean_net_return": 0.052329565235667404,
+            "mean_masi_alpha": 0.025623873884662463,
+            "alpha_qvalue": 0.0002671161054859601,
+            "rejection_reasons": [
+              "lower_ranked"
+            ]
+          },
+          {
+            "rules": [
+              {
+                "feature": "masi_volatility_20",
+                "operator": ">=",
+                "threshold": 0.08424044653540981
+              },
+              {
+                "feature": "stock_drawdown_60",
+                "operator": ">=",
+                "threshold": -0.01063125345044691
+              }
+            ],
+            "trade_count": 11,
+            "mean_net_return": 0.05312574336717253,
+            "mean_masi_alpha": 0.02472477530528859,
+            "alpha_qvalue": 0.02404840909441044,
+            "rejection_reasons": [
+              "lower_ranked"
+            ]
+          },
+          {
+            "rules": [
+              {
+                "feature": "masi_volatility_20",
+                "operator": ">=",
+                "threshold": 0.08424044653540981
+              },
+              {
+                "feature": "stock_drawdown_60",
+                "operator": ">=",
+                "threshold": -0.014814814814814836
+              }
+            ],
+            "trade_count": 11,
+            "mean_net_return": 0.05312574336717253,
+            "mean_masi_alpha": 0.02472477530528859,
+            "alpha_qvalue": 0.02404840909441044,
+            "rejection_reasons": [
+              "lower_ranked"
+            ]
+          },
+          {
+            "rules": [
+              {
+                "feature": "masi_volatility_20",
+                "operator": ">=",
+                "threshold": 0.08424044653540981
+              },
+              {
+                "feature": "stock_drawdown_60",
+                "operator": ">=",
+                "threshold": -0.02265372168284785
+              }
+            ],
+            "trade_count": 11,
+            "mean_net_return": 0.05312574336717253,
+            "mean_masi_alpha": 0.02472477530528859,
+            "alpha_qvalue": 0.02404840909441044,
+            "rejection_reasons": [
+              "lower_ranked"
+            ]
+          },
+          {
+            "rules": [
+              {
+                "feature": "stock_drawdown_60",
+                "operator": ">=",
+                "threshold": -0.014814814814814836
+              },
+              {
+                "feature": "masi_volatility_60",
+                "operator": ">=",
+                "threshold": 0.07141041243135542
+              }
+            ],
+            "trade_count": 13,
+            "mean_net_return": 0.04742086828325984,
+            "mean_masi_alpha": 0.02248983932998195,
+            "alpha_qvalue": 0.02404840909441044,
+            "rejection_reasons": [
+              "lower_ranked"
+            ]
+          },
+          {
+            "rules": [
+              {
+                "feature": "masi_volatility_20",
+                "operator": ">=",
+                "threshold": 0.10093941557206308
+              }
+            ],
+            "trade_count": 18,
+            "mean_net_return": 0.032234243707585895,
+            "mean_masi_alpha": 0.01148208135556097,
+            "alpha_qvalue": 2.8486926216992655e-17,
+            "rejection_reasons": [
+              "lower_ranked"
+            ]
+          },
+          {
+            "rules": [
+              {
+                "feature": "masi_volatility_20",
+                "operator": ">=",
+                "threshold": 0.10093941557206308
+              },
+              {
+                "feature": "masi_volatility_60",
+                "operator": ">=",
+                "threshold": 0.07141041243135542
+              }
+            ],
+            "trade_count": 18,
+            "mean_net_return": 0.032234243707585895,
+            "mean_masi_alpha": 0.01148208135556097,
+            "alpha_qvalue": 2.8486926216992655e-17,
+            "rejection_reasons": [
+              "lower_ranked"
+            ]
+          }
+        ]
+      },
+      "folds": [
+        {
+          "fold": 0,
+          "train_end": "2024-01-12",
+          "test_start": "2024-01-26",
+          "test_end": "2024-04-26",
+          "status": "evaluated",
+          "rules": [
+            {
+              "feature": "stock_ma_distance_50",
+              "operator": ">=",
+              "threshold": 0.04344378185764275
+            },
+            {
+              "feature": "stock_ma_distance_200",
+              "operator": ">=",
+              "threshold": 0.11616605368742279
+            }
+          ],
+          "trade_count": 52,
+          "mean_net_return": 0.10248417151260171,
+          "mean_masi_alpha": 0.09102121574608006
+        },
+        {
+          "fold": 1,
+          "train_end": "2024-04-19",
+          "test_start": "2024-05-03",
+          "test_end": "2024-07-10",
+          "status": "evaluated",
+          "rules": [
+            {
+              "feature": "stock_ma_distance_50",
+              "operator": ">=",
+              "threshold": 0.0809798614302979
+            },
+            {
+              "feature": "component_label_shuffle",
+              "operator": ">=",
+              "threshold": 27.37
+            }
+          ],
+          "trade_count": 0,
+          "mean_net_return": null,
+          "mean_masi_alpha": null
+        }
+      ],
+      "diagnostics": {
+        "hit_rate": 0.6730769230769231,
+        "payoff_ratio": 5.247451402993765,
+        "trade_return_curve_max_drawdown": -0.26548719004708776,
+        "trades_per_year": 208.7142857142857,
+        "market_exposure_day_fraction": 1.0,
+        "largest_symbol_trade_share": 0.25
+      },
+      "validation_status": "rejected"
+    },
+    {
+      "horizon": "quarterly",
+      "status": "preliminary",
+      "candidate_rows": 1181,
+      "decision_dates": 50,
+      "outer_trade_count": 55,
+      "outer_fold_count": 2,
+      "outer_mean_net_return": 0.1922820056633592,
+      "outer_mean_net_return_ci95": [
+        0.07842583462504242,
+        0.262843753094219
+      ],
+      "outer_mean_masi_alpha": 0.1601864971896046,
+      "outer_mean_masi_alpha_ci95": [
+        0.07070709006189349,
+        0.2343292664633929
+      ],
+      "positive_alpha_fold_fraction": 1.0,
+      "leave_one_symbol_out_positive_fraction": 1.0,
+      "leave_one_symbol_out_alpha": {
+        "ADH": 0.16973901648206258,
+        "ATW": 0.17145150763807068,
+        "BCP": 0.19352487980122932,
+        "JET": 0.06887907407687763,
+        "LHM": 0.1682103145294569
+      },
+      "final_policy": {
+        "rules": [
+          {
+            "feature": "stock_return_60",
+            "operator": ">=",
+            "threshold": 0.04066432042902625
+          },
+          {
+            "feature": "masi_volatility_20",
+            "operator": ">=",
+            "threshold": 0.08424044653540981
+          }
+        ],
+        "trade_count": 10,
+        "mean_net_return": 0.2816817206280263,
+        "mean_masi_alpha": 0.23285364880427864,
+        "alpha_pvalue": 1.6453285286314823e-13,
+        "alpha_qvalue": 1.6064389452274653e-12,
+        "multiple_testing_passed": true,
+        "searched_policy_count": 537,
+        "rejected_rule_examples": [
+          {
+            "rules": [
+              {
+                "feature": "masi_volatility_20",
+                "operator": ">=",
+                "threshold": 0.08424044653540981
+              },
+              {
+                "feature": "stock_return_60",
+                "operator": ">=",
+                "threshold": 0.059523809523809534
+              }
+            ],
+            "trade_count": 9,
+            "mean_net_return": 0.2550067939638003,
+            "mean_masi_alpha": 0.2058565082358631,
+            "alpha_qvalue": 4.318905492260829e-07,
+            "rejection_reasons": [
+              "lower_ranked"
+            ]
+          },
+          {
+            "rules": [
+              {
+                "feature": "stock_return_60",
+                "operator": ">=",
+                "threshold": 0.04066432042902625
+              },
+              {
+                "feature": "masi_volatility_60",
+                "operator": ">=",
+                "threshold": 0.06885093610356452
+              }
+            ],
+            "trade_count": 16,
+            "mean_net_return": 0.25201226734137167,
+            "mean_masi_alpha": 0.2013694449048089,
+            "alpha_qvalue": 1.7345449708697308e-08,
+            "rejection_reasons": [
+              "lower_ranked"
+            ]
+          },
+          {
+            "rules": [
+              {
+                "feature": "stock_return_60",
+                "operator": ">=",
+                "threshold": 0.04066432042902625
+              },
+              {
+                "feature": "masi_return_120",
+                "operator": "<=",
+                "threshold": 0.0877294696056478
+              }
+            ],
+            "trade_count": 19,
+            "mean_net_return": 0.25260835898355005,
+            "mean_masi_alpha": 0.19823507410879698,
+            "alpha_qvalue": 5.2518940708870295e-12,
+            "rejection_reasons": [
+              "lower_ranked"
+            ]
+          },
+          {
+            "rules": [
+              {
+                "feature": "stock_return_60",
+                "operator": ">=",
+                "threshold": 0.04066432042902625
+              },
+              {
+                "feature": "masi_volatility_20",
+                "operator": ">=",
+                "threshold": 0.07758677387897184
+              }
+            ],
+            "trade_count": 19,
+            "mean_net_return": 0.25260835898355005,
+            "mean_masi_alpha": 0.19823507410879698,
+            "alpha_qvalue": 5.2518940708870295e-12,
+            "rejection_reasons": [
+              "lower_ranked"
+            ]
+          },
+          {
+            "rules": [
+              {
+                "feature": "stock_return_60",
+                "operator": ">=",
+                "threshold": 0.04066432042902625
+              },
+              {
+                "feature": "masi_drawdown_60",
+                "operator": "<=",
+                "threshold": -0.017250865980932284
+              }
+            ],
+            "trade_count": 13,
+            "mean_net_return": 0.25217623105932385,
+            "mean_masi_alpha": 0.1930471003900217,
+            "alpha_qvalue": 6.7646640267717575e-06,
+            "rejection_reasons": [
+              "lower_ranked"
+            ]
+          },
+          {
+            "rules": [
+              {
+                "feature": "stock_return_60",
+                "operator": ">=",
+                "threshold": 0.04066432042902625
+              },
+              {
+                "feature": "masi_ma_distance_50",
+                "operator": "<=",
+                "threshold": -0.0015179696638031315
+              }
+            ],
+            "trade_count": 13,
+            "mean_net_return": 0.25217623105932385,
+            "mean_masi_alpha": 0.1930471003900217,
+            "alpha_qvalue": 6.7646640267717575e-06,
+            "rejection_reasons": [
+              "lower_ranked"
+            ]
+          },
+          {
+            "rules": [
+              {
+                "feature": "proof_n",
+                "operator": ">=",
+                "threshold": 60.0
+              },
+              {
+                "feature": "stock_return_60",
+                "operator": ">=",
+                "threshold": 0.04066432042902625
+              }
+            ],
+            "trade_count": 12,
+            "mean_net_return": 0.22603929824599053,
+            "mean_masi_alpha": 0.185505888125305,
+            "alpha_qvalue": 1.9176690864273922e-07,
+            "rejection_reasons": [
+              "lower_ranked"
+            ]
+          },
+          {
+            "rules": [
+              {
+                "feature": "component_sample_n",
+                "operator": ">=",
+                "threshold": 100.0
+              },
+              {
+                "feature": "stock_return_60",
+                "operator": ">=",
+                "threshold": 0.04066432042902625
+              }
+            ],
+            "trade_count": 12,
+            "mean_net_return": 0.22603929824599053,
+            "mean_masi_alpha": 0.185505888125305,
+            "alpha_qvalue": 1.9176690864273922e-07,
+            "rejection_reasons": [
+              "lower_ranked"
+            ]
+          },
+          {
+            "rules": [
+              {
+                "feature": "stock_return_60",
+                "operator": ">=",
+                "threshold": 0.027027027027026973
+              },
+              {
+                "feature": "masi_volatility_20",
+                "operator": ">=",
+                "threshold": 0.08424044653540981
+              }
+            ],
+            "trade_count": 12,
+            "mean_net_return": 0.2326384509970394,
+            "mean_masi_alpha": 0.1837509115849307,
+            "alpha_qvalue": 0.001662034208768839,
+            "rejection_reasons": [
+              "lower_ranked"
+            ]
+          },
+          {
+            "rules": [
+              {
+                "feature": "stock_adv20",
+                "operator": "<=",
+                "threshold": 1602756.77
+              },
+              {
+                "feature": "masi_volatility_60",
+                "operator": ">=",
+                "threshold": 0.06885093610356452
+              }
+            ],
+            "trade_count": 8,
+            "mean_net_return": 0.22015239799499,
+            "mean_masi_alpha": 0.1816242008403943,
+            "alpha_qvalue": 0.005224324976879257,
+            "rejection_reasons": [
+              "lower_ranked"
+            ]
+          }
+        ]
+      },
+      "folds": [
+        {
+          "fold": 0,
+          "train_end": "2023-12-22",
+          "test_start": "2024-01-26",
+          "test_end": "2024-04-26",
+          "status": "evaluated",
+          "rules": [
+            {
+              "feature": "stock_return_60",
+              "operator": ">=",
+              "threshold": 0.0778097982708934
+            },
+            {
+              "feature": "stock_ma_distance_200",
+              "operator": ">=",
+              "threshold": 0.10277840847828804
+            }
+          ],
+          "trade_count": 33,
+          "mean_net_return": 0.23917122518932127,
+          "mean_masi_alpha": 0.21130973911521722
+        },
+        {
+          "fold": 1,
+          "train_end": "2024-03-22",
+          "test_start": "2024-05-03",
+          "test_end": "2024-07-10",
+          "status": "evaluated",
+          "rules": [
+            {
+              "feature": "stock_return_120",
+              "operator": ">=",
+              "threshold": 0.16953757479760645
+            },
+            {
+              "feature": "edge_score",
+              "operator": "<=",
+              "threshold": 4.611999999999998
+            }
+          ],
+          "trade_count": 22,
+          "mean_net_return": 0.12194817637441614,
+          "mean_masi_alpha": 0.08350163430118565
+        }
+      ],
+      "diagnostics": {
+        "hit_rate": 0.6909090909090909,
+        "payoff_ratio": 6.761243432037853,
+        "trade_return_curve_max_drawdown": -0.1790409521644709,
+        "trades_per_year": 121.01656626506023,
+        "market_exposure_day_fraction": 1.0,
+        "largest_symbol_trade_share": 0.41818181818181815
+      },
+      "validation_status": "accepted"
+    }
+  ]
+}
