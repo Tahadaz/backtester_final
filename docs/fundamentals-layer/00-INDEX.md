@@ -41,6 +41,12 @@ The engine is **MAD-tuned** (default risk-free 3.5%, equity risk premium 5.5%, c
 | 60 | [Codex brief: SFC implementation](60-codex-cross-sectional-composite-implementation.md) | Phased implementation of brief 59: PIT IC study (gate) → persistence → dashboard → blotter. |
 | — | [Review vs plugin skills](REVIEW_vs_plugin_skills.md) | The audit that motivated briefs 21–29. Read before brief 21. |
 
+| 71 | [Prop-desk production-readiness review](71-prop-desk-production-readiness.md) | **Current controlling decision.** End-to-end methodology audit, live-capital no-go, critical B/M denominator defect, deterministic rebuild protocol, release gates, and trusted sources. |
+| 72 | [Prop-desk briefing](72-prop-desk-briefing.md) | One-page talk track, decision table, desk request, and anticipated questions for the 2026-08-31 presentation. |
+| 73 | [Transaction-cost source](73-transaction-cost-source.md) | Audited 33 bps desk-workbook provenance and engine interpretation. |
+| 74 | [Liquidity and capacity controls](74-liquidity-capacity-controls.md) | Editable PIT ADTV eligibility, ticket-size and participation limits; calibration and execution caveats. |
+| 75 | [CGNC archetype mapping](75-cgnc-archetype-mapping.md) | Sector-aware industrial, bank, insurer, and insurance-broker statement mapping. |
+
 ## Public surface (entry points)
 
 | Symbol | Location | Purpose |

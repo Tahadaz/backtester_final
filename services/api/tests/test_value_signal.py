@@ -143,4 +143,4 @@ def test_missing_price_produces_exclusion_reason():
     row = panel.iloc[0]
     reasons = _exclusion_reasons(row)
     assert any("price" in r for r in reasons)
-    assert any("market cap" in r for r in reasons)
+    assert any("market equity" in r for r in reasons)

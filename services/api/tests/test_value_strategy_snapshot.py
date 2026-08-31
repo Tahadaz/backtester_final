@@ -15,8 +15,25 @@ from services.api.app.services.value_strategy_snapshot import (
     FRESH_MAX_AGE_DAYS,
     ValueStrategyComputeError,
     _ensure_s3_env_vars,
+    _resolved_desk_cost_config,
     snapshot_freshness,
 )
+
+
+def test_v2_snapshot_rejects_unsourced_legacy_cost(monkeypatch):
+    monkeypatch.delenv("VALUE_STRATEGY_COST_BPS", raising=False)
+    monkeypatch.delenv("VALUE_STRATEGY_COST_SOURCE", raising=False)
+    with pytest.raises(ValueStrategyComputeError, match="requires VALUE_STRATEGY_COST_BPS"):
+        _resolved_desk_cost_config()
+
+
+def test_v2_snapshot_accepts_explicit_sourced_cost(monkeypatch):
+    monkeypatch.setenv("VALUE_STRATEGY_COST_BPS", "27.5")
+    monkeypatch.setenv("VALUE_STRATEGY_COST_SOURCE", "desk_schedule_2026-08-30")
+    config, source = _resolved_desk_cost_config()
+    assert config.cost_bps == pytest.approx(27.5)
+    assert source == "desk_schedule_2026-08-30"
+from services.api.app.routers.value_signal import get_value_strategy_snapshot
 
 
 @compiles(JSONB, "sqlite")
@@ -41,7 +58,7 @@ def _make_snapshot(db, *, age_days: float) -> models.FundamentalValueStrategySna
     row = models.FundamentalValueStrategySnapshot(
         config_hash="testhash",
         params_json={},
-        result_json={"as_of_date": "2026-06-30"},
+        result_json={"as_of_date": "2026-06-30", "model_version": "Fundamental Value Strategy v2.1"},
         computed_at=computed_at,
     )
     db.add(row)
@@ -165,3 +182,19 @@ def test_concurrent_recompute_produces_two_rows_not_corruption(session_factory):
     latest = max(rows, key=lambda r: r.computed_at)
     assert latest.id == second.id
     assert first.id != second.id
+
+
+def test_persisted_snapshot_cannot_override_current_live_authorization(session_factory):
+    db = session_factory()
+    row = _make_snapshot(db, age_days=1)
+    row.result_json = {
+        "live_trading_authorized": True,
+        "production_readiness": {"status": "LIVE_AUTHORIZED"},
+    }
+    db.commit()
+
+    response = get_value_strategy_snapshot(db)
+
+    assert response.live_trading_authorized is False
+    assert response.production_readiness["status"] == "RESEARCH_ONLY"
+    assert response.production_readiness["blocker_ids"]

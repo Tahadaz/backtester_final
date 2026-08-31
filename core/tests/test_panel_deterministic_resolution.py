@@ -33,7 +33,7 @@ def test_prefers_row_with_linked_source_document_on_exact_date_tie():
         _row(metric_name="Total_Equity", value=999.0, availability_date=same_date, source_document_id=None),
         _row(metric_name="Total_Equity", value=123.0, availability_date=same_date, source_document_id=42),
     ]
-    metrics, _, _, _ = _latest_metric_map(rows, AS_OF)
+    metrics, _, _, _, _ = _latest_metric_map(rows, AS_OF)
     assert metrics["Total_Equity"] == 123.0
 
 
@@ -49,7 +49,7 @@ def test_resolution_is_independent_of_input_order():
     for _ in range(20):
         shuffled = base_rows[:]
         rng.shuffle(shuffled)
-        metrics, _, _, _ = _latest_metric_map(shuffled, AS_OF)
+        metrics, _, _, _, _ = _latest_metric_map(shuffled, AS_OF)
         results.add(metrics["EBITDA"])
     # Regardless of shuffle order, the row with the highest source_document_id wins.
     assert results == {300.0}
@@ -60,7 +60,7 @@ def test_later_availability_date_wins_over_source_document_presence():
         _row(metric_name="Cash", value=111.0, availability_date=dt.date(2024, 3, 1), source_document_id=7),
         _row(metric_name="Cash", value=222.0, availability_date=dt.date(2024, 6, 1), source_document_id=None),
     ]
-    metrics, _, _, _ = _latest_metric_map(rows, AS_OF)
+    metrics, _, _, _, _ = _latest_metric_map(rows, AS_OF)
     assert metrics["Cash"] == 222.0
 
 
@@ -69,5 +69,5 @@ def test_does_not_leak_future_availability_rows():
         _row(metric_name="Revenue", value=1.0, availability_date=dt.date(2024, 1, 1)),
         _row(metric_name="Revenue", value=2.0, availability_date=dt.date(2026, 1, 1)),
     ]
-    metrics, _, _, _ = _latest_metric_map(rows, AS_OF)
+    metrics, _, _, _, _ = _latest_metric_map(rows, AS_OF)
     assert metrics["Revenue"] == 1.0

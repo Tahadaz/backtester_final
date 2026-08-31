@@ -16,7 +16,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, load_only
 from sqlalchemy.orm.attributes import set_committed_value
 
-from core.quant_core.fundamentals.cgnc_mapping import resolve_metric_name
+from core.quant_core.fundamentals.cgnc_mapping import COMPANY_ARCHETYPE_OVERRIDES, resolve_metric_name
 from core.quant_core.fundamentals import (
     ASSUMPTION_META,
     DEFAULT_ASSUMPTIONS,
@@ -3716,6 +3716,7 @@ def _upsert_annual_metric_rows(
         .all()
     }
     inserted = 0
+    sector_by_symbol = _stock_sectors(db, list(symbols))
     updated = 0
     for key, row in row_by_key.items():
         current = existing.get(key)
@@ -3836,7 +3837,9 @@ def _sync_latest_snapshots_from_annual(
         diagnostics = dict(snapshot.diagnostics_json or {})
         coverage = dict(snapshot.coverage_json or {})
         source = dict(snapshot.source_json or {})
-        archetype = infer_statement_archetype(row.metric_name for row in latest_rows)
+        archetype = COMPANY_ARCHETYPE_OVERRIDES.get(symbol) or _financial_archetype_for_sector(sector_by_symbol.get(symbol))
+        if archetype is None:
+            archetype = infer_statement_archetype(row.metric_name for row in latest_rows)
         diagnostics["statement_archetype"] = archetype
         diagnostics["cgnc_mapped_metric_count"] = len([row for row in latest_rows if row.source_sheet == "bvc_cgnc_mapping"])
         if as_of_date is not None:
@@ -3875,7 +3878,16 @@ def sync_bvc_period_metrics_to_annual_and_latest(
     """Map BVC 46-field period metrics into the engine's PIT annual layer."""
 
     raw_rows = _period_lineage_to_annual_rows(db, import_id=import_id, symbols=symbols)
-    mapped_rows = map_cgnc_annual_metrics(raw_rows)
+    raw_symbols = sorted({row.symbol.upper() for row in raw_rows})
+    sectors = _stock_sectors(db, raw_symbols)
+    archetypes = {
+        symbol: COMPANY_ARCHETYPE_OVERRIDES.get(symbol) or _financial_archetype_for_sector(sector)
+        for symbol, sector in sectors.items()
+    }
+    mapped_rows = map_cgnc_annual_metrics(
+        raw_rows,
+        archetype_by_symbol={symbol: archetype for symbol, archetype in archetypes.items() if archetype},
+    )
     inserted, updated = _upsert_annual_metric_rows(db, import_id=import_id, rows=mapped_rows)
     affected_symbols = {row.symbol.upper() for row in mapped_rows}
     snapshot_count = _sync_latest_snapshots_from_annual(db, import_id=import_id, symbols=affected_symbols)

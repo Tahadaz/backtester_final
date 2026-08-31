@@ -339,9 +339,13 @@ def _delete_objects_best_effort(object_keys: list[str | None]) -> tuple[int, int
 
 
 def _merge_series_frame(old: pd.DataFrame | None, incoming: pd.DataFrame) -> pd.DataFrame:
+    incoming = incoming.copy()
+    incoming.index = pd.to_datetime(incoming.index, utc=True).tz_localize(None)
     if old is None or old.empty:
-        merged = incoming.copy()
+        merged = incoming
     else:
+        old = old.copy()
+        old.index = pd.to_datetime(old.index, utc=True).tz_localize(None)
         merged = pd.concat([old, incoming], axis=0)
     merged = merged.sort_index()
     merged = merged[~merged.index.duplicated(keep="last")]
@@ -485,6 +489,71 @@ def _index_time_series(
         indexed.append(series.id)
 
     return indexed
+
+
+def _materialize_bloomberg_market_data(
+    db: Session,
+    *,
+    frame: pd.DataFrame,
+    manifest: BloombergBridgeManifest,
+) -> str | None:
+    """Explicitly promote a Bloomberg daily OHLCV batch into the canonical market store."""
+    if not bool(manifest.overrides.get("apply_to_market_data")):
+        return None
+    if str(manifest.periodicity or "").upper() != "DAILY":
+        raise HTTPException(status_code=422, detail="Only DAILY Bloomberg batches can update canonical market data")
+    symbol = str(manifest.overrides.get("internal_symbol") or "").strip().upper()
+    if not symbol or not symbol.replace("_", "").isalnum():
+        raise HTTPException(status_code=422, detail="Canonical Bloomberg promotion requires a valid internal_symbol")
+
+    series_frames = _iter_time_series_frames(frame, manifest)
+    selected = [(field.upper(), values.rename(columns={"Value": field.upper()})) for _security, field, values in series_frames]
+    by_field = {field: values for field, values in selected}
+    required = {"PX_OPEN", "PX_HIGH", "PX_LOW", "PX_LAST", "VOLUME"}
+    missing = sorted(required - set(by_field))
+    if missing:
+        raise HTTPException(status_code=422, detail=f"Bloomberg market-data promotion is missing fields: {', '.join(missing)}")
+
+    wide = pd.concat([by_field[field] for field in sorted(required)], axis=1, join="outer").sort_index()
+    wide = wide.rename(columns={
+        "PX_OPEN": "Open", "PX_HIGH": "High", "PX_LOW": "Low", "PX_LAST": "Close", "VOLUME": "Volume",
+    })[["Open", "High", "Low", "Close", "Volume"]]
+    wide = wide.apply(pd.to_numeric, errors="coerce").dropna(subset=["Open", "High", "Low", "Close", "Volume"])
+    valid = (
+        (wide[["Open", "High", "Low", "Close"]] > 0).all(axis=1)
+        & (wide["Volume"] >= 0)
+        & (wide["High"] >= wide[["Open", "Close", "Low"]].max(axis=1))
+        & (wide["Low"] <= wide[["Open", "Close", "High"]].min(axis=1))
+    )
+    if wide.empty or not bool(valid.all()):
+        raise HTTPException(status_code=422, detail="Bloomberg OHLCV contains missing, non-positive, or internally inconsistent bars")
+    wide.index.name = "timestamp"
+
+    row = (
+        db.query(models.MarketDataStore)
+        .filter(models.MarketDataStore.symbol == symbol, models.MarketDataStore.timeframe.in_(["1D", "1d"]))
+        .first()
+    )
+    object_key = row.object_key if row is not None else f"market-data/bloomberg/{symbol}/1D.parquet"
+    existing = _try_load_parquet(object_key) if row is not None else None
+    merged = _merge_series_frame(existing, wide)
+    put_bytes(object_key, _frame_to_parquet_bytes(merged), "application/octet-stream")
+
+    close = pd.to_numeric(merged["Close"], errors="coerce").dropna()
+    traded_value = (pd.to_numeric(merged["Close"], errors="coerce") * pd.to_numeric(merged["Volume"], errors="coerce")).dropna()
+    if row is None:
+        row = models.MarketDataStore(symbol=symbol, timeframe="1D", object_key=object_key)
+        db.add(row)
+    row.object_key = object_key
+    row.start_ts = merged.index.min().to_pydatetime()
+    row.end_ts = merged.index.max().to_pydatetime()
+    row.row_count = int(len(merged))
+    row.source_provider = "bloomberg_terminal"
+    row.data_as_of = merged.index.max().date()
+    row.close_last = float(close.iloc[-1]) if not close.empty else None
+    row.prev_close = float(close.iloc[-2]) if len(close) > 1 else None
+    row.adv_20d = float(traded_value.tail(20).mean()) if not traded_value.empty else None
+    return symbol
 
 
 @bridge_router.get("/health")
@@ -727,6 +796,11 @@ def create_bloomberg_batch(
     frame = _parse_payload_to_frame(payload, filename, manifest)
     if manifest.row_count is not None and int(manifest.row_count) != int(len(frame)):
         raise HTTPException(status_code=422, detail="Payload row count does not match manifest row_count")
+    if manifest.kind == "time_series" and not _iter_time_series_frames(frame, manifest):
+        raise HTTPException(
+            status_code=422,
+            detail="Bloomberg time-series payload must include a parseable date plus security/field/value columns (or one-security wide fields)",
+        )
 
     batch_id = uuid4()
     raw_object_key = f"bloomberg/raw/{batch_id}/{filename}"
@@ -759,7 +833,10 @@ def create_bloomberg_batch(
     db.flush()
 
     indexed_series = _index_time_series(db, batch_id=batch_id, frame=frame, manifest=manifest)
+    promoted_symbol = _materialize_bloomberg_market_data(db, frame=frame, manifest=manifest)
     batch.series_count = len(indexed_series)
+    if promoted_symbol:
+        batch.manifest_json = {**dict(batch.manifest_json or {}), "promoted_market_data_symbol": promoted_symbol}
     db.commit()
     db.refresh(batch)
 

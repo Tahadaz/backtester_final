@@ -133,6 +133,35 @@ def test_publication_coverage_stats_counts_real_and_fallback_dates() -> None:
     assert stats["counts"]["fallback_annual_90d"] > 0
 
 
+def test_strict_pit_panel_rejects_unlinked_or_untrustworthy_dates() -> None:
+    prices = _prices(["AAA"])
+    verified = _annual_rows(["AAA"], publication_date=dt.date(2021, 4, 1))
+    for row in verified:
+        row["source_document_id"] = 17
+        row["source_url"] = "https://media.casablanca-bourse.com/issuer/aaa-2020.pdf"
+        row["source_document_raw_json"] = {"Publication_Date": "2021-04-01"}
+        row["source_document_created_at"] = dt.datetime(2021, 4, 1, 12, 0)
+    unverified = dict(verified[0])
+    unverified["metric_name"] = "Unverified_Metric"
+    unverified["source_document_id"] = None
+
+    panel = build_pit_panel(
+        annual_rows=[*verified, unverified],
+        price_loader=lambda symbol: prices[symbol],
+        universe_df=_universe(["AAA"]),
+        config=PanelConfig(
+            as_of_dates=(dt.date(2021, 12, 31),),
+            require_observed_publication_date=True,
+        ),
+    )
+
+    assert len(panel) == 1
+    assert "Unverified_Metric" not in panel.iloc[0]["metrics"]
+    stats = publication_coverage_stats(panel)
+    assert stats["pit_filter"]["rejected_unverified_publication_rows"] == 1
+    assert stats["counts"] == {"publication_date": len(verified)}
+
+
 def test_mad_winsorized_z_clips_extreme_outlier() -> None:
     values = pd.Series([1.0, 2.0, 3.0, 4.0, 1000.0])
     z = mad_winsorized_z(values, clip=3.0)

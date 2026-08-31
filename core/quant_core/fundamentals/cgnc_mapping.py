@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import datetime as dt
+import unicodedata
 from collections import defaultdict
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from math import isfinite
-from typing import Iterable
+from typing import Iterable, Mapping
 
 from .domain import AnnualMetricRow
 
 
-CGNC_TO_ENGINE_METRICS: dict[str, tuple[str, ...]] = {
+COMMON_CGNC_ALIASES: dict[str, tuple[str, ...]] = {
     "Chiffre_daffaires": ("Revenue", "Clean_Chiffre_daffaires"),
     "Resultat_dexploitation": ("EBIT",),
     "Resultat_financier": ("Net_Interest_Expense",),
@@ -40,11 +41,75 @@ CGNC_TO_ENGINE_METRICS: dict[str, tuple[str, ...]] = {
     "Flux_de_tresorerie_lies_au_financement": ("CF_Financing",),
     "Variation_de_tresorerie": ("Change_in_Cash",),
     "Variation_du_besoin_de_financement_global": ("Change_in_Working_Capital",),
+}
+
+INDUSTRIAL_CGNC_ALIASES: dict[str, tuple[str, ...]] = {}
+
+BANK_CGNC_ALIASES: dict[str, tuple[str, ...]] = {
     "Produit_Net_Bancaire": ("PNB",),
     "Resultat_Brut_Exploitation": ("RBE",),
     "Marge_RBE": ("Marge_RBE",),
     "Cout_du_risque": ("Cout_du_risque",),
     "Creances_sur_la_clientele": ("Loans_Net",),
+    "Prets_et_creances_sur_la_clientele": ("Loans_Net",),
+    "Depots_de_la_clientele": ("Customer_Deposits",),
+    "Depots_clientele": ("Customer_Deposits",),
+    "Interets_et_produits_assimiles": ("Total_Interest_Income",),
+    "Interets_et_charges_assimiles": ("Interest_Expense",),
+    "Commissions_netttes": ("Total_NonInterest_Income",),
+    "Commissions_nettes": ("Total_NonInterest_Income",),
+    "Coefficient_dexploitation": ("Cost_to_Income",),
+    "Ratio_de_solvabilite": ("Regulatory_Capital_Ratio",),
+    "Taux_de_creances_en_souffrance": ("NPL_Ratio",),
+}
+
+INSURANCE_CGNC_ALIASES: dict[str, tuple[str, ...]] = {
+    "Primes_assurance": ("Premiums_Earned",),
+    "Primes_acquises": ("Premiums_Earned",),
+    "Primes_acquises_netttes": ("Premiums_Earned",),
+    "Primes_acquises_nettes": ("Premiums_Earned",),
+    "Charges_de_sinistres": ("Policy_Benefits",),
+    "Prestations_et_frais_payes": ("Policy_Benefits",),
+    "Frais_dacquisition": ("Policy_Acquisition_Costs",),
+    "Provisions_techniques": ("Insurance_Contract_Liabilities",),
+    "Resultat_technique": ("Insurance_Technical_Result",),
+    "Primes_cedees_en_reassurance": ("Reinsurance_Premiums_Ceded",),
+    "Ratio_de_sinistralite": ("Loss_Ratio",),
+    "Ratio_de_frais": ("Expense_Ratio",),
+    "Ratio_combine": ("Combined_Ratio",),
+    "Marge_de_solvabilite": ("Solvency_Margin",),
+}
+
+
+@dataclass(frozen=True)
+class StatementArchetypeProfile:
+    name: str
+    aliases: Mapping[str, tuple[str, ...]]
+    suppress_industrial_metrics: bool = False
+
+
+ARCHETYPE_PROFILES: dict[str, StatementArchetypeProfile] = {
+    "bank": StatementArchetypeProfile("bank", BANK_CGNC_ALIASES, True),
+    "insurance": StatementArchetypeProfile("insurance", INSURANCE_CGNC_ALIASES, True),
+    "financial": StatementArchetypeProfile("financial", {}, True),
+    "insurance_broker": StatementArchetypeProfile("insurance_broker", INDUSTRIAL_CGNC_ALIASES),
+    "industrial": StatementArchetypeProfile("industrial", INDUSTRIAL_CGNC_ALIASES),
+    "cgnc_social": StatementArchetypeProfile("cgnc_social", INDUSTRIAL_CGNC_ALIASES),
+    "ifrs_consolidated": StatementArchetypeProfile("ifrs_consolidated", INDUSTRIAL_CGNC_ALIASES),
+    "unknown": StatementArchetypeProfile("unknown", INDUSTRIAL_CGNC_ALIASES),
+}
+
+# Exchange-listed intermediaries whose economics are brokerage/commission based, not insurance
+# underwriting. They must retain industrial cash-flow lines even though the broad sector label is
+# often "Assurances".
+COMPANY_ARCHETYPE_OVERRIDES: dict[str, str] = {"AFM": "insurance_broker", "AGM": "insurance_broker"}
+
+# Backwards-compatible union for callers that inspect the public mapping constant.
+CGNC_TO_ENGINE_METRICS: dict[str, tuple[str, ...]] = {
+    **COMMON_CGNC_ALIASES,
+    **INDUSTRIAL_CGNC_ALIASES,
+    **BANK_CGNC_ALIASES,
+    **INSURANCE_CGNC_ALIASES,
 }
 
 DIVIDEND_METRICS = {"Dividendes", "Dividends_Paid", "Clean_Dividendes"}
@@ -59,11 +124,12 @@ BANK_FIELD_TOKENS = (
     "revenues_before_loan_losses", "total_noninterest_income",
 )
 INSURANCE_FIELD_TOKENS = ("assurance", "insurance", "takaful", "premiums_earned")
-FINANCIAL_ARCHETYPES = {"bank", "insurance"}
+FINANCIAL_ARCHETYPES = {"bank", "insurance", "financial"}
 FINANCIAL_SUPPRESSED_METRICS = {
     "Capex",
     "Capital_Expenditures",
     "EBITDA",
+    "EBIT",
     "EnterpriseValue",
     "Enterprise_Value",
     "EV_to_EBITDA",
@@ -71,6 +137,16 @@ FINANCIAL_SUPPRESSED_METRICS = {
     "FCF_Margin",
     "FCF_Yield",
     "Free_Cash_Flow",
+    "Operating_Cash_Flow",
+    "CF_Operating",
+    "CAF",
+    "Working_Capital",
+    "Current_Ratio",
+    "Cash_Ratio",
+    "Interest_Coverage",
+    "Debt_to_Equity",
+    "NetDebt_to_Equity",
+    "NetDebt_to_EBITDA",
     "Net_Debt",
     "Price_to_Sales",
 }
@@ -97,13 +173,16 @@ CANONICAL_METRICS: frozenset[str] = frozenset({
     "Revenues_Before_Loan_Losses", "Provision_for_Loan_Losses",
     "Loans_Net", "Customer_Deposits", "PNB", "Cout_du_risque",
     "Premiums_Earned", "Policy_Benefits", "Policy_Acquisition_Costs",
+    "Insurance_Contract_Liabilities", "Insurance_Technical_Result",
+    "Reinsurance_Premiums_Ceded", "Regulatory_Capital_Ratio", "NPL_Ratio",
+    "Solvency_Margin",
     # --- Computed ratios: value pillar ---
     "PER", "Price_to_Book", "Price_to_Sales", "EV_to_EBITDA",
     "FCF_Yield", "Dividend_Yield",
     # --- Computed ratios: quality pillar ---
     "ROE", "ROA", "Operating_Margin", "Net_Margin",
     # --- Computed ratios: growth pillar ---
-    "Revenue_Growth", "EBIT_Growth", "NetIncome_Growth",
+    "Revenue_Growth", "EBIT_Growth", "NetIncome_Growth", "PNB_Growth", "Premiums_Growth",
     # --- Computed ratios: risk pillar ---
     "Debt_to_Equity", "NetDebt_to_Equity", "NetDebt_to_EBITDA", "Equity_Multiplier",
     # --- Computed ratios: cash-flow pillar ---
@@ -113,7 +192,7 @@ CANONICAL_METRICS: frozenset[str] = frozenset({
     # --- Computed ratios: bank-specific ---
     "Net_Interest_Margin", "Cost_to_Income", "Loans_to_Deposits",
     # --- Computed ratios: insurer-specific ---
-    "Combined_Ratio",
+    "Combined_Ratio", "Loss_Ratio", "Expense_Ratio",
     # --- Computed ratios: ancillary ---
     "Asset_Turnover", "Dividend_Payout", "Dividend_Coverage",
     # --- Intermediate values (stored for diagnostics) ---
@@ -155,6 +234,16 @@ METRIC_ALIASES: dict[str, tuple[str, ...]] = {
     "PNB": ("Produit_Net_Bancaire",),
     "Loans_Net": ("Creances_sur_la_clientele",),
     "Cout_du_risque": ("Cost_of_Risk",),
+    "Customer_Deposits": ("Depots_de_la_clientele", "Depots_clientele"),
+    "Total_Interest_Income": ("Interets_et_produits_assimiles",),
+    "Total_NonInterest_Income": ("Commissions_netttes", "Commissions_nettes"),
+    "Cost_to_Income": ("Coefficient_dexploitation",),
+    "Premiums_Earned": ("Primes_assurance", "Primes_acquises", "Primes_acquises_netttes", "Primes_acquises_nettes"),
+    "Policy_Benefits": ("Charges_de_sinistres", "Prestations_et_frais_payes"),
+    "Policy_Acquisition_Costs": ("Frais_dacquisition",),
+    "Insurance_Contract_Liabilities": ("Provisions_techniques",),
+    "Insurance_Technical_Result": ("Resultat_technique",),
+    "Combined_Ratio": ("Ratio_combine",),
 }
 
 # Inverted lookup built once at module load — alias → canonical.
@@ -228,13 +317,32 @@ def normalize_cgnc_metric_value(metric_name: str, value: float | None) -> float 
     return numeric
 
 
-def infer_statement_archetype(metric_names: Iterable[str]) -> str:
+def _normalized_text(value: str | None) -> str:
+    normalized = unicodedata.normalize("NFKD", str(value or "").strip().lower())
+    return "".join(char for char in normalized if not unicodedata.combining(char))
+
+
+def infer_statement_archetype(
+    metric_names: Iterable[str],
+    *,
+    sector: str | None = None,
+    company_name: str | None = None,
+) -> str:
     names = {str(name or "") for name in metric_names}
     lowered = {name.lower() for name in names}
-    if any(token in name for token in BANK_FIELD_TOKENS for name in lowered):
+    company_context = _normalized_text(f"{sector or ''} {company_name or ''}")
+    if any(token in company_context for token in ("courtage", "courtier", "broker")):
+        return "insurance_broker"
+    if any(token in company_context for token in ("assurance", "insurance", "takaful")):
+        return "insurance"
+    if any(token in company_context for token in ("banque", "bank")):
         return "bank"
+    if any(token in company_context for token in ("leasing", "credit", "financement")):
+        return "financial"
     if any(token in name for token in INSURANCE_FIELD_TOKENS for name in lowered):
         return "insurance"
+    if any(token in name for token in BANK_FIELD_TOKENS for name in lowered):
+        return "bank"
     if names & ESG_FIELDS:
         return "cgnc_social"
     if names & IFRS_GROUP_FIELDS:
@@ -244,8 +352,12 @@ def infer_statement_archetype(metric_names: Iterable[str]) -> str:
     return "unknown"
 
 
-def map_cgnc_annual_metrics(rows: Iterable[AnnualMetricRow]) -> list[AnnualMetricRow]:
-    """Return original CGNC rows plus canonical engine aliases and derived lines."""
+def map_cgnc_annual_metrics(
+    rows: Iterable[AnnualMetricRow],
+    *,
+    archetype_by_symbol: Mapping[str, str] | None = None,
+) -> list[AnnualMetricRow]:
+    """Map CGNC rows with explicit company-type overrides and metric-based fallback."""
 
     normalized_rows = [_normalized_row(row) for row in rows]
     grouped: dict[tuple[str, int], list[AnnualMetricRow]] = defaultdict(list)
@@ -253,8 +365,15 @@ def map_cgnc_annual_metrics(rows: Iterable[AnnualMetricRow]) -> list[AnnualMetri
         grouped[(row.symbol.upper(), row.statement_year)].append(row)
 
     out: list[AnnualMetricRow] = []
-    for group_rows in grouped.values():
-        archetype = infer_statement_archetype(row.metric_name for row in group_rows)
+    explicit = {str(symbol).upper(): str(value).lower() for symbol, value in (archetype_by_symbol or {}).items()}
+    for (symbol, _year), group_rows in grouped.items():
+        inferred = infer_statement_archetype(
+            (row.metric_name for row in group_rows),
+            company_name=group_rows[0].company_name if group_rows else None,
+        )
+        archetype = explicit.get(symbol, COMPANY_ARCHETYPE_OVERRIDES.get(symbol, inferred))
+        if archetype not in ARCHETYPE_PROFILES:
+            archetype = inferred
         source_rows = _drop_financial_industrial_metrics(group_rows, archetype)
         out.extend(source_rows)
         out.extend(_direct_alias_rows(source_rows, archetype=archetype))
@@ -277,17 +396,25 @@ def _is_financial_archetype(archetype: str) -> bool:
 def _drop_financial_industrial_metrics(rows: list[AnnualMetricRow], archetype: str) -> list[AnnualMetricRow]:
     if not _is_financial_archetype(archetype):
         return list(rows)
-    return [row for row in rows if row.metric_name not in FINANCIAL_SUPPRESSED_METRICS]
+    profile = ARCHETYPE_PROFILES.get(archetype, ARCHETYPE_PROFILES["financial"])
+    mappings = {**COMMON_CGNC_ALIASES, **dict(profile.aliases)}
+    return [
+        row for row in rows
+        if row.metric_name not in FINANCIAL_SUPPRESSED_METRICS
+        and not (set(mappings.get(row.metric_name, ())) & FINANCIAL_SUPPRESSED_METRICS)
+    ]
 
 
 def _direct_alias_rows(rows: list[AnnualMetricRow], *, archetype: str = "unknown") -> list[AnnualMetricRow]:
     aliases: list[AnnualMetricRow] = []
     financial = _is_financial_archetype(archetype)
+    profile = ARCHETYPE_PROFILES.get(archetype, ARCHETYPE_PROFILES["unknown"])
+    mappings = {**COMMON_CGNC_ALIASES, **dict(profile.aliases)}
     for row in rows:
         value = normalize_cgnc_metric_value(row.metric_name, row.metric_value)
         if value is None:
             continue
-        for metric_name in CGNC_TO_ENGINE_METRICS.get(row.metric_name, ()):
+        for metric_name in mappings.get(row.metric_name, ()):
             if financial and metric_name in FINANCIAL_SUPPRESSED_METRICS:
                 continue
             aliases.append(
@@ -342,7 +469,7 @@ def _derived_rows(rows: list[AnnualMetricRow], *, archetype: str = "unknown") ->
     cfo = _metric_value(by_metric, "Operating_Cash_Flow", "CF_Operating", "Flux_de_tresorerie_lies_a_lactivite")
     caf = _metric_value(by_metric, "CAF", "Capacite_dautofinancement")
     delta_bfg = _metric_value(by_metric, "Change_in_Working_Capital", "Variation_du_besoin_de_financement_global")
-    if cfo is None and caf is not None and delta_bfg is not None:
+    if not financial and cfo is None and caf is not None and delta_bfg is not None:
         cfo = caf - delta_bfg
         derived.append(_derived_row(template, "Operating_Cash_Flow", cfo, "derived:caf_minus_delta_bfg"))
         derived.append(_derived_row(template, "CF_Operating", cfo, "derived:caf_minus_delta_bfg"))
@@ -378,12 +505,12 @@ def _derived_rows(rows: list[AnnualMetricRow], *, archetype: str = "unknown") ->
 
     current_assets = _metric_value(by_metric, "Current_Assets", "Actif_circulant")
     current_liabilities = _metric_value(by_metric, "Current_Liabilities", "Passif_circulant")
-    if current_assets is not None and current_liabilities is not None:
+    if not financial and current_assets is not None and current_liabilities is not None:
         derived.append(_derived_row(template, "Working_Capital", current_assets - current_liabilities, "derived:current_assets_minus_liabilities"))
         if current_liabilities > 0:
             derived.append(_derived_row(template, "Current_Ratio", current_assets / current_liabilities, "derived:current_assets_over_liabilities"))
 
-    if debt is not None and equity is not None and equity > 0:
+    if not financial and debt is not None and equity is not None and equity > 0:
         derived.append(_derived_row(template, "Debt_to_Equity", debt / equity, "derived:debt_over_equity"))
 
     dividends = _metric_value(by_metric, "Dividendes", "Dividends_Paid", "Clean_Dividendes")
@@ -392,6 +519,32 @@ def _derived_rows(rows: list[AnnualMetricRow], *, archetype: str = "unknown") ->
         derived.append(_derived_row(template, "Dividend_Payout", abs(dividends) / net_income, "derived:dividends_over_net_income"))
     if net_income is not None and dividends is not None and dividends > 0:
         derived.append(_derived_row(template, "Dividend_Coverage", net_income / dividends, "derived:net_income_over_dividends"))
+
+    if archetype == "bank":
+        pnb = _metric_value(by_metric, "PNB", "Produit_Net_Bancaire")
+        rbe = _metric_value(by_metric, "RBE", "Resultat_Brut_Exploitation")
+        loans = _metric_value(by_metric, "Loans_Net", "Creances_sur_la_clientele", "Prets_et_creances_sur_la_clientele")
+        deposits = _metric_value(by_metric, "Customer_Deposits", "Depots_de_la_clientele", "Depots_clientele")
+        if _metric_value(by_metric, "Cost_to_Income") is None and pnb is not None and pnb > 0 and rbe is not None:
+            derived.append(_derived_row(template, "Cost_to_Income", 1.0 - rbe / pnb, "derived:one_minus_rbe_over_pnb"))
+        if _metric_value(by_metric, "Loans_to_Deposits") is None and loans is not None and deposits is not None and deposits > 0:
+            derived.append(_derived_row(template, "Loans_to_Deposits", loans / deposits, "derived:loans_over_customer_deposits"))
+
+    if archetype == "insurance":
+        premiums = _metric_value(by_metric, "Premiums_Earned", "Primes_assurance", "Primes_acquises", "Primes_acquises_nettes")
+        claims = _metric_value(by_metric, "Policy_Benefits", "Charges_de_sinistres", "Prestations_et_frais_payes")
+        acquisition = _metric_value(by_metric, "Policy_Acquisition_Costs", "Frais_dacquisition")
+        loss_ratio = _metric_value(by_metric, "Loss_Ratio", "Ratio_de_sinistralite")
+        expense_ratio = _metric_value(by_metric, "Expense_Ratio", "Ratio_de_frais")
+        if premiums is not None and premiums > 0:
+            if loss_ratio is None and claims is not None:
+                loss_ratio = abs(claims) / premiums
+                derived.append(_derived_row(template, "Loss_Ratio", loss_ratio, "derived:claims_over_earned_premiums"))
+            if expense_ratio is None and acquisition is not None:
+                expense_ratio = abs(acquisition) / premiums
+                derived.append(_derived_row(template, "Expense_Ratio", expense_ratio, "derived:acquisition_costs_over_earned_premiums"))
+        if _metric_value(by_metric, "Combined_Ratio") is None and loss_ratio is not None and expense_ratio is not None:
+            derived.append(_derived_row(template, "Combined_Ratio", loss_ratio + expense_ratio, "derived:loss_plus_expense_ratio"))
 
     return derived
 
@@ -475,13 +628,27 @@ def _cross_year_derived_rows(rows: Iterable[AnnualMetricRow]) -> list[AnnualMetr
                 average_equity = (previous_equity + equity) / 2.0 if previous_equity is not None else equity
                 if average_equity > 0:
                     derived.append(_derived_row(template, "ROE", net_income / average_equity, "derived:group_net_income_over_avg_group_equity"))
+            assets = _metric_value(by_metric, "Total_Assets", "Total_Actif")
+            previous_assets = None
+            if index > 0:
+                previous_assets = _metric_value(years[sorted_years[index - 1]], "Total_Assets", "Total_Actif")
+            if _metric_value(by_metric, "ROA") is None and net_income is not None and assets is not None:
+                average_assets = (previous_assets + assets) / 2.0 if previous_assets is not None else assets
+                if average_assets > 0:
+                    derived.append(_derived_row(template, "ROA", net_income / average_assets, "derived:net_income_over_avg_assets"))
             if index == 0:
                 continue
             previous = years[sorted_years[index - 1]]
-            for metric_name, aliases, output_name in (
-                ("Revenue", ("Revenue", "Chiffre_daffaires", "Clean_Chiffre_daffaires"), "Revenue_Growth"),
+            growth_specs = [
                 ("NetIncome", ("NetIncome", "Net_Income", "Resultat_net", "Clean_Resultat_net"), "NetIncome_Growth"),
-            ):
+            ]
+            if _metric_value(by_metric, "PNB", "Produit_Net_Bancaire") is not None:
+                growth_specs.append(("PNB", ("PNB", "Produit_Net_Bancaire"), "PNB_Growth"))
+            elif _metric_value(by_metric, "Premiums_Earned", "Primes_assurance", "Primes_acquises") is not None:
+                growth_specs.append(("Premiums", ("Premiums_Earned", "Primes_assurance", "Primes_acquises"), "Premiums_Growth"))
+            else:
+                growth_specs.append(("Revenue", ("Revenue", "Chiffre_daffaires", "Clean_Chiffre_daffaires"), "Revenue_Growth"))
+            for metric_name, aliases, output_name in growth_specs:
                 if _metric_value(by_metric, output_name) is not None:
                     continue
                 latest_value = _metric_value(by_metric, *aliases)

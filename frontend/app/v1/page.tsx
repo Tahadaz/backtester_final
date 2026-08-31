@@ -18,7 +18,6 @@ import {
   fetchBourseSessionStatus,
   fetchDashboardDailyBlotter,
   fetchDashboardLiveRefresh,
-  fetchFundamentalCrossSection,
   fetchValueSignal,
   type ValueSignalResponse,
   type ValueSignalRow,
@@ -45,7 +44,6 @@ import {
   type DashboardPortfolioTicketResponse,
   type DashboardPortfolioTradeInput,
   type EdgeMetrics,
-  type FundamentalCrossSectionResponse,
   type FundamentalCrossSectionRow,
 } from "@/lib/api"
 import type {
@@ -868,15 +866,9 @@ export default function DashboardV1Page() {
 
   const edgeMap = useMemo(() => Object.fromEntries(edgeEntries), [edgeEntries]) as Record<string, EdgeMetrics | null | undefined>
 
-  const { data: sfcData } = useSWR<FundamentalCrossSectionResponse>(
-    dashboardMode === "fundamental_directions" ? "fundamental-cross-section" : null,
-    () => fetchFundamentalCrossSection(),
-    { revalidateOnFocus: false, dedupingInterval: 300_000 },
-  )
-  const sfcRowsBySymbol = useMemo<Record<string, FundamentalCrossSectionRow | undefined>>(() => {
-    const entries = (sfcData?.rows ?? []).map((row) => [row.symbol.toUpperCase(), row] as const)
-    return Object.fromEntries(entries)
-  }, [sfcData])
+  // The legacy SFC snapshot is withdrawn. Keep the compatibility prop empty
+  // while all visible fundamental rankings and coverage come from v2 B/M.
+  const sfcRowsBySymbol = useMemo<Record<string, FundamentalCrossSectionRow | undefined>>(() => ({}), [])
 
   const { data: valueSignalData } = useSWR<ValueSignalResponse>(
     dashboardMode === "fundamental_directions" ? "value-signal" : null,
@@ -1046,14 +1038,14 @@ export default function DashboardV1Page() {
 
   const completeBullishCount = completStocks.filter((stock) =>
     dashboardMode === "fundamental_directions"
-      ? sfcRowsBySymbol[stock.symbol.toUpperCase()]?.tercile === "top"
+      ? valueSignalBySymbol[stock.symbol.toUpperCase()]?.eligible_bm === true
       : dashboardMode === "technical_directions"
       ? technicalSignalForDisplay(stock, technicalDirectionMode)?.direction === "long"
       : bestActionableSignal(stock)?.direction === "long",
   ).length
   const completeBearishCount = completStocks.filter((stock) =>
     dashboardMode === "fundamental_directions"
-      ? sfcRowsBySymbol[stock.symbol.toUpperCase()]?.tercile === "bottom"
+      ? valueSignalBySymbol[stock.symbol.toUpperCase()]?.eligible_cfp === true
       : dashboardMode === "technical_directions"
       ? technicalSignalForDisplay(stock, technicalDirectionMode)?.direction === "short"
       : bestActionableSignal(stock)?.direction === "short",
@@ -1069,9 +1061,12 @@ export default function DashboardV1Page() {
   const completeFundamentalUpsideValues = useMemo(
     () =>
       completStocks
-        .map((stock) => sfcRowsBySymbol[stock.symbol.toUpperCase()]?.sfc ?? null)
+        .map((stock) => {
+          const row = valueSignalBySymbol[stock.symbol.toUpperCase()]
+          return row?.eligible_bm ? row.bm_raw ?? null : null
+        })
         .filter((value): value is number => typeof value === "number" && Number.isFinite(value)),
-    [completStocks, sfcRowsBySymbol],
+    [completStocks, valueSignalBySymbol],
   )
   const medianCompleteFundamentalUpside = median(completeFundamentalUpsideValues)
   const completeProvenEdgeCount = useMemo(() => {
@@ -1080,14 +1075,14 @@ export default function DashboardV1Page() {
 
   const bullishCount = visibleMasiStocks.filter((stock) =>
     dashboardMode === "fundamental_directions"
-      ? sfcRowsBySymbol[stock.symbol.toUpperCase()]?.tercile === "top"
+      ? valueSignalBySymbol[stock.symbol.toUpperCase()]?.eligible_bm === true
       : dashboardMode === "technical_directions"
       ? technicalSignalForDisplay(stock, technicalDirectionMode)?.direction === "long"
       : bestActionableSignal(stock)?.direction === "long",
   ).length
   const bearishCount = visibleMasiStocks.filter((stock) =>
     dashboardMode === "fundamental_directions"
-      ? sfcRowsBySymbol[stock.symbol.toUpperCase()]?.tercile === "bottom"
+      ? valueSignalBySymbol[stock.symbol.toUpperCase()]?.eligible_cfp === true
       : dashboardMode === "technical_directions"
       ? technicalSignalForDisplay(stock, technicalDirectionMode)?.direction === "short"
       : bestActionableSignal(stock)?.direction === "short",
@@ -1114,9 +1109,12 @@ export default function DashboardV1Page() {
   const fundamentalUpsideValues = useMemo(
     () =>
       visibleMasiStocks
-        .map((stock) => sfcRowsBySymbol[stock.symbol.toUpperCase()]?.sfc ?? null)
+        .map((stock) => {
+          const row = valueSignalBySymbol[stock.symbol.toUpperCase()]
+          return row?.eligible_bm ? row.bm_raw ?? null : null
+        })
         .filter((value): value is number => typeof value === "number" && Number.isFinite(value)),
-    [sfcRowsBySymbol, visibleMasiStocks],
+    [valueSignalBySymbol, visibleMasiStocks],
   )
   const medianFundamentalUpside = median(fundamentalUpsideValues)
   const optimizedHoldValues = useMemo(
@@ -1290,15 +1288,15 @@ export default function DashboardV1Page() {
             value={visibleMasiStocks.length.toLocaleString("fr-FR")}
             sub={basketOnly ? "titres du panier" : "titres après filtres"}
           />
-          <KpiTile label={isFundamentalDashboardMode ? "Top tercile SFC" : isTechnicalDashboardMode ? "Directions haussières" : "Opportunités long"} value={bullishCount.toLocaleString("fr-FR")} tone="positive" sub={isFundamentalDashboardMode ? "favoriser" : isTechnicalDashboardMode ? `${technicalModeShortLabel(technicalDirectionMode)} technique > +15` : "edge eligible"} />
-          <KpiTile label={isFundamentalDashboardMode ? "Bottom tercile SFC" : isTechnicalDashboardMode ? "Directions baissières" : "À éviter / alléger"} value={bearishCount.toLocaleString("fr-FR")} sub={isFundamentalDashboardMode ? "à éviter, jamais short" : isTechnicalDashboardMode ? `${technicalModeShortLabel(technicalDirectionMode)} technique < -15` : "signal de sortie"} />
+          <KpiTile label={isFundamentalDashboardMode ? "Éligibles B/M" : isTechnicalDashboardMode ? "Directions haussières" : "Opportunités long"} value={bullishCount.toLocaleString("fr-FR")} tone="positive" sub={isFundamentalDashboardMode ? "date et actions PIT vérifiées" : isTechnicalDashboardMode ? `${technicalModeShortLabel(technicalDirectionMode)} technique > +15` : "edge eligible"} />
+          <KpiTile label={isFundamentalDashboardMode ? "Éligibles CF/P" : isTechnicalDashboardMode ? "Directions baissières" : "À éviter / alléger"} value={bearishCount.toLocaleString("fr-FR")} sub={isFundamentalDashboardMode ? "couverture secondaire" : isTechnicalDashboardMode ? `${technicalModeShortLabel(technicalDirectionMode)} technique < -15` : "signal de sortie"} />
           <KpiTile
-            label={isFundamentalDashboardMode ? "SFC médian" : isTechnicalDashboardMode ? "Score technique médian" : "Action E[R] opt. médian"}
+            label={isFundamentalDashboardMode ? "B/M médian" : isTechnicalDashboardMode ? "Score technique médian" : "Action E[R] opt. médian"}
             value={isFundamentalDashboardMode ? (medianFundamentalUpside != null ? formatDecimal(medianFundamentalUpside, 2) : "--") : isTechnicalDashboardMode ? (medianTechnicalScore != null ? formatDecimal(medianTechnicalScore, 1) : "--") : (medianEr != null ? formatPercent(medianEr) : "--")}
             tone={isFundamentalDashboardMode || isTechnicalDashboardMode ? undefined : medianEr != null && medianEr > 0 ? "positive" : medianEr != null && medianEr < 0 ? "negative" : undefined}
             sub={
               isFundamentalDashboardMode
-                ? `${fundamentalUpsideValues.length} scores - ${sfcData?.validation_label ?? "validé sur 2023–2026 (une seule période de marché)"}`
+                ? `${fundamentalUpsideValues.length} observations éligibles · v2 PIT strict`
                 : isTechnicalDashboardMode
                 ? `${technicalScoreValues.length} directions techniques`
                 : erValues.length > 0
@@ -1310,13 +1308,13 @@ export default function DashboardV1Page() {
       ) : (
         <div className="grid grid-cols-2 gap-2 md:grid-cols-2 xl:grid-cols-4">
           <KpiTile label="Univers total" value={completStocks.length.toLocaleString("fr-FR")} sub={isFundamentalDashboardMode ? "scores SFC" : isTechnicalDashboardMode ? "directions techniques" : "instruments disponibles"} />
-          <KpiTile label={isFundamentalDashboardMode ? "Top tercile SFC" : isTechnicalDashboardMode ? "Directions haussières" : "Opportunités long"} value={completeBullishCount.toLocaleString("fr-FR")} tone="positive" sub={isFundamentalDashboardMode ? "favoriser" : isTechnicalDashboardMode ? `${technicalModeShortLabel(technicalDirectionMode)} technique > +15` : "edge eligible"} />
-          <KpiTile label={isFundamentalDashboardMode ? "Bottom tercile SFC" : isTechnicalDashboardMode ? "Directions baissières" : "Opportunités short"} value={completeBearishCount.toLocaleString("fr-FR")} tone="negative" sub={isFundamentalDashboardMode ? "à éviter, jamais short" : isTechnicalDashboardMode ? `${technicalModeShortLabel(technicalDirectionMode)} technique < -15` : "edge eligible"} />
+          <KpiTile label={isFundamentalDashboardMode ? "Éligibles B/M" : isTechnicalDashboardMode ? "Directions haussières" : "Opportunités long"} value={completeBullishCount.toLocaleString("fr-FR")} tone="positive" sub={isFundamentalDashboardMode ? "date et actions PIT vérifiées" : isTechnicalDashboardMode ? `${technicalModeShortLabel(technicalDirectionMode)} technique > +15` : "edge eligible"} />
+          <KpiTile label={isFundamentalDashboardMode ? "Éligibles CF/P" : isTechnicalDashboardMode ? "Directions baissières" : "Opportunités short"} value={completeBearishCount.toLocaleString("fr-FR")} tone="negative" sub={isFundamentalDashboardMode ? "couverture secondaire" : isTechnicalDashboardMode ? `${technicalModeShortLabel(technicalDirectionMode)} technique < -15` : "edge eligible"} />
           <KpiTile
-            label={isFundamentalDashboardMode ? "SFC médian" : isTechnicalDashboardMode ? "Score technique médian" : "Edge validé (OOS)"}
+            label={isFundamentalDashboardMode ? "B/M médian" : isTechnicalDashboardMode ? "Score technique médian" : "Edge validé (OOS)"}
             value={isFundamentalDashboardMode ? (medianCompleteFundamentalUpside != null ? formatDecimal(medianCompleteFundamentalUpside, 2) : "--") : isTechnicalDashboardMode ? (medianCompleteTechnicalScore != null ? formatDecimal(medianCompleteTechnicalScore, 1) : "--") : completeProvenEdgeCount.toLocaleString("fr-FR")}
             tone={isFundamentalDashboardMode || isTechnicalDashboardMode ? undefined : "positive"}
-            sub={isFundamentalDashboardMode ? `${completeFundamentalUpsideValues.length} scores - ${sfcData?.validation_label ?? "validé sur 2023–2026 (une seule période de marché)"}` : isTechnicalDashboardMode ? `${completeTechnicalScoreValues.length} directions techniques` : `sur ${completStocks.length} instruments`}
+            sub={isFundamentalDashboardMode ? `${completeFundamentalUpsideValues.length} observations éligibles · v2 PIT strict` : isTechnicalDashboardMode ? `${completeTechnicalScoreValues.length} directions techniques` : `sur ${completStocks.length} instruments`}
           />
         </div>
       )}
@@ -1547,8 +1545,8 @@ export default function DashboardV1Page() {
             columns={fundamentalColumns}
             onColumnsChange={setFundamentalColumns}
             sfcRowsBySymbol={sfcRowsBySymbol}
-            sfcAsOf={sfcData?.as_of_date ?? null}
-            sfcValidationLabel={sfcData?.validation_label ?? "validé sur 2023–2026 (une seule période de marché)"}
+            sfcAsOf={valueSignalData?.as_of_date ?? null}
+            sfcValidationLabel="v2 PIT strict — recherche non validée"
             valueSignalBySymbol={valueSignalBySymbol}
           />
         ) : viewMode === "masi" ? (
@@ -1649,8 +1647,8 @@ export default function DashboardV1Page() {
             fundamentalColumns={fundamentalColumns}
             onFundamentalColumnsChange={setFundamentalColumns}
             sfcRowsBySymbol={sfcRowsBySymbol}
-            sfcAsOf={sfcData?.as_of_date ?? null}
-            sfcValidationLabel={sfcData?.validation_label ?? "validé sur 2023–2026 (une seule période de marché)"}
+            sfcAsOf={valueSignalData?.as_of_date ?? null}
+            sfcValidationLabel="v2 PIT strict — recherche non validée"
             valueSignalBySymbol={valueSignalBySymbol}
             onOpenEdge={setSelectedStock}
             performancePeriod={performancePeriod}

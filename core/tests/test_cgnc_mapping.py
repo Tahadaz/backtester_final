@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from dataclasses import replace
 
 import pytest
 
@@ -158,3 +159,45 @@ def test_infer_statement_archetype_from_values_industrial_with_null_bank_keys() 
     assert archetype != "bank", (
         f"Industrial symbol with null bank keys was mis-classified as {archetype!r}"
     )
+
+
+def test_explicit_bank_type_controls_sparse_statement_mapping() -> None:
+    mapped = _metrics(map_cgnc_annual_metrics(
+        [
+            _row("Produit_Net_Bancaire", 1_000.0),
+            _row("Resultat_Brut_Exploitation", 420.0),
+            _row("Creances_sur_la_clientele", 8_000.0),
+            _row("Depots_de_la_clientele", 10_000.0),
+            _row("Resultat_dexploitation", 900.0),
+        ],
+        archetype_by_symbol={"AAA": "bank"},
+    ))
+    assert mapped["Cost_to_Income"].metric_value == pytest.approx(0.58)
+    assert mapped["Loans_to_Deposits"].metric_value == pytest.approx(0.8)
+    assert "EBIT" not in mapped
+
+
+def test_insurance_type_maps_underwriting_lines_and_combined_ratio() -> None:
+    mapped = _metrics(map_cgnc_annual_metrics(
+        [
+            _row("Primes_acquises", 1_000.0),
+            _row("Charges_de_sinistres", -620.0),
+            _row("Frais_dacquisition", -180.0),
+            _row("Provisions_techniques", 4_500.0),
+        ],
+        archetype_by_symbol={"AAA": "insurance"},
+    ))
+    assert mapped["Premiums_Earned"].metric_value == pytest.approx(1_000.0)
+    assert mapped["Insurance_Contract_Liabilities"].metric_value == pytest.approx(4_500.0)
+    assert mapped["Loss_Ratio"].metric_value == pytest.approx(0.62)
+    assert mapped["Expense_Ratio"].metric_value == pytest.approx(0.18)
+    assert mapped["Combined_Ratio"].metric_value == pytest.approx(0.80)
+
+
+def test_listed_insurance_broker_keeps_industrial_cash_flow_economics() -> None:
+    rows = [
+        replace(_row("Resultat_dexploitation", 120.0), symbol="AFM", company_name="AFMA"),
+        replace(_row("Dotations_dexploitation", 30.0), symbol="AFM", company_name="AFMA"),
+    ]
+    mapped = {row.metric_name: row for row in map_cgnc_annual_metrics(rows)}
+    assert mapped["EBITDA"].metric_value == pytest.approx(150.0)

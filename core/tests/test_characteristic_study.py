@@ -16,6 +16,7 @@ from quant_core.fundamentals.domain import AnnualMetricRow, FundamentalSnapshot
 def _row(symbol: str = "AAA") -> pd.DataFrame:
     metrics = {
         "MarketCap_Calc": 100.0,
+        "Shares_Outstanding": 10.0,
         "Total_Equity": 50.0,
         "NetIncome": 10.0,
         "Operating_Cash_Flow": 12.0,
@@ -64,6 +65,23 @@ def test_value_yield_raw_formulas_are_preserved() -> None:
     assert out.loc[0, "cashflow_price_raw"] == pytest.approx(0.12)
     assert out.loc[0, "sales_price_raw"] == pytest.approx(2.0)
     assert out.loc[0, "ebitda_ev_yield_raw"] == pytest.approx(0.25)
+
+
+def test_market_equity_tracks_decision_price_and_ignores_stored_market_cap() -> None:
+    frame = _row()
+    frame.at[0, "metrics"] = {
+        **frame.at[0, "metrics"],
+        "MarketCap_Calc": 9_999_999.0,
+        "Shares_Outstanding": 10.0,
+    }
+    low = add_characteristics(frame, _prices(), CharacteristicStudyConfig(beta_min_obs=10))
+    frame.at[0, "close"] = 20.0
+    high = add_characteristics(frame, _prices(), CharacteristicStudyConfig(beta_min_obs=10))
+
+    assert low.loc[0, "market_cap_raw"] == pytest.approx(100.0)
+    assert high.loc[0, "market_cap_raw"] == pytest.approx(200.0)
+    assert low.loc[0, "book_to_market_raw"] == pytest.approx(0.5)
+    assert high.loc[0, "book_to_market_raw"] == pytest.approx(0.25)
 
 
 def test_profitability_investment_and_accrual_formulas() -> None:

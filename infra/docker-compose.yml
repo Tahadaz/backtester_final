@@ -219,6 +219,8 @@ services:
       FUNDAMENTAL_LLM_API_KEYS: ${FUNDAMENTAL_LLM_API_KEYS:-}
       FUNDAMENTAL_LLM_MODEL: ${FUNDAMENTAL_LLM_MODEL:-gemma-4-31b-it}
       FUNDAMENTAL_LLM_BASE_URL: ${FUNDAMENTAL_LLM_BASE_URL:-https://generativelanguage.googleapis.com/v1beta/openai/}
+      VALUE_STRATEGY_COST_BPS: ${VALUE_STRATEGY_COST_BPS:-33}
+      VALUE_STRATEGY_COST_SOURCE: "${VALUE_STRATEGY_COST_SOURCE:-Desk workbook fees_trades_equity (1).xlsx; creator Mouad IZELGUE; created 2026-02-10; SHA256 7EF1F33618CD715544A0DF645B599795A6A16AF07694BD57D520F328374E1553}"
       FAMA_FRENCH_DIR: /bvc/fama-french
       FAMA_FRENCH_MARKET_REFERENCE_WORKBOOK: /bvc/fama-french/data/raw/fundamental_data_all_structured.xlsx
       FAMA_FRENCH_HISTORICAL_WORKBOOK: /bvc/fama-french/data/raw/fundamental_data_yearly.xlsx
@@ -458,6 +460,8 @@ services:
     build:
       context: ../frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_DASHBOARD_PUBLIC_ONLY: ${DASHBOARD_PUBLIC_ONLY:-false}
     environment:
       UPSTREAM_API_BASE: http://quant_api:8000
       UPSTREAM_TIMEOUT_MS: ${UPSTREAM_TIMEOUT_MS:-120000}
@@ -470,7 +474,8 @@ services:
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
       ADMIN_EMAILS: ${ADMIN_EMAILS:-stg.tdazine@bmcek.co.ma}
       ADMIN_API_KEY: ${ADMIN_API_KEY:-}
-      DASHBOARD_PUBLIC_ONLY: ${DASHBOARD_PUBLIC_ONLY:-true}
+      DASHBOARD_PUBLIC_ONLY: ${DASHBOARD_PUBLIC_ONLY:-false}
+      NEXT_PUBLIC_DASHBOARD_PUBLIC_ONLY: ${DASHBOARD_PUBLIC_ONLY:-false}
     depends_on:
       quant_api:
         condition: service_healthy

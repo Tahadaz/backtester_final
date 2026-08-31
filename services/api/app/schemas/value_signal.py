@@ -17,6 +17,12 @@ class ValueSignalRow(BaseModel):
     symbol: str
     as_of_date: str
     bm_raw: Optional[float] = None
+    market_equity: Optional[float] = Field(None, description="Decision-date close multiplied by PIT shares; stored workbook market cap is never used.")
+    decision_close: Optional[float] = None
+    shares_outstanding: Optional[float] = None
+    book_equity: Optional[float] = None
+    book_equity_provenance: Optional[dict[str, Any]] = None
+    shares_provenance: Optional[dict[str, Any]] = None
     bm_percentile: Optional[float] = Field(None, description="Cross-sectional percentile within the eligible universe; higher = structurally cheaper (higher B/M).")
     bm_rank: Optional[int] = None
     cfp_raw: Optional[float] = None
@@ -38,6 +44,8 @@ class ValueSignalResponse(BaseModel):
     eligible_bm_count: int
     eligible_cfp_count: int
     total_rows: int
+    publication_coverage: dict[str, Any] = Field(default_factory=dict)
+    market_equity_formula: str
     rows: list[ValueSignalRow]
 
 
@@ -75,10 +83,41 @@ class TradeLedgerRow(BaseModel):
     symbol: str
     vintage_formed: str = Field(..., description="Formation date of the 6-month vintage this trade belongs to.")
     weight: float = Field(..., description="Capital weight of this trade (1/6 of the vintage's equal-weight allocation).")
+    requested_notional_mad: Optional[float] = None
+    filled_notional_mad: Optional[float] = None
+    unfilled_notional_mad: Optional[float] = None
+    adv_mad: Optional[float] = None
+    participation_rate: Optional[float] = None
+    status: str = "filled"
+
+
+class ValueStrategyLiquiditySettings(BaseModel):
+    liquidity_enabled: bool = True
+    portfolio_nav_mad: float = Field(10_000_000.0, gt=0)
+    min_order_enabled: bool = True
+    min_order_mad: float = Field(100_000.0, ge=0)
+    min_adv_enabled: bool = True
+    min_adv_mad: float = Field(500_000.0, ge=0)
+    max_participation_enabled: bool = True
+    max_participation_rate: float = Field(0.20, ge=0, le=1)
+    adv_window_days: int = Field(20, ge=1, le=252)
+    execution_horizon_days: int = Field(1, ge=1, le=20)
+
+
+class ValueStrategyRecomputeRequest(BaseModel):
+    liquidity: ValueStrategyLiquiditySettings = Field(default_factory=ValueStrategyLiquiditySettings)
 
 
 class ValueStrategySnapshotResponse(BaseModel):
-    research_status: str = Field(..., description='Always "RESEARCH STRATEGY — PROMISING" for this model — not proven alpha, not a live track record.')
+    live_trading_authorized: bool = Field(
+        ...,
+        description="Fail-closed authorization. False until every documented production-readiness gate passes.",
+    )
+    production_readiness: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Versioned evidence gates and remediation required before live use.",
+    )
+    research_status: str = Field(..., description='Research-only classification; not proven alpha, a live track record, or an authorization.')
     recommended_architecture: str
     model_version: str = Field(..., description="Frozen methodology identifier, not a runtime timestamp.")
     as_of_date: Optional[str] = None
@@ -88,6 +127,8 @@ class ValueStrategySnapshotResponse(BaseModel):
     strategy_metrics: dict[str, Any]
     equity_curve: list[EquityCurvePoint] = Field(default_factory=list)
     trade_ledger: list[TradeLedgerRow] = Field(default_factory=list, description="Most recent 500 BUY/SELL events, newest first.")
+    liquidity_settings: ValueStrategyLiquiditySettings = Field(default_factory=ValueStrategyLiquiditySettings)
+    capacity_summary: dict[str, Any] = Field(default_factory=dict)
     caveats: list[str]
     config_hash: str
     computed_at: Optional[str] = None

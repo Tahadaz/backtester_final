@@ -37,6 +37,7 @@ from services.api.app.services.fundamentals import (
     refresh_import_after_pit_sync,
     sync_bvc_period_metrics_to_annual_and_latest,
 )
+from services.api.app.services.fundamental_publication_reconciliation import reconcile_stockanalysis_publication_dates
 from services.worker.config import settings
 from services.worker.db import SessionLocal
 
@@ -787,6 +788,11 @@ def execute_bvc_fundamental_import(
             import_id=run_id,
             symbols={symbol.upper() for symbol in symbols} if symbols else None,
         )
+        stockanalysis_pit_reconciliation = reconcile_stockanalysis_publication_dates(
+            db,
+            apply=True,
+            symbols={symbol.upper() for symbol in symbols} if symbols else None,
+        )
         refreshed = refresh_import_after_pit_sync(db, import_id=run_id)
         summary = dict(imported.summary_json or {})
         summary["targeted_bvc"] = {
@@ -806,6 +812,7 @@ def execute_bvc_fundamental_import(
             "source_document_count": document_count,
             "period_metric_count": period_metric_count,
             "pit_sync": pit_sync,
+            "stockanalysis_pit_reconciliation": stockanalysis_pit_reconciliation,
             "pit_refresh": refreshed,
             "scraper_stdout_tail": _command_output_tail(result.stdout),
             "scraper_stderr_tail": _command_output_tail(result.stderr),

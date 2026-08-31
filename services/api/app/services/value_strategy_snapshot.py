@@ -1,6 +1,6 @@
 """Six-vintage B/M + CF/P live-like strategy snapshot -- the production entrypoint for
 core.quant_core.fundamentals.cross_section.live_like_strategy (2026-07-06 research:
-RESEARCH STRATEGY -- PROMISING, not proven alpha, not production-ready autonomous trading).
+RESEARCH ONLY -- UNVALIDATED, not proven alpha and not production-ready trading).
 
 This is a genuinely heavy computation (full daily price-history load + vintage backtest over
 ~9 years), so unlike value_signal.py it is NOT computed per-request. It follows the exact same
@@ -19,7 +19,9 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import math
 import os
+from dataclasses import asdict, replace
 from typing import Any
 
 import pandas as pd
@@ -29,22 +31,26 @@ from core.quant_core.fundamentals.cross_section.live_like_strategy import (
     LiveLikeConfig,
     TRUSTED_UNIVERSE_EXCLUSIONS,
     VINTAGE_LIFE_MONTHS,
+    attach_point_in_time_adv,
     build_trade_ledger,
     build_vintage_holdings_by_date,
     combine_sleeves,
     eligibility_mask,
     run_vintage_backtest,
+    run_capacity_constrained_backtest,
     summarize_performance,
 )
 from core.quant_core.fundamentals.cross_section.portfolio_backtest import _pit_price
+from core.quant_core.fundamentals.cross_section.production_readiness import current_repository_readiness
+from core.quant_core.fundamentals.cross_section.market_equity import decision_date_market_equity
 
 from .. import models
 from ..json_sanitize import sanitize_json_compatible
 from ..market_data_loader import load_close_series_from_store
 from .value_signal import compute_value_signal_frame
 
-VALUE_STRATEGY_METHODOLOGY_VERSION = "value_strategy_six_vintage_v1_2026_07_06"
-VALUE_STRATEGY_RESEARCH_STATUS = "RESEARCH STRATEGY — PROMISING"
+VALUE_STRATEGY_METHODOLOGY_VERSION = "structural_value_six_vintage_v2_1_liquidity_2026_08_30"
+VALUE_STRATEGY_RESEARCH_STATUS = "RESEARCH ONLY — UNVALIDATED"
 RECOMMENDED_ARCHITECTURE = "S1_bm"
 
 # Model version: identifies the FROZEN methodology (canonical B/M, canonical CF/P, trusted-
@@ -52,7 +58,20 @@ RECOMMENDED_ARCHITECTURE = "S1_bm"
 # this only when the methodology itself changes (e.g. a new canonical definition, a new
 # exclusion policy). Distinct from `computed_at` (when this particular snapshot ran) and from
 # `config_hash` (a hash of the below, used for DB lookups).
-MODEL_VERSION = "Fundamental Value Strategy v1.0"
+MODEL_VERSION = "Fundamental Value Strategy v2.1"
+
+DEFAULT_LIQUIDITY_SETTINGS: dict[str, Any] = {
+    "liquidity_enabled": True,
+    "portfolio_nav_mad": 10_000_000.0,
+    "min_order_enabled": True,
+    "min_order_mad": 100_000.0,
+    "min_adv_enabled": True,
+    "min_adv_mad": 500_000.0,
+    "max_participation_enabled": True,
+    "max_participation_rate": 0.20,
+    "adv_window_days": 20,
+    "execution_horizon_days": 1,
+}
 
 # Expected refresh cadence for staleness classification (see snapshot_freshness()). The
 # underlying B/M/CF/P panel only meaningfully refreshes on the weekly fundamentals cadence
@@ -66,8 +85,10 @@ AGING_MAX_AGE_DAYS = 40
 _CONFIG_PAYLOAD = {
     "methodology_version": VALUE_STRATEGY_METHODOLOGY_VERSION,
     "vintage_life_months": VINTAGE_LIFE_MONTHS,
-    "cost_bps": LiveLikeConfig().cost_bps,
+    "cost_policy": "requires_VALUE_STRATEGY_COST_BPS_and_VALUE_STRATEGY_COST_SOURCE",
     "trusted_universe_exclusions": sorted(TRUSTED_UNIVERSE_EXCLUSIONS),
+    "require_observed_publication_date": True,
+    "market_equity_formula": "decision_date_close_x_pit_shares",
 }
 VALUE_STRATEGY_CONFIG_HASH = hashlib.sha256(json.dumps(_CONFIG_PAYLOAD, sort_keys=True).encode("utf-8")).hexdigest()[:16]
 
@@ -76,6 +97,58 @@ VALUE_STRATEGY_CONFIG_HASH = hashlib.sha256(json.dumps(_CONFIG_PAYLOAD, sort_key
 VALUE_STRATEGY_JOB_SYMBOL = "__VALUE_STRATEGY__"
 VALUE_STRATEGY_JOB_HORIZON = "vintage6"
 VALUE_STRATEGY_JOB_TYPE = "value_strategy"
+
+
+def _resolved_desk_cost_config(liquidity_settings: dict[str, Any] | None = None) -> tuple[LiveLikeConfig, str]:
+    """Require an explicit, sourced desk cost instead of the legacy 33 bps convention."""
+
+    raw_cost = os.environ.get("VALUE_STRATEGY_COST_BPS", "").strip()
+    source = os.environ.get("VALUE_STRATEGY_COST_SOURCE", "").strip()
+    if not raw_cost or not source:
+        raise ValueStrategyComputeError(
+            "Structural Value v2 requires VALUE_STRATEGY_COST_BPS and VALUE_STRATEGY_COST_SOURCE; "
+            "the legacy unsourced 33 bps convention is not accepted"
+        )
+    try:
+        cost_bps = float(raw_cost)
+    except ValueError as exc:
+        raise ValueStrategyComputeError("VALUE_STRATEGY_COST_BPS must be numeric") from exc
+    if not math.isfinite(cost_bps) or cost_bps < 0:
+        raise ValueStrategyComputeError("VALUE_STRATEGY_COST_BPS must be finite and non-negative")
+    supplied = {**DEFAULT_LIQUIDITY_SETTINGS, **(liquidity_settings or {})}
+    try:
+        config = replace(
+            LiveLikeConfig(cost_bps=cost_bps),
+            liquidity_enabled=bool(supplied["liquidity_enabled"]),
+            portfolio_nav_mad=float(supplied["portfolio_nav_mad"]),
+            min_order_enabled=bool(supplied["min_order_enabled"]),
+            min_order_mad=float(supplied["min_order_mad"]),
+            min_adv_enabled=bool(supplied["min_adv_enabled"]),
+            min_adv_mad=float(supplied["min_adv_mad"]),
+            max_participation_enabled=bool(supplied["max_participation_enabled"]),
+            max_participation_rate=float(supplied["max_participation_rate"]),
+            adv_window_days=int(supplied["adv_window_days"]),
+            execution_horizon_days=int(supplied["execution_horizon_days"]),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueStrategyComputeError(f"Invalid liquidity settings: {exc}") from exc
+    numeric_nonnegative = (config.portfolio_nav_mad, config.min_order_mad, config.min_adv_mad, config.max_participation_rate)
+    if not all(math.isfinite(value) and value >= 0 for value in numeric_nonnegative):
+        raise ValueStrategyComputeError("Liquidity numeric settings must be finite and non-negative")
+    if config.portfolio_nav_mad <= 0 or config.adv_window_days < 1 or config.execution_horizon_days < 1:
+        raise ValueStrategyComputeError("Portfolio NAV, ADV window, and execution horizon must be positive")
+    if config.max_participation_rate > 1:
+        raise ValueStrategyComputeError("Maximum ADV participation rate cannot exceed 100%")
+    return config, source
+
+
+def _runtime_config_payload(config: LiveLikeConfig) -> dict[str, Any]:
+    return {**_CONFIG_PAYLOAD, "liquidity_settings": {key: asdict(config)[key] for key in DEFAULT_LIQUIDITY_SETTINGS}}
+
+
+def _runtime_config_hash(config: LiveLikeConfig) -> str:
+    payload = _runtime_config_payload(config)
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()[:16]
 
 
 def _ensure_s3_env_vars() -> None:
@@ -132,7 +205,7 @@ class ValueStrategyComputeError(RuntimeError):
     services/worker/tasks/value_strategy.py and snapshot_freshness()."""
 
 
-def compute_value_strategy_snapshot(db: Session) -> dict[str, Any]:
+def compute_value_strategy_snapshot(db: Session, *, liquidity_settings: dict[str, Any] | None = None) -> dict[str, Any]:
     _ensure_s3_env_vars()
     full_panel = _build_full_history_panel(db)
     if full_panel.empty:
@@ -148,9 +221,7 @@ def compute_value_strategy_snapshot(db: Session) -> dict[str, Any]:
         metrics = dict(row["metrics"])
         close = _finite(row.get("close"))
         shares = _metric(metrics, "Shares_Outstanding")
-        mcap = _metric(metrics, "MarketCap_Calc", "Market_Cap")
-        if mcap is None and close is not None and shares is not None:
-            mcap = close * shares
+        mcap = decision_date_market_equity(close=close, shares_outstanding=shares)
         book = _metric(metrics, *METRIC_ALIASES["book_equity"])
         cfo = _metric(metrics, *METRIC_ALIASES["cash_flow_ops"])
         is_financial = bool(row.get("is_financial", False))
@@ -164,7 +235,6 @@ def compute_value_strategy_snapshot(db: Session) -> dict[str, Any]:
         )
     raw = pd.DataFrame(computed).set_index("_idx")
     panel = full_panel.join(raw)
-    panel = eligibility_mask(panel)
     panel["as_of_date"] = pd.to_datetime(panel["as_of_date"]).dt.date
 
     # Local import: characteristic_study.py needs statsmodels (for its own beta/momentum
@@ -176,13 +246,24 @@ def compute_value_strategy_snapshot(db: Session) -> dict[str, Any]:
 
     price_frames = _full_price_loader()
     price_by_symbol = {sym: df["Close"] if "Close" in df else None for sym, df in price_frames.items()}
-    config = LiveLikeConfig()
+    config, cost_source = _resolved_desk_cost_config(liquidity_settings)
+    panel = attach_point_in_time_adv(panel, price_frames=price_frames, window_days=config.adv_window_days)
+    panel = eligibility_mask(panel, config=config)
 
     s1_holdings = build_vintage_holdings_by_date(panel, strategy="S1_bm", config=config)
     s2_holdings = build_vintage_holdings_by_date(panel, strategy="S2_cfp", config=config)
 
-    s1 = run_vintage_backtest(s1_holdings, price_by_symbol=price_by_symbol, config=config)
-    s2 = run_vintage_backtest(s2_holdings, price_by_symbol=price_by_symbol, config=config)
+    capacity_summary: dict[str, Any] = {}
+    capacity_ledger = pd.DataFrame()
+    actual_current_weights: dict[str, float] = {}
+    if config.liquidity_enabled:
+        s1, capacity_ledger, capacity_summary, actual_current_weights = run_capacity_constrained_backtest(
+            s1_holdings, price_frames=price_frames, config=config
+        )
+        s2, _, _, _ = run_capacity_constrained_backtest(s2_holdings, price_frames=price_frames, config=config)
+    else:
+        s1 = run_vintage_backtest(s1_holdings, price_by_symbol=price_by_symbol, config=config)
+        s2 = run_vintage_backtest(s2_holdings, price_by_symbol=price_by_symbol, config=config)
     s4 = combine_sleeves(s1, s2)
 
     def _invested(frame: pd.DataFrame) -> pd.DataFrame:
@@ -234,7 +315,7 @@ def compute_value_strategy_snapshot(db: Session) -> dict[str, Any]:
     # Real BUY/SELL trade ledger for the recommended architecture, derived from the exact same
     # vintage lifecycle the backtest engine uses (see build_trade_ledger docstring) -- not a
     # fabricated or illustrative history.
-    ledger_df = build_trade_ledger(s1_holdings)
+    ledger_df = capacity_ledger if config.liquidity_enabled else build_trade_ledger(s1_holdings)
     trade_ledger = [
         {
             "date": row["date"].isoformat(),
@@ -242,6 +323,12 @@ def compute_value_strategy_snapshot(db: Session) -> dict[str, Any]:
             "symbol": row["symbol"],
             "vintage_formed": row["vintage_formed"].isoformat(),
             "weight": float(row["weight"]),
+            "requested_notional_mad": float(row["requested_notional_mad"]) if pd.notna(row.get("requested_notional_mad")) else None,
+            "filled_notional_mad": float(row["filled_notional_mad"]) if pd.notna(row.get("filled_notional_mad")) else None,
+            "unfilled_notional_mad": float(row["unfilled_notional_mad"]) if pd.notna(row.get("unfilled_notional_mad")) else None,
+            "adv_mad": float(row["adv_mad"]) if pd.notna(row.get("adv_mad")) else None,
+            "participation_rate": float(row["participation_rate"]) if pd.notna(row.get("participation_rate")) else None,
+            "status": str(row.get("status") or "filled"),
         }
         for _, row in ledger_df.sort_values("date", ascending=False).head(500).iterrows()
     ] if not ledger_df.empty else []
@@ -255,7 +342,7 @@ def compute_value_strategy_snapshot(db: Session) -> dict[str, Any]:
         raise ValueStrategyComputeError("No eligible B/M holdings were formed on any historical date -- trusted universe construction likely broken")
 
     latest_date = max(s1_holdings) if s1_holdings else None
-    current_holdings = s1_holdings.get(latest_date, {}) if latest_date else {}
+    current_holdings = actual_current_weights if config.liquidity_enabled else (s1_holdings.get(latest_date, {}) if latest_date else {})
     sector_map = {str(r["symbol"]): r.get("sector") for _, r in panel.drop_duplicates("symbol").iterrows()}
 
     latest_slice = panel[panel["as_of_date"] == latest_date] if latest_date else panel.iloc[0:0]
@@ -268,11 +355,17 @@ def compute_value_strategy_snapshot(db: Session) -> dict[str, Any]:
     }
     data_cutoff = max((d for d in s1_holdings), default=None)
 
+    readiness = current_repository_readiness()
     result = {
         "research_status": VALUE_STRATEGY_RESEARCH_STATUS,
+        "live_trading_authorized": readiness.live_trading_authorized,
+        "production_readiness": readiness.to_dict(),
         "recommended_architecture": RECOMMENDED_ARCHITECTURE,
         "model_version": MODEL_VERSION,
         "methodology_version": VALUE_STRATEGY_METHODOLOGY_VERSION,
+        "transaction_cost_source": cost_source,
+        "liquidity_settings": {key: asdict(config)[key] for key in DEFAULT_LIQUIDITY_SETTINGS},
+        "capacity_summary": capacity_summary,
         "as_of_date": latest_date.isoformat() if latest_date else None,
         "signal_as_of_date": latest_date.isoformat() if latest_date else None,
         "strategy_as_of_date": latest_date.isoformat() if latest_date else None,
@@ -284,17 +377,21 @@ def compute_value_strategy_snapshot(db: Session) -> dict[str, Any]:
             "excluded_symbols": excluded_summary,
         },
         "current_holdings": [
-            {"symbol": sym, "target_weight": weight / VINTAGE_LIFE_MONTHS, "sector": sector_map.get(sym)}
+            {"symbol": sym, "target_weight": weight if config.liquidity_enabled else weight / VINTAGE_LIFE_MONTHS, "sector": sector_map.get(sym)}
             for sym, weight in sorted(current_holdings.items(), key=lambda kv: -kv[1])
         ],
         "strategy_metrics": metrics,
         "equity_curve": equity_curve,
         "trade_ledger": trade_ledger,
         "caveats": [
-            "Short historical window: effective invested sample is 38-51 months, not the full panel span.",
-            "Concentration risk: prior attribution found ~36% of S1 exposure concentrated in 3 real-estate/construction names (ADH, ADI, JET).",
-            "No liquidity-adjusted production filter is applied in this snapshot beyond the standing trusted-universe exclusions.",
+            "LIVE TRADING IS NOT AUTHORIZED: see production_readiness.blocker_ids and the prop-desk readiness review.",
+            "All Structural Value v1 performance is withdrawn; only a fully rerun v2 snapshot may be evaluated.",
+            "Historical effective shares and corporate actions are not yet independently certified.",
+            "Liquidity controls use strictly lagged historical ADTV; missing ADTV is rejected and unfilled notional remains cash.",
+            "Default liquidity values are editable research calibrations, not approved desk risk limits.",
             "Benchmark comparison (if shown) uses MASI/MASI20 price indices rebased to the strategy's start date, not confirmed total-return series.",
+            "Execution-lag/no-fill behavior remains a failed release gate; these research metrics are not executable performance.",
+            f"Transaction-cost input source: {cost_source}.",
             "This is backtested research evidence, not a live or paper trading track record.",
         ],
     }
@@ -326,13 +423,21 @@ def snapshot_freshness(row: models.FundamentalValueStrategySnapshot | None, *, l
     return {"state": state, "age_days": round(age_days, 1), "last_successful_computed_at": computed_at.isoformat()}
 
 
-def persist_value_strategy_snapshot(db: Session, *, triggered_by: str | None = None, batch_id: str | None = None) -> models.FundamentalValueStrategySnapshot:
-    result = compute_value_strategy_snapshot(db)
+def persist_value_strategy_snapshot(
+    db: Session,
+    *,
+    triggered_by: str | None = None,
+    batch_id: str | None = None,
+    liquidity_settings: dict[str, Any] | None = None,
+) -> models.FundamentalValueStrategySnapshot:
+    result = compute_value_strategy_snapshot(db, liquidity_settings=liquidity_settings)
+    config, _ = _resolved_desk_cost_config(liquidity_settings)
+    config_hash = _runtime_config_hash(config)
     result["triggered_by"] = triggered_by or "manual"
     result["batch_id"] = batch_id
     row = models.FundamentalValueStrategySnapshot(
-        config_hash=VALUE_STRATEGY_CONFIG_HASH,
-        params_json=sanitize_json_compatible({**_CONFIG_PAYLOAD, "triggered_by": triggered_by or "manual", "batch_id": batch_id}),
+        config_hash=config_hash,
+        params_json=sanitize_json_compatible({**_runtime_config_payload(config), "triggered_by": triggered_by or "manual", "batch_id": batch_id}),
         result_json=sanitize_json_compatible(result),
         computed_at=dt.datetime.now(dt.timezone.utc),
     )
@@ -341,18 +446,33 @@ def persist_value_strategy_snapshot(db: Session, *, triggered_by: str | None = N
     return row
 
 
-def recompute_and_persist_value_strategy(db: Session, *, triggered_by: str | None = None, batch_id: str | None = None) -> dict[str, Any]:
-    row = persist_value_strategy_snapshot(db, triggered_by=triggered_by, batch_id=batch_id)
+def recompute_and_persist_value_strategy(
+    db: Session,
+    *,
+    triggered_by: str | None = None,
+    batch_id: str | None = None,
+    liquidity_settings: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    row = persist_value_strategy_snapshot(
+        db, triggered_by=triggered_by, batch_id=batch_id, liquidity_settings=liquidity_settings
+    )
     db.commit()
     return {"snapshot_id": int(row.id), "config_hash": row.config_hash, "computed_at": row.computed_at.isoformat() if row.computed_at else None}
 
 
 def latest_value_strategy_snapshot(db: Session) -> models.FundamentalValueStrategySnapshot | None:
-    return (
+    rows = (
         db.query(models.FundamentalValueStrategySnapshot)
-        .filter(models.FundamentalValueStrategySnapshot.config_hash == VALUE_STRATEGY_CONFIG_HASH)
         .order_by(models.FundamentalValueStrategySnapshot.computed_at.desc())
-        .first()
+        .limit(100)
+        .all()
+    )
+    return next(
+        (
+            row for row in rows
+            if isinstance(row.result_json, dict) and row.result_json.get("model_version") == MODEL_VERSION
+        ),
+        None,
     )
 
 

@@ -10,6 +10,7 @@ import pandas as pd
 from ..cgnc_mapping import FINANCIAL_ARCHETYPES, infer_statement_archetype
 from ..domain import AnnualMetricRow, FundamentalSnapshot
 from ..pit_ic_backtest import UNIVERSE_PATH, _is_live, _pit_close, normalize_price_index
+from .quarterly_pit_audit import is_trustworthy_publication_date
 
 PriceLoader = Callable[[str], pd.Series | None]
 
@@ -27,6 +28,7 @@ class PanelConfig:
     annual_lag_days: int = 90
     semiannual_lag_days: int = 60
     quarterly_lag_days: int = 45
+    require_observed_publication_date: bool = False
 
 
 def _date(value: Any) -> dt.date | None:
@@ -107,13 +109,27 @@ def _as_annual_metric(row: Any, config: PanelConfig | None = None) -> dict[str, 
     statement_year = int(_get(row, "statement_year", _get(row, "fiscal_year")))
     period_type = str(_get(row, "period_type", "annual") or "annual")
     period_end = _date(_get(row, "period_end_date")) or dt.date(statement_year, 12, 31)
-    pub = _date(_get(row, "publication_date"))
+    raw_publication_date = _date(_get(row, "publication_date"))
+    source_document_id = _get(row, "source_document_id")
+    publication_date_trustworthy = is_trustworthy_publication_date(
+        publication_date=raw_publication_date,
+        created_at=_get(row, "source_document_created_at"),
+        document_title=_get(row, "document_title"),
+        source_url=_get(row, "source_url"),
+        raw_json=_get(row, "source_document_raw_json"),
+    )
+    publication_date_verified = bool(source_document_id and publication_date_trustworthy)
+    pub = raw_publication_date if publication_date_trustworthy else None
+    raw_as_of = _date(_get(row, "as_of_date"))
+    # A linked document with a rejected publication timestamp must not smuggle
+    # the same timestamp back in through the generic as_of_date field.
+    as_of = None if source_document_id and raw_publication_date and not publication_date_trustworthy and raw_as_of == raw_publication_date else raw_as_of
     avail = availability_date(
         statement_year=statement_year,
         period_type=period_type,
         publication_date=pub,
         period_end_date=period_end,
-        as_of_date=_date(_get(row, "as_of_date")),
+        as_of_date=as_of,
         annual_lag_days=cfg.annual_lag_days,
         semiannual_lag_days=cfg.semiannual_lag_days,
         quarterly_lag_days=cfg.quarterly_lag_days,
@@ -121,7 +137,7 @@ def _as_annual_metric(row: Any, config: PanelConfig | None = None) -> dict[str, 
     kind = availability_kind(
         period_type=period_type,
         publication_date=pub,
-        as_of_date=_date(_get(row, "as_of_date")),
+        as_of_date=as_of,
         annual_lag_days=cfg.annual_lag_days,
         semiannual_lag_days=cfg.semiannual_lag_days,
         quarterly_lag_days=cfg.quarterly_lag_days,
@@ -137,7 +153,8 @@ def _as_annual_metric(row: Any, config: PanelConfig | None = None) -> dict[str, 
         "metric_value": _float(_get(row, "metric_value")),
         "availability_date": avail,
         "availability_kind": kind,
-        "source_document_id": _get(row, "source_document_id"),
+        "source_document_id": source_document_id,
+        "publication_date_verified": publication_date_verified,
     }
 
 
@@ -190,12 +207,15 @@ def _metric_resolution_key(row: dict[str, Any]) -> tuple[dt.date, int, int, int]
     return (row["availability_date"], row["statement_year"], has_doc, doc_id_value)
 
 
-def _latest_metric_map(rows: list[dict[str, Any]], as_of_date: dt.date) -> tuple[dict[str, float], list[AnnualMetricRow], dt.date | None, dict[str, int]]:
+def _latest_metric_map(
+    rows: list[dict[str, Any]],
+    as_of_date: dt.date,
+) -> tuple[dict[str, float], list[AnnualMetricRow], dt.date | None, dict[str, int], dict[str, dict[str, Any]]]:
     eligible = [r for r in rows if r["availability_date"] <= as_of_date]
     # Sort explicitly by the deterministic resolution key so the winner never
     # depends on the order `rows` arrived in (e.g. DB row order for ties).
     eligible = sorted(eligible, key=_metric_resolution_key)
-    latest: dict[str, tuple[tuple[dt.date, int, int, int], float]] = {}
+    latest: dict[str, tuple[tuple[dt.date, int, int, int], float, dict[str, Any]]] = {}
     history: list[AnnualMetricRow] = []
     max_avail: dt.date | None = None
     availability_counts: dict[str, int] = {}
@@ -219,8 +239,17 @@ def _latest_metric_map(rows: list[dict[str, Any]], as_of_date: dt.date) -> tuple
         key = _metric_resolution_key(row)
         prev = latest.get(row["metric_name"])
         if prev is None or key >= prev[0]:
-            latest[row["metric_name"]] = (key, val)
-    return {name: val for name, (_, val) in latest.items()}, history, max_avail, availability_counts
+            latest[row["metric_name"]] = (key, val, row)
+    provenance = {
+        name: {
+            "statement_year": selected["statement_year"],
+            "availability_date": selected["availability_date"],
+            "availability_kind": selected["availability_kind"],
+            "source_document_id": selected.get("source_document_id"),
+        }
+        for name, (_, _, selected) in latest.items()
+    }
+    return {name: val for name, (_, val, _) in latest.items()}, history, max_avail, availability_counts, provenance
 
 
 def _latest_consensus(rows: list[dict[str, Any]], as_of_date: dt.date) -> dict[str, float]:
@@ -286,6 +315,11 @@ def build_pit_panel(
     cfg = config or PanelConfig()
     metrics = [_as_annual_metric(r, cfg) for r in annual_rows]
     metrics.extend(_as_annual_metric(r, cfg) for r in (period_rows or []))
+    input_metric_rows = len(metrics)
+    rejected_unverified_publication_rows = 0
+    if cfg.require_observed_publication_date:
+        rejected_unverified_publication_rows = sum(not r["publication_date_verified"] for r in metrics)
+        metrics = [r for r in metrics if r["publication_date_verified"]]
     metrics = [r for r in metrics if r["statement_year"] >= cfg.min_history_year and r["symbol"]]
     by_symbol: dict[str, list[dict[str, Any]]] = {}
     for row in metrics:
@@ -316,7 +350,7 @@ def build_pit_panel(
             close = _pit_close(prices, as_of_date)
             if close is None:
                 continue
-            metric_map, history, max_avail, availability_counts = _latest_metric_map(by_symbol.get(sym, []), as_of_date)
+            metric_map, history, max_avail, availability_counts, metric_provenance = _latest_metric_map(by_symbol.get(sym, []), as_of_date)
             if not metric_map:
                 continue
             metric_map.update(_latest_consensus(consensus_by_symbol.get(sym, []), as_of_date))
@@ -343,12 +377,19 @@ def build_pit_panel(
                 "sector": sector_map.get(sym),
                 "max_metric_availability_date": max_avail,
                 "availability_counts": availability_counts,
+                "metric_provenance": metric_provenance,
             }
             for horizon in cfg.horizons:
                 row[f"fwd_return_{horizon}"] = _forward_return(prices, as_of_date, HORIZON_BARS[horizon])
             records.append(row)
 
     frame = pd.DataFrame(records)
+    frame.attrs["pit_filter"] = {
+        "strict_observed_publication_dates": bool(cfg.require_observed_publication_date),
+        "input_metric_rows": int(input_metric_rows),
+        "eligible_metric_rows": int(len(metrics)),
+        "rejected_unverified_publication_rows": int(rejected_unverified_publication_rows),
+    }
     if not frame.empty:
         _assert_no_lookahead(frame)
     return frame
@@ -357,13 +398,18 @@ def build_pit_panel(
 def publication_coverage_stats(panel: pd.DataFrame) -> dict[str, Any]:
     totals: dict[str, int] = {}
     if panel.empty or "availability_counts" not in panel:
-        return {"total_metric_values": 0, "shares": {}, "counts": {}}
+        return {"total_metric_values": 0, "shares": {}, "counts": {}, "pit_filter": dict(panel.attrs.get("pit_filter") or {})}
     for item in panel["availability_counts"]:
         for key, count in dict(item or {}).items():
             totals[str(key)] = totals.get(str(key), 0) + int(count)
     total = sum(totals.values())
     shares = {key: (value / total if total else 0.0) for key, value in sorted(totals.items())}
-    return {"total_metric_values": int(total), "shares": shares, "counts": dict(sorted(totals.items()))}
+    return {
+        "total_metric_values": int(total),
+        "shares": shares,
+        "counts": dict(sorted(totals.items())),
+        "pit_filter": dict(panel.attrs.get("pit_filter") or {}),
+    }
 
 
 def load_universe(path: str | None = None) -> pd.DataFrame:

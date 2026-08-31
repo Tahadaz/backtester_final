@@ -27,7 +27,8 @@ from core.quant_core.fundamentals.cross_section.live_like_strategy import (
     TRUSTED_UNIVERSE_EXCLUSIONS,
     eligibility_mask,
 )
-from core.quant_core.fundamentals.cross_section.panel import PanelConfig, build_pit_panel, load_universe
+from core.quant_core.fundamentals.cross_section.panel import PanelConfig, build_pit_panel, load_universe, publication_coverage_stats
+from core.quant_core.fundamentals.cross_section.market_equity import decision_date_market_equity
 
 METRIC_ALIASES: dict[str, tuple[str, ...]] = {
     "book_equity": ("Total_Equity", "Shareholders_Equity", "Clean_Capitaux_propres", "Capitaux_propres", "Common_Equity"),
@@ -51,6 +52,26 @@ def _metric(metrics: dict[str, Any], *names: str) -> float | None:
     return None
 
 
+def _metric_with_name(metrics: dict[str, Any], *names: str) -> tuple[str | None, float | None]:
+    for name in names:
+        value = _finite(metrics.get(name))
+        if value is not None:
+            return name, value
+    return None, None
+
+
+def _serialized_provenance(item: Any) -> dict[str, Any] | None:
+    if not isinstance(item, dict):
+        return None
+    availability_date = item.get("availability_date")
+    return {
+        "statement_year": item.get("statement_year"),
+        "availability_date": availability_date.isoformat() if hasattr(availability_date, "isoformat") else availability_date,
+        "availability_kind": item.get("availability_kind"),
+        "source_document_id": item.get("source_document_id"),
+    }
+
+
 def _ratio_or_none(num: float | None, den: float | None) -> float | None:
     if num is None or den is None or den <= 0:
         return None
@@ -59,7 +80,7 @@ def _ratio_or_none(num: float | None, den: float | None) -> float | None:
 
 from .fundamental_cross_section import _load_fundamental_rows, _price_loader
 
-VALUE_SIGNAL_METHODOLOGY_VERSION = "canonical_value_signal_v1_2026_07_06"
+VALUE_SIGNAL_METHODOLOGY_VERSION = "structural_value_bm_v2_2026_08_30"
 
 
 def _sah_exclusion_reason() -> str:
@@ -89,7 +110,7 @@ def _exclusion_reasons(row: pd.Series) -> list[str]:
     if _is_missing(row.get("close")):
         reasons.append("No PIT-available price at this date.")
     if _is_missing(row.get("market_cap_raw")):
-        reasons.append("No PIT-available market cap at this date.")
+        reasons.append("No decision-date market equity: verified PIT shares or the decision-date close is missing.")
     if not row.get("eligible_bm", False) and _is_missing(row.get("book_to_market_raw")):
         book = row.get("_book_equity")
         if not _is_missing(book) and book <= 0:
@@ -114,13 +135,15 @@ def compute_value_signal_frame(db: Session, *, as_of_date: dt.date | None = None
         consensus_rows=consensus,
         price_loader=load_price,
         universe_df=load_universe(),
-        config=PanelConfig(as_of_dates=(date,)),
+        config=PanelConfig(as_of_dates=(date,), require_observed_publication_date=True),
         sectors=sectors,
     )
     meta: dict[str, Any] = {
         "as_of_date": date.isoformat(),
         "methodology_version": VALUE_SIGNAL_METHODOLOGY_VERSION,
         "rows": int(len(panel)),
+        "publication_coverage": publication_coverage_stats(panel),
+        "market_equity_formula": "decision_date_close_x_pit_shares",
     }
     if panel.empty:
         return panel, meta
@@ -128,12 +151,11 @@ def compute_value_signal_frame(db: Session, *, as_of_date: dt.date | None = None
     computed: list[dict[str, Any]] = []
     for idx, row in panel.iterrows():
         metrics = dict(row["metrics"])
+        provenance = dict(row.get("metric_provenance") or {})
         close = _finite(row.get("close"))
-        shares = _metric(metrics, "Shares_Outstanding")
-        mcap = _metric(metrics, "MarketCap_Calc", "Market_Cap")
-        if mcap is None and close is not None and shares is not None:
-            mcap = close * shares
-        book = _metric(metrics, *METRIC_ALIASES["book_equity"])
+        shares_name, shares = _metric_with_name(metrics, "Shares_Outstanding")
+        mcap = decision_date_market_equity(close=close, shares_outstanding=shares)
+        book_name, book = _metric_with_name(metrics, *METRIC_ALIASES["book_equity"])
         cfo = _metric(metrics, *METRIC_ALIASES["cash_flow_ops"])
         is_financial = bool(row.get("is_financial", False))
         computed.append(
@@ -142,6 +164,10 @@ def compute_value_signal_frame(db: Session, *, as_of_date: dt.date | None = None
                 "market_cap_raw": mcap,
                 "_book_equity": book,
                 "_cfo": cfo,
+                "_shares_outstanding": shares,
+                "_decision_close": close,
+                "_book_equity_provenance": _serialized_provenance(provenance.get(book_name)) if book_name else None,
+                "_shares_provenance": _serialized_provenance(provenance.get(shares_name)) if shares_name else None,
                 # Canonical B/M policy (bm_canonical_definition.md): exclude negative book equity.
                 "book_to_market_raw": _ratio_or_none(book, mcap) if book is not None and book > 0 else None,
                 # Canonical CF/P policy (cfp_canonical_definition.md): exclude financial-sector issuers.
@@ -176,6 +202,12 @@ def value_signal_row_to_dict(row: pd.Series) -> dict[str, Any]:
         "symbol": str(row["symbol"]),
         "as_of_date": row["as_of_date"].isoformat() if hasattr(row["as_of_date"], "isoformat") else str(row["as_of_date"]),
         "bm_raw": _finite(row.get("book_to_market_raw")),
+        "market_equity": _finite(row.get("market_cap_raw")),
+        "decision_close": _finite(row.get("_decision_close")),
+        "shares_outstanding": _finite(row.get("_shares_outstanding")),
+        "book_equity": _finite(row.get("_book_equity")),
+        "book_equity_provenance": row.get("_book_equity_provenance"),
+        "shares_provenance": row.get("_shares_provenance"),
         "bm_percentile": _finite(row.get("bm_percentile")),
         "bm_rank": int(row["bm_rank"]) if pd.notna(row.get("bm_rank")) else None,
         "cfp_raw": _finite(row.get("cashflow_price_raw")),

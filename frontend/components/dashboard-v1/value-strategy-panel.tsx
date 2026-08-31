@@ -6,6 +6,7 @@ import { AlertTriangle, RefreshCw } from "lucide-react"
 import { PlotlyChart } from "@/components/run/plotly-chart"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
@@ -14,6 +15,7 @@ import {
   type ValueStrategyEquityCurvePoint,
   type ValueStrategyFreshness,
   type ValueStrategyHolding,
+  type ValueStrategyLiquiditySettings,
   type ValueStrategyTradeLedgerRow,
 } from "@/lib/api"
 import { formatNumber } from "@/lib/format"
@@ -139,6 +141,18 @@ export function ValueStrategyPanel() {
   const [triggering, setTriggering] = useState(false)
   const [showMasi, setShowMasi] = useState(true)
   const [showMasi20, setShowMasi20] = useState(false)
+  const [liquidity, setLiquidity] = useState<ValueStrategyLiquiditySettings>({
+    liquidity_enabled: true,
+    portfolio_nav_mad: 10_000_000,
+    min_order_enabled: true,
+    min_order_mad: 100_000,
+    min_adv_enabled: true,
+    min_adv_mad: 500_000,
+    max_participation_enabled: true,
+    max_participation_rate: 0.20,
+    adv_window_days: 20,
+    execution_horizon_days: 1,
+  })
   const equityPoints = data?.equity_curve ?? []
   const hasMasi = equityPoints.some((p) => p.masi != null)
   const hasMasi20 = equityPoints.some((p) => p.masi20 != null)
@@ -150,7 +164,7 @@ export function ValueStrategyPanel() {
   async function handleRecompute() {
     setTriggering(true)
     try {
-      await triggerValueStrategyRecompute()
+      await triggerValueStrategyRecompute(liquidity)
       // Recompute runs async on the worker (~minutes); poll until the snapshot's
       // computed_at actually advances instead of leaving the stale cached response
       // displayed indefinitely (SWR won't refetch this key on its own).
@@ -164,6 +178,10 @@ export function ValueStrategyPanel() {
       setTriggering(false)
     }
   }
+
+  useEffect(() => {
+    if (data?.liquidity_settings) setLiquidity(data.liquidity_settings)
+  }, [data?.computed_at, data?.liquidity_settings])
 
   useEffect(() => {
     if (data?.freshness?.state === "no_snapshot" && !triggering && !isLoading) {
@@ -205,6 +223,17 @@ export function ValueStrategyPanel() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Badge
+            variant="outline"
+            className={cn(
+              "text-[11px]",
+              data.live_trading_authorized
+                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-800"
+                : "border-red-500/40 bg-red-500/10 text-red-800",
+            )}
+          >
+            {data.live_trading_authorized ? "LIVE AUTORISÉ" : "LIVE INTERDIT"}
+          </Badge>
           <Badge variant="outline" className="border-amber-400/40 bg-amber-500/10 text-amber-800 text-[11px]">
             {data.research_status}
           </Badge>
@@ -224,6 +253,51 @@ export function ValueStrategyPanel() {
             ? `Dernier calcul réussi : ${freshness.last_successful_computed_at.slice(0, 16).replace("T", " ")} UTC (${freshness.age_days?.toFixed(1)} j)`
             : "Aucun calcul réussi enregistré"}
         </span>
+      </div>
+
+      <div className="border-b border-border px-4 py-3">
+        <label className="mb-3 flex items-center gap-2 text-xs font-semibold">
+          <input
+            type="checkbox"
+            checked={liquidity.liquidity_enabled}
+            onChange={(event) => setLiquidity({ ...liquidity, liquidity_enabled: event.target.checked })}
+          />
+          Contraintes de liquidité PIT
+        </label>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <label className="text-[11px] text-muted-foreground">Capital portefeuille (MAD)
+            <Input type="number" min={1} value={liquidity.portfolio_nav_mad} disabled={!liquidity.liquidity_enabled}
+              onChange={(event) => setLiquidity({ ...liquidity, portfolio_nav_mad: Number(event.target.value) })} />
+          </label>
+          <label className="text-[11px] text-muted-foreground">
+            <span className="flex items-center gap-1"><input type="checkbox" checked={liquidity.min_order_enabled} disabled={!liquidity.liquidity_enabled}
+              onChange={(event) => setLiquidity({ ...liquidity, min_order_enabled: event.target.checked })} /> Ticket minimum (MAD)</span>
+            <Input type="number" min={0} value={liquidity.min_order_mad} disabled={!liquidity.liquidity_enabled || !liquidity.min_order_enabled}
+              onChange={(event) => setLiquidity({ ...liquidity, min_order_mad: Number(event.target.value) })} />
+          </label>
+          <label className="text-[11px] text-muted-foreground">
+            <span className="flex items-center gap-1"><input type="checkbox" checked={liquidity.min_adv_enabled} disabled={!liquidity.liquidity_enabled}
+              onChange={(event) => setLiquidity({ ...liquidity, min_adv_enabled: event.target.checked })} /> ADV minimum (MAD)</span>
+            <Input type="number" min={0} value={liquidity.min_adv_mad} disabled={!liquidity.liquidity_enabled || !liquidity.min_adv_enabled}
+              onChange={(event) => setLiquidity({ ...liquidity, min_adv_mad: Number(event.target.value) })} />
+          </label>
+          <label className="text-[11px] text-muted-foreground">
+            <span className="flex items-center gap-1"><input type="checkbox" checked={liquidity.max_participation_enabled} disabled={!liquidity.liquidity_enabled}
+              onChange={(event) => setLiquidity({ ...liquidity, max_participation_enabled: event.target.checked })} /> Participation ADV max (%)</span>
+            <Input type="number" min={0} max={100} step={1} value={liquidity.max_participation_rate * 100}
+              disabled={!liquidity.liquidity_enabled || !liquidity.max_participation_enabled}
+              onChange={(event) => setLiquidity({ ...liquidity, max_participation_rate: Number(event.target.value) / 100 })} />
+          </label>
+          <label className="text-[11px] text-muted-foreground">Fenêtre ADV (séances)
+            <Input type="number" min={1} max={252} value={liquidity.adv_window_days} disabled={!liquidity.liquidity_enabled}
+              onChange={(event) => setLiquidity({ ...liquidity, adv_window_days: Number(event.target.value) })} />
+          </label>
+          <label className="text-[11px] text-muted-foreground">Horizon d'exécution (séances)
+            <Input type="number" min={1} max={20} value={liquidity.execution_horizon_days} disabled={!liquidity.liquidity_enabled}
+              onChange={(event) => setLiquidity({ ...liquidity, execution_horizon_days: Number(event.target.value) })} />
+          </label>
+        </div>
+        <p className="mt-2 text-[10px] text-muted-foreground">Les ordres non exécutés restent en cash; les volumes du jour de décision sont exclus du calcul.</p>
       </div>
 
       {noSnapshot ? (
@@ -285,6 +359,10 @@ export function ValueStrategyPanel() {
                   <TableHead className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Titre</TableHead>
                   <TableHead className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Vintage formé</TableHead>
                   <TableHead className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Poids</TableHead>
+                  <TableHead className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Demandé</TableHead>
+                  <TableHead className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Exécuté</TableHead>
+                  <TableHead className="h-auto px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">ADV</TableHead>
+                  <TableHead className="h-auto px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Statut</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -295,6 +373,10 @@ export function ValueStrategyPanel() {
                     <TableCell className="dashboard-mono px-3 py-2 text-[11px] font-semibold">{trade.symbol}</TableCell>
                     <TableCell className="dashboard-mono px-3 py-2 text-[11px] text-muted-foreground">{trade.vintage_formed}</TableCell>
                     <TableCell className="dashboard-mono px-3 py-2 text-right text-[11px]">{formatNumber(trade.weight * 100, 2)}%</TableCell>
+                    <TableCell className="dashboard-mono px-3 py-2 text-right text-[11px]">{trade.requested_notional_mad == null ? "--" : formatNumber(trade.requested_notional_mad, 0)}</TableCell>
+                    <TableCell className="dashboard-mono px-3 py-2 text-right text-[11px]">{trade.filled_notional_mad == null ? "--" : formatNumber(trade.filled_notional_mad, 0)}</TableCell>
+                    <TableCell className="dashboard-mono px-3 py-2 text-right text-[11px]">{trade.adv_mad == null ? "--" : formatNumber(trade.adv_mad, 0)}</TableCell>
+                    <TableCell className="px-3 py-2 text-[10px]">{trade.status}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

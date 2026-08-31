@@ -879,6 +879,9 @@ class BourseDirectAdapter(BaseDataSource):
     ) -> None:
         import os
         super().__init__(timezone=timezone, cache_dir=cache_dir, use_cache=use_cache)
+        # The exchange download is a traded-price series, not a certified
+        # split/dividend-adjusted total-return series.
+        self.fill_adj_close = False
         self.url_template: str = (
             url_template
             or os.environ.get("BOURSE_DIRECT_URL_TEMPLATE", "")
@@ -1050,7 +1053,8 @@ class BDCSessionAdapter(BaseDataSource):
         Quantité échangée -> Volume  (page relabelled circa 2026-04; was "Volume en titre")
 
     Session date is parsed from the "vendredi 6 mars 2026" header embedded in the HTML.
-    Falls back to today (Africa/Casablanca = UTC+1) only when no date is found.
+    A row without an observed session date is rejected; assigning the scrape
+    date would corrupt point-in-time history.
 
     The ``start``/``end`` parameters from the base-class ``load()`` call are ignored
     because this adapter always returns only the current/last session row.  The
@@ -1093,6 +1097,15 @@ class BDCSessionAdapter(BaseDataSource):
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/120.0.0.0 Safari/537.36"
     )
+
+    def __init__(
+        self,
+        timezone: str = "UTC",
+        cache_dir: Optional[Union[str, Path]] = None,
+        use_cache: bool = False,
+    ) -> None:
+        super().__init__(timezone=timezone, cache_dir=cache_dir, use_cache=use_cache)
+        self.fill_adj_close = False
 
     def _load_impl(
         self,
@@ -1146,15 +1159,10 @@ class BDCSessionAdapter(BaseDataSource):
             else:
                 warnings.warn(
                     f"BDCSessionAdapter: no session date found for {symbol}; "
-                    "falling back to today (Africa/Casablanca)"
+                    "rejecting undated row"
                 )
-                try:
-                    import zoneinfo
-                    session_date = datetime.datetime.now(
-                        zoneinfo.ZoneInfo("Africa/Casablanca")
-                    ).date()
-                except Exception:
-                    session_date = datetime.datetime.utcnow().date()
+                results[symbol] = pd.DataFrame()
+                continue
 
             # --- Parse each OHLCV field ----------------------------------------
             # Server-rendered HTML structure:
@@ -1332,6 +1340,15 @@ class BMCECapitalLiveAdapter(BaseDataSource):
         "Chrome/120.0.0.0 Safari/537.36"
     )
 
+    def __init__(
+        self,
+        timezone: str = "UTC",
+        cache_dir: Optional[Union[str, Path]] = None,
+        use_cache: bool = False,
+    ) -> None:
+        super().__init__(timezone=timezone, cache_dir=cache_dir, use_cache=use_cache)
+        self.fill_adj_close = False
+
     @staticmethod
     def listing_id_for(symbol: str) -> Optional[str]:
         return BMCE_CAPITAL_LISTING_IDS.get(str(symbol).strip().upper())
@@ -1477,15 +1494,13 @@ def _standardize_ohlcv_index(
     df = df.sort_index()
     df["Open"] = df["Close"].shift(1).fillna(df["Close"])
     df["Volume"] = 0.0
-    df["Adj Close"] = df["Close"]
-
     # Coerce all numeric
     for col in ("Open", "High", "Low", "Close", "Volume"):
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
     df = df.dropna(subset=["Close"])
 
-    keep = [c for c in ["Open", "High", "Low", "Close", "Adj Close", "Volume"] if c in df.columns]
+    keep = [c for c in ["Open", "High", "Low", "Close", "Volume"] if c in df.columns]
     return df[keep]
 
 
@@ -1573,16 +1588,10 @@ class CasablancaBourseIndicesAdapter:
             year = int(date_m.group(3))
             session_date: datetime.date = datetime.date(year, month, day)
         else:
-            warnings.warn(
-                "CasablancaBourseIndicesAdapter: no session date found; falling back to today."
+            raise ValueError(
+                "CasablancaBourseIndicesAdapter: no observed session date found; "
+                "refusing to assign the scrape date"
             )
-            try:
-                import zoneinfo
-                session_date = datetime.datetime.now(
-                    zoneinfo.ZoneInfo("Africa/Casablanca")
-                ).date()
-            except Exception:
-                session_date = datetime.datetime.utcnow().date()
 
         ts = pd.Timestamp(session_date)
 

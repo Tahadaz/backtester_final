@@ -60,6 +60,16 @@ class LiveLikeConfig:
     execution_lag_days: int = 1
     tercile: str = "top"
     min_universe_names: int = 9
+    liquidity_enabled: bool = True
+    portfolio_nav_mad: float = 10_000_000.0
+    min_order_enabled: bool = True
+    min_order_mad: float = 100_000.0
+    min_adv_enabled: bool = True
+    min_adv_mad: float = 500_000.0
+    max_participation_enabled: bool = True
+    max_participation_rate: float = 0.20
+    adv_window_days: int = 20
+    execution_horizon_days: int = 1
 
 
 @dataclass
@@ -69,7 +79,12 @@ class VintageState:
     months_held: int = 0
 
 
-def eligibility_mask(panel: pd.DataFrame, *, min_avg_names: int = 9) -> pd.DataFrame:
+def eligibility_mask(
+    panel: pd.DataFrame,
+    *,
+    min_avg_names: int = 9,
+    config: LiveLikeConfig | None = None,
+) -> pd.DataFrame:
     """Adds `eligible_universe`, `eligible_bm`, `eligible_cfp` boolean columns.
 
     Trust rules applied (Phase 2): excludes TRUSTED_UNIVERSE_EXCLUSIONS (SAH);
@@ -86,8 +101,51 @@ def eligibility_mask(panel: pd.DataFrame, *, min_avg_names: int = 9) -> pd.DataF
         & out["close"].notna()
         & out.get("market_cap_raw", pd.Series(index=out.index, dtype=float)).notna()
     )
+    if config and config.liquidity_enabled and config.min_adv_enabled:
+        adv = pd.to_numeric(out.get("adv_mad", pd.Series(index=out.index, dtype=float)), errors="coerce")
+        out["eligible_liquidity"] = adv.notna() & (adv >= config.min_adv_mad)
+        out["eligible_universe"] &= out["eligible_liquidity"]
+    else:
+        out["eligible_liquidity"] = True
     out["eligible_bm"] = out["eligible_universe"] & out["book_to_market_raw"].notna()
     out["eligible_cfp"] = out["eligible_universe"] & out["cashflow_price_raw"].notna()
+    return out
+
+
+def point_in_time_adv_mad(frame: pd.DataFrame | None, as_of: dt.date, *, window_days: int) -> float | None:
+    """Trailing traded-value average known before ``as_of``; decision-day volume is excluded."""
+    if frame is None or "Close" not in frame or "Volume" not in frame or window_days < 1:
+        return None
+    work = frame[["Close", "Volume"]].copy()
+    work.index = pd.to_datetime(work.index, errors="coerce")
+    work = work[work.index.date < as_of].sort_index().tail(window_days)
+    if len(work) < window_days:
+        return None
+    close = pd.to_numeric(work["Close"], errors="coerce")
+    volume = pd.to_numeric(work["Volume"], errors="coerce")
+    traded_value = (close * volume).replace([np.inf, -np.inf], np.nan)
+    if traded_value.isna().any() or (traded_value < 0).any():
+        return None
+    value = float(traded_value.mean())
+    return value if math.isfinite(value) else None
+
+
+def attach_point_in_time_adv(
+    panel: pd.DataFrame,
+    *,
+    price_frames: dict[str, pd.DataFrame],
+    window_days: int,
+) -> pd.DataFrame:
+    """Attach strictly lagged historical ADTV (MAD) to each signal formation row."""
+    out = panel.copy()
+    out["adv_mad"] = [
+        point_in_time_adv_mad(
+            price_frames.get(str(row["symbol"]).strip().upper()),
+            pd.Timestamp(row["as_of_date"]).date(),
+            window_days=window_days,
+        )
+        for _, row in out.iterrows()
+    ]
     return out
 
 
@@ -218,6 +276,162 @@ def run_vintage_backtest(
         prev_combined = combined
 
     return pd.DataFrame(rows)
+
+
+def desired_vintage_weights_by_date(
+    holdings_by_date: dict[dt.date, dict[str, float]],
+) -> dict[dt.date, dict[str, float]]:
+    """Convert vintage formations into the full target-weight schedule, including cash."""
+    active: list[VintageState] = []
+    targets: dict[dt.date, dict[str, float]] = {}
+    for as_of in sorted(holdings_by_date):
+        for vintage in active:
+            vintage.months_held += 1
+        active = [vintage for vintage in active if vintage.months_held < VINTAGE_LIFE_MONTHS]
+        new_holdings = holdings_by_date[as_of]
+        if new_holdings:
+            active.append(VintageState(formed_date=as_of, holdings=new_holdings, months_held=0))
+        targets[as_of] = _combined_weights(active)
+    return targets
+
+
+def run_capacity_constrained_backtest(
+    holdings_by_date: dict[dt.date, dict[str, float]],
+    *,
+    price_frames: dict[str, pd.DataFrame],
+    config: LiveLikeConfig,
+) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any], dict[str, float]]:
+    """Simulate net monthly target orders with PIT ADTV caps and residual cash/positions.
+
+    Orders are calculated against the portfolio's marked NAV. Small tickets are rejected;
+    oversized orders are partially filled; missing/stale liquidity fails closed. Unfilled
+    notional is never redistributed. Both entries and exits are constrained.
+    """
+    targets = desired_vintage_weights_by_date(holdings_by_date)
+    positions: dict[str, float] = {}
+    cash = float(config.portfolio_nav_mad)
+    previous_nav = cash
+    previous_date: dt.date | None = None
+    rows: list[dict[str, Any]] = []
+    trades: list[dict[str, Any]] = []
+    status_counts: dict[str, int] = {}
+
+    for as_of, target_weights in targets.items():
+        stale_events = 0
+        if previous_date is not None:
+            for symbol, value in list(positions.items()):
+                frame = price_frames.get(symbol)
+                series = frame["Close"] if frame is not None and "Close" in frame else None
+                p0, p0_date = _pit_price(series, previous_date)
+                p1, p1_date = _pit_price(series, as_of)
+                if p0 is None or p1 is None:
+                    stale_events += 1
+                    continue
+                if p0_date != previous_date or p1_date != as_of:
+                    stale_events += 1
+                positions[symbol] = value * (p1 / p0)
+
+        nav_before_orders = cash + sum(positions.values())
+        gross_return = nav_before_orders / previous_nav - 1.0 if previous_date is not None and previous_nav else 0.0
+        requested_total = 0.0
+        filled_total = 0.0
+        cost_total = 0.0
+
+        for symbol in sorted(set(positions) | set(target_weights)):
+            current_value = positions.get(symbol, 0.0)
+            target_value = target_weights.get(symbol, 0.0) * nav_before_orders
+            requested = target_value - current_value
+            if abs(requested) < 1e-8:
+                continue
+            action = "BUY" if requested > 0 else "SELL"
+            requested_abs = abs(requested)
+            requested_total += requested_abs
+            adv_mad = point_in_time_adv_mad(price_frames.get(symbol), as_of, window_days=config.adv_window_days)
+            status = "filled"
+            filled_abs = requested_abs
+
+            if config.liquidity_enabled:
+                if adv_mad is None:
+                    filled_abs = 0.0
+                    status = "rejected_missing_adv"
+                elif config.min_order_enabled and requested_abs < config.min_order_mad:
+                    filled_abs = 0.0
+                    status = "rejected_min_order"
+                elif config.max_participation_enabled:
+                    capacity = adv_mad * config.max_participation_rate * config.execution_horizon_days
+                    if filled_abs > capacity:
+                        filled_abs = max(0.0, capacity)
+                        status = "partial_capacity" if filled_abs > 0 else "rejected_capacity"
+
+            if action == "BUY" and filled_abs > 0:
+                affordable = cash / (1.0 + config.cost_bps / 10000.0)
+                if filled_abs > affordable:
+                    filled_abs = max(0.0, affordable)
+                    status = "partial_cash" if filled_abs > 0 else "rejected_cash"
+
+            cost = filled_abs * config.cost_bps / 10000.0
+            if filled_abs > 0:
+                if action == "BUY":
+                    positions[symbol] = current_value + filled_abs
+                    cash -= filled_abs + cost
+                else:
+                    filled_abs = min(filled_abs, current_value)
+                    cost = filled_abs * config.cost_bps / 10000.0
+                    remaining = current_value - filled_abs
+                    if remaining > 1e-8:
+                        positions[symbol] = remaining
+                    else:
+                        positions.pop(symbol, None)
+                    cash += filled_abs - cost
+                filled_total += filled_abs
+                cost_total += cost
+
+            status_counts[status] = status_counts.get(status, 0) + 1
+            trades.append({
+                "date": as_of,
+                "action": action,
+                "symbol": symbol,
+                "vintage_formed": as_of,
+                "weight": filled_abs / nav_before_orders if nav_before_orders else 0.0,
+                "requested_notional_mad": requested_abs,
+                "filled_notional_mad": filled_abs,
+                "unfilled_notional_mad": requested_abs - filled_abs,
+                "adv_mad": adv_mad,
+                "participation_rate": filled_abs / adv_mad if adv_mad else None,
+                "status": status,
+            })
+
+        nav_after_orders = cash + sum(positions.values())
+        # Initial deployment costs are real P&L and must not disappear from the
+        # first equity-curve observation.
+        net_return = nav_after_orders / previous_nav - 1.0 if previous_nav else 0.0
+        rows.append({
+            "as_of_date": as_of,
+            "n_active_vintages": None,
+            "n_holdings": sum(value > 1e-8 for value in positions.values()),
+            "gross_return": gross_return,
+            "turnover": filled_total / (2.0 * nav_before_orders) if nav_before_orders else 0.0,
+            "cost": cost_total / previous_nav if previous_nav else 0.0,
+            "net_return": net_return,
+            "stale_price_events": stale_events,
+            "requested_notional_mad": requested_total,
+            "filled_notional_mad": filled_total,
+        })
+        previous_nav = nav_after_orders
+        previous_date = as_of
+
+    final_nav = cash + sum(positions.values())
+    final_weights = {symbol: value / final_nav for symbol, value in positions.items() if final_nav and value > 1e-8}
+    summary = {
+        "portfolio_nav_initial_mad": config.portfolio_nav_mad,
+        "portfolio_nav_final_mad": final_nav,
+        "requested_notional_mad": sum(float(row["requested_notional_mad"]) for row in trades),
+        "filled_notional_mad": sum(float(row["filled_notional_mad"]) for row in trades),
+        "unfilled_notional_mad": sum(float(row["unfilled_notional_mad"]) for row in trades),
+        "orders": len(trades),
+        "status_counts": status_counts,
+    }
+    return pd.DataFrame(rows), pd.DataFrame(trades), summary, final_weights
 
 
 def build_trade_ledger(

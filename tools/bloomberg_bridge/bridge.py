@@ -306,6 +306,7 @@ def _upload_frame_for_job(
     end_date: str | None,
     periodicity: str | None,
     request_prefix: str,
+    overrides: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     endpoint, bridge_key, bridge_id = _common_config(args)
     request_id = _request_id(request_prefix)
@@ -322,7 +323,7 @@ def _upload_frame_for_job(
         start_date=start_date,
         end_date=end_date,
         periodicity=periodicity,
-        overrides={},
+        overrides=overrides or {},
         data_sha256=_sha256(payload),
     )
     try:
@@ -791,6 +792,10 @@ def _run_backfill(args: argparse.Namespace, job_id: str, spec: dict[str, Any]) -
                         end_date=chunk_end.isoformat(),
                         periodicity="DAILY",
                         request_prefix="bdh-job",
+                        overrides={
+                            "internal_symbol": symbol,
+                            "apply_to_market_data": bool(spec.get("apply_to_market_data")),
+                        },
                     )
                     uploaded_batches += 1
                     uploaded_rows += int(len(frame))
@@ -829,6 +834,10 @@ def _run_backfill(args: argparse.Namespace, job_id: str, spec: dict[str, Any]) -
                         end_date=day.isoformat(),
                         periodicity=f"INTRADAY_{interval}",
                         request_prefix="bdib-job",
+                        overrides={
+                            "internal_symbol": symbol,
+                            "apply_to_market_data": bool(spec.get("apply_to_market_data")),
+                        },
                     )
                     uploaded_batches += 1
                     uploaded_rows += int(len(frame))

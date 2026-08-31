@@ -20,7 +20,6 @@ from ...factor_selection.direct import _hac_t_stat, _nw_maxlags
 from .composite import compute_sfc
 from .panel import PanelConfig, build_pit_panel, load_universe, publication_coverage_stats
 from .pillars import PillarConfig, compute_pillar_scores
-from ...significance import monte_carlo_luck_test
 
 SFC_METHODOLOGY_VERSION = "sfc_core_v2_2026_07_06"
 SIGNALS = ("pillar_val", "pillar_qual", "pillar_fmom", "pillar_pmom", "sfc", "sfc_legacy")
@@ -146,14 +145,16 @@ def tercile_backtest(frame: pd.DataFrame, *, cost_bps: float, horizon: str = "3m
         cost = (float(cost_bps) / 10000.0) * 2.0 * turnover
         returns.append(top_ret - universe_ret - cost)
         turnovers.append(turnover)
-    sig = monte_carlo_luck_test(returns, metric="total_return", n_iter=1000, seed=42, periods_per_year=12, block_mean=3)
+    hac_t_stat = _hac_mean_t_stat(returns)
     return {
         "horizon": horizon,
         "cost_bps": float(cost_bps),
         "periods": len(returns),
         "mean_spread": float(np.mean(returns)) if returns else float("nan"),
         "avg_turnover": float(np.mean(turnovers)) if turnovers else float("nan"),
-        "bootstrap_pvalue": sig.get("pvalue"),
+        "hac_mean_t_stat": hac_t_stat,
+        "bootstrap_pvalue": None,
+        "inference_method": "deterministic_Newey_West_HAC_mean_test",
     }
 
 
@@ -307,7 +308,9 @@ def _load_rows_from_db() -> tuple[list[dict[str, Any]], list[dict[str, Any]], li
     engine = create_engine(db_url, pool_pre_ping=True)
     annual_q = text("""
         SELECT fam.symbol, fam.company_name, fam.statement_year, fam.metric_name, fam.metric_value,
-               fam.as_of_date, fam.source_document_id, fsd.publication_date
+               fam.as_of_date, fam.source_document_id, fsd.publication_date,
+               fsd.document_title, fsd.created_at AS source_document_created_at,
+               fsd.source_url, fsd.raw_json AS source_document_raw_json
         FROM fundamental_annual_metric fam
         LEFT JOIN fundamental_source_document fsd ON fsd.id = fam.source_document_id
         WHERE fam.statement_year >= 2016
@@ -317,7 +320,9 @@ def _load_rows_from_db() -> tuple[list[dict[str, Any]], list[dict[str, Any]], li
         SELECT fpm.symbol, fpm.company_name, fpm.fiscal_year AS statement_year,
                fpm.period_type, fpm.period_label, fpm.period_end_date,
                fpm.metric_name, fpm.metric_value, fpm.source_document_id,
-               fsd.publication_date
+               fsd.publication_date, fsd.document_title,
+               fsd.created_at AS source_document_created_at,
+               fsd.source_url, fsd.raw_json AS source_document_raw_json
         FROM fundamental_period_metric fpm
         LEFT JOIN fundamental_source_document fsd ON fsd.id = fpm.source_document_id
         WHERE fpm.fiscal_year >= 2016
@@ -393,6 +398,11 @@ def main() -> None:
     parser.add_argument("--annual-lag-days", type=int, default=90)
     parser.add_argument("--semiannual-lag-days", type=int, default=60)
     parser.add_argument("--quarterly-lag-days", type=int, default=45)
+    parser.add_argument(
+        "--allow-fallback-availability",
+        action="store_true",
+        help="Legacy research only: permit assumed filing lags instead of verified source-document dates.",
+    )
     parser.add_argument("--frozen-variant", default=None)
     args = parser.parse_args()
 
@@ -405,6 +415,7 @@ def main() -> None:
         annual_lag_days=args.annual_lag_days,
         semiannual_lag_days=args.semiannual_lag_days,
         quarterly_lag_days=args.quarterly_lag_days,
+        require_observed_publication_date=not args.allow_fallback_availability,
     )
     panel = build_pit_panel(
         annual_rows=annual,

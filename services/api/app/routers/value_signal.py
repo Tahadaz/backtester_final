@@ -32,6 +32,7 @@ from ..schemas.value_signal import (
     ValueSignalResponse,
     ValueSignalRow,
     ValueStrategyRecomputeResponse,
+    ValueStrategyRecomputeRequest,
     ValueStrategySnapshotResponse,
     ValueStrategyStatusResponse,
 )
@@ -63,6 +64,8 @@ def get_value_signal(
         eligible_bm_count=meta.get("eligible_bm_count", 0),
         eligible_cfp_count=meta.get("eligible_cfp_count", 0),
         total_rows=meta["rows"],
+        publication_coverage=meta.get("publication_coverage", {}),
+        market_equity_formula=meta["market_equity_formula"],
         rows=rows,
     )
 
@@ -84,16 +87,21 @@ def get_value_signal_symbol(
 
 @router.get("/value-strategy/snapshot", response_model=ValueStrategySnapshotResponse)
 def get_value_strategy_snapshot(db: Session = Depends(get_db)) -> ValueStrategySnapshotResponse:
+    from core.quant_core.fundamentals.cross_section.production_readiness import current_repository_readiness
+
     row = latest_value_strategy_snapshot(db)
     job = latest_value_strategy_job(db)
     freshness = snapshot_freshness(row, latest_job_status=job.status if job else None)
+    readiness = current_repository_readiness()
     if row is None:
         # Explicit no_snapshot state rather than a bare 404 -- the UI needs to distinguish
         # "nothing has ever been computed" from a transient API error.
         return ValueStrategySnapshotResponse(
-            research_status="RESEARCH STRATEGY — PROMISING",
+            live_trading_authorized=readiness.live_trading_authorized,
+            production_readiness=readiness.to_dict(),
+            research_status="RESEARCH ONLY — UNVALIDATED",
             recommended_architecture="S1_bm",
-            model_version="Fundamental Value Strategy v1.0",
+            model_version="Fundamental Value Strategy v2.1",
             as_of_date=None,
             data_cutoff=None,
             universe_summary=None,
@@ -101,6 +109,8 @@ def get_value_strategy_snapshot(db: Session = Depends(get_db)) -> ValueStrategyS
             strategy_metrics={},
             equity_curve=[],
             trade_ledger=[],
+            liquidity_settings={},
+            capacity_summary={},
             caveats=["No strategy snapshot has been computed yet. Trigger POST /value-strategy/recompute."],
             config_hash="",
             computed_at=None,
@@ -108,9 +118,13 @@ def get_value_strategy_snapshot(db: Session = Depends(get_db)) -> ValueStrategyS
         )
     result = row.result_json or {}
     return ValueStrategySnapshotResponse(
-        research_status=result.get("research_status", "RESEARCH STRATEGY — PROMISING"),
+        # Authorization is evaluated from the current policy, never trusted from
+        # a persisted research snapshot that may predate a new failed gate.
+        live_trading_authorized=readiness.live_trading_authorized,
+        production_readiness=readiness.to_dict(),
+        research_status=result.get("research_status", "RESEARCH ONLY — UNVALIDATED"),
         recommended_architecture=result.get("recommended_architecture", "S1_bm"),
-        model_version=result.get("model_version", "Fundamental Value Strategy v1.0"),
+        model_version=result.get("model_version", "Fundamental Value Strategy v2.1"),
         as_of_date=result.get("as_of_date"),
         data_cutoff=result.get("data_cutoff"),
         universe_summary=result.get("universe_summary"),
@@ -118,6 +132,8 @@ def get_value_strategy_snapshot(db: Session = Depends(get_db)) -> ValueStrategyS
         strategy_metrics=result.get("strategy_metrics", {}),
         equity_curve=result.get("equity_curve", []),
         trade_ledger=result.get("trade_ledger", []),
+        liquidity_settings=result.get("liquidity_settings", {}),
+        capacity_summary=result.get("capacity_summary", {}),
         caveats=result.get("caveats", []),
         config_hash=row.config_hash,
         computed_at=row.computed_at.isoformat() if row.computed_at else None,
@@ -126,7 +142,10 @@ def get_value_strategy_snapshot(db: Session = Depends(get_db)) -> ValueStrategyS
 
 
 @router.post("/value-strategy/recompute", dependencies=[Depends(require_admin)], response_model=ValueStrategyRecomputeResponse)
-def post_value_strategy_recompute(db: Session = Depends(get_db)) -> ValueStrategyRecomputeResponse:
+def post_value_strategy_recompute(
+    request: ValueStrategyRecomputeRequest | None = None,
+    db: Session = Depends(get_db),
+) -> ValueStrategyRecomputeResponse:
     """Enqueues an async recompute (RQ), mirroring POST /analytics/sfc-portfolio-backtest/run.
     Heavy (~minutes, full price-history load + vintage backtest) -- runs on the worker, never
     blocks this request."""
@@ -152,6 +171,7 @@ def post_value_strategy_recompute(db: Session = Depends(get_db)) -> ValueStrateg
             triggered_by="manual",
             batch_id=str(job_row.id),
             job_row_id=str(job_row.id),
+            liquidity_settings=(request or ValueStrategyRecomputeRequest()).liquidity.model_dump(),
             job_timeout=1800,
         )
         job_row.rq_job_id = str(job.id)

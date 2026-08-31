@@ -627,6 +627,12 @@ export const ValueSignalRowSchema = z.object({
   symbol: z.string(),
   as_of_date: z.string(),
   bm_raw: z.number().nullable().optional(),
+  market_equity: z.number().nullable().optional(),
+  decision_close: z.number().nullable().optional(),
+  shares_outstanding: z.number().nullable().optional(),
+  book_equity: z.number().nullable().optional(),
+  book_equity_provenance: z.record(z.string(), z.unknown()).nullable().optional(),
+  shares_provenance: z.record(z.string(), z.unknown()).nullable().optional(),
   bm_percentile: z.number().nullable().optional(),
   bm_rank: z.number().nullable().optional(),
   cfp_raw: z.number().nullable().optional(),
@@ -649,6 +655,8 @@ export const ValueSignalResponseSchema = z.object({
   eligible_bm_count: z.number().default(0),
   eligible_cfp_count: z.number().default(0),
   total_rows: z.number().default(0),
+  publication_coverage: z.record(z.string(), z.unknown()).default({}),
+  market_equity_formula: z.string(),
   rows: z.array(ValueSignalRowSchema).default([]),
 })
 export type ValueSignalResponse = z.infer<typeof ValueSignalResponseSchema>
@@ -691,13 +699,48 @@ export const ValueStrategyTradeLedgerRowSchema = z.object({
   symbol: z.string(),
   vintage_formed: z.string(),
   weight: z.number(),
+  requested_notional_mad: z.number().nullable().optional(),
+  filled_notional_mad: z.number().nullable().optional(),
+  unfilled_notional_mad: z.number().nullable().optional(),
+  adv_mad: z.number().nullable().optional(),
+  participation_rate: z.number().nullable().optional(),
+  status: z.string().default("filled"),
 })
 export type ValueStrategyTradeLedgerRow = z.infer<typeof ValueStrategyTradeLedgerRowSchema>
 
+export const ValueStrategyLiquiditySettingsSchema = z.object({
+  liquidity_enabled: z.boolean().default(true),
+  portfolio_nav_mad: z.number().positive().default(10_000_000),
+  min_order_enabled: z.boolean().default(true),
+  min_order_mad: z.number().nonnegative().default(100_000),
+  min_adv_enabled: z.boolean().default(true),
+  min_adv_mad: z.number().nonnegative().default(500_000),
+  max_participation_enabled: z.boolean().default(true),
+  max_participation_rate: z.number().min(0).max(1).default(0.20),
+  adv_window_days: z.number().int().min(1).max(252).default(20),
+  execution_horizon_days: z.number().int().min(1).max(20).default(1),
+})
+export type ValueStrategyLiquiditySettings = z.infer<typeof ValueStrategyLiquiditySettingsSchema>
+
 export const ValueStrategySnapshotResponseSchema = z.object({
+  live_trading_authorized: z.boolean().default(false),
+  production_readiness: z.object({
+    policy_version: z.string(),
+    strategy: z.string(),
+    status: z.string(),
+    live_trading_authorized: z.boolean(),
+    gates: z.array(z.object({
+      gate_id: z.string(),
+      requirement: z.string(),
+      passed: z.boolean(),
+      evidence: z.string(),
+      remediation: z.string(),
+    })),
+    blocker_ids: z.array(z.string()),
+  }).optional(),
   research_status: z.string(),
   recommended_architecture: z.string(),
-  model_version: z.string().default("Fundamental Value Strategy v1.0"),
+  model_version: z.string().default("Fundamental Value Strategy v2.0"),
   as_of_date: z.string().nullable().optional(),
   data_cutoff: z.string().nullable().optional(),
   universe_summary: ValueStrategyUniverseSummarySchema.nullable().optional(),
@@ -705,6 +748,8 @@ export const ValueStrategySnapshotResponseSchema = z.object({
   strategy_metrics: z.record(z.string(), z.record(z.string(), z.unknown())).default({}),
   equity_curve: z.array(ValueStrategyEquityCurvePointSchema).default([]),
   trade_ledger: z.array(ValueStrategyTradeLedgerRowSchema).default([]),
+  liquidity_settings: ValueStrategyLiquiditySettingsSchema.default({}),
+  capacity_summary: z.record(z.string(), z.unknown()).default({}),
   caveats: z.array(z.string()).default([]),
   config_hash: z.string(),
   computed_at: z.string().nullable().optional(),
@@ -1840,8 +1885,11 @@ export async function fetchValueStrategySnapshot(): Promise<ValueStrategySnapsho
   return ValueStrategySnapshotResponseSchema.parse(payload)
 }
 
-export async function triggerValueStrategyRecompute(): Promise<ValueStrategyRecomputeResponse> {
-  const payload = await request<unknown>("/value-strategy/recompute", { method: "POST" })
+export async function triggerValueStrategyRecompute(liquidity?: ValueStrategyLiquiditySettings): Promise<ValueStrategyRecomputeResponse> {
+  const payload = await request<unknown>("/value-strategy/recompute", {
+    method: "POST",
+    body: JSON.stringify({ liquidity: ValueStrategyLiquiditySettingsSchema.parse(liquidity ?? {}) }),
+  })
   return ValueStrategyRecomputeResponseSchema.parse(payload)
 }
 

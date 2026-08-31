@@ -21,6 +21,7 @@ from ..valuation import compute_valuation_ensemble, compute_symbol_valuations, d
 from .composite import compute_sfc
 from .ic_study import SFC_PROOF_SPLIT_DATE, _build_price_loader, _load_rows_from_db, _norm_pvalue, _spearman
 from .panel import PanelConfig, build_pit_panel, load_universe, publication_coverage_stats
+from .market_equity import decision_date_market_equity
 from .pillars import PillarConfig, compute_pillar_scores, mad_winsorized_z
 
 HORIZONS = ("1m", "3m", "6m", "12m")
@@ -57,6 +58,7 @@ class BakeoffConfig:
     primary_horizon: str = PRIMARY_HORIZON
     valuation_sample_step: int = 3
     max_valuation_rows: int | None = None
+    require_observed_publication_date: bool = True
 
 
 def _finite(value: Any) -> float | None:
@@ -139,9 +141,7 @@ def add_classical_and_change_signals(panel: pd.DataFrame) -> pd.DataFrame:
         history = list(row["history"])
         close = _finite(row.get("close"))
         shares = _metric(metrics, "Shares_Outstanding")
-        mcap = _metric(metrics, "MarketCap_Calc", "Market_Cap")
-        if mcap is None and close is not None and shares is not None:
-            mcap = close * shares
+        mcap = decision_date_market_equity(close=close, shares_outstanding=shares)
         book = _metric(metrics, *METRIC_ALIASES["book_equity"])
         assets = _metric(metrics, *METRIC_ALIASES["assets"])
         revenue = _metric(metrics, *METRIC_ALIASES["revenue"])
@@ -535,7 +535,12 @@ def _load_panel(config: BakeoffConfig) -> tuple[pd.DataFrame, dict[str, pd.Serie
         price_loader=price_loader,
         universe_df=load_universe(),
         sectors=sectors,
-        config=PanelConfig(start=config.start, end=config.end, horizons=HORIZONS),
+        config=PanelConfig(
+            start=config.start,
+            end=config.end,
+            horizons=HORIZONS,
+            require_observed_publication_date=config.require_observed_publication_date,
+        ),
     )
     symbols = set(panel["symbol"].astype(str)) if not panel.empty else set()
     loaded: dict[str, pd.Series | None] = {}

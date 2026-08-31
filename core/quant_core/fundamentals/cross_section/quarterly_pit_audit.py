@@ -29,11 +29,56 @@ quarterly_pit_audit.md).
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Mapping
+from urllib.parse import urlparse
 
 UNTRUSTWORTHY_DOCUMENT_TITLE_PREFIXES = (
     "StockAnalysis interim financial tables",
     "StockAnalysis H2 derived from FY minus H1",
 )
+
+OFFICIAL_BVC_PUBLICATION_HOSTS = frozenset(
+    {
+        "casablanca-bourse.com",
+        "www.casablanca-bourse.com",
+        "media.casablanca-bourse.com",
+    }
+)
+
+_RAW_PUBLICATION_DATE_KEYS = (
+    "Publication_Date",
+    "publication_date",
+    "field_vactory_date",
+    "archive_publication_date",
+    "date",
+)
+
+
+def _as_date(value: object) -> dt.date | None:
+    if isinstance(value, dt.datetime):
+        return value.date()
+    if isinstance(value, dt.date):
+        return value
+    if value is None:
+        return None
+    try:
+        return dt.date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
+
+
+def _raw_has_matching_publication_date(raw_json: Mapping[str, object] | None, publication_date: dt.date) -> bool:
+    if not isinstance(raw_json, Mapping):
+        return False
+    candidates: list[Mapping[str, object]] = [raw_json]
+    attributes = raw_json.get("attributes")
+    if isinstance(attributes, Mapping):
+        candidates.append(attributes)
+    for candidate in candidates:
+        for key in _RAW_PUBLICATION_DATE_KEYS:
+            if _as_date(candidate.get(key)) == publication_date:
+                return True
+    return False
 
 
 def is_trustworthy_publication_date(
@@ -41,6 +86,8 @@ def is_trustworthy_publication_date(
     publication_date: dt.date | None,
     created_at: dt.datetime | dt.date | None,
     document_title: str | None,
+    source_url: str | None = None,
+    raw_json: Mapping[str, object] | None = None,
 ) -> bool:
     """Returns False when `publication_date` looks like an ingestion-timestamp
     default rather than a genuine filing date: either the document title
@@ -52,6 +99,9 @@ def is_trustworthy_publication_date(
     title = (document_title or "").strip()
     if title.startswith(UNTRUSTWORTHY_DOCUMENT_TITLE_PREFIXES):
         return False
+    host = (urlparse(source_url or "").hostname or "").lower()
+    if host in OFFICIAL_BVC_PUBLICATION_HOSTS and _raw_has_matching_publication_date(raw_json, publication_date):
+        return True
     if created_at is not None:
         created_date = created_at.date() if isinstance(created_at, dt.datetime) else created_at
         if publication_date == created_date:

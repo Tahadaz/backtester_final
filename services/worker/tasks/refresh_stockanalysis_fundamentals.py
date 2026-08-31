@@ -31,6 +31,7 @@ from services.api.app.services.fundamentals import (
     refresh_canonical_snapshot_flags,
     rescore_universe,
 )
+from services.api.app.services.fundamental_publication_reconciliation import reconcile_stockanalysis_publication_dates
 from services.worker.db import SessionLocal
 
 
@@ -405,7 +406,19 @@ def refresh_stockanalysis_universe(
         db.add(run)
         db.commit()
 
+        pit_reconciliation: dict[str, object] | None = None
         if succeeded:
+            pit_reconciliation = reconcile_stockanalysis_publication_dates(
+                db,
+                apply=True,
+                symbols=set(succeeded),
+            )
+            run = db.get(models.FundamentalImport, run.id)
+            run.summary_json = sanitize_json_compatible(
+                {**dict(run.summary_json or {}), "bvc_publication_reconciliation": pit_reconciliation}
+            )
+            db.add(run)
+            db.commit()
             refresh_canonical_snapshot_flags(db, symbols=succeeded)
             rescore_universe(db, scope="masi")
             persist_pillar_history_for_import(db, import_id=run.id)
@@ -436,6 +449,7 @@ def refresh_stockanalysis_universe(
             "succeeded": len(succeeded),
             "failed": len(failed),
             "dashboard_snapshot_job_id": dashboard_snapshot_job_id,
+            "bvc_publication_reconciliation": pit_reconciliation,
             "elapsed_seconds": round(time.perf_counter() - started, 2),
         }
     finally:

@@ -26,7 +26,8 @@ dependencies = [
   "plotly",
   "apscheduler>=3.10",
   "yfinance",
-  "python-jose[cryptography]>=3.3"
+  "python-jose[cryptography]>=3.3",
+  "sentry-sdk>=2.0"
 ]
 
 # ✅ CRITICAL: tell setuptools what to package, exclude alembic folder from package discovery

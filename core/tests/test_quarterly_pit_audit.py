@@ -43,3 +43,13 @@ def test_missing_publication_date_is_untrustworthy():
         created_at=dt.datetime(2023, 1, 1),
         document_title="Some title",
     )
+
+
+def test_official_raw_publication_date_is_trusted_even_when_ingested_same_day():
+    assert is_trustworthy_publication_date(
+        publication_date=dt.date(2026, 4, 30),
+        created_at=dt.datetime(2026, 4, 30, 18, 0, 0),
+        document_title="AFM: 2025 financial statements",
+        source_url="https://media.casablanca-bourse.com/issuer/afm-2025.pdf",
+        raw_json={"Publication_Date": "2026-04-30"},
+    )

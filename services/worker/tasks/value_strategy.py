@@ -14,6 +14,7 @@ def recompute_value_strategy(
     triggered_by: str | None = None,
     batch_id: str | None = None,
     job_row_id: str | None = None,
+    liquidity_settings: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Async worker task for the six-vintage B/M+CF/P strategy snapshot. Mirrors
     services.worker.tasks.fundamental_cross_section.recompute_sfc_portfolio_backtest's
@@ -31,7 +32,12 @@ def recompute_value_strategy(
                 job_row.status = "running"
                 job_row.started_at = dt.datetime.now(dt.timezone.utc)
                 db.commit()
-        result = recompute_and_persist_value_strategy(db, triggered_by=triggered_by, batch_id=batch_id)
+        result = recompute_and_persist_value_strategy(
+            db,
+            triggered_by=triggered_by,
+            batch_id=batch_id,
+            liquidity_settings=liquidity_settings,
+        )
         payload = {**result, "triggered_by": triggered_by or "manual", "batch_id": batch_id, "status": "succeeded"}
         if job_row is not None:
             job_row.status = "succeeded"

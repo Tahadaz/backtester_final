@@ -31,3 +31,4 @@ urllib3
 statsmodels>=0.14          # RecursiveLS.cusum_squares, multipletests fdr_bh
 scikit-learn>=1.3          # Lasso, custom CV splitters
 ruptures>=1.1              # Pelt change-point detection (Bai-Perron location)
+sentry_sdk

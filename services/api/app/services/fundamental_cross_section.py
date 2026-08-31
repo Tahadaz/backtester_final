@@ -53,7 +53,9 @@ def _load_fundamental_rows(db: Session) -> tuple[list[dict[str, Any]], list[dict
             text(
                 """
                 SELECT fam.symbol, fam.company_name, fam.statement_year, fam.metric_name, fam.metric_value,
-                       fam.as_of_date, fam.source_document_id, fsd.publication_date
+                       fam.as_of_date, fam.source_document_id, fsd.publication_date,
+                       fsd.document_title, fsd.created_at AS source_document_created_at,
+                       fsd.source_url, fsd.raw_json AS source_document_raw_json
                 FROM fundamental_annual_metric fam
                 LEFT JOIN fundamental_source_document fsd ON fsd.id = fam.source_document_id
                 WHERE fam.statement_year >= 2016
@@ -70,7 +72,9 @@ def _load_fundamental_rows(db: Session) -> tuple[list[dict[str, Any]], list[dict
                 SELECT fpm.symbol, fpm.company_name, fpm.fiscal_year AS statement_year,
                        fpm.period_type, fpm.period_label, fpm.period_end_date,
                        fpm.metric_name, fpm.metric_value, fpm.source_document_id,
-                       fsd.publication_date
+                       fsd.publication_date, fsd.document_title,
+                       fsd.created_at AS source_document_created_at,
+                       fsd.source_url, fsd.raw_json AS source_document_raw_json
                 FROM fundamental_period_metric fpm
                 LEFT JOIN fundamental_source_document fsd ON fsd.id = fpm.source_document_id
                 WHERE fpm.fiscal_year >= 2016
@@ -136,7 +140,7 @@ def compute_cross_section_frame(db: Session, *, as_of_date: dt.date | None = Non
         consensus_rows=consensus,
         price_loader=load_price,
         universe_df=load_universe(),
-        config=PanelConfig(as_of_dates=(date,)),
+        config=PanelConfig(as_of_dates=(date,), require_observed_publication_date=True),
         sectors=sectors,
     )
     scored = compute_sfc(
@@ -187,7 +191,7 @@ def compute_sfc_panel(
         consensus_rows=consensus,
         price_loader=load_price,
         universe_df=load_universe(),
-        config=PanelConfig(start=start_date, end=end_date),
+        config=PanelConfig(start=start_date, end=end_date, require_observed_publication_date=True),
         sectors=sectors,
     )
     scored = compute_sfc(

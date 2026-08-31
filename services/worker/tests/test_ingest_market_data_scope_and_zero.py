@@ -84,7 +84,8 @@ def test_msi20_index_upload_headers_standardize_to_daily_index_bars() -> None:
     frame = frame.dropna(subset=["date"]).set_index("date")
     standardized = _standardize_ohlcv_index(frame)
 
-    assert list(standardized.columns) == ["Open", "High", "Low", "Close", "Adj Close", "Volume"]
+    assert list(standardized.columns) == ["Open", "High", "Low", "Close", "Volume"]
+    assert "Adj Close" not in standardized.columns
     assert standardized.index.min().strftime("%Y-%m-%d") == "2026-04-22"
     assert standardized.index.max().strftime("%Y-%m-%d") == "2026-04-23"
     assert standardized["Volume"].eq(0.0).all()

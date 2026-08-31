@@ -49,7 +49,7 @@ export default function RootLayout({
           {children}
         </AppMain>
         <Toaster />
-        <Analytics />
+        {process.env.NEXT_PUBLIC_VERCEL_ANALYTICS_ENABLED === 'true' ? <Analytics /> : null}
       </body>
     </html>
   )

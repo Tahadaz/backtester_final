@@ -1,6 +1,7 @@
 from __future__ import annotations
 from contextlib import asynccontextmanager
 
+import sentry_sdk
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -8,7 +9,8 @@ from . import auth
 from .config import settings
 from .freshness import FreshnessHeadersMiddleware
 
-
+if settings.SENTRY_DSN:
+    sentry_sdk.init(dsn=settings.SENTRY_DSN, traces_sample_rate=0.1)
 from .routers import (
     analytics,
     bloomberg_bridge,
@@ -89,7 +91,6 @@ def create_app() -> FastAPI:
     app.include_router(strategy.router)
     app.include_router(strategy_backtest_runs.router)
     app.include_router(historical_portfolio_backtest.router)
-    app.include_router(dashboard_indices.router)
     app.include_router(wfo_signals.router)
 
 

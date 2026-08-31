@@ -64,6 +64,8 @@ def client_and_storage(monkeypatch):
         poolclass=StaticPool,
     )
     SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+    models.Dataset.__table__.create(engine)
+    models.MarketDataStore.__table__.create(engine)
     models.BloombergIngestBatch.__table__.create(engine)
     models.BloombergSeries.__table__.create(engine)
     models.BloombergJob.__table__.create(engine)
@@ -178,6 +180,60 @@ def test_bridge_upload_stores_raw_batch_and_indexes_series(client_and_storage) -
     series_download = client.get(f"/bloomberg/series/{series[0]['id']}/download")
     assert series_download.status_code == 200
     assert series_download.content
+
+
+def test_time_series_without_date_or_security_lineage_is_rejected(client_and_storage) -> None:
+    client, _objects = client_and_storage
+    frame = pd.DataFrame({"PX_LAST": [100.0], "VOLUME": [10.0]})
+    buffer = BytesIO()
+    frame.to_parquet(buffer, index=False)
+    manifest = {
+        "schema_version": 1, "bridge_id": "terminal", "request_id": "invalid-001",
+        "bloomberg_source": "bdh", "kind": "time_series", "securities": [],
+        "fields": ["PX_LAST", "VOLUME"], "periodicity": "DAILY", "row_count": 1,
+    }
+    response = client.post(
+        "/bridge/bloomberg/batches",
+        headers={"X-Bloomberg-Bridge-Key": "secret"},
+        data={"manifest_json": json.dumps(manifest)},
+        files={"file": ("invalid.parquet", buffer.getvalue(), "application/octet-stream")},
+    )
+    assert response.status_code == 422
+    assert "date" in response.json()["detail"]
+
+
+def test_explicit_bloomberg_ohlcv_promotion_updates_canonical_store(client_and_storage) -> None:
+    client, objects = client_and_storage
+    rows = []
+    values = {
+        "PX_OPEN": [100.0, 101.0], "PX_HIGH": [102.0, 103.0], "PX_LOW": [99.0, 100.0],
+        "PX_LAST": [101.0, 102.0], "VOLUME": [1_000.0, 2_000.0],
+    }
+    for field, field_values in values.items():
+        for date, value in zip(["2026-05-01", "2026-05-04"], field_values):
+            rows.append({"date": date, "security": "ATW MA Equity", "field": field, "value": value})
+    frame = pd.DataFrame(rows)
+    buffer = BytesIO()
+    frame.to_parquet(buffer, index=False)
+    manifest = {
+        "schema_version": 1, "bridge_id": "terminal", "request_id": "promote-001",
+        "bloomberg_source": "bdh", "kind": "time_series", "securities": ["ATW MA Equity"],
+        "fields": list(values), "periodicity": "DAILY", "row_count": len(frame),
+        "overrides": {"internal_symbol": "ATW", "apply_to_market_data": True},
+    }
+    response = client.post(
+        "/bridge/bloomberg/batches",
+        headers={"X-Bloomberg-Bridge-Key": "secret"},
+        data={"manifest_json": json.dumps(manifest)},
+        files={"file": ("ohlcv.parquet", buffer.getvalue(), "application/octet-stream")},
+    )
+    assert response.status_code == 201
+    assert response.json()["batch"]["manifest_json"]["promoted_market_data_symbol"] == "ATW"
+    market_keys = [key for key in objects if key.startswith("market-data/bloomberg/ATW")]
+    assert len(market_keys) == 1
+    promoted = pd.read_parquet(BytesIO(objects[market_keys[0]]))
+    assert list(promoted.columns) == ["Open", "High", "Low", "Close", "Volume"]
+    assert promoted.iloc[-1]["Close"] == pytest.approx(102.0)
 
 
 def test_bloomberg_job_can_be_queued_claimed_and_completed(client_and_storage) -> None:

@@ -34,6 +34,7 @@ from .methodology_bakeoff import (
     portfolio_table,
 )
 from .methodology_bakeoff import METRIC_ALIASES, _load_panel
+from .market_equity import decision_date_market_equity
 from .panel import _pit_close
 from ..scoring import _piotroski_lite
 
@@ -214,9 +215,7 @@ def add_characteristics(panel: pd.DataFrame, price_frames: dict[str, pd.DataFram
         close = _finite(row.get("close"))
         is_financial = bool(row.get("is_financial", False))
         shares = _metric(metrics, "Shares_Outstanding")
-        mcap = _metric(metrics, "MarketCap_Calc", "Market_Cap")
-        if mcap is None and close is not None and shares is not None:
-            mcap = close * shares
+        mcap = decision_date_market_equity(close=close, shares_outstanding=shares)
         book = _metric(metrics, *METRIC_ALIASES["book_equity"])
         assets = _metric(metrics, *METRIC_ALIASES["assets"])
         revenue = _metric(metrics, *METRIC_ALIASES["revenue"])
