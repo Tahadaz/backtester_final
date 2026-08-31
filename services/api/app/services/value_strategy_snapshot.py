@@ -151,6 +151,111 @@ def _runtime_config_hash(config: LiveLikeConfig) -> str:
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()[:16]
 
 
+def value_strategy_desk_payload(result: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Return presentation metadata from the same frozen rules used by the engine.
+
+    This deliberately contains no estimated performance and no random input. Dynamic
+    evidence comes only from the persisted snapshot supplied in ``result``.
+    """
+    snapshot = result or {}
+    metrics = snapshot.get("strategy_metrics") if isinstance(snapshot.get("strategy_metrics"), dict) else {}
+    universe = snapshot.get("universe_summary") if isinstance(snapshot.get("universe_summary"), dict) else {}
+    raw_cost = snapshot.get("transaction_cost_bps", os.environ.get("VALUE_STRATEGY_COST_BPS"))
+    try:
+        cost_bps = float(raw_cost) if raw_cost is not None else None
+    except (TypeError, ValueError):
+        cost_bps = None
+
+    factor_research = [
+        {
+            "factor_id": "S1_bm",
+            "label": "Book-to-market",
+            "formula": "positive book equity / (decision-date close x point-in-time shares outstanding)",
+            "applicability": "Industrial, bank and insurance issuers with verified PIT inputs",
+            "latest_eligible_count": universe.get("eligible_bm_count"),
+            "decision": "retained_candidate",
+            "metrics": metrics.get("S1_bm", {}),
+        },
+        {
+            "factor_id": "S2_cfp",
+            "label": "Operating cash-flow-to-price",
+            "formula": "operating cash flow / (decision-date close x point-in-time shares outstanding)",
+            "applicability": "Non-financial issuers only; banks and insurers are structurally excluded",
+            "latest_eligible_count": universe.get("eligible_cfp_count"),
+            "decision": "insufficient_data" if metrics.get("S2_cfp", {}).get("insufficient_data") else "diagnostic_candidate",
+            "metrics": metrics.get("S2_cfp", {}),
+        },
+        {
+            "factor_id": "S4_sleeves",
+            "label": "Separate B/M and CF/P sleeves",
+            "formula": "50% B/M sleeve + 50% CF/P sleeve; no opaque composite score",
+            "applicability": "Diagnostic architecture; unavailable sleeve remains uninvested",
+            "latest_eligible_count": None,
+            "decision": "diagnostic_only",
+            "metrics": metrics.get("S4_sleeves", {}),
+        },
+    ]
+    return {
+        "methodology_version": snapshot.get("methodology_version", VALUE_STRATEGY_METHODOLOGY_VERSION),
+        "transaction_cost_bps": cost_bps,
+        "transaction_cost_source": snapshot.get("transaction_cost_source") or os.environ.get("VALUE_STRATEGY_COST_SOURCE") or None,
+        "pipeline_steps": [
+            {
+                "step": 1,
+                "title": "Source and normalize fundamentals",
+                "detail": "StockAnalysis statement values are mapped to canonical CGNC metrics by issuer archetype: industrial, bank, insurer or insurance broker.",
+                "evidence": "Missing fields remain missing; industrial cash-flow and enterprise-value fields are not fabricated for banks or insurers.",
+            },
+            {
+                "step": 2,
+                "title": "Reconstruct point-in-time availability",
+                "detail": "Historical accounting rows require observed publication evidence; reconciled Bourse de Casablanca publication dates determine when a filing may enter the panel.",
+                "evidence": "Unverified dates and unresolved share histories fail closed instead of receiving assumed release dates.",
+            },
+            {
+                "step": 3,
+                "title": "Define and test transparent factors",
+                "detail": "B/M and CF/P are evaluated separately. The production candidate contains no randomized signal, randomized parameter or opaque ensemble weight.",
+                "evidence": "Realized portfolio statistics below are distinct from predictive IC diagnostics; four monthly observations cannot validate alpha.",
+            },
+            {
+                "step": 4,
+                "title": "Construct the portfolio",
+                "detail": "A new equal-weight top-tercile vintage forms monthly, remains active for six months, and unallocated capital stays in cash during warm-up or failed fills.",
+                "evidence": "B/M is the retained reconstruction candidate; CF/P is not promoted when its eligible history is insufficient.",
+            },
+            {
+                "step": 5,
+                "title": "Apply execution and capacity",
+                "detail": "Both buys and sells use strictly lagged ADTV, minimum-ticket rules, participation caps and sourced per-side transaction costs.",
+                "evidence": "Partial and rejected orders remain visible in the ledger; unfilled notional is not redistributed.",
+            },
+            {
+                "step": 6,
+                "title": "Evaluate sequential wealth and release gates",
+                "detail": "The equity curve compounds realized monthly net returns, not overlapping forward returns. Every live-release gate must pass independently.",
+                "evidence": "The current snapshot remains research-only while execution lag, corporate actions, historical universe and independent holdout evidence are incomplete.",
+            },
+        ],
+        "factor_research": factor_research,
+        "portfolio_rules": {
+            "direction": "long_only",
+            "selection": "top_tercile",
+            "weighting": "equal_weight_within_each_vintage",
+            "formation_frequency": "monthly",
+            "holding_period_months": VINTAGE_LIFE_MONTHS,
+            "overlapping_vintages": VINTAGE_LIFE_MONTHS,
+            "execution_lag_status": "not_yet_applied",
+        },
+        "data_sources": [
+            {"layer": "fundamental_values", "source": "StockAnalysis", "status": "source values; official reconciliation incomplete"},
+            {"layer": "publication_dates", "source": "Bourse de Casablanca issuer publications", "status": "observed dates used where reconciled"},
+            {"layer": "prices_and_volume", "source": "canonical market-data store", "status": "Bourse scraper; Bloomberg only after explicit validated promotion"},
+            {"layer": "transaction_cost", "source": snapshot.get("transaction_cost_source") or os.environ.get("VALUE_STRATEGY_COST_SOURCE") or "unavailable", "status": "desk-provided source"},
+        ],
+    }
+
+
 def _ensure_s3_env_vars() -> None:
     """Bridges this container's env var naming (S3_ENDPOINT/S3_ACCESS_KEY/S3_SECRET_KEY,
     see infra/docker-compose.yml) to the names the research code's os.environ.setdefault
@@ -347,6 +452,7 @@ def compute_value_strategy_snapshot(db: Session, *, liquidity_settings: dict[str
 
     latest_slice = panel[panel["as_of_date"] == latest_date] if latest_date else panel.iloc[0:0]
     eligible_bm_symbols = sorted(latest_slice.loc[latest_slice["eligible_bm"], "symbol"].astype(str).unique().tolist())
+    eligible_cfp_symbols = sorted(latest_slice.loc[latest_slice["eligible_cfp"], "symbol"].astype(str).unique().tolist())
     all_symbols = sorted(latest_slice["symbol"].astype(str).unique().tolist())
     excluded_symbols = sorted(set(all_symbols) - set(eligible_bm_symbols))
     excluded_summary = {
@@ -363,6 +469,7 @@ def compute_value_strategy_snapshot(db: Session, *, liquidity_settings: dict[str
         "recommended_architecture": RECOMMENDED_ARCHITECTURE,
         "model_version": MODEL_VERSION,
         "methodology_version": VALUE_STRATEGY_METHODOLOGY_VERSION,
+        "transaction_cost_bps": config.cost_bps,
         "transaction_cost_source": cost_source,
         "liquidity_settings": {key: asdict(config)[key] for key in DEFAULT_LIQUIDITY_SETTINGS},
         "capacity_summary": capacity_summary,
@@ -373,6 +480,7 @@ def compute_value_strategy_snapshot(db: Session, *, liquidity_settings: dict[str
         "universe_summary": {
             "total_names": len(all_symbols),
             "eligible_bm_count": len(eligible_bm_symbols),
+            "eligible_cfp_count": len(eligible_cfp_symbols),
             "excluded_count": len(excluded_symbols),
             "excluded_symbols": excluded_summary,
         },
@@ -395,6 +503,11 @@ def compute_value_strategy_snapshot(db: Session, *, liquidity_settings: dict[str
             "This is backtested research evidence, not a live or paper trading track record.",
         ],
     }
+    desk_payload = value_strategy_desk_payload(result)
+    result["research_pipeline"] = desk_payload["pipeline_steps"]
+    result["factor_research"] = desk_payload["factor_research"]
+    result["portfolio_rules"] = desk_payload["portfolio_rules"]
+    result["data_sources"] = desk_payload["data_sources"]
     return sanitize_json_compatible(result)
 
 

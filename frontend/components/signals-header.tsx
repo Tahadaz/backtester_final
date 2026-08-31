@@ -12,6 +12,7 @@ import {
   ChartColumnIncreasing,
   Database,
   Gauge,
+  FlaskConical,
   LayoutDashboard,
   Landmark,
   LogIn,
@@ -29,6 +30,7 @@ const defaultNavItems = [
   { href: "/dashboard", label: "Tableau de Bord", icon: LayoutDashboard },
   { href: "/data", label: "Data", icon: Database },
   { href: "/signals", label: "Signals", icon: Activity },
+  { href: "/fundamental-strategy", label: "Fundamental Lab", icon: FlaskConical },
   { href: "/strategy", label: "Strategy", icon: Target },
   { href: "/backtest", label: "Backtest", icon: Gauge },
   { href: "/analytics", label: "Analytics", icon: ChartColumnIncreasing },
@@ -46,7 +48,7 @@ const publicNavItems = [
   { href: "/signals", label: "Signaux", icon: Gauge },
 ]
 
-const hiddenWorkspaceNavHrefs = new Set(["/strategy", "/backtest", "/analytics", "/fundamentals"])
+const hiddenWorkspaceNavHrefs = new Set(["/strategy", "/backtest", "/analytics", "/fundamentals", "/fundamental-strategy"])
 
 interface SignalsHeaderProps {
   sessionEmail?: string | null
@@ -90,7 +92,7 @@ export function SignalsHeader({ sessionEmail, hideWorkspaceNavItems = false, isA
   const mobileNavItems = navItems.filter((item) =>
     isPublicDashboardOnly
       ? item.href === "/v1" || item.href === "/signals"
-      : ["/dashboard", "/data", "/signals", "/glossary", "/admin/ops"].includes(item.href),
+      : ["/dashboard", "/data", "/signals", "/fundamental-strategy", "/glossary", "/admin/ops"].includes(item.href),
   )
 
   return (

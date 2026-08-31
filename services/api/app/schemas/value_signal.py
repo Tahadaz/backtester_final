@@ -58,6 +58,7 @@ class ValueStrategyHolding(BaseModel):
 class UniverseSummary(BaseModel):
     total_names: int
     eligible_bm_count: int
+    eligible_cfp_count: int = 0
     excluded_count: int
     excluded_symbols: dict[str, str] = Field(default_factory=dict, description="symbol -> exclusion reason code")
 
@@ -120,6 +121,13 @@ class ValueStrategySnapshotResponse(BaseModel):
     research_status: str = Field(..., description='Research-only classification; not proven alpha, a live track record, or an authorization.')
     recommended_architecture: str
     model_version: str = Field(..., description="Frozen methodology identifier, not a runtime timestamp.")
+    methodology_version: str = ""
+    transaction_cost_bps: Optional[float] = None
+    transaction_cost_source: Optional[str] = None
+    research_pipeline: list[dict[str, Any]] = Field(default_factory=list)
+    factor_research: list[dict[str, Any]] = Field(default_factory=list)
+    portfolio_rules: dict[str, Any] = Field(default_factory=dict)
+    data_sources: list[dict[str, Any]] = Field(default_factory=list)
     as_of_date: Optional[str] = None
     data_cutoff: Optional[str] = None
     universe_summary: Optional[UniverseSummary] = None

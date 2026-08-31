@@ -671,6 +671,7 @@ export type ValueStrategyHolding = z.infer<typeof ValueStrategyHoldingSchema>
 export const ValueStrategyUniverseSummarySchema = z.object({
   total_names: z.number(),
   eligible_bm_count: z.number(),
+  eligible_cfp_count: z.number().default(0),
   excluded_count: z.number(),
   excluded_symbols: z.record(z.string(), z.string()).default({}),
 })
@@ -741,6 +742,30 @@ export const ValueStrategySnapshotResponseSchema = z.object({
   research_status: z.string(),
   recommended_architecture: z.string(),
   model_version: z.string().default("Fundamental Value Strategy v2.0"),
+  methodology_version: z.string().default(""),
+  transaction_cost_bps: z.number().nullable().optional(),
+  transaction_cost_source: z.string().nullable().optional(),
+  research_pipeline: z.array(z.object({
+    step: z.number(),
+    title: z.string(),
+    detail: z.string(),
+    evidence: z.string(),
+  })).default([]),
+  factor_research: z.array(z.object({
+    factor_id: z.string(),
+    label: z.string(),
+    formula: z.string(),
+    applicability: z.string(),
+    latest_eligible_count: z.number().nullable().optional(),
+    decision: z.string(),
+    metrics: z.record(z.string(), z.unknown()).default({}),
+  })).default([]),
+  portfolio_rules: z.record(z.string(), z.unknown()).default({}),
+  data_sources: z.array(z.object({
+    layer: z.string(),
+    source: z.string(),
+    status: z.string(),
+  })).default([]),
   as_of_date: z.string().nullable().optional(),
   data_cutoff: z.string().nullable().optional(),
   universe_summary: ValueStrategyUniverseSummarySchema.nullable().optional(),

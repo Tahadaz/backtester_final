@@ -17,6 +17,7 @@ from services.api.app.services.value_strategy_snapshot import (
     _ensure_s3_env_vars,
     _resolved_desk_cost_config,
     snapshot_freshness,
+    value_strategy_desk_payload,
 )
 
 
@@ -33,6 +34,23 @@ def test_v2_snapshot_accepts_explicit_sourced_cost(monkeypatch):
     config, source = _resolved_desk_cost_config()
     assert config.cost_bps == pytest.approx(27.5)
     assert source == "desk_schedule_2026-08-30"
+
+
+def test_desk_payload_uses_persisted_evidence_without_random_inputs(monkeypatch):
+    monkeypatch.setenv("VALUE_STRATEGY_COST_BPS", "33")
+    monkeypatch.setenv("VALUE_STRATEGY_COST_SOURCE", "desk-certified workbook")
+    payload = value_strategy_desk_payload({
+        "universe_summary": {"eligible_bm_count": 12, "eligible_cfp_count": 0},
+        "strategy_metrics": {
+            "S1_bm": {"periods": 4, "cumulative_return": 0.01},
+            "S2_cfp": {"periods": 0, "insufficient_data": True},
+        },
+    })
+    assert payload["transaction_cost_bps"] == 33
+    assert payload["factor_research"][0]["latest_eligible_count"] == 12
+    assert payload["factor_research"][1]["decision"] == "insufficient_data"
+    assert payload["portfolio_rules"]["execution_lag_status"] == "not_yet_applied"
+    assert len(payload["pipeline_steps"]) == 6
 from services.api.app.routers.value_signal import get_value_strategy_snapshot
 
 
@@ -198,3 +216,6 @@ def test_persisted_snapshot_cannot_override_current_live_authorization(session_f
     assert response.live_trading_authorized is False
     assert response.production_readiness["status"] == "RESEARCH_ONLY"
     assert response.production_readiness["blocker_ids"]
+    assert response.research_pipeline
+    assert response.factor_research
+    assert response.methodology_version

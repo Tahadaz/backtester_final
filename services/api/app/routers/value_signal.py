@@ -44,6 +44,7 @@ from ..services.value_strategy_snapshot import (
     latest_value_strategy_job,
     latest_value_strategy_snapshot,
     snapshot_freshness,
+    value_strategy_desk_payload,
 )
 
 router = APIRouter(tags=["value-signal"])
@@ -94,6 +95,7 @@ def get_value_strategy_snapshot(db: Session = Depends(get_db)) -> ValueStrategyS
     freshness = snapshot_freshness(row, latest_job_status=job.status if job else None)
     readiness = current_repository_readiness()
     if row is None:
+        desk = value_strategy_desk_payload({})
         # Explicit no_snapshot state rather than a bare 404 -- the UI needs to distinguish
         # "nothing has ever been computed" from a transient API error.
         return ValueStrategySnapshotResponse(
@@ -102,6 +104,13 @@ def get_value_strategy_snapshot(db: Session = Depends(get_db)) -> ValueStrategyS
             research_status="RESEARCH ONLY — UNVALIDATED",
             recommended_architecture="S1_bm",
             model_version="Fundamental Value Strategy v2.1",
+            methodology_version=desk["methodology_version"],
+            transaction_cost_bps=desk["transaction_cost_bps"],
+            transaction_cost_source=desk["transaction_cost_source"],
+            research_pipeline=desk["pipeline_steps"],
+            factor_research=desk["factor_research"],
+            portfolio_rules=desk["portfolio_rules"],
+            data_sources=desk["data_sources"],
             as_of_date=None,
             data_cutoff=None,
             universe_summary=None,
@@ -117,6 +126,7 @@ def get_value_strategy_snapshot(db: Session = Depends(get_db)) -> ValueStrategyS
             freshness=freshness,
         )
     result = row.result_json or {}
+    desk = value_strategy_desk_payload(result)
     return ValueStrategySnapshotResponse(
         # Authorization is evaluated from the current policy, never trusted from
         # a persisted research snapshot that may predate a new failed gate.
@@ -125,6 +135,13 @@ def get_value_strategy_snapshot(db: Session = Depends(get_db)) -> ValueStrategyS
         research_status=result.get("research_status", "RESEARCH ONLY — UNVALIDATED"),
         recommended_architecture=result.get("recommended_architecture", "S1_bm"),
         model_version=result.get("model_version", "Fundamental Value Strategy v2.1"),
+        methodology_version=desk["methodology_version"],
+        transaction_cost_bps=desk["transaction_cost_bps"],
+        transaction_cost_source=desk["transaction_cost_source"],
+        research_pipeline=result.get("research_pipeline", desk["pipeline_steps"]),
+        factor_research=result.get("factor_research", desk["factor_research"]),
+        portfolio_rules=result.get("portfolio_rules", desk["portfolio_rules"]),
+        data_sources=result.get("data_sources", desk["data_sources"]),
         as_of_date=result.get("as_of_date"),
         data_cutoff=result.get("data_cutoff"),
         universe_summary=result.get("universe_summary"),
