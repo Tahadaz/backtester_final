@@ -6,8 +6,12 @@ export async function register() {
 
   const { Pool } = await import("pg")
   const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1 })
+  const startupAttempts = 20
+  const retryDelayMs = 1_000
   try {
-    await pool.query(`
+    for (let attempt = 1; attempt <= startupAttempts; attempt += 1) {
+      try {
+        await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id            TEXT PRIMARY KEY,
         name          TEXT,
@@ -51,7 +55,19 @@ export async function register() {
         dashboard   JSONB NOT NULL DEFAULT '{}'::jsonb,
         "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
-    `)
+        `)
+        return
+      } catch (error) {
+        if (attempt === startupAttempts) {
+          // Auth schema initialization must not make the entire dashboard return
+          // HTTP 500 while Postgres performs crash recovery. Compose normally
+          // gates first startup on DB health; this also covers Docker auto-restart.
+          console.warn("Auth schema initialization deferred: database unavailable", error)
+          return
+        }
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs))
+      }
+    }
   } finally {
     await pool.end()
   }
