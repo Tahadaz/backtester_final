@@ -44,6 +44,8 @@ from services.worker.tasks.ingest_market_data import (
 )
 from services.worker.tasks.refresh_market_data import (
     _align_tz,
+    has_duplicate_dates,
+    timestamp_convention_sample,
     _persist_stock_frame,
     _upsert_market_data_store_index,
     refresh_lookback_days,
@@ -52,6 +54,7 @@ from services.worker.tasks.refresh_market_data import (
 
 logger = logging.getLogger(__name__)
 
+BOURSE_SOURCES = ("bourse_direct", "bmce_excel")  # sources routed to boursenova
 STOCK_KEEP_COLS = ["Open", "High", "Low", "Close", "Volume", "NombreTitres"]
 MAX_LISTED_DATES = 200
 
@@ -189,6 +192,9 @@ def _process(
 ) -> dict[str, Any]:
     object_key = build_market_store_object_key(symbol, "1D")
     old = _try_load_existing_parquet(object_key)
+    bad_ts = timestamp_convention_sample(old)
+    if bad_ts:  # never mix time-of-day conventions: report only, write nothing
+        return {"kind": kind, "status": "timestamp_convention_mismatch", "sample": bad_ts}
     exchange = exchange_loader(old)
     entry: dict[str, Any] = {"kind": kind, **audit_series(old, exchange, calendar, today=today, lookback_days=lookback)}
     entry["inserted"] = entry["overwritten"] = 0
@@ -197,6 +203,9 @@ def _process(
 
     incoming = plan_incoming(old, exchange, today=today, lookback_days=lookback)
     merged, summary = _merge_overwrite_if_different(old, _align_tz(incoming, old))
+    if has_duplicate_dates(merged):
+        entry["status"] = "duplicate_dates_aborted"
+        return entry
     entry["inserted"] = summary["inserted_count"]
     entry["overwritten"] = summary["overwritten_overlap_count"]
     if summary["status"] != "unchanged":
@@ -280,11 +289,14 @@ def run_backfill(
         if stocks:
             rows = db.execute(
                 text(
-                    "SELECT symbol FROM stock_master WHERE is_active = true "
-                    "AND track_source IN ('bourse_direct', 'bmce_excel') ORDER BY symbol"
+                    "SELECT symbol, track_source FROM stock_master WHERE is_active = true ORDER BY symbol"
                 )
             ).all()
-            jobs += [("stock", str(r[0])) for r in rows]
+            for r in rows:
+                if str(r[1]) in BOURSE_SOURCES:
+                    jobs.append(("stock", str(r[0])))
+                elif wanted is None or str(r[0]).upper() in wanted:
+                    report["symbols"][str(r[0])] = {"kind": "stock", "status": "skipped_non_bourse_source"}
         if indices:
             rows = db.execute(text("SELECT symbol FROM index_master WHERE is_active = true ORDER BY symbol")).all()
             jobs += [("index", str(r[0])) for r in rows]
@@ -319,6 +331,9 @@ def run_backfill(
             "mismatch_total": sum(e["mismatch_count"] for e in entries),
             "inserted_total": sum(e["inserted"] for e in entries),
             "overwritten_total": sum(e["overwritten"] for e in entries),
+            "convention_mismatch": sum(
+                1 for e in report["symbols"].values() if e.get("status") == "timestamp_convention_mismatch"
+            ),
             "errors": len(report["errors"]),
         }
         if apply and downstream:

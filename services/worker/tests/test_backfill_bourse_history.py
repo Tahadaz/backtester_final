@@ -286,3 +286,99 @@ def test_render_table_and_script_importable():
     assert "IAM" in text and "2026-11-03" in text and "no_boursenova_code" in text and "ERROR boom" in text
     script = Path(__file__).resolve().parents[3] / "scripts" / "backfill_bourse_history.py"
     assert script.exists() and "--apply" in script.read_text(encoding="utf-8")
+
+
+# ---- timestamp convention / duplicate-date guards -------------------------------
+
+def _process_with(monkeypatch, old, exch, apply=True):
+    saved = []
+    monkeypatch.setattr(bf, "_try_load_existing_parquet", lambda key: old)
+    monkeypatch.setattr(bf, "_save_parquet", lambda key, df: saved.append(df))
+    monkeypatch.setattr(bf, "_persist_stock_frame", lambda *a, **k: {})
+    monkeypatch.setattr(bf, "_existing_provider", lambda *a: "bourse_direct")
+
+    class _DB:
+        def commit(self):
+            pass
+
+    entry = bf._process(
+        _DB(), symbol="IAM", kind="stock", exchange_loader=lambda o: exch,
+        calendar=_cal("2026-11-09", "2026-11-10"), today=TODAY, lookback=45, apply=apply,
+    )
+    return entry, saved
+
+
+def test_backfill_reports_mismatch_for_23h_prev_day_store_and_writes_nothing(monkeypatch):
+    old = _bars({"2026-11-08 23:00": 10.0})  # Yahoo-style: 23:00 UTC of the previous day
+    exch = _bars({"2026-11-09": 10.0, "2026-11-10": 11.0})
+    entry, saved = _process_with(monkeypatch, old, exch)
+    assert entry["status"] == "timestamp_convention_mismatch"
+    assert entry["sample"] and "23:00" in entry["sample"][0]
+    assert saved == []
+
+
+def test_backfill_aborts_write_when_merge_would_duplicate_a_date(monkeypatch):
+    # Stored at local midnight in Casablanca (UTC+1): aligned boursenova rows land at 01:00 -> duplicates.
+    old = _bars({"2026-11-09": 10.0}, tz="Africa/Casablanca")
+    exch = _bars({"2026-11-09": 10.0, "2026-11-10": 11.0})
+    # force a non-overlapping alignment: incoming 00:00 UTC == 01:00 local != stored 00:00 local
+    entry, saved = _process_with(monkeypatch, old, exch)
+    assert entry["status"] == "duplicate_dates_aborted"
+    assert saved == []
+
+
+def test_refresh_helpers_convention_and_duplicates():
+    assert rmd.timestamp_convention_sample(None) == []
+    assert rmd.timestamp_convention_sample(_bars({"2026-11-09": 1})) == []
+    assert rmd.timestamp_convention_sample(_bars({"2026-11-08 23:00": 1}))
+    dup = _bars({"2026-11-09 00:00": 1, "2026-11-09 01:00": 2})
+    assert rmd.has_duplicate_dates(dup) and not rmd.has_duplicate_dates(_bars({"2026-11-09": 1}))
+
+
+def test_do_refresh_does_not_write_into_mismatched_store(monkeypatch, refresh_env):
+    monkeypatch.setattr(rmd, "BoursenovaHistoryAdapter", lambda **k: _AdapterStub(_bars({"2026-11-17": 12.0})))
+    refresh_env["old"] = _bars({"2026-11-12 23:00": 10.0})
+    out = rmd._do_refresh_symbol(_RefreshDB(None), None, "IAM", "1D", "bourse_direct")
+    assert out["status"] == "timestamp_convention_mismatch" and "saved" not in refresh_env
+
+
+def test_do_refresh_aborts_on_duplicate_dates(monkeypatch, refresh_env):
+    # same session date at a different time-of-day -> merge would create two rows for 11-17
+    monkeypatch.setattr(rmd, "_align_tz", lambda frame, like: frame.copy())
+    refresh_env["old"] = _bars({"2026-11-17": 10.0})
+    monkeypatch.setattr(rmd, "BoursenovaHistoryAdapter", lambda **k: _AdapterStub(_bars({"2026-11-17 01:00": 12.0})))
+    out = rmd._do_refresh_symbol(_RefreshDB(None), None, "IAM", "1D", "bourse_direct")
+    assert out["status"] == "duplicate_dates_aborted" and "saved" not in refresh_env
+
+
+def test_backfill_skips_non_bourse_source_symbols(monkeypatch):
+    class _R:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def all(self):
+            return self.rows
+
+    class _DB:
+        def execute(self, sql, params=None):
+            t = str(sql)
+            if "stock_master" in t:
+                return _R([("IAM", "bourse_direct"), ("AAPL", "yahoo")])
+            return _R([])
+
+        def commit(self):
+            pass
+
+        def rollback(self):
+            pass
+
+    class _Ind:
+        def fetch(self, codes, start=None, end=None):
+            return {"MASI": _bars({"2026-11-17": 1.0}).assign(display_name="MASI")}
+
+    monkeypatch.setattr(bf, "BoursenovaIndicesAdapter", _Ind)
+    monkeypatch.setattr(bf, "_process", lambda db, **k: {"kind": k["kind"], "missing_count": 0,
+                        "exchange_absent_count": 0, "mismatch_count": 0, "inserted": 0, "overwritten": 0})
+    rep = bf.run_backfill(db=_DB(), indices=False)
+    assert rep["symbols"]["AAPL"]["status"] == "skipped_non_bourse_source"
+    assert "missing_count" in rep["symbols"]["IAM"]

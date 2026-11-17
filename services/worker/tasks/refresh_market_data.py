@@ -558,6 +558,23 @@ def _align_tz(frame: pd.DataFrame, like: pd.DataFrame | None) -> pd.DataFrame:
     return out
 
 
+def timestamp_convention_sample(old: pd.DataFrame | None) -> list[str]:
+    """Stored timestamps that are not at 00:00 in the index tz (empty list = convention OK).
+
+    Boursenova bars are dated at midnight; a store built with another time-of-day
+    (e.g. Yahoo's 23:00 UTC previous day) would get duplicate/off-by-one rows on merge.
+    """
+    if old is None or old.empty:
+        return []
+    off = old.index[old.index != old.index.normalize()]
+    return [ts.isoformat() for ts in off[:5]]
+
+
+def has_duplicate_dates(frame: pd.DataFrame) -> bool:
+    """True if two rows share a calendar date in the frame's own tz."""
+    return bool(pd.Index([ts.date() for ts in frame.index]).duplicated().any())
+
+
 def synthesize_index_open(old: pd.DataFrame | None, incoming: pd.DataFrame) -> pd.DataFrame:
     """Open = previous session's close within the merged (old + incoming) series.
 
@@ -728,7 +745,22 @@ def _do_refresh_symbol(
     # Load existing parquet and merge
     ensure_bucket()
     old_df = _try_load_existing_parquet(object_key)
+    if is_boursenova:
+        bad_ts = timestamp_convention_sample(old_df)
+        if bad_ts:
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "%s: stored timestamps are not 00:00 (%s); not writing boursenova data", symbol, bad_ts
+            )
+            return {"status": "timestamp_convention_mismatch", "sample": bad_ts,
+                    "inserted_count": 0, "overwritten_overlap_count": 0}
     merged, summary = _merge_overwrite_if_different(old_df, _align_tz(df_new, old_df))
+    if is_boursenova and has_duplicate_dates(merged):
+        import logging
+
+        logging.getLogger(__name__).error("%s: merge would create duplicate dates; write aborted", symbol)
+        return {"status": "duplicate_dates_aborted", "inserted_count": 0, "overwritten_overlap_count": 0}
 
     if summary["status"] != "unchanged":
         _save_parquet(object_key, merged)
@@ -1048,8 +1080,17 @@ def refresh_all_tracked_indices(refresh_run_id: str) -> dict:
                 old_df = _try_load_existing_parquet(object_key)
 
                 # Open = previous close within the merged series (per bar, not one scalar)
+                bad_ts = timestamp_convention_sample(old_df)
+                if bad_ts:
+                    results[symbol] = {"status": "timestamp_convention_mismatch", "sample": bad_ts}
+                    done += 1
+                    continue
                 df_std = synthesize_index_open(old_df, _standardize_ohlcv_index(df_new))
                 merged, summary = _merge_overwrite_if_different(old_df, df_std)
+                if has_duplicate_dates(merged):
+                    results[symbol] = {"status": "duplicate_dates_aborted"}
+                    done += 1
+                    continue
 
                 if summary["status"] != "unchanged":
                     _save_parquet(object_key, merged)
