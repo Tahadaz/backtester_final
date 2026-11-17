@@ -930,77 +930,51 @@ def update_stock_mapping(
 
 def _bourse_lookup(symbol: str) -> BourseStockLookupOut:
     """
-    Attempt to find a stock on the Bourse de Casablanca website by ticker.
-    Constructs the instrument page URL and scrapes basic metadata (name, sector, ISIN).
-    Returns whatever it can find; always returns a URL even if scraping fails.
+    Look up a stock on the Bourse de Casablanca by ticker via the public boursenova
+    history API (name from ``libelle.fr``). ISIN/sector are not exposed there and are
+    returned as None. Always returns a URL even if the lookup fails.
     """
-    import html as _html
-    import re as _re
-    try:
-        import requests as _requests
-    except ImportError:
-        raise HTTPException(status_code=500, detail="requests package not installed")
-
+    import datetime as _dt
     import os as _os
-    # URL template is configurable via BOURSE_STOCK_PAGE_URL env var.
-    url_template = _os.environ.get(
-        "BOURSE_STOCK_PAGE_URL",
-        "https://www.casablanca-bourse.com/fr/live-market/instruments/{symbol}?pwa=1",
+
+    from core.quant_core.data import (
+        _boursenova_fetch_items,
+        _boursenova_session,
+        boursenova_today,
     )
-    bourse_url = url_template.format(symbol=symbol)
 
+    # Public market-data page (the site has no per-instrument pages); configurable.
+    bourse_url = _os.environ.get("BOURSE_STOCK_PAGE_URL", "https://www.casablanca-bourse.com/market-data/cours").format(
+        symbol=symbol
+    )
     display_name: Optional[str] = None
-    sector: Optional[str] = None
-    isin: Optional[str] = None
-
     try:
-        resp = _requests.get(
-            bourse_url,
-            timeout=10,
-            headers={
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/120.0.0.0 Safari/537.36"
-                )
+        today = boursenova_today()
+        items = _boursenova_fetch_items(
+            _boursenova_session(),
+            "/stock-historical",
+            {
+                "instrument": symbol,
+                "market": "comptant",
+                "type": "actions",
+                "startDate": (today - _dt.timedelta(days=7)).isoformat(),
+                "endDate": today.isoformat(),
+                "isCoursAjuste": "false",
+                "target": "tv",
             },
-            allow_redirects=True,
-            verify=False,
         )
-        if resp.status_code == 200:
-            html = resp.text
-            name_match = _re.search(
-                rf'href=["\']/fr/live-market/instruments/{_re.escape(symbol)}\?pwa[^"\']*["\'][^>]*>([^<]+)<',
-                html,
-                _re.IGNORECASE,
-            )
-            if name_match:
-                name_part = _html.unescape(name_match.group(1)).strip()
-                if name_part and name_part.upper() != symbol:
-                    display_name = name_part
-
-            # Try to extract ISIN (12-char alphanumeric starting with MA)
-            isin_match = _re.search(r"\b(MA[A-Z0-9]{10})\b", html)
-            if isin_match:
-                isin = isin_match.group(1)
-
-            sector_match = _re.search(
-                r"<th[^>]*>\s*Secteur\s*</th>\s*<td[^>]*>(?:<[^>]+>)*([^<]+)",
-                html,
-                _re.IGNORECASE | _re.DOTALL,
-            ) or _re.search(r"[Ss]ecteur[^:]*:\s*([^<\n]{3,50})", html)
-            if sector_match:
-                sector = _html.unescape(sector_match.group(1)).strip()
-
+        label = (((items or [{}])[0].get("libelle") or {}).get("fr") or "").strip()
+        if label and label.upper() != symbol.upper():
+            display_name = label
     except Exception:
-        pass  # URL is still valid; return it even if scraping failed
+        pass  # URL is still valid; return it even if the lookup failed
 
     return BourseStockLookupOut(
         symbol=symbol,
         bourse_url=bourse_url,
-        display_name=display_name or None,
-        sector=sector or None,
-        isin=isin or None,
+        display_name=display_name,
+        sector=None,
+        isin=None,
         found=True,
     )
 

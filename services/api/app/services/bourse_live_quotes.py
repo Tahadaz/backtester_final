@@ -11,7 +11,12 @@ import pandas as pd
 from redis import Redis
 from sqlalchemy.orm import Session
 
-from core.quant_core.data import BDCSessionAdapter, BMCECapitalLiveAdapter
+from core.quant_core.data import (
+    BOURSENOVA_BASE_URL,
+    BMCECapitalLiveAdapter,
+    BoursenovaHistoryAdapter,
+    boursenova_today,
+)
 
 from .. import models
 
@@ -20,7 +25,7 @@ DEFAULT_MAX_AGE_SECONDS = 60
 CASABLANCA_PROVIDER = "casablanca_bourse_live"
 BKB_PROVIDER = "bmce_capital_bourse_live"
 SOURCE_PROVIDER = CASABLANCA_PROVIDER
-SOURCE_URL_TEMPLATE = "https://www.casablanca-bourse.com/fr/live-market/instruments/{symbol}?pwa=1"
+SOURCE_URL_TEMPLATE = BOURSENOVA_BASE_URL + "/stock-historical?instrument={symbol}"
 BKB_SOURCE_URL_TEMPLATE = "https://www.bmcecapitalbourse.com/bkbbourse/details/{listing_id}"
 PROVIDER_COOLDOWN_SECONDS = int(os.getenv("LIVE_QUOTE_PROVIDER_COOLDOWN_SECONDS", "3600"))
 REFRESH_LOCK_SECONDS = int(os.getenv("LIVE_QUOTE_REFRESH_LOCK_SECONDS", "120"))
@@ -288,11 +293,21 @@ def _provider_source_url(provider: str, symbol: str) -> str:
 def _load_one(provider: str, symbol: str) -> pd.DataFrame | None:
     if provider == BKB_PROVIDER:
         adapter = BMCECapitalLiveAdapter(timezone="UTC", use_cache=False)
-    else:
-        adapter = BDCSessionAdapter(timezone="UTC", use_cache=False)
-    market_data = adapter.load(symbols=[symbol], start=None, end=None, interval="1d")
-    frame = market_data.bars.get(symbol)
-    return frame if frame is not None and not frame.empty else None
+        market_data = adapter.load(symbols=[symbol], start=None, end=None, interval="1d")
+        frame = market_data.bars.get(symbol)
+        return frame if frame is not None and not frame.empty else None
+    # Casablanca: today's (in-progress) session row; if absent (holiday, not yet
+    # traded) fall back to the last 5 days. The newest row is what gets stored.
+    adapter = BoursenovaHistoryAdapter(timezone="UTC", use_cache=False)
+    today = boursenova_today()
+    for start in (today, today - dt.timedelta(days=5)):
+        market_data = adapter.load(
+            symbols=[symbol], start=start.isoformat(), end=today.isoformat(), interval="1d"
+        )
+        frame = market_data.bars.get(symbol)
+        if frame is not None and not frame.empty:
+            return frame
+    return None
 
 
 def refresh_live_quotes(

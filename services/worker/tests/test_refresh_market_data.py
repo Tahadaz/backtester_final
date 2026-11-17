@@ -5,7 +5,6 @@ import datetime as dt
 from types import SimpleNamespace
 
 import pandas as pd
-import requests
 
 from services.api.app.models import SignalEngineGlobalResult, WfoGlobalSignal
 from core.quant_core.signal_engine.modes import ALL_SIGNAL_MODE_NAMES
@@ -281,41 +280,29 @@ def test_update_stock_share_count_from_frame_persists_nombre_titres():
     assert params["shares_as_of"] == dt.date(2026, 6, 2)
 
 
-def test_update_stock_metadata_from_bourse_persists_nombre_titres(monkeypatch):
+def test_update_stock_metadata_from_bourse_fills_empty_display_name_only():
     db = _CaptureDB()
-    html = """
-    <html>
-      <body>
-        mardi 2 juin 2026
-        <a href="/fr/live-market/instruments/MNG?pwa=1">Managem</a>
-        <span>MA0000011058</span>
-        <table>
-          <tr><th>Secteur</th><td>Mines</td></tr>
-          <tr><th>Nombre de titres</th><td><span dir="ltr">11 864 676</span></td></tr>
-        </table>
-      </body>
-    </html>
-    """
 
-    class FakeResponse:
-        status_code = 200
-        text = html
-
-    def fake_get(*args, **kwargs):
-        return FakeResponse()
-
-    monkeypatch.setattr(requests, "get", fake_get)
-
-    refresh_market_data_mod._update_stock_metadata_from_bourse(db, "MNG", "MNG")
+    refresh_market_data_mod._update_stock_metadata_from_bourse(db, "MNG", " MANAGEM ")
 
     assert db.commits == 1
     sql, params = db.executed[0]
-    assert "shares_outstanding" in sql
-    assert params["symbol"] == "MNG"
-    assert params["shares_outstanding"] == 11_864_676
-    assert params["shares_source"] == "bourse_direct"
-    assert params["shares_as_of"] == dt.date(2026, 6, 2)
-    assert params["isin"] == "MA0000011058"
+    assert "COALESCE(NULLIF(display_name, ''), :display_name)" in sql
+    assert params == {"symbol": "MNG", "display_name": "MANAGEM"}
+
+
+def test_update_stock_metadata_from_bourse_never_raises_and_skips_blank():
+    db = _CaptureDB()
+    refresh_market_data_mod._update_stock_metadata_from_bourse(db, "MNG", None)
+    assert db.executed == []
+
+    class _Boom(_CaptureDB):
+        def execute(self, *a, **k):
+            raise RuntimeError("db down")
+
+    boom = _Boom()
+    refresh_market_data_mod._update_stock_metadata_from_bourse(boom, "MNG", "MANAGEM")
+    assert boom.rollbacks == 1
 
 
 def test_enqueue_dashboard_snapshot_after_signal_jobs_uses_allow_failure_dependency(monkeypatch):

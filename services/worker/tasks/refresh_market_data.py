@@ -18,6 +18,7 @@ from io import BytesIO
 from typing import Optional
 from uuid import UUID
 
+import pandas as pd
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -32,9 +33,10 @@ from core.quant_core.data import (
     _validate_ohlcv,
     BourseDirectAdapter,
     YFinanceMoroccoAdapter,
-    BDCSessionAdapter,
     BMCECapitalLiveAdapter,
-    CasablancaBourseIndicesAdapter,
+    BoursenovaHistoryAdapter,
+    BoursenovaIndicesAdapter,
+    boursenova_today,
 )
 from core.quant_core.s3_keys import build_market_store_object_key
 from core.quant_core.signal_engine.modes import ALL_SIGNAL_MODE_NAMES
@@ -71,50 +73,6 @@ def _positive_int(value) -> int | None:
         return None
     rounded = int(round(number))
     return rounded if rounded > 0 else None
-
-
-def _parse_bourse_french_number(value: str) -> float | None:
-    normalized = (
-        str(value or "")
-        .replace("\u00a0", "")
-        .replace(" ", "")
-        .replace(",", ".")
-        .strip()
-    )
-    return _finite_float(normalized)
-
-
-def _parse_bourse_session_date(html: str) -> datetime.date | None:
-    import re
-
-    date_m = re.search(
-        r"(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)"
-        r"\s+(\d{1,2})\s+"
-        r"(janvier|f[e\u00e9]vrier|mars|avril|mai|juin|juillet|ao[u\u00fb]t"
-        r"|septembre|octobre|novembre|d[e\u00e9]cembre)\s+(\d{4})",
-        html,
-        re.IGNORECASE,
-    )
-    if not date_m:
-        return None
-    month = BDCSessionAdapter._MONTH_MAP.get(date_m.group(2).lower())
-    if month is None:
-        return None
-    return datetime.date(int(date_m.group(3)), month, int(date_m.group(1)))
-
-
-def _parse_bourse_share_count(html: str) -> int | None:
-    import re
-
-    match = re.search(
-        r"<th[^>]*>\s*Nombre de titres[^<]*</th>\s*<td[^>]*>.*?"
-        r"<span\s+dir=[\"']ltr[\"']>([^<]+)</span>",
-        html,
-        re.DOTALL | re.IGNORECASE,
-    )
-    if not match:
-        return None
-    return _positive_int(_parse_bourse_french_number(match.group(1)))
 
 
 def _update_stock_share_count_from_frame(
@@ -515,93 +473,153 @@ def _resolve_provider_symbol(db: Session, symbol: str, provider: str) -> str:
     return symbol
 
 
-def _update_stock_metadata_from_bourse(db: Session, symbol: str, provider_symbol: str) -> None:
-    """Best-effort enrichment from the live Bourse instrument page."""
-    import html as _html
-    import re as _re
+def _update_stock_metadata_from_bourse(db: Session, symbol: str, display_name: str | None) -> None:
+    """Best-effort: fill an empty stock_master.display_name from the exchange label.
 
-    try:
-        import requests
-    except ImportError:
+    ISIN/sector are not exposed by the boursenova history API; share counts are
+    persisted separately from the same response (NombreTitres). Never raises.
+    """
+    name = (display_name or "").strip()
+    if not name:
         return
-
     try:
-        url = f"https://www.casablanca-bourse.com/fr/live-market/instruments/{provider_symbol}?pwa=1"
-        resp = requests.get(
-            url,
-            timeout=10,
-            verify=False,
-            headers={
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/120.0.0.0 Safari/537.36"
-                )
-            },
-        )
-        if resp.status_code != 200:
-            return
-        html = resp.text
-        isin_match = _re.search(r"\b(MA[A-Z0-9]{10})\b", html)
-        sector_match = _re.search(
-            r"<th[^>]*>\s*Secteur\s*</th>\s*<td[^>]*>(?:<[^>]+>)*([^<]+)",
-            html,
-            _re.IGNORECASE | _re.DOTALL,
-        )
-        name_match = _re.search(
-            rf'href=["\']/fr/live-market/instruments/{_re.escape(provider_symbol)}\?pwa[^"\']*["\'][^>]*>([^<]+)<',
-            html,
-            _re.IGNORECASE,
-        )
-        isin = isin_match.group(1) if isin_match else None
-        sector = _html.unescape(sector_match.group(1)).strip() if sector_match else None
-        display_name = _html.unescape(name_match.group(1)).strip() if name_match else None
-        share_count = _parse_bourse_share_count(html)
-        share_as_of = _parse_bourse_session_date(html)
-
         db.execute(
             text(
                 """
                 UPDATE stock_master
-                SET
-                  isin = COALESCE(NULLIF(isin, ''), :isin),
-                  sector = COALESCE(NULLIF(sector, ''), :sector),
-                  display_name = COALESCE(NULLIF(display_name, ''), :display_name),
-                  bourse_url = COALESCE(NULLIF(bourse_url, ''), :bourse_url),
-                  shares_outstanding = CASE
-                    WHEN :shares_outstanding IS NOT NULL THEN :shares_outstanding
-                    ELSE shares_outstanding
-                  END,
-                  shares_source = CASE
-                    WHEN :shares_outstanding IS NOT NULL THEN :shares_source
-                    ELSE shares_source
-                  END,
-                  shares_as_of = CASE
-                    WHEN :shares_outstanding IS NOT NULL THEN :shares_as_of
-                    ELSE shares_as_of
-                  END,
-                  shares_updated_at = CASE
-                    WHEN :shares_outstanding IS NOT NULL THEN now()
-                    ELSE shares_updated_at
-                  END,
-                  updated_at = now()
+                SET display_name = COALESCE(NULLIF(display_name, ''), :display_name),
+                    updated_at = now()
                 WHERE symbol = :symbol
                 """
             ),
-            {
-                "symbol": symbol,
-                "isin": isin,
-                "sector": sector,
-                "display_name": display_name if display_name and display_name.upper() != provider_symbol else None,
-                "bourse_url": url,
-                "shares_outstanding": share_count,
-                "shares_source": "bourse_direct",
-                "shares_as_of": share_as_of,
-            },
+            {"symbol": symbol, "display_name": name},
         )
         db.commit()
     except Exception:
         db.rollback()
+
+
+def refresh_lookback_days() -> int:
+    """Calendar days re-fetched on every refresh so holes and late corrections self-heal."""
+    try:
+        return max(1, int(os.getenv("REFRESH_LOOKBACK_DAYS", "45")))
+    except ValueError:
+        return 45
+
+
+_CALENDAR_CACHE: dict = {}
+
+
+def exchange_session_dates(start: datetime.date, *, today: datetime.date | None = None) -> set[datetime.date]:
+    """Casablanca session dates since ``start`` = the MASI index's ``seance`` dates.
+
+    Cached per (today, start) so a full refresh pays one request. Empty set if unavailable.
+    """
+    today = today or boursenova_today()
+    key = (today, start)
+    if key not in _CALENDAR_CACHE:
+        try:
+            frame = BoursenovaIndicesAdapter().fetch(["MASI"], start=start, end=today).get("MASI")
+            dates = {ts.date() for ts in frame.index} if frame is not None else set()
+        except Exception:
+            dates = set()
+        if dates:
+            _CALENDAR_CACHE.clear()
+            _CALENDAR_CACHE[key] = dates
+        return dates
+    return _CALENDAR_CACHE[key]
+
+
+def missing_sessions(
+    stored_dates: set[datetime.date],
+    calendar: set[datetime.date],
+    *,
+    window_start: datetime.date,
+    window_end: datetime.date,
+) -> list[datetime.date]:
+    """Calendar sessions in [window_start, window_end] absent from the store, never
+    before the first stored bar (pre-history is not a hole)."""
+    if not stored_dates:
+        return []
+    lo = max(window_start, min(stored_dates))
+    return sorted(d for d in calendar if lo <= d <= window_end and d not in stored_dates)
+
+
+def _align_tz(frame: pd.DataFrame, like: pd.DataFrame | None) -> pd.DataFrame:
+    """Give ``frame`` the same tz-awareness as ``like`` so the two index sets compare."""
+    if like is None or like.empty or frame.empty:
+        return frame
+    tz = like.index.tz
+    out = frame.copy()
+    if tz is None and out.index.tz is not None:
+        out.index = out.index.tz_localize(None)
+    elif tz is not None:
+        out.index = out.index.tz_localize(tz) if out.index.tz is None else out.index.tz_convert(tz)
+    return out
+
+
+def synthesize_index_open(old: pd.DataFrame | None, incoming: pd.DataFrame) -> pd.DataFrame:
+    """Open = previous session's close within the merged (old + incoming) series.
+
+    Incoming closes win on shared dates; the first bar overall falls back to its own close.
+    """
+    incoming = _align_tz(incoming, old)
+    closes = incoming["Close"]
+    if old is not None and not old.empty:
+        closes = pd.concat([old["Close"], closes])
+    closes = closes[~closes.index.duplicated(keep="last")].sort_index()
+    out = incoming.copy()
+    out["Open"] = closes.shift(1).reindex(out.index).fillna(out["Close"])
+    return out
+
+
+def _persist_stock_frame(
+    db: Session,
+    symbol: str,
+    timeframe: str,
+    object_key: str,
+    merged: pd.DataFrame,
+    source: str,
+) -> dict:
+    """Write the merged stock frame's store row (close_last/prev_close/adv_20d consistent)."""
+    start_ts = merged.index.min().to_pydatetime()
+    end_ts = merged.index.max().to_pydatetime()
+    close_last = _finite_float(merged["Close"].iloc[-1]) if "Close" in merged.columns and len(merged) >= 1 else None
+    prev_close = _finite_float(merged["Close"].iloc[-2]) if "Close" in merged.columns and len(merged) >= 2 else None
+    _upsert_market_data_store(
+        db=db,
+        symbol=symbol,
+        timeframe=timeframe,
+        object_key=object_key,
+        start_ts=start_ts,
+        end_ts=end_ts,
+        row_count=int(len(merged)),
+        source_provider=source,
+        data_as_of=end_ts.date(),
+        close_last=close_last,
+        prev_close=prev_close,
+        adv_20d=_compute_adv_20d_value(merged),
+    )
+    return {
+        "object_key": object_key,
+        "start_ts": start_ts.isoformat(),
+        "end_ts": end_ts.isoformat(),
+        "row_count": int(len(merged)),
+    }
+
+
+def _has_recent_hole(object_key: str, today: datetime.date, *, before_cutoff: bool) -> bool:
+    """True when the stored series misses an exchange session inside the lookback window."""
+    window_start = today - datetime.timedelta(days=refresh_lookback_days())
+    calendar = exchange_session_dates(window_start, today=today)
+    if not calendar:
+        return False
+    old_df = _try_load_existing_parquet(object_key)
+    if old_df is None or old_df.empty:
+        return True
+    stored = {ts.date() for ts in old_df.index}
+    window_end = today - datetime.timedelta(days=1) if before_cutoff else today
+    return bool(missing_sessions(stored, calendar, window_start=window_start, window_end=window_end))
 
 
 def _do_refresh_symbol(
@@ -634,13 +652,13 @@ def _do_refresh_symbol(
             existing_data_as_of = existing_data_as_of.date()
 
     provider_symbol = _resolve_provider_symbol(db, symbol, source)
-    if is_bourse_source(source):
-        _update_stock_metadata_from_bourse(db, symbol, provider_symbol)
+    object_key = build_market_store_object_key(symbol, timeframe)
 
     if (
         is_bourse_source(source)
         and is_before_bourse_refresh_cutoff()
         and not needs_bourse_refresh(existing_data_as_of)
+        and not _has_recent_hole(object_key, boursenova_today(), before_cutoff=True)
     ):
         return {
             "status": "skipped_preclose_current",
@@ -653,57 +671,50 @@ def _do_refresh_symbol(
             "overwritten_overlap_count": 0,
         }
 
-    # Pick adapter
-    use_session_adapter = False
+    # Pick adapter. Every Moroccan equity source (bourse_direct, bmce_excel, ...)
+    # reads the boursenova history API; fallbacks only run if it returns nothing.
+    fallbacks: list = []
+    is_boursenova = source != "yahoo"
     if source == "yahoo":
         adapter = YFinanceMoroccoAdapter(timezone="UTC", use_cache=False)
         # Pass the provider_symbol directly via map so YFinanceMoroccoAdapter uses it
         adapter.provider_map = {symbol: provider_symbol}
-    elif source == "bmce_excel":
-        # "bmce_excel" tracked symbols have no automated Casablanca Bourse
-        # scrape path (that source name was originally only used for manual
-        # BMCEDataSource Excel/CSV uploads). Use the BMCE Capital Bourse
-        # live-market details page instead — a separate host from
-        # casablanca-bourse.com, useful as an automated source in its own
-        # right and as a fallback when the exchange site is unreachable.
-        adapter = BMCECapitalLiveAdapter(timezone="UTC", use_cache=False)
-        use_session_adapter = True
     else:
-        # bourse_direct (or any other source): prefer the downloadable-file adapter
-        # when a URL template is explicitly configured; otherwise use the BDC public
-        # session page scraper (Données de la séance — server-rendered HTML).
-        import os
-        if os.environ.get("BOURSE_DIRECT_URL_TEMPLATE", "").strip():
-            adapter = BourseDirectAdapter(timezone="UTC", use_cache=False)
-        else:
-            adapter = BDCSessionAdapter(timezone="UTC", use_cache=False)
-            use_session_adapter = True
+        adapter = BoursenovaHistoryAdapter(timezone="UTC", use_cache=False)
+        if source != "bmce_excel" and os.environ.get("BOURSE_DIRECT_URL_TEMPLATE", "").strip():
+            fallbacks.append(BourseDirectAdapter(timezone="UTC", use_cache=False))
+        if BMCECapitalLiveAdapter.listing_id_for(symbol) is not None:
+            fallbacks.append(BMCECapitalLiveAdapter(timezone="UTC", use_cache=False))
 
-    # Determine fetch start: use existing end_ts to do incremental fetch
+    # Fetch start. Yahoo keeps the incremental tail fetch. Exchange sources re-fetch
+    # a rolling lookback window ending today so interior holes and late corrections
+    # self-heal (the merge inserts missing dates and overwrites differing ones).
     fetch_start: Optional[str] = None
     if existing_store_row and existing_store_row["end_ts"]:
-        # The live Bourse session scraper returns only the current/last trading day.
-        # Re-fetch the last stored day so an in-flight session bar can be overwritten
-        # when the exchange page updates intraday.
         last_dt: datetime.datetime = existing_store_row["end_ts"]
-        if use_session_adapter:
-            fetch_start = last_dt.strftime("%Y-%m-%d")
+        if is_boursenova:
+            anchor = min(last_dt.date(), boursenova_today())
+            fetch_start = (anchor - datetime.timedelta(days=refresh_lookback_days())).isoformat()
         else:
-            # Historical adapters can safely start from the next day to avoid
-            # re-fetching the full already-materialized range.
             fetch_start = (last_dt + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
 
-    # Load data from adapter
-    market_data = adapter.load(
-        symbols=[symbol],
-        start=fetch_start,
-        end=None,
-        interval="1d",
-    )
-
+    market_data = adapter.load(symbols=[symbol], start=fetch_start, end=None, interval="1d")
     df_new = market_data.bars.get(symbol)
+    if (df_new is None or df_new.empty) and is_boursenova:
+        for fallback in fallbacks:
+            try:
+                df_new = fallback.load(symbols=[symbol], start=fetch_start, end=None, interval="1d").bars.get(symbol)
+            except Exception:
+                df_new = None
+            if df_new is not None and not df_new.empty:
+                break
     if df_new is None or df_new.empty:
         return {"status": "no_new_data", "inserted_count": 0, "overwritten_overlap_count": 0}
+
+    if is_boursenova:
+        _update_stock_metadata_from_bourse(
+            db, symbol, (getattr(adapter, "meta", {}).get(symbol) or {}).get("display_name")
+        )
 
     # Validate
     df_new = _validate_ohlcv(df_new, symbol=symbol)
@@ -715,45 +726,21 @@ def _do_refresh_symbol(
     df_new = df_new[keep_cols]
 
     # Load existing parquet and merge
-    object_key = build_market_store_object_key(symbol, timeframe)
     ensure_bucket()
     old_df = _try_load_existing_parquet(object_key)
-    merged, summary = _merge_overwrite_if_different(old_df, df_new)
+    merged, summary = _merge_overwrite_if_different(old_df, _align_tz(df_new, old_df))
 
     if summary["status"] != "unchanged":
         _save_parquet(object_key, merged)
 
-    start_ts = merged.index.min().to_pydatetime()
-    end_ts = merged.index.max().to_pydatetime()
-    data_as_of = end_ts.date()
-    close_last = _finite_float(merged["Close"].iloc[-1]) if "Close" in merged.columns and len(merged) >= 1 else None
-    prev_close = _finite_float(merged["Close"].iloc[-2]) if "Close" in merged.columns and len(merged) >= 2 else None
-    adv_20d = _compute_adv_20d_value(merged)
-
-    _upsert_market_data_store(
-        db=db,
-        symbol=symbol,
-        timeframe=timeframe,
-        object_key=object_key,
-        start_ts=start_ts,
-        end_ts=end_ts,
-        row_count=int(len(merged)),
-        source_provider=source,
-        data_as_of=data_as_of,
-        close_last=close_last,
-        prev_close=prev_close,
-        adv_20d=adv_20d,
-    )
+    persisted = _persist_stock_frame(db, symbol, timeframe, object_key, merged, source)
     _update_stock_share_count_from_frame(db, symbol, df_new, source=source)
 
     return {
         "status": summary["status"],
         "inserted_count": summary["inserted_count"],
         "overwritten_overlap_count": summary["overwritten_overlap_count"],
-        "object_key": object_key,
-        "start_ts": start_ts.isoformat(),
-        "end_ts": end_ts.isoformat(),
-        "row_count": int(len(merged)),
+        **persisted,
     }
 
 
@@ -950,7 +937,7 @@ def refresh_all_tracked_symbols(
 
 
 # ---------------------------------------------------------------------------
-# Moroccan index refresh (Casablanca Bourse live page)
+# Moroccan index refresh (Casablanca Bourse boursenova API)
 # ---------------------------------------------------------------------------
 
 def _upsert_market_data_store_index(
@@ -997,10 +984,11 @@ def _upsert_market_data_store_index(
 
 def refresh_all_tracked_indices(refresh_run_id: str) -> dict:
     """
-    RQ task: fetch current-session data for all active indices from the Casablanca Bourse
-    indices page and merge into each index's canonical parquet store.
+    RQ task: fetch the last REFRESH_LOOKBACK_DAYS of history for all active indices from
+    the Casablanca Bourse boursenova API and merge into each index's canonical parquet store.
 
-    One HTTP call retrieves all indices at once; each is then merged individually.
+    One request per index; each is merged individually. Indices without a boursenova
+    code (e.g. FTSE CSE Morocco) are reported as no_new_data.
     Uses scope='indices' on the MarketRefreshRun row.
     """
     run_id = UUID(refresh_run_id)
@@ -1021,13 +1009,16 @@ def refresh_all_tracked_indices(refresh_run_id: str) -> dict:
         )
         db.commit()
 
-        # Fetch all indices in a single HTTP call
-        adapter = CasablancaBourseIndicesAdapter()
+        # Fetch every mapped index over the rolling lookback window (one request per index)
+        adapter = BoursenovaIndicesAdapter()
         fetched: dict = {}
         try:
-            fetched = adapter.fetch()
+            today = boursenova_today()
+            fetched = adapter.fetch(
+                symbols, start=today - datetime.timedelta(days=refresh_lookback_days()), end=today
+            )
         except Exception as exc:
-            err_msg = f"Failed to fetch indices page: {type(exc).__name__}: {exc}"
+            err_msg = f"Failed to fetch indices: {type(exc).__name__}: {exc}"
             _set_run_status(
                 db, run_id, "failed",
                 finished_at=_utcnow(),
@@ -1052,20 +1043,12 @@ def refresh_all_tracked_indices(refresh_run_id: str) -> dict:
                 # Drop display_name column before standardizing (only needed for index_master)
                 df_new = df_new.drop(columns=["display_name"], errors="ignore")
 
-                # Synthesize open from previous close using existing history
                 object_key = build_market_store_object_key(symbol, "1D")
                 ensure_bucket()
                 old_df = _try_load_existing_parquet(object_key)
 
-                # Apply index standardization (synthesizes Open from prev close in the df)
-                # For a single new bar, Open = prev stored close (if any) or same close
-                df_std = _standardize_ohlcv_index(df_new)
-
-                if old_df is not None and not old_df.empty:
-                    # Override Open for the new bar: use last stored close
-                    prev_close = float(old_df["Close"].iloc[-1])
-                    df_std["Open"] = prev_close
-
+                # Open = previous close within the merged series (per bar, not one scalar)
+                df_std = synthesize_index_open(old_df, _standardize_ohlcv_index(df_new))
                 merged, summary = _merge_overwrite_if_different(old_df, df_std)
 
                 if summary["status"] != "unchanged":
