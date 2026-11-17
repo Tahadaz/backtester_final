@@ -219,12 +219,14 @@ def test_app_symbol_to_boursenova_code_map_is_explicit_and_unique():
 
 def test_session_never_disables_tls_verification(monkeypatch):
     monkeypatch.delenv("BOURSENOVA_CA_BUNDLE", raising=False)
-    assert d._boursenova_session().verify is True
-    monkeypatch.setenv("BOURSENOVA_CA_BUNDLE", "/etc/ssl/bundle.pem")
+    monkeypatch.setattr(d, "_BOURSENOVA_CA_BUNDLE", None)
+    monkeypatch.setattr("sys.platform", "linux")
     http = d._boursenova_session()
-    try:
-        import truststore  # noqa: F401
-    except ImportError:
-        assert http.verify == "/etc/ssl/bundle.pem"
-    else:
-        assert http.verify is True  # OS trust store takes precedence
+    assert http.verify is not False
+    bundle = Path(http.verify)  # certifi roots + bundled intermediate
+    text = bundle.read_text(encoding="utf-8")
+    assert d._BOURSENOVA_INTERMEDIATE_PEM.read_text(encoding="utf-8").strip() in text
+    assert text.count("BEGIN CERTIFICATE") > 100
+
+    monkeypatch.setenv("BOURSENOVA_CA_BUNDLE", "/etc/ssl/custom.pem")
+    assert d._boursenova_session().verify == "/etc/ssl/custom.pem"

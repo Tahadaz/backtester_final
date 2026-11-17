@@ -1773,37 +1773,75 @@ def clamp_boursenova_window(start=None, end=None, *, today=None):
     return max(_d(start) or floor, floor), min(_d(end) or today, today)
 
 
-def _boursenova_session():
-    """requests.Session trusting the OS store via ``truststore`` when installed.
+_BOURSENOVA_INTERMEDIATE_PEM = Path(__file__).resolve().parents[2] / "infra" / "certs" / "sectigo-dv-r36.pem"
+_BOURSENOVA_CA_BUNDLE: Optional[str] = None
 
-    The bundled certifi store can lack the intermediate that signs
-    www.casablanca-bourse.com. Order: truststore (OS store) -> BOURSENOVA_CA_BUNDLE
-    env path -> default verification. Never disables verification.
+
+def _boursenova_ca_bundle() -> Optional[str]:
+    """Path of a CA bundle = certifi roots + the Sectigo DV R36 intermediate.
+
+    www.casablanca-bourse.com serves only its leaf certificate (no intermediate), so
+    OpenSSL/certifi cannot build the chain on Linux (browsers and the Windows store fetch
+    the intermediate via AIA). Override with BOURSENOVA_CA_BUNDLE. None -> default verify.
     """
     import os
+
+    global _BOURSENOVA_CA_BUNDLE
+    override = os.environ.get("BOURSENOVA_CA_BUNDLE", "").strip()
+    if override:
+        return override
+    if _BOURSENOVA_CA_BUNDLE is None:
+        try:
+            import certifi
+            import tempfile
+
+            pem = certifi.where()
+            extra = _BOURSENOVA_INTERMEDIATE_PEM.read_text(encoding="utf-8")
+            roots = Path(pem).read_text(encoding="utf-8")
+            tmp = tempfile.NamedTemporaryFile("w", suffix=".pem", delete=False, encoding="utf-8")
+            tmp.write(roots + chr(10) + extra)
+            tmp.close()
+            _BOURSENOVA_CA_BUNDLE = tmp.name
+        except Exception:
+            _BOURSENOVA_CA_BUNDLE = ""
+    return _BOURSENOVA_CA_BUNDLE or None
+
+
+def _boursenova_session():
+    """requests.Session with strict TLS verification (never verify=False).
+
+    Windows/macOS: the OS trust store via ``truststore`` when installed (it fetches the
+    missing intermediate through AIA). Everywhere else: certifi + the bundled intermediate
+    (see ``_boursenova_ca_bundle``); BOURSENOVA_CA_BUNDLE overrides.
+    """
+    import os
+    import sys
     import requests
 
     http = requests.Session()
     http.headers["User-Agent"] = _BOURSENOVA_USER_AGENT
     http.headers["Accept"] = "application/json"
-    try:
-        import ssl
+    if sys.platform in ("win32", "darwin") and not os.environ.get("BOURSENOVA_CA_BUNDLE", "").strip():
+        try:
+            import ssl
 
-        import truststore
-        from requests.adapters import HTTPAdapter
+            import truststore
+            from requests.adapters import HTTPAdapter
 
-        ctx = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            ctx = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 
-        class _TrustStoreAdapter(HTTPAdapter):
-            def init_poolmanager(self, *a, **kw):
-                kw["ssl_context"] = ctx
-                super().init_poolmanager(*a, **kw)
+            class _TrustStoreAdapter(HTTPAdapter):
+                def init_poolmanager(self, *a, **kw):
+                    kw["ssl_context"] = ctx
+                    super().init_poolmanager(*a, **kw)
 
-        http.mount("https://", _TrustStoreAdapter())
-    except ImportError:
-        bundle = os.environ.get("BOURSENOVA_CA_BUNDLE", "").strip()
-        if bundle:
-            http.verify = bundle
+            http.mount("https://", _TrustStoreAdapter())
+            return http
+        except ImportError:
+            pass
+    bundle = _boursenova_ca_bundle()
+    if bundle:
+        http.verify = bundle
     return http
 
 
