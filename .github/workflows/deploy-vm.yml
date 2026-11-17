@@ -44,10 +44,13 @@ jobs:
             git fetch --quiet
             git reset --hard origin/main
 
-            # Pull new images
+            # Pull new images. Third-party images already cached on the VM
+            # (e.g. minio/minio, no longer published on Docker Hub) must not
+            # block a deploy; a failed pull of the commit-tagged app images
+            # still fails below because `up` cannot find that tag.
             IMAGE_TAG=${{ github.event.workflow_run.head_sha }} \
               docker compose --env-file /etc/bt/env \
-              -f infra/docker-compose.prod.yml pull
+              -f infra/docker-compose.prod.yml pull --ignore-pull-failures
 
             # Run Python DB migrations
             IMAGE_TAG=${{ github.event.workflow_run.head_sha }} \
