@@ -1,0 +1,100 @@
+{
+ "totalCount": 5,
+ "items": [
+  {
+   "seance": "12/11/2026",
+   "timestamp": 1794441600000,
+   "indices": {
+    "MASI": {
+     "code": "MASI",
+     "libelle": {
+      "fr": "MASI"
+     },
+     "valeur": 17428.8994,
+     "variation": -0.0051738972,
+     "plusHaut": 17525.2654,
+     "plusBas": 17361.7859,
+     "variationYTD": -7.52108
+    }
+   },
+   "volume": 0,
+   "transactions": 0
+  },
+  {
+   "seance": "11/11/2026",
+   "timestamp": 1794355200000,
+   "indices": {
+    "MASI": {
+     "code": "MASI",
+     "libelle": {
+      "fr": "MASI"
+     },
+     "valeur": 17429.8012,
+     "variation": -1.0062306071,
+     "plusHaut": 17616.4598,
+     "plusBas": 17379.2984,
+     "variationYTD": -7.5163
+    }
+   },
+   "volume": 0,
+   "transactions": 0
+  },
+  {
+   "seance": "10/11/2026",
+   "timestamp": 1794268800000,
+   "indices": {
+    "MASI": {
+     "code": "MASI",
+     "libelle": {
+      "fr": "MASI"
+     },
+     "valeur": 17606.9679,
+     "variation": 1.0092481315,
+     "plusHaut": 17613.5068,
+     "plusBas": 17429.2103,
+     "variationYTD": -6.57624
+    }
+   },
+   "volume": 0,
+   "transactions": 0
+  },
+  {
+   "seance": "09/11/2026",
+   "timestamp": 1794182400000,
+   "indices": {
+    "MASI": {
+     "code": "MASI",
+     "libelle": {
+      "fr": "MASI"
+     },
+     "valeur": 17431.0454,
+     "variation": 0.6533000595,
+     "plusHaut": 17473.6232,
+     "plusBas": 17317.9075,
+     "variationYTD": -7.5097
+    }
+   },
+   "volume": 0,
+   "transactions": 0
+  },
+  {
+   "seance": "05/11/2026",
+   "timestamp": 1793836800000,
+   "indices": {
+    "MASI": {
+     "code": "MASI",
+     "libelle": {
+      "fr": "MASI"
+     },
+     "valeur": 17317.9075,
+     "variation": 3.3267470285,
+     "plusHaut": 17320.3069,
+     "plusBas": 16760.3336,
+     "variationYTD": -8.11001
+    }
+   },
+   "volume": 0,
+   "transactions": 0
+  }
+ ]
+}

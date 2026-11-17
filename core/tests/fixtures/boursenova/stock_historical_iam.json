@@ -1,0 +1,105 @@
+{
+ "totalCount": 5,
+ "items": [
+  {
+   "seance": "12/11/2026",
+   "timestamp": 1794441600000,
+   "symbol": "IAM  ",
+   "libelle": {
+    "fr": "ITISSALAT AL-MAGHRIB",
+    "en": "ITISSALAT AL-MAGHRIB"
+   },
+   "ouverture": 90.88,
+   "dernierCours": 90.05,
+   "coursReference": null,
+   "plusHaut": 90.88,
+   "plusBas": 90,
+   "titresEchanges": 8768,
+   "volumeEchanges": 789916.19,
+   "nbTransactions": 83,
+   "capitalisation": 79162535367,
+   "variation": null,
+   "emetteur": ""
+  },
+  {
+   "seance": "11/11/2026",
+   "timestamp": 1794355200000,
+   "symbol": "IAM  ",
+   "libelle": {
+    "fr": "ITISSALAT AL-MAGHRIB",
+    "en": "ITISSALAT AL-MAGHRIB"
+   },
+   "ouverture": 91.99,
+   "dernierCours": 90,
+   "coursReference": null,
+   "plusHaut": 91.99,
+   "plusBas": 89.83,
+   "titresEchanges": 45682,
+   "volumeEchanges": 4118955.72,
+   "nbTransactions": 143,
+   "capitalisation": 79118580600,
+   "variation": null,
+   "emetteur": ""
+  },
+  {
+   "seance": "10/11/2026",
+   "timestamp": 1794268800000,
+   "symbol": "IAM  ",
+   "libelle": {
+    "fr": "ITISSALAT AL-MAGHRIB",
+    "en": "ITISSALAT AL-MAGHRIB"
+   },
+   "ouverture": 95,
+   "dernierCours": 91.7,
+   "coursReference": null,
+   "plusHaut": 95,
+   "plusBas": 90.51,
+   "titresEchanges": 122549,
+   "volumeEchanges": 11380244.51,
+   "nbTransactions": 217,
+   "capitalisation": 80613042678,
+   "variation": null,
+   "emetteur": ""
+  },
+  {
+   "seance": "09/11/2026",
+   "timestamp": 1794182400000,
+   "symbol": "IAM  ",
+   "libelle": {
+    "fr": "ITISSALAT AL-MAGHRIB",
+    "en": "ITISSALAT AL-MAGHRIB"
+   },
+   "ouverture": 90.48,
+   "dernierCours": 89.8,
+   "coursReference": null,
+   "plusHaut": 90.48,
+   "plusBas": 89.05,
+   "titresEchanges": 141696,
+   "volumeEchanges": 12711310.89,
+   "nbTransactions": 175,
+   "capitalisation": 78942761532,
+   "variation": null,
+   "emetteur": ""
+  },
+  {
+   "seance": "05/11/2026",
+   "timestamp": 1793836800000,
+   "symbol": "IAM  ",
+   "libelle": {
+    "fr": "ITISSALAT AL-MAGHRIB",
+    "en": "ITISSALAT AL-MAGHRIB"
+   },
+   "ouverture": 86.97,
+   "dernierCours": 88.9,
+   "coursReference": null,
+   "plusHaut": 89,
+   "plusBas": 85.5,
+   "titresEchanges": 250417,
+   "volumeEchanges": 21981139.44,
+   "nbTransactions": 284,
+   "capitalisation": 78151575726,
+   "variation": null,
+   "emetteur": ""
+  }
+ ]
+}

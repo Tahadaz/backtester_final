@@ -1033,6 +1033,9 @@ class YFinanceMoroccoAdapter(YahooFinanceDataSource):
 
 class BDCSessionAdapter(BaseDataSource):
     """
+    DEPRECATED (2026-11): the instrument page was removed in the site rebuild; use
+    BoursenovaHistoryAdapter. Kept for reference, no longer routed to.
+
     Scrapes the current trading session OHLCV (Données de la séance) from the
     public Bourse de Casablanca instrument page.
 
@@ -1502,6 +1505,9 @@ def _slugify_index_name(libelle: str) -> str:
 
 class CasablancaBourseIndicesAdapter:
     """
+    DEPRECATED (2026-11): the live indices page was removed in the site rebuild; use
+    BoursenovaIndicesAdapter. Kept for reference, no longer routed to.
+
     Fetches the current-session close, high, and low for all Moroccan market indices
     from the Casablanca Bourse live-market page:
 
@@ -1685,6 +1691,330 @@ class CasablancaBourseIndicesAdapter:
             results[symbol] = df
 
         return results
+
+
+# ---------------------------------------------------------------------------
+# Bourse de Casablanca "boursenova" public JSON API (site rebuilt 2026-11)
+# ---------------------------------------------------------------------------
+
+BOURSENOVA_BASE_URL = "https://www.casablanca-bourse.com/api/boursenova"
+_BOURSENOVA_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/120.0.0.0 Safari/537.36"
+)
+_BOURSENOVA_PAGE_SIZE = 100
+
+# boursenova index code -> label.fr (verified live 2026-11-17 against
+# GET /indices/historical?code=<CODE>; the code list comes from
+# drupalSettings.boursenova.indices on /market-data/indices).
+BOURSENOVA_INDEX_LABELS: Dict[str, str] = {
+    "AGRO": "MASI AGROALIMENTAIRE / PRODUCTION",
+    "ASSUR": "MASI ASSURANCES",
+    "BANK": "MASI BANQUES",
+    "BOISS": "MASI BOISSONS",
+    "CHIM": "MASI CHIMIE",
+    "DISTR": "MASI DISTRIBUTEURS",
+    "ELEC": "MASI ELECTRICITE",
+    "ESGI": "MASI ESG",
+    "IAG": "MASI INDUSTRIE AGRICOLE",
+    "IMMOB": "MASI PARTICIPATION ET PROMOTION IMMOBILIERES",
+    "MASI": "MASI",
+    "MASID": "MASI (USD)",
+    "MASIE": "MASI (EUR)",
+    "MASIMS": "MASI Mid and Small Cap",
+    "MASIR": "MASI RENTABILITE BRUT",
+    "MASRN": "MASI RENTABILITE NET",
+    "MINES": "MASI MINES",
+    "MS20R": "MASI 20 RENTABILITE BRUT",
+    "MS20RN": "MASI 20 RENTABILITE NET",
+    "MSI20": "MASI 20",
+    "PHARM": "MASI INDUSTRIE PHARMACEUTIQUE",
+    "SANTE": "MASI SANTE",
+    "SDT": "MASI SERVICES DE TRANSPORT",
+    "SPI": "MASI SOCIETES DE PLACEMENT IMMOBILIER",
+    "TCOM": "MASI TELECOMMUNICATIONS",
+    "TRANS": "MASI TRANSPORT",
+}
+
+# APP_SYMBOL (index_master.symbol = slug of the label, the same rule the old
+# live-page adapter used) -> boursenova code. FTSE_CSE_MOROCCO_15 and
+# FTSE_CSE_MOROCCO_ALL_LIQUID have no boursenova code and are skipped.
+BOURSENOVA_APP_SYMBOL_TO_CODE: Dict[str, str] = {
+    _slugify_index_name(label): code for code, label in BOURSENOVA_INDEX_LABELS.items()
+}
+
+
+def boursenova_today():
+    import datetime as _dt
+
+    try:
+        from zoneinfo import ZoneInfo
+
+        return _dt.datetime.now(ZoneInfo("Africa/Casablanca")).date()
+    except Exception:
+        return (_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(hours=1)).date()
+
+
+def clamp_boursenova_window(start=None, end=None, *, today=None):
+    """Clamp (start, end) to the API's ~3-year window: start >= today-3y+2d, end <= today."""
+    import datetime as _dt
+
+    today = today or boursenova_today()
+    try:
+        floor = today.replace(year=today.year - 3)
+    except ValueError:  # Feb 29
+        floor = _dt.date(today.year - 3, 2, 28)
+    floor += _dt.timedelta(days=2)
+
+    def _d(v):
+        return None if v is None or v == "" else pd.Timestamp(v).date()
+
+    return max(_d(start) or floor, floor), min(_d(end) or today, today)
+
+
+def _boursenova_session():
+    """requests.Session trusting the OS store via ``truststore`` when installed.
+
+    The bundled certifi store can lack the intermediate that signs
+    www.casablanca-bourse.com. Order: truststore (OS store) -> BOURSENOVA_CA_BUNDLE
+    env path -> default verification. Never disables verification.
+    """
+    import os
+    import requests
+
+    http = requests.Session()
+    http.headers["User-Agent"] = _BOURSENOVA_USER_AGENT
+    http.headers["Accept"] = "application/json"
+    try:
+        import ssl
+
+        import truststore
+        from requests.adapters import HTTPAdapter
+
+        ctx = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+        class _TrustStoreAdapter(HTTPAdapter):
+            def init_poolmanager(self, *a, **kw):
+                kw["ssl_context"] = ctx
+                super().init_poolmanager(*a, **kw)
+
+        http.mount("https://", _TrustStoreAdapter())
+    except ImportError:
+        bundle = os.environ.get("BOURSENOVA_CA_BUNDLE", "").strip()
+        if bundle:
+            http.verify = bundle
+    return http
+
+
+def _boursenova_get_json(http, path: str, params: dict, *, retries: int = 2, timeout: int = 30) -> Optional[dict]:
+    """GET base+path -> JSON dict, or None after ``retries`` retries (backoff 1s, 2s)."""
+    import time
+    import warnings
+
+    last: object = None
+    for attempt in range(retries + 1):
+        try:
+            resp = http.get(f"{BOURSENOVA_BASE_URL}{path}", params=params, timeout=timeout)
+            resp.raise_for_status()
+            payload = resp.json()
+            if isinstance(payload, dict):
+                return payload
+            last = "unexpected payload"
+        except Exception as exc:  # network, HTTP, JSON
+            last = exc
+        if attempt < retries:
+            time.sleep(2 ** attempt)
+    warnings.warn(f"boursenova GET {path} {params} failed: {last}")
+    return None
+
+
+def _boursenova_fetch_items(http, path: str, params: dict) -> Optional[List[dict]]:
+    """All items for a query. The API returns the whole window in one response; if a
+    response is capped at one page (<= 100 rows while totalCount is larger), page
+    defensively with pageNumber (1-based) / pageSize."""
+    payload = _boursenova_get_json(http, path, params)
+    if payload is None:
+        return None
+    items = list(payload.get("items") or [])
+    total = int(payload.get("totalCount") or 0)
+    if 0 < len(items) < total and len(items) <= _BOURSENOVA_PAGE_SIZE:
+        items, page = [], 1
+        while True:
+            chunk = _boursenova_get_json(
+                http, path, {**params, "pageNumber": page, "pageSize": _BOURSENOVA_PAGE_SIZE}
+            )
+            rows = (chunk or {}).get("items") or []
+            if not rows:
+                break
+            items.extend(rows)
+            if len(rows) < _BOURSENOVA_PAGE_SIZE or len(items) >= total:
+                break
+            page += 1
+    return items
+
+
+def _parse_seance(value: object) -> Optional[pd.Timestamp]:
+    import datetime as _dt
+
+    try:
+        return pd.Timestamp(_dt.datetime.strptime(str(value).strip(), "%d/%m/%Y"))
+    except (ValueError, TypeError):
+        return None
+
+
+def parse_boursenova_stock_items(items: Sequence[dict]) -> pd.DataFrame:
+    """Items -> DataFrame[Open, High, Low, Close, Volume, NombreTitres] by session date.
+
+    Rows without a parseable ``seance`` or ``dernierCours`` are rejected (never
+    assign the scrape date). Volume = titresEchanges (shares); NombreTitres =
+    round(capitalisation / dernierCours).
+    """
+    rows, idx = [], []
+    for it in items or []:
+        ts = _parse_seance(it.get("seance"))
+        close = pd.to_numeric(it.get("dernierCours"), errors="coerce")
+        if ts is None or pd.isna(close):
+            continue
+        cap = pd.to_numeric(it.get("capitalisation"), errors="coerce")
+        rows.append(
+            {
+                "Open": it.get("ouverture"),
+                "High": it.get("plusHaut"),
+                "Low": it.get("plusBas"),
+                "Close": close,
+                "Volume": it.get("titresEchanges"),
+                "NombreTitres": round(cap / close) if pd.notna(cap) and close > 0 else np.nan,
+            }
+        )
+        idx.append(ts)
+    if not rows:
+        return pd.DataFrame()
+    df = pd.DataFrame(rows, index=pd.DatetimeIndex(idx, name="Date"))
+    df = df.apply(pd.to_numeric, errors="coerce")
+    return df[~df.index.duplicated(keep="last")].sort_index()
+
+
+class BoursenovaHistoryAdapter(BaseDataSource):
+    """
+    Daily OHLCV for Moroccan equities from the Bourse de Casablanca public JSON API:
+
+        GET {BOURSENOVA_BASE_URL}/stock-historical?instrument=IAM&market=comptant&type=actions
+            &startDate=YYYY-MM-DD&endDate=YYYY-MM-DD&isCoursAjuste=false&target=tv
+
+    Honours ``start``/``end`` (clamped to the API's ~3-year window). Raw (unadjusted)
+    prices. Returns an empty DataFrame per symbol on failure (existing convention).
+    ``self.meta[symbol]["display_name"]`` carries ``libelle.fr`` from the last fetch.
+    """
+
+    def __init__(
+        self,
+        timezone: str = "UTC",
+        cache_dir: Optional[Union[str, Path]] = None,
+        use_cache: bool = False,
+    ) -> None:
+        super().__init__(timezone=timezone, cache_dir=cache_dir, use_cache=use_cache)
+        self.fill_adj_close = False
+        self.meta: Dict[str, Dict[str, object]] = {}
+
+    def _load_impl(
+        self,
+        symbols: Sequence[str],
+        start: Optional[str],
+        end: Optional[str],
+        interval: str,
+        **kwargs,
+    ) -> Dict[str, pd.DataFrame]:
+        http = _boursenova_session()
+        s, e = clamp_boursenova_window(start, end)
+        out: Dict[str, pd.DataFrame] = {}
+        for symbol in symbols:
+            items = _boursenova_fetch_items(
+                http,
+                "/stock-historical",
+                {
+                    "instrument": symbol,
+                    "market": "comptant",
+                    "type": "actions",
+                    "startDate": s.isoformat(),
+                    "endDate": e.isoformat(),
+                    "isCoursAjuste": "false",
+                    "target": "tv",
+                },
+            )
+            if items:
+                label = ((items[0].get("libelle") or {}).get("fr") or "").strip()
+                if label:
+                    self.meta[symbol] = {"display_name": label}
+            out[symbol] = parse_boursenova_stock_items(items or [])
+        return out
+
+
+class BoursenovaIndicesAdapter:
+    """
+    Daily index history (close/high/low) from the boursenova API:
+
+        GET {BOURSENOVA_BASE_URL}/indices/historical?code=MASI&startDate=...&endDate=...
+
+    One request per index (the multi-code form only returns the first code).
+    ``fetch`` returns {app_symbol: DataFrame[Close, High, Low, display_name]} with a
+    DatetimeIndex named "Date" - the same shape as CasablancaBourseIndicesAdapter.fetch().
+    Open synthesis is left to the caller (``_standardize_ohlcv_index``).
+    """
+
+    def __init__(self) -> None:
+        self.skipped: List[str] = []
+
+    @staticmethod
+    def parse_items(items: Sequence[dict], code: str) -> pd.DataFrame:
+        rows, idx, label = [], [], None
+        for it in items or []:
+            ts = _parse_seance(it.get("seance"))
+            node = (it.get("indices") or {}).get(code)
+            if ts is None or not node:
+                continue
+            close = pd.to_numeric(node.get("valeur"), errors="coerce")
+            if pd.isna(close):
+                continue
+            label = label or ((node.get("libelle") or {}).get("fr") or "").strip() or None
+            rows.append(
+                {
+                    "Close": close,
+                    "High": pd.to_numeric(node.get("plusHaut"), errors="coerce"),
+                    "Low": pd.to_numeric(node.get("plusBas"), errors="coerce"),
+                }
+            )
+            idx.append(ts)
+        if not rows:
+            return pd.DataFrame()
+        df = pd.DataFrame(rows, index=pd.DatetimeIndex(idx, name="Date"))
+        df = df[~df.index.duplicated(keep="last")].sort_index()
+        df["display_name"] = label or BOURSENOVA_INDEX_LABELS.get(code, code)
+        return df
+
+    def fetch(self, codes: Iterable[str], start=None, end=None) -> Dict[str, pd.DataFrame]:
+        """``codes`` are APP index symbols; unmapped ones are logged once and skipped."""
+        import logging
+
+        s, e = clamp_boursenova_window(start, end)
+        http = _boursenova_session()
+        out: Dict[str, pd.DataFrame] = {}
+        for sym in codes:
+            code = BOURSENOVA_APP_SYMBOL_TO_CODE.get(sym)
+            if code is None:
+                if sym not in self.skipped:
+                    self.skipped.append(sym)
+                    logging.getLogger(__name__).info("boursenova: no index code for %s; skipped", sym)
+                continue
+            items = _boursenova_fetch_items(
+                http,
+                "/indices/historical",
+                {"code": code, "startDate": s.isoformat(), "endDate": e.isoformat()},
+            )
+            df = self.parse_items(items or [], code)
+            if not df.empty:
+                out[sym] = df
+        return out
 
 
 class ParquetDataSource(BaseDataSource):
