@@ -10,17 +10,28 @@ jobs:
   deploy:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     steps:
       - name: Deploy to Oracle VM (84.8.218.252)
         uses: appleboy/ssh-action@v1
+        env:
+          # Short-lived job token: lets the VM pull the private GHCR images
+          # without depending on a long-lived PAT stored on the VM.
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           host: ${{ secrets.ORACLE_HOST }}
           username: deploy
           key: ${{ secrets.ORACLE_SSH_KEY }}
           command_timeout: 30m
+          envs: GHCR_USER,GHCR_TOKEN
           script: |
             set -euo pipefail
             cd /opt/bt
+
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
 
             # Keep the currently-running release available for one rollback.
             # The housekeeping timer reads these immutable image IDs and never
