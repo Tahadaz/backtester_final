@@ -230,6 +230,30 @@ def backfill_signals() -> dict[str, Any]:
     return dispatch_signal_backfill(trigger_source="manual_backfill")
 
 
+@router.post("/market/backfill-bourse", dependencies=[Depends(rate_limit_trigger)])
+def backfill_bourse_history(
+    apply: bool = False,
+    symbols: str | None = None,
+    stocks: bool = True,
+    indices: bool = True,
+    downstream: bool = False,
+) -> dict[str, Any]:
+    """Enqueue the Bourse gap audit (default dry-run) / backfill on the market_refresh queue."""
+    from rq import Queue
+
+    conn = Redis.from_url(settings.REDIS_URL)  # RQ needs bytes, unlike _redis()
+    job = Queue(settings.MARKET_REFRESH_QUEUE_NAME, connection=conn).enqueue(
+        "services.worker.tasks.backfill_bourse_history.run_backfill_job",
+        apply,
+        [s.strip() for s in symbols.split(",") if s.strip()] if symbols else None,
+        stocks,
+        indices,
+        downstream and apply,
+        job_timeout=7200,
+    )
+    return {"rq_job_id": str(job.id), "mode": "apply" if apply else "dry-run"}
+
+
 @router.post("/sfc/recompute", dependencies=[Depends(rate_limit_trigger)])
 def recompute_sfc_now() -> dict[str, Any]:
     from services.worker.tasks.scheduler_dispatch import dispatch_schedule

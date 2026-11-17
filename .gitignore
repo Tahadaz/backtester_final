@@ -125,3 +125,5 @@ quant-backtesting-frontend/
 # Academic deliverables — kept locally, never published
 /academic/
 
+
+output/bourse-backfill/
