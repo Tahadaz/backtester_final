@@ -318,10 +318,11 @@ def test_backfill_reports_mismatch_for_23h_prev_day_store_and_writes_nothing(mon
 
 
 def test_backfill_aborts_write_when_merge_would_duplicate_a_date(monkeypatch):
-    # Stored at local midnight in Casablanca (UTC+1): aligned boursenova rows land at 01:00 -> duplicates.
-    old = _bars({"2026-11-09": 10.0}, tz="Africa/Casablanca")
-    exch = _bars({"2026-11-09": 10.0, "2026-11-10": 11.0})
-    # force a non-overlapping alignment: incoming 00:00 UTC == 01:00 local != stored 00:00 local
+    # Same session date at a different time-of-day -> merge would create two rows for 11-09.
+    # Deterministic: no tz database dependence (Africa/Casablanca offsets differ across tzdata builds).
+    monkeypatch.setattr(bf, "_align_tz", lambda frame, like: frame.copy())
+    old = _bars({"2026-11-09": 10.0})
+    exch = _bars({"2026-11-09 01:00": 10.0, "2026-11-10 01:00": 11.0})
     entry, saved = _process_with(monkeypatch, old, exch)
     assert entry["status"] == "duplicate_dates_aborted"
     assert saved == []
